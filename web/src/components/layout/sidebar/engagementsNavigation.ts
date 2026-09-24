@@ -1,100 +1,141 @@
 import {
-	BarChart3,
 	FileSignature,
-	FileUp,
 	Handshake,
-	House,
 	type LucideIcon,
 	ReceiptText,
-	UserRound,
+	Share2,
+	Users,
+	Wallet,
 } from "lucide-react";
 
 /**
  * Navigation for the engagements shell at `/engagements`.
  *
- * The sidebar lists PLACES, Google-Drive style: All engagements, then the
- * three finance levels — Home (the launcher), Personal (your own book), and
- * one entry per team, each with its project books nested under it. Teams and
- * project books are appended at render time from the finance hub payload, so
- * this module only names the static places.
+ * ONE tree, and every page in the shell sits on exactly one node of it:
  *
- * Filters are not places: the engagement list's seat tabs and status filter,
- * and the portfolio's section tabs, live on their pages. Folding them in here
- * would mix filters into a sitemap.
+ *   ENGAGEMENTS
+ *     Overview          /engagements                       (+ /engagements/$id)
+ *     Contracts         /engagements/contracts             (+ /contracts/$id)
+ *   FINANCE
+ *     My finance        /engagements/finance               consolidated, every team
+ *     My teams          /engagements/finance/teams
+ *       <team>          /engagements/finance/team/$teamId/…
+ *         <project>     /engagements/finance/team/$teamId/project/$bookId
+ *     Shared with me    /engagements/finance/shared
+ *
+ * `resolveEngagementsLocation` is the single reader of that tree: the sidebar
+ * highlight, the breadcrumb trail, and search all derive from it, so the
+ * three can never disagree about where the user is. Contracts live only on
+ * the Engagements side; finance pages link to them but never list them.
  */
 export interface EngagementsNavItem {
-	key: string;
+	key: EngagementsNavKey;
 	to: string;
 	label: string;
 	icon: LucideIcon;
-	match: "exact" | "prefix";
-	/**
-	 * Path prefixes this item must NOT light on, so a parent path can use
-	 * `prefix` matching without claiming a nested section as its own.
-	 */
-	excludes?: string[];
 }
+
+export type EngagementsNavKey =
+	| "engagements"
+	| "contracts"
+	| "my-finance"
+	| "my-teams"
+	| "shared";
 
 export const ENGAGEMENTS_NAV_ITEMS: EngagementsNavItem[] = [
 	{
 		key: "engagements",
 		to: "/engagements",
-		label: "All engagements",
+		label: "Overview",
 		icon: Handshake,
-		match: "prefix",
-		// The detail page belongs to this item; finance is its own section.
-		excludes: ["/engagements/finance"],
+	},
+	{
+		key: "contracts",
+		to: "/engagements/contracts",
+		label: "Contracts",
+		icon: FileSignature,
 	},
 ];
 
 /**
- * The static finance places. Home matches only the launcher itself — every
- * deeper finance surface belongs to Personal, a team, or the portfolio.
+ * The static finance places. Teams and their project books hang under
+ * "My teams" at render time, from the finance hub payload.
  */
 export const FINANCE_NAV_ITEMS: EngagementsNavItem[] = [
 	{
-		key: "finance-home",
+		key: "my-finance",
 		to: "/engagements/finance",
-		label: "Home",
-		icon: House,
-		match: "prefix",
-		excludes: [
-			"/engagements/finance/me",
-			"/engagements/finance/team",
-			"/engagements/finance/book",
-			"/engagements/finance/portfolio",
-			"/engagements/finance/contracts",
-			"/engagements/finance/invoices",
-			"/engagements/finance/imports",
-		],
+		label: "My finance",
+		icon: Wallet,
 	},
 	{
-		key: "finance-personal",
-		to: "/engagements/finance/me",
-		label: "Personal",
-		icon: UserRound,
-		match: "prefix",
+		key: "my-teams",
+		to: "/engagements/finance/teams",
+		label: "My teams",
+		icon: Users,
 	},
 ];
 
-export function isEngagementsNavItemActive(
-	item: EngagementsNavItem,
-	currentPath: string,
-): boolean {
-	if (item.excludes?.some((prefix) => currentPath.startsWith(prefix))) {
-		return false;
+export const SHARED_NAV_ITEM: EngagementsNavItem = {
+	key: "shared",
+	to: "/engagements/finance/shared",
+	label: "Shared with me",
+	icon: Share2,
+};
+
+/** Where a pathname sits in the engagements tree. */
+export interface EngagementsLocation {
+	/** The static sidebar item that owns this page, if any. */
+	nav: EngagementsNavKey | null;
+	/** Set on every page inside one team's finance. */
+	teamId?: string;
+	/** Set on a project-finance page (the project's book). */
+	bookId?: string;
+	/** The team tab (`overview`, `invoices`, `time-logs`, …) when on a team page. */
+	teamTab?: string;
+}
+
+const UUID = "[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}";
+const TEAM_RE = new RegExp(
+	`^/engagements/finance/team/(${UUID})(?:/project/(${UUID}))?(?:/([a-z-]+))?`,
+	"i",
+);
+
+export function resolveEngagementsLocation(
+	pathname: string,
+): EngagementsLocation {
+	const path = pathname.replace(/\/+$/, "") || "/";
+
+	const team = TEAM_RE.exec(path);
+	if (team) {
+		const [, teamId, bookId, tab] = team;
+		return {
+			nav: "my-teams",
+			teamId,
+			bookId: bookId || undefined,
+			teamTab: bookId ? undefined : (tab ?? "overview"),
+		};
 	}
-	return item.match === "prefix"
-		? currentPath.startsWith(item.to)
-		: currentPath === item.to;
+	if (path.startsWith("/engagements/finance/teams")) return { nav: "my-teams" };
+	if (path.startsWith("/engagements/finance/shared")) return { nav: "shared" };
+	if (path.startsWith("/engagements/contracts")) return { nav: "contracts" };
+	// Legacy contract editor URL (redirects, but may render for a frame).
+	if (new RegExp(`^/engagements/finance/${UUID}$`, "i").test(path)) {
+		return { nav: "contracts" };
+	}
+	if (path.startsWith("/engagements/finance")) {
+		// Setup wizards, invites, the invoice builder, and imports documents are
+		// all reached from My finance or a team; with no team in the URL they
+		// belong to My finance.
+		return { nav: "my-finance" };
+	}
+	if (path.startsWith("/engagements")) return { nav: "engagements" };
+	return { nav: null };
 }
 
 /**
- * The consultant portfolio's own tabs, as destinations.
- *
- * Not rendered in the sidebar — the portfolio is one place. They are listed
- * here so the global search can still offer "Finance · Invoices": a tab is a
- * place a user can mean to go, even when the sidebar declines to name it.
+ * Destinations that are tabs rather than sidebar entries, for global search:
+ * a user who searches "invoices" still means to land somewhere real.
  */
 export const FINANCE_TAB_PAGES: {
 	key: string;
@@ -103,27 +144,9 @@ export const FINANCE_TAB_PAGES: {
 	icon: LucideIcon;
 }[] = [
 	{
-		key: "finance-portfolio",
-		to: "/engagements/finance/portfolio",
-		label: "Portfolio",
-		icon: BarChart3,
-	},
-	{
-		key: "finance-contracts",
-		to: "/engagements/finance/contracts",
-		label: "Contracts",
-		icon: FileSignature,
-	},
-	{
 		key: "finance-invoices",
 		to: "/engagements/finance/invoices",
 		label: "Invoices",
 		icon: ReceiptText,
-	},
-	{
-		key: "finance-imports",
-		to: "/engagements/finance/imports",
-		label: "Imports",
-		icon: FileUp,
 	},
 ];

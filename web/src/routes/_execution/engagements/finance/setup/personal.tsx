@@ -50,7 +50,7 @@ function PersonalFinanceSetupPage() {
 	);
 	useEffect(() => {
 		if (hasPersonal) {
-			void navigate({ to: "/engagements/finance/me", replace: true });
+			void navigate({ to: "/engagements/finance", replace: true });
 		}
 	}, [hasPersonal, navigate]);
 
@@ -58,7 +58,7 @@ function PersonalFinanceSetupPage() {
 		mutationFn: () => financeBooksService.createPersonal(currency),
 		onSuccess: async () => {
 			await queryClient.invalidateQueries({ queryKey: ["finance-books"] });
-			void navigate({ to: "/engagements/finance/me" });
+			void navigate({ to: "/engagements/finance" });
 		},
 		onError: async () => {
 			// The request helper flattens the response to a message, so a 409
@@ -67,7 +67,7 @@ function PersonalFinanceSetupPage() {
 			const books = await financeBooksService.listMine().catch(() => null);
 			if (books?.some((book) => book.kind === "personal")) {
 				await queryClient.invalidateQueries({ queryKey: ["finance-books"] });
-				void navigate({ to: "/engagements/finance/me", replace: true });
+				void navigate({ to: "/engagements/finance", replace: true });
 			}
 		},
 	});

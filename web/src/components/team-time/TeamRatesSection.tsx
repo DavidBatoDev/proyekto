@@ -51,7 +51,8 @@ interface TeamRatesSectionProps {
 	loadingRates: boolean;
 	canManageRates: boolean;
 	pendingMemberById: Record<string, boolean>;
-	onViewLogs: (member: TeamMember) => void;
+	/** Omit to hide the per-member "View Logs" button. */
+	onViewLogs?: (member: TeamMember) => void;
 	onOpenAddRate: () => void;
 	onManageMember: (member: TeamMember) => void;
 }
@@ -256,14 +257,16 @@ export function TeamRatesSection({
 
 										<div className="mt-auto border-t border-border pt-3">
 											<div className="flex flex-wrap items-center justify-center gap-1.5">
-												<button
-													type="button"
-													onClick={() => onViewLogs(member)}
-													disabled={isPending}
-													className="rounded-md border border-border bg-muted px-2.5 py-1 text-xs font-semibold text-foreground hover:bg-accent hover:text-accent-foreground disabled:cursor-not-allowed disabled:opacity-50"
-												>
-													View Logs
-												</button>
+												{onViewLogs && (
+													<button
+														type="button"
+														onClick={() => onViewLogs(member)}
+														disabled={isPending}
+														className="rounded-md border border-border bg-muted px-2.5 py-1 text-xs font-semibold text-foreground hover:bg-accent hover:text-accent-foreground disabled:cursor-not-allowed disabled:opacity-50"
+													>
+														View Logs
+													</button>
+												)}
 												{canManageRates && (
 													<button
 														type="button"

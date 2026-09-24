@@ -1,5 +1,4 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import {
 	FileText,
 	FolderKanban,
@@ -9,31 +8,12 @@ import {
 } from "lucide-react";
 import { useRef, useState } from "react";
 import { AppEmptyState } from "@/components/common/AppPrimitives";
-import {
-	type FinanceSearchState,
-	validateFinanceSharedSearch,
-} from "@/components/finance/portfolio/financeSearch";
 import { useToast } from "@/hooks/useToast";
 import {
 	type FinanceDocument,
 	type FinanceDocumentKind,
 	financeImportsService,
 } from "@/services/financeImports.service";
-
-/**
- * Recording billing that happened outside Proyekto.
- *
- * Project-scoped on purpose: an imported invoice belongs to one project's
- * ledger, and the picker in the toolbar above is how you say which. Until a
- * project is chosen there is nothing to file anything under.
- */
-export const Route = createFileRoute(
-	"/_execution/engagements/finance/_portfolio/imports",
-)({
-	validateSearch: (search: Record<string, unknown>): FinanceSearchState =>
-		validateFinanceSharedSearch(search),
-	component: FinanceImportsPage,
-});
 
 const KINDS: Array<{ kind: FinanceDocumentKind; label: string; hint: string }> =
 	[
@@ -49,12 +29,21 @@ const KINDS: Array<{ kind: FinanceDocumentKind; label: string; hint: string }> =
 		},
 	];
 
-function FinanceImportsPage() {
-	const search = Route.useSearch();
-	const navigate = useNavigate();
+/**
+ * Recording billing that happened outside Proyekto, for one project: upload
+ * an invoice PDF or a proof of payment, then open an invoice to snip (OCR) its
+ * figures into the project's ledger. Project-scoped on purpose — an imported
+ * invoice belongs to exactly one project's ledger.
+ */
+export function ProjectImportsPanel({
+	projectId,
+	onOpenDocument,
+}: {
+	projectId: string | undefined;
+	onOpenDocument: (documentId: string) => void;
+}) {
 	const toast = useToast();
 	const qc = useQueryClient();
-	const projectId = search.projectId;
 
 	const [kind, setKind] = useState<FinanceDocumentKind>("invoice");
 	const fileInputRef = useRef<HTMLInputElement>(null);
@@ -74,10 +63,7 @@ function FinanceImportsPage() {
 			// An invoice is uploaded in order to be recorded, so the workspace opens
 			// straight away; a bank record is evidence to attach later and stays put.
 			if (document.kind === "invoice") {
-				void navigate({
-					to: "/engagements/finance/imports/$documentId",
-					params: { documentId: document.id },
-				});
+				onOpenDocument(document.id);
 			}
 		},
 		onError: (error: Error) => toast.error(error.message),
@@ -88,7 +74,7 @@ function FinanceImportsPage() {
 			<AppEmptyState
 				icon={FolderKanban}
 				title="Choose a project first"
-				description="Imported invoices belong to one project's ledger. Pick a project in the filter bar above to record its past billing."
+				description="Imported invoices belong to one project's ledger. Pick a project above to record its past billing."
 			/>
 		);
 	}
@@ -172,12 +158,7 @@ function FinanceImportsPage() {
 						title="Invoices"
 						subtitle="Open one to snip its figures and record it."
 						documents={invoices}
-						onOpen={(documentId) =>
-							void navigate({
-								to: "/engagements/finance/imports/$documentId",
-								params: { documentId },
-							})
-						}
+						onOpen={onOpenDocument}
 					/>
 					<DocumentList
 						title="Proof of payment"

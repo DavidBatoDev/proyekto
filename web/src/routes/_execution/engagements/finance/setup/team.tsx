@@ -59,8 +59,8 @@ function TeamFinanceSetupPage() {
 		onSuccess: async ({ book }) => {
 			await queryClient.invalidateQueries({ queryKey: ["finance-books"] });
 			void navigate({
-				to: "/engagements/finance/book/$bookId",
-				params: { bookId: book.id },
+				to: "/engagements/finance/team/$teamId",
+				params: { teamId: book.owner_team_id ?? (teamId as string) },
 			});
 		},
 	});

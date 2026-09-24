@@ -1,4 +1,3 @@
-import { useQuery } from "@tanstack/react-query";
 import {
 	createFileRoute,
 	Link,
@@ -12,12 +11,8 @@ import {
 	AppSurfaceCard,
 } from "@/components/common/AppPrimitives";
 import { DashboardShell } from "@/components/layout/DashboardShell";
-import {
-	getTeam,
-	hasAnyActiveRate,
-	listTeamMembers,
-} from "@/services/teams.service";
-import { useAuthStore, useUser } from "@/stores/authStore";
+import { useTeamMoneyAccess } from "@/components/team-time/useTeamMoneyAccess";
+import { useAuthStore } from "@/stores/authStore";
 
 export const Route = createFileRoute("/w/$workspaceSlug/teams/$teamId/time")({
 	beforeLoad: () => {
@@ -42,28 +37,19 @@ interface TabSpec {
 
 function TeamTimeLayout() {
 	const { workspaceSlug, teamId } = Route.useParams();
-	const user = useUser();
 	const location = useLocation();
 
-	const teamQuery = useQuery({
-		queryKey: ["team", teamId],
-		queryFn: () => getTeam(teamId),
-	});
-	const membersQuery = useQuery({
-		queryKey: ["team", teamId, "members"],
-		queryFn: () => listTeamMembers(teamId),
-	});
-	const myActiveRateQuery = useQuery({
-		queryKey: ["team", teamId, "rates", "anyActive", user?.id],
-		queryFn: () => hasAnyActiveRate(teamId, user!.id),
-		enabled: Boolean(user?.id),
-	});
+	const {
+		isLoading,
+		team,
+		isApprover,
+		isTeamMember,
+		timeTrackingEnabled,
+		hasRates,
+		canPay,
+	} = useTeamMoneyAccess(teamId);
 
-	if (
-		teamQuery.isPending ||
-		membersQuery.isPending ||
-		(user?.id && myActiveRateQuery.isPending)
-	) {
+	if (isLoading) {
 		return (
 			<DashboardShell>
 				<div className="flex justify-center p-12">
@@ -73,15 +59,7 @@ function TeamTimeLayout() {
 		);
 	}
 
-	const team = teamQuery.data;
-	const myMembership = membersQuery.data?.find((m) => m.user_id === user?.id);
-	const isApprover =
-		team?.owner_id === user?.id ||
-		myMembership?.role === "admin" ||
-		myMembership?.role === "owner";
-	const isTeamMember = Boolean(myMembership);
-
-	if (!team?.time_tracking_enabled) {
+	if (!team || !timeTrackingEnabled) {
 		return (
 			<DashboardShell>
 				<div className="space-y-6 p-6">
@@ -119,9 +97,6 @@ function TeamTimeLayout() {
 			</DashboardShell>
 		);
 	}
-
-	const hasRates = team?.member_rates_enabled === true;
-	const canPay = team?.payouts_enabled === true;
 
 	const tabs: TabSpec[] = [];
 	if (isTeamMember) {

@@ -1,15 +1,11 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { createFileRoute, Link } from "@tanstack/react-router";
+import { createFileRoute } from "@tanstack/react-router";
 import { Clock, FileSignature } from "lucide-react";
 import {
 	AppSectionHeader,
 	AppSurfaceCard,
 } from "@/components/common/AppPrimitives";
-import {
-	FINANCE_CRUMB_LINK_CLASS,
-	FinanceBreadcrumbs,
-	FinanceCurrentCrumb,
-} from "@/components/finance/portfolio/FinanceBreadcrumbs";
+import { FinanceTrail } from "@/components/finance/nav/FinanceTrail";
 import { useToast } from "@/contexts/ToastContext";
 import { getTeam, updateTeam } from "@/services/teams.service";
 import { useProfile } from "@/stores/authStore";
@@ -81,25 +77,9 @@ function TeamAddonsPage() {
 	return (
 		<div className="app-shell-bg min-h-full px-5 py-4 md:px-8 md:py-5">
 			<div className="mx-auto w-full max-w-4xl">
-				<FinanceBreadcrumbs
-					items={[
-						<Link
-							key="engagements"
-							to="/engagements"
-							className={FINANCE_CRUMB_LINK_CLASS}
-						>
-							Engagements
-						</Link>,
-						<Link
-							key="team"
-							to="/engagements/finance/team/$teamId"
-							params={{ teamId }}
-							className={FINANCE_CRUMB_LINK_CLASS}
-						>
-							{team?.name ?? "Team finance"}
-						</Link>,
-						<FinanceCurrentCrumb key="addons">Add-ons</FinanceCurrentCrumb>,
-					]}
+				<FinanceTrail
+					team={{ id: teamId, name: team?.name ?? "Team" }}
+					current="Add-ons"
 				/>
 
 				<AppSectionHeader

@@ -120,7 +120,7 @@ function EngagementDetailPage() {
 								type="button"
 								onClick={() =>
 									void navigate({
-										to: "/engagements/finance/$contractId",
+										to: "/engagements/contracts/$contractId",
 										params: {
 											contractId: engagement.activated_by_contract_id as string,
 										},

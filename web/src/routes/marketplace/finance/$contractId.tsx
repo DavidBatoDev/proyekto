@@ -16,7 +16,7 @@ export const Route = createFileRoute("/marketplace/finance/$contractId")({
 	}),
 	beforeLoad: ({ params, search }) => {
 		throw redirect({
-			to: "/engagements/finance/$contractId",
+			to: "/engagements/contracts/$contractId",
 			params: { contractId: params.contractId },
 			search,
 		});

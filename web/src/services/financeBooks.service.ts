@@ -89,6 +89,21 @@ export interface FinanceInvite {
 	created_at: string;
 }
 
+/**
+ * An invite is actionable only while pending AND unexpired. The server writes
+ * lapsed invites back as `expired` on read; this guard keeps the UI honest
+ * for a row fetched just before its expiry passed.
+ */
+export function isInvitePending(invite: {
+	status: string;
+	expires_at: string;
+}): boolean {
+	return (
+		invite.status === "pending" &&
+		new Date(invite.expires_at).getTime() > Date.now()
+	);
+}
+
 export interface FinanceInvitePreview {
 	invite: {
 		id: string;
@@ -202,6 +217,47 @@ export interface FinanceBookOverview {
 	}>;
 }
 
+/** GET /finance-books/me/summary — My finance, consolidated across teams. */
+export interface MyFinanceHours {
+	total_seconds: number;
+	month_seconds: number;
+	pending_seconds: number;
+}
+export interface MoneyInRow {
+	currency: string;
+	invoiced: number;
+	collected: number;
+	outstanding: number;
+}
+export interface MoneyOutRow {
+	currency: string;
+	payouts: number;
+	expenses: number;
+	total: number;
+}
+export interface MyFinanceTeam {
+	team_id: string;
+	team_name: string;
+	is_owner: boolean;
+	team_role: "owner" | "admin" | "member";
+	finance_role: FinanceBookRole | null;
+	/** `team`: the caller runs this team's money. `self`: only their share. */
+	scope: "team" | "self";
+	hours: MyFinanceHours;
+	money_in: MoneyInRow[];
+	money_out: MoneyOutRow[];
+	paid_to_me: Array<{ currency: string; amount: number }>;
+}
+export interface MyFinanceSummary {
+	hours: MyFinanceHours & { approved_seconds: number; paid_seconds: number };
+	teams: MyFinanceTeam[];
+	totals: {
+		money_in: Array<MoneyInRow & { paid_to_me: number }>;
+		money_out: MoneyOutRow[];
+		net: Array<{ currency: string; amount: number }>;
+	};
+}
+
 export type FinanceExportKind = "time_logs" | "payouts";
 export type FinanceExportFormat = "csv" | "xlsx" | "pdf";
 
@@ -266,6 +322,8 @@ export const financeBooksService = {
 		),
 	engagedProjects: () =>
 		request<EngagedProject[]>("get", "/api/finance-books/engaged-projects"),
+	mySummary: () =>
+		request<MyFinanceSummary>("get", "/api/finance-books/me/summary"),
 	personalDashboard: () =>
 		request<PersonalDashboard>("get", "/api/finance-books/personal/dashboard"),
 	createPersonal: (currency?: string) =>

@@ -98,6 +98,7 @@ function TeamFinanceInvoicesPage() {
 			search={search}
 			projects={projectOptionsQuery.data?.projects ?? []}
 			onChange={updateSearch}
+			showFilters
 		>
 			{search.projectId ? (
 				<ProjectInvoices projectId={search.projectId} />

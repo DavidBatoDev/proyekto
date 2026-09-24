@@ -36,13 +36,13 @@ describe("buildSearchablePages", () => {
 		const pages = buildSearchablePages(false);
 		const paths = pages.map((p) => p.to);
 
-		// Finance is a book surface every execution user can hold, so its Home
-		// and Personal places are ungated — only the consultant portfolio's
-		// tabs stay behind the capability.
+		// Finance is a surface every execution user can hold, so My finance,
+		// My teams, and Contracts are ungated — only the tab shortcuts stay
+		// behind the capability.
 		expect(paths).toContain("/engagements/finance");
-		expect(paths).toContain("/engagements/finance/me");
+		expect(paths).toContain("/engagements/finance/teams");
+		expect(paths).toContain("/engagements/contracts");
 		expect(paths).not.toContain("/engagements/finance/invoices");
-		expect(paths).not.toContain("/engagements/finance/portfolio");
 		expect(paths).not.toContain("/marketplace/talent/browse");
 		// Ungated marketplace entries stay.
 		expect(paths).toContain("/marketplace/consultant/browse");

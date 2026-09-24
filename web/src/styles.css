@@ -866,8 +866,10 @@ html[data-ui-theme="dark"] {
   backdrop-filter: none;
 }
 
-/* Tabs read as text: the accent carries the active one, as drawn. */
-.finance-canvas [role="tablist"] [aria-selected="true"] {
+/* Tabs read as text: the accent carries the active one, as drawn. A filled
+   (pill) tab already sits on the accent, so it keeps its own foreground —
+   accent-on-accent made its label vanish. */
+.finance-canvas [role="tablist"] [aria-selected="true"]:not(.bg-primary) {
   color: var(--primary);
 }
 

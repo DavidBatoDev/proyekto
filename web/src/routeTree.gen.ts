@@ -8,8 +8,6 @@
 // You should NOT make any changes in this file as it will be overwritten.
 // Additionally, you should also exclude this file from your linter and/or formatter to prevent it from being checked or modified.
 
-import { createFileRoute } from '@tanstack/react-router'
-
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as WelcomeRouteImport } from './routes/welcome'
 import { Route as UnsubscribeRouteImport } from './routes/unsubscribe'
@@ -97,6 +95,7 @@ import { Route as MarketplaceCategoryCategorySlugIndexRouteImport } from './rout
 import { Route as ExecutionTeamsTeamIdIndexRouteImport } from './routes/_execution/teams/$teamId/index'
 import { Route as ExecutionProjectRoadmapIndexRouteImport } from './routes/_execution/project/roadmap/index'
 import { Route as ExecutionEngagementsFinanceIndexRouteImport } from './routes/_execution/engagements/finance/index'
+import { Route as ExecutionEngagementsContractsIndexRouteImport } from './routes/_execution/engagements/contracts/index'
 import { Route as ExecutionBriefBriefIdIndexRouteImport } from './routes/_execution/brief/$briefId/index'
 import { Route as WWorkspaceSlugSettingsMembersRouteImport } from './routes/w/$workspaceSlug/settings/members'
 import { Route as WWorkspaceSlugSettingsBillingRouteImport } from './routes/w/$workspaceSlug/settings/billing'
@@ -117,8 +116,12 @@ import { Route as ExecutionProjectProjectIdLogsRouteImport } from './routes/_exe
 import { Route as ExecutionProjectProjectIdDeliverablesRouteImport } from './routes/_execution/project/$projectId/deliverables'
 import { Route as ExecutionProjectProjectIdDecisionsRouteImport } from './routes/_execution/project/$projectId/decisions'
 import { Route as ExecutionProjectProjectIdChangeRequestsRouteImport } from './routes/_execution/project/$projectId/change-requests'
-import { Route as ExecutionEngagementsFinancePortfolioRouteImport } from './routes/_execution/engagements/finance/_portfolio'
+import { Route as ExecutionEngagementsFinanceTeamsRouteImport } from './routes/_execution/engagements/finance/teams'
+import { Route as ExecutionEngagementsFinanceSharedRouteImport } from './routes/_execution/engagements/finance/shared'
+import { Route as ExecutionEngagementsFinancePortfolioRouteImport } from './routes/_execution/engagements/finance/portfolio'
+import { Route as ExecutionEngagementsFinanceContractsRouteImport } from './routes/_execution/engagements/finance/contracts'
 import { Route as ExecutionEngagementsFinanceContractIdRouteImport } from './routes/_execution/engagements/finance/$contractId'
+import { Route as ExecutionEngagementsContractsContractIdRouteImport } from './routes/_execution/engagements/contracts/$contractId'
 import { Route as ExecutionBriefBriefIdEditRouteImport } from './routes/_execution/brief/$briefId/edit'
 import { Route as ExecutionTeamsTeamIdTimeRouteRouteImport } from './routes/_execution/teams/$teamId/time/route'
 import { Route as WWorkspaceSlugTeamsTeamIdIndexRouteImport } from './routes/w/$workspaceSlug/teams/$teamId/index'
@@ -128,6 +131,8 @@ import { Route as ExecutionTeamsTeamIdSettingsIndexRouteImport } from './routes/
 import { Route as ExecutionProjectProjectIdTeamIndexRouteImport } from './routes/_execution/project/$projectId/team/index'
 import { Route as ExecutionProjectProjectIdSettingsIndexRouteImport } from './routes/_execution/project/$projectId/settings/index'
 import { Route as ExecutionEngagementsFinanceMeIndexRouteImport } from './routes/_execution/engagements/finance/me/index'
+import { Route as ExecutionEngagementsFinanceInvoicesIndexRouteImport } from './routes/_execution/engagements/finance/invoices/index'
+import { Route as ExecutionEngagementsFinanceImportsIndexRouteImport } from './routes/_execution/engagements/finance/imports/index'
 import { Route as MarketplaceFinanceInvoicesInvoiceIdEditRouteImport } from './routes/marketplace/finance/invoices/$invoiceId/edit'
 import { Route as MarketplaceCategoryCategorySlugSubcategorySlugTopicSlugRouteImport } from './routes/marketplace/category/$categorySlug/$subcategorySlug/$topicSlug'
 import { Route as ExecutionTeamsTeamIdTimeTeamLogsRouteImport } from './routes/_execution/teams/$teamId/time/team-logs'
@@ -160,10 +165,6 @@ import { Route as ExecutionEngagementsFinanceSetupPersonalRouteImport } from './
 import { Route as ExecutionEngagementsFinanceInvoicesNewRouteImport } from './routes/_execution/engagements/finance/invoices/new'
 import { Route as ExecutionEngagementsFinanceInviteTokenRouteImport } from './routes/_execution/engagements/finance/invite/$token'
 import { Route as ExecutionEngagementsFinanceImportsDocumentIdRouteImport } from './routes/_execution/engagements/finance/imports/$documentId'
-import { Route as ExecutionEngagementsFinancePortfolioPortfolioRouteImport } from './routes/_execution/engagements/finance/_portfolio/portfolio'
-import { Route as ExecutionEngagementsFinancePortfolioInvoicesRouteImport } from './routes/_execution/engagements/finance/_portfolio/invoices'
-import { Route as ExecutionEngagementsFinancePortfolioImportsRouteImport } from './routes/_execution/engagements/finance/_portfolio/imports'
-import { Route as ExecutionEngagementsFinancePortfolioContractsRouteImport } from './routes/_execution/engagements/finance/_portfolio/contracts'
 import { Route as WWorkspaceSlugTeamsTeamIdTimeRouteRouteImport } from './routes/w/$workspaceSlug/teams/$teamId/time/route'
 import { Route as WWorkspaceSlugTeamsTeamIdTimeIndexRouteImport } from './routes/w/$workspaceSlug/teams/$teamId/time/index'
 import { Route as WWorkspaceSlugTeamsTeamIdSettingsIndexRouteImport } from './routes/w/$workspaceSlug/teams/$teamId/settings/index'
@@ -179,17 +180,20 @@ import { Route as WWorkspaceSlugTeamsTeamIdSettingsLogsRouteImport } from './rou
 import { Route as WWorkspaceSlugTeamsTeamIdSettingsGeneralRouteImport } from './routes/w/$workspaceSlug/teams/$teamId/settings/general'
 import { Route as ExecutionTeamsTeamIdTimeManageRatesUserIdRouteImport } from './routes/_execution/teams/$teamId/time/manage-rates/$userId'
 import { Route as ExecutionTeamsTeamIdTimeLogLogIdRouteImport } from './routes/_execution/teams/$teamId/time/log/$logId'
+import { Route as ExecutionEngagementsFinanceTeamTeamIdTimeLogsRouteImport } from './routes/_execution/engagements/finance/team/$teamId/time-logs'
+import { Route as ExecutionEngagementsFinanceTeamTeamIdRatesRouteImport } from './routes/_execution/engagements/finance/team/$teamId/rates'
+import { Route as ExecutionEngagementsFinanceTeamTeamIdPayoutsRouteImport } from './routes/_execution/engagements/finance/team/$teamId/payouts'
+import { Route as ExecutionEngagementsFinanceTeamTeamIdMembersRouteImport } from './routes/_execution/engagements/finance/team/$teamId/members'
 import { Route as ExecutionEngagementsFinanceTeamTeamIdInvoicesRouteImport } from './routes/_execution/engagements/finance/team/$teamId/invoices'
+import { Route as ExecutionEngagementsFinanceTeamTeamIdImportsRouteImport } from './routes/_execution/engagements/finance/team/$teamId/imports'
+import { Route as ExecutionEngagementsFinanceTeamTeamIdExpensesRouteImport } from './routes/_execution/engagements/finance/team/$teamId/expenses'
 import { Route as ExecutionEngagementsFinanceTeamTeamIdContractsRouteImport } from './routes/_execution/engagements/finance/team/$teamId/contracts'
 import { Route as ExecutionEngagementsFinanceTeamTeamIdAddonsRouteImport } from './routes/_execution/engagements/finance/team/$teamId/addons'
 import { Route as ExecutionEngagementsFinanceInvoicesInvoiceIdEditRouteImport } from './routes/_execution/engagements/finance/invoices/$invoiceId/edit'
 import { Route as WWorkspaceSlugTeamsTeamIdTimeManageRatesIndexRouteImport } from './routes/w/$workspaceSlug/teams/$teamId/time/manage-rates/index'
 import { Route as WWorkspaceSlugTeamsTeamIdTimeManageRatesUserIdRouteImport } from './routes/w/$workspaceSlug/teams/$teamId/time/manage-rates/$userId'
 import { Route as WWorkspaceSlugTeamsTeamIdTimeLogLogIdRouteImport } from './routes/w/$workspaceSlug/teams/$teamId/time/log/$logId'
-
-const ExecutionEngagementsFinanceRouteImport = createFileRoute(
-  '/_execution/engagements/finance',
-)()
+import { Route as ExecutionEngagementsFinanceTeamTeamIdProjectBookIdRouteImport } from './routes/_execution/engagements/finance/team/$teamId/project/$bookId'
 
 const WelcomeRoute = WelcomeRouteImport.update({
   id: '/welcome',
@@ -433,12 +437,6 @@ const ExecutionEngagementsRouteRoute =
     path: '/engagements',
     getParentRoute: () => ExecutionRoute,
   } as any)
-const ExecutionEngagementsFinanceRoute =
-  ExecutionEngagementsFinanceRouteImport.update({
-    id: '/finance',
-    path: '/finance',
-    getParentRoute: () => ExecutionEngagementsRouteRoute,
-  } as any)
 const WorkspaceSettingsIndexRoute = WorkspaceSettingsIndexRouteImport.update({
   id: '/settings/',
   path: '/settings/',
@@ -649,9 +647,15 @@ const ExecutionProjectRoadmapIndexRoute =
   } as any)
 const ExecutionEngagementsFinanceIndexRoute =
   ExecutionEngagementsFinanceIndexRouteImport.update({
-    id: '/',
-    path: '/',
-    getParentRoute: () => ExecutionEngagementsFinanceRoute,
+    id: '/finance/',
+    path: '/finance/',
+    getParentRoute: () => ExecutionEngagementsRouteRoute,
+  } as any)
+const ExecutionEngagementsContractsIndexRoute =
+  ExecutionEngagementsContractsIndexRouteImport.update({
+    id: '/contracts/',
+    path: '/contracts/',
+    getParentRoute: () => ExecutionEngagementsRouteRoute,
   } as any)
 const ExecutionBriefBriefIdIndexRoute =
   ExecutionBriefBriefIdIndexRouteImport.update({
@@ -772,15 +776,40 @@ const ExecutionProjectProjectIdChangeRequestsRoute =
     path: '/change-requests',
     getParentRoute: () => ExecutionProjectProjectIdRoute,
   } as any)
+const ExecutionEngagementsFinanceTeamsRoute =
+  ExecutionEngagementsFinanceTeamsRouteImport.update({
+    id: '/finance/teams',
+    path: '/finance/teams',
+    getParentRoute: () => ExecutionEngagementsRouteRoute,
+  } as any)
+const ExecutionEngagementsFinanceSharedRoute =
+  ExecutionEngagementsFinanceSharedRouteImport.update({
+    id: '/finance/shared',
+    path: '/finance/shared',
+    getParentRoute: () => ExecutionEngagementsRouteRoute,
+  } as any)
 const ExecutionEngagementsFinancePortfolioRoute =
   ExecutionEngagementsFinancePortfolioRouteImport.update({
-    id: '/_portfolio',
-    getParentRoute: () => ExecutionEngagementsFinanceRoute,
+    id: '/finance/portfolio',
+    path: '/finance/portfolio',
+    getParentRoute: () => ExecutionEngagementsRouteRoute,
+  } as any)
+const ExecutionEngagementsFinanceContractsRoute =
+  ExecutionEngagementsFinanceContractsRouteImport.update({
+    id: '/finance/contracts',
+    path: '/finance/contracts',
+    getParentRoute: () => ExecutionEngagementsRouteRoute,
   } as any)
 const ExecutionEngagementsFinanceContractIdRoute =
   ExecutionEngagementsFinanceContractIdRouteImport.update({
     id: '/finance/$contractId',
     path: '/finance/$contractId',
+    getParentRoute: () => ExecutionEngagementsRouteRoute,
+  } as any)
+const ExecutionEngagementsContractsContractIdRoute =
+  ExecutionEngagementsContractsContractIdRouteImport.update({
+    id: '/contracts/$contractId',
+    path: '/contracts/$contractId',
     getParentRoute: () => ExecutionEngagementsRouteRoute,
   } as any)
 const ExecutionBriefBriefIdEditRoute =
@@ -833,9 +862,21 @@ const ExecutionProjectProjectIdSettingsIndexRoute =
   } as any)
 const ExecutionEngagementsFinanceMeIndexRoute =
   ExecutionEngagementsFinanceMeIndexRouteImport.update({
-    id: '/me/',
-    path: '/me/',
-    getParentRoute: () => ExecutionEngagementsFinanceRoute,
+    id: '/finance/me/',
+    path: '/finance/me/',
+    getParentRoute: () => ExecutionEngagementsRouteRoute,
+  } as any)
+const ExecutionEngagementsFinanceInvoicesIndexRoute =
+  ExecutionEngagementsFinanceInvoicesIndexRouteImport.update({
+    id: '/finance/invoices/',
+    path: '/finance/invoices/',
+    getParentRoute: () => ExecutionEngagementsRouteRoute,
+  } as any)
+const ExecutionEngagementsFinanceImportsIndexRoute =
+  ExecutionEngagementsFinanceImportsIndexRouteImport.update({
+    id: '/finance/imports/',
+    path: '/finance/imports/',
+    getParentRoute: () => ExecutionEngagementsRouteRoute,
   } as any)
 const MarketplaceFinanceInvoicesInvoiceIdEditRoute =
   MarketplaceFinanceInvoicesInvoiceIdEditRouteImport.update({
@@ -1001,57 +1042,33 @@ const ExecutionProjectProjectIdChangeRequestsChangeRequestIdRoute =
   } as any)
 const ExecutionEngagementsFinanceSetupTeamRoute =
   ExecutionEngagementsFinanceSetupTeamRouteImport.update({
-    id: '/setup/team',
-    path: '/setup/team',
-    getParentRoute: () => ExecutionEngagementsFinanceRoute,
+    id: '/finance/setup/team',
+    path: '/finance/setup/team',
+    getParentRoute: () => ExecutionEngagementsRouteRoute,
   } as any)
 const ExecutionEngagementsFinanceSetupPersonalRoute =
   ExecutionEngagementsFinanceSetupPersonalRouteImport.update({
-    id: '/setup/personal',
-    path: '/setup/personal',
-    getParentRoute: () => ExecutionEngagementsFinanceRoute,
+    id: '/finance/setup/personal',
+    path: '/finance/setup/personal',
+    getParentRoute: () => ExecutionEngagementsRouteRoute,
   } as any)
 const ExecutionEngagementsFinanceInvoicesNewRoute =
   ExecutionEngagementsFinanceInvoicesNewRouteImport.update({
-    id: '/invoices/new',
-    path: '/invoices/new',
-    getParentRoute: () => ExecutionEngagementsFinanceRoute,
+    id: '/finance/invoices/new',
+    path: '/finance/invoices/new',
+    getParentRoute: () => ExecutionEngagementsRouteRoute,
   } as any)
 const ExecutionEngagementsFinanceInviteTokenRoute =
   ExecutionEngagementsFinanceInviteTokenRouteImport.update({
-    id: '/invite/$token',
-    path: '/invite/$token',
-    getParentRoute: () => ExecutionEngagementsFinanceRoute,
+    id: '/finance/invite/$token',
+    path: '/finance/invite/$token',
+    getParentRoute: () => ExecutionEngagementsRouteRoute,
   } as any)
 const ExecutionEngagementsFinanceImportsDocumentIdRoute =
   ExecutionEngagementsFinanceImportsDocumentIdRouteImport.update({
-    id: '/imports/$documentId',
-    path: '/imports/$documentId',
-    getParentRoute: () => ExecutionEngagementsFinanceRoute,
-  } as any)
-const ExecutionEngagementsFinancePortfolioPortfolioRoute =
-  ExecutionEngagementsFinancePortfolioPortfolioRouteImport.update({
-    id: '/portfolio',
-    path: '/portfolio',
-    getParentRoute: () => ExecutionEngagementsFinancePortfolioRoute,
-  } as any)
-const ExecutionEngagementsFinancePortfolioInvoicesRoute =
-  ExecutionEngagementsFinancePortfolioInvoicesRouteImport.update({
-    id: '/invoices',
-    path: '/invoices',
-    getParentRoute: () => ExecutionEngagementsFinancePortfolioRoute,
-  } as any)
-const ExecutionEngagementsFinancePortfolioImportsRoute =
-  ExecutionEngagementsFinancePortfolioImportsRouteImport.update({
-    id: '/imports',
-    path: '/imports',
-    getParentRoute: () => ExecutionEngagementsFinancePortfolioRoute,
-  } as any)
-const ExecutionEngagementsFinancePortfolioContractsRoute =
-  ExecutionEngagementsFinancePortfolioContractsRouteImport.update({
-    id: '/contracts',
-    path: '/contracts',
-    getParentRoute: () => ExecutionEngagementsFinancePortfolioRoute,
+    id: '/finance/imports/$documentId',
+    path: '/finance/imports/$documentId',
+    getParentRoute: () => ExecutionEngagementsRouteRoute,
   } as any)
 const WWorkspaceSlugTeamsTeamIdTimeRouteRoute =
   WWorkspaceSlugTeamsTeamIdTimeRouteRouteImport.update({
@@ -1079,15 +1096,15 @@ const ExecutionTeamsTeamIdTimeManageRatesIndexRoute =
   } as any)
 const ExecutionEngagementsFinanceTeamTeamIdIndexRoute =
   ExecutionEngagementsFinanceTeamTeamIdIndexRouteImport.update({
-    id: '/team/$teamId/',
-    path: '/team/$teamId/',
-    getParentRoute: () => ExecutionEngagementsFinanceRoute,
+    id: '/finance/team/$teamId/',
+    path: '/finance/team/$teamId/',
+    getParentRoute: () => ExecutionEngagementsRouteRoute,
   } as any)
 const ExecutionEngagementsFinanceBookBookIdIndexRoute =
   ExecutionEngagementsFinanceBookBookIdIndexRouteImport.update({
-    id: '/book/$bookId/',
-    path: '/book/$bookId/',
-    getParentRoute: () => ExecutionEngagementsFinanceRoute,
+    id: '/finance/book/$bookId/',
+    path: '/finance/book/$bookId/',
+    getParentRoute: () => ExecutionEngagementsRouteRoute,
   } as any)
 const WWorkspaceSlugTeamsTeamIdTimeTeamLogsRoute =
   WWorkspaceSlugTeamsTeamIdTimeTeamLogsRouteImport.update({
@@ -1143,29 +1160,65 @@ const ExecutionTeamsTeamIdTimeLogLogIdRoute =
     path: '/log/$logId',
     getParentRoute: () => ExecutionTeamsTeamIdTimeRouteRoute,
   } as any)
+const ExecutionEngagementsFinanceTeamTeamIdTimeLogsRoute =
+  ExecutionEngagementsFinanceTeamTeamIdTimeLogsRouteImport.update({
+    id: '/finance/team/$teamId/time-logs',
+    path: '/finance/team/$teamId/time-logs',
+    getParentRoute: () => ExecutionEngagementsRouteRoute,
+  } as any)
+const ExecutionEngagementsFinanceTeamTeamIdRatesRoute =
+  ExecutionEngagementsFinanceTeamTeamIdRatesRouteImport.update({
+    id: '/finance/team/$teamId/rates',
+    path: '/finance/team/$teamId/rates',
+    getParentRoute: () => ExecutionEngagementsRouteRoute,
+  } as any)
+const ExecutionEngagementsFinanceTeamTeamIdPayoutsRoute =
+  ExecutionEngagementsFinanceTeamTeamIdPayoutsRouteImport.update({
+    id: '/finance/team/$teamId/payouts',
+    path: '/finance/team/$teamId/payouts',
+    getParentRoute: () => ExecutionEngagementsRouteRoute,
+  } as any)
+const ExecutionEngagementsFinanceTeamTeamIdMembersRoute =
+  ExecutionEngagementsFinanceTeamTeamIdMembersRouteImport.update({
+    id: '/finance/team/$teamId/members',
+    path: '/finance/team/$teamId/members',
+    getParentRoute: () => ExecutionEngagementsRouteRoute,
+  } as any)
 const ExecutionEngagementsFinanceTeamTeamIdInvoicesRoute =
   ExecutionEngagementsFinanceTeamTeamIdInvoicesRouteImport.update({
-    id: '/team/$teamId/invoices',
-    path: '/team/$teamId/invoices',
-    getParentRoute: () => ExecutionEngagementsFinanceRoute,
+    id: '/finance/team/$teamId/invoices',
+    path: '/finance/team/$teamId/invoices',
+    getParentRoute: () => ExecutionEngagementsRouteRoute,
+  } as any)
+const ExecutionEngagementsFinanceTeamTeamIdImportsRoute =
+  ExecutionEngagementsFinanceTeamTeamIdImportsRouteImport.update({
+    id: '/finance/team/$teamId/imports',
+    path: '/finance/team/$teamId/imports',
+    getParentRoute: () => ExecutionEngagementsRouteRoute,
+  } as any)
+const ExecutionEngagementsFinanceTeamTeamIdExpensesRoute =
+  ExecutionEngagementsFinanceTeamTeamIdExpensesRouteImport.update({
+    id: '/finance/team/$teamId/expenses',
+    path: '/finance/team/$teamId/expenses',
+    getParentRoute: () => ExecutionEngagementsRouteRoute,
   } as any)
 const ExecutionEngagementsFinanceTeamTeamIdContractsRoute =
   ExecutionEngagementsFinanceTeamTeamIdContractsRouteImport.update({
-    id: '/team/$teamId/contracts',
-    path: '/team/$teamId/contracts',
-    getParentRoute: () => ExecutionEngagementsFinanceRoute,
+    id: '/finance/team/$teamId/contracts',
+    path: '/finance/team/$teamId/contracts',
+    getParentRoute: () => ExecutionEngagementsRouteRoute,
   } as any)
 const ExecutionEngagementsFinanceTeamTeamIdAddonsRoute =
   ExecutionEngagementsFinanceTeamTeamIdAddonsRouteImport.update({
-    id: '/team/$teamId/addons',
-    path: '/team/$teamId/addons',
-    getParentRoute: () => ExecutionEngagementsFinanceRoute,
+    id: '/finance/team/$teamId/addons',
+    path: '/finance/team/$teamId/addons',
+    getParentRoute: () => ExecutionEngagementsRouteRoute,
   } as any)
 const ExecutionEngagementsFinanceInvoicesInvoiceIdEditRoute =
   ExecutionEngagementsFinanceInvoicesInvoiceIdEditRouteImport.update({
-    id: '/invoices/$invoiceId/edit',
-    path: '/invoices/$invoiceId/edit',
-    getParentRoute: () => ExecutionEngagementsFinanceRoute,
+    id: '/finance/invoices/$invoiceId/edit',
+    path: '/finance/invoices/$invoiceId/edit',
+    getParentRoute: () => ExecutionEngagementsRouteRoute,
   } as any)
 const WWorkspaceSlugTeamsTeamIdTimeManageRatesIndexRoute =
   WWorkspaceSlugTeamsTeamIdTimeManageRatesIndexRouteImport.update({
@@ -1184,6 +1237,12 @@ const WWorkspaceSlugTeamsTeamIdTimeLogLogIdRoute =
     id: '/log/$logId',
     path: '/log/$logId',
     getParentRoute: () => WWorkspaceSlugTeamsTeamIdTimeRouteRoute,
+  } as any)
+const ExecutionEngagementsFinanceTeamTeamIdProjectBookIdRoute =
+  ExecutionEngagementsFinanceTeamTeamIdProjectBookIdRouteImport.update({
+    id: '/finance/team/$teamId/project/$bookId',
+    path: '/finance/team/$teamId/project/$bookId',
+    getParentRoute: () => ExecutionEngagementsRouteRoute,
   } as any)
 
 export interface FileRoutesByFullPath {
@@ -1265,8 +1324,12 @@ export interface FileRoutesByFullPath {
   '/workspace/settings': typeof WorkspaceSettingsIndexRoute
   '/teams/$teamId/time': typeof ExecutionTeamsTeamIdTimeRouteRouteWithChildren
   '/brief/$briefId/edit': typeof ExecutionBriefBriefIdEditRoute
+  '/engagements/contracts/$contractId': typeof ExecutionEngagementsContractsContractIdRoute
   '/engagements/finance/$contractId': typeof ExecutionEngagementsFinanceContractIdRoute
-  '/engagements/finance': typeof ExecutionEngagementsFinancePortfolioRouteWithChildren
+  '/engagements/finance/contracts': typeof ExecutionEngagementsFinanceContractsRoute
+  '/engagements/finance/portfolio': typeof ExecutionEngagementsFinancePortfolioRoute
+  '/engagements/finance/shared': typeof ExecutionEngagementsFinanceSharedRoute
+  '/engagements/finance/teams': typeof ExecutionEngagementsFinanceTeamsRoute
   '/project/$projectId/change-requests': typeof ExecutionProjectProjectIdChangeRequestsRouteWithChildren
   '/project/$projectId/decisions': typeof ExecutionProjectProjectIdDecisionsRouteWithChildren
   '/project/$projectId/deliverables': typeof ExecutionProjectProjectIdDeliverablesRouteWithChildren
@@ -1287,7 +1350,8 @@ export interface FileRoutesByFullPath {
   '/w/$workspaceSlug/settings/billing': typeof WWorkspaceSlugSettingsBillingRoute
   '/w/$workspaceSlug/settings/members': typeof WWorkspaceSlugSettingsMembersRoute
   '/brief/$briefId': typeof ExecutionBriefBriefIdIndexRoute
-  '/engagements/finance/': typeof ExecutionEngagementsFinanceIndexRoute
+  '/engagements/contracts': typeof ExecutionEngagementsContractsIndexRoute
+  '/engagements/finance': typeof ExecutionEngagementsFinanceIndexRoute
   '/project/roadmap': typeof ExecutionProjectRoadmapIndexRoute
   '/teams/$teamId/': typeof ExecutionTeamsTeamIdIndexRoute
   '/marketplace/category/$categorySlug': typeof MarketplaceCategoryCategorySlugIndexRoute
@@ -1296,10 +1360,6 @@ export interface FileRoutesByFullPath {
   '/w/$workspaceSlug/settings/': typeof WWorkspaceSlugSettingsIndexRoute
   '/w/$workspaceSlug/teams': typeof WWorkspaceSlugTeamsIndexRoute
   '/w/$workspaceSlug/teams/$teamId/time': typeof WWorkspaceSlugTeamsTeamIdTimeRouteRouteWithChildren
-  '/engagements/finance/contracts': typeof ExecutionEngagementsFinancePortfolioContractsRoute
-  '/engagements/finance/imports': typeof ExecutionEngagementsFinancePortfolioImportsRoute
-  '/engagements/finance/invoices': typeof ExecutionEngagementsFinancePortfolioInvoicesRoute
-  '/engagements/finance/portfolio': typeof ExecutionEngagementsFinancePortfolioPortfolioRoute
   '/engagements/finance/imports/$documentId': typeof ExecutionEngagementsFinanceImportsDocumentIdRoute
   '/engagements/finance/invite/$token': typeof ExecutionEngagementsFinanceInviteTokenRoute
   '/engagements/finance/invoices/new': typeof ExecutionEngagementsFinanceInvoicesNewRoute
@@ -1332,6 +1392,8 @@ export interface FileRoutesByFullPath {
   '/teams/$teamId/time/team-logs': typeof ExecutionTeamsTeamIdTimeTeamLogsRoute
   '/marketplace/category/$categorySlug/$subcategorySlug/$topicSlug': typeof MarketplaceCategoryCategorySlugSubcategorySlugTopicSlugRoute
   '/marketplace/finance/invoices/$invoiceId/edit': typeof MarketplaceFinanceInvoicesInvoiceIdEditRoute
+  '/engagements/finance/imports': typeof ExecutionEngagementsFinanceImportsIndexRoute
+  '/engagements/finance/invoices': typeof ExecutionEngagementsFinanceInvoicesIndexRoute
   '/engagements/finance/me': typeof ExecutionEngagementsFinanceMeIndexRoute
   '/project/$projectId/settings': typeof ExecutionProjectProjectIdSettingsIndexRoute
   '/project/$projectId/team': typeof ExecutionProjectProjectIdTeamIndexRoute
@@ -1342,7 +1404,13 @@ export interface FileRoutesByFullPath {
   '/engagements/finance/invoices/$invoiceId/edit': typeof ExecutionEngagementsFinanceInvoicesInvoiceIdEditRoute
   '/engagements/finance/team/$teamId/addons': typeof ExecutionEngagementsFinanceTeamTeamIdAddonsRoute
   '/engagements/finance/team/$teamId/contracts': typeof ExecutionEngagementsFinanceTeamTeamIdContractsRoute
+  '/engagements/finance/team/$teamId/expenses': typeof ExecutionEngagementsFinanceTeamTeamIdExpensesRoute
+  '/engagements/finance/team/$teamId/imports': typeof ExecutionEngagementsFinanceTeamTeamIdImportsRoute
   '/engagements/finance/team/$teamId/invoices': typeof ExecutionEngagementsFinanceTeamTeamIdInvoicesRoute
+  '/engagements/finance/team/$teamId/members': typeof ExecutionEngagementsFinanceTeamTeamIdMembersRoute
+  '/engagements/finance/team/$teamId/payouts': typeof ExecutionEngagementsFinanceTeamTeamIdPayoutsRoute
+  '/engagements/finance/team/$teamId/rates': typeof ExecutionEngagementsFinanceTeamTeamIdRatesRoute
+  '/engagements/finance/team/$teamId/time-logs': typeof ExecutionEngagementsFinanceTeamTeamIdTimeLogsRoute
   '/teams/$teamId/time/log/$logId': typeof ExecutionTeamsTeamIdTimeLogLogIdRoute
   '/teams/$teamId/time/manage-rates/$userId': typeof ExecutionTeamsTeamIdTimeManageRatesUserIdRoute
   '/w/$workspaceSlug/teams/$teamId/settings/general': typeof WWorkspaceSlugTeamsTeamIdSettingsGeneralRoute
@@ -1357,6 +1425,7 @@ export interface FileRoutesByFullPath {
   '/teams/$teamId/time/manage-rates': typeof ExecutionTeamsTeamIdTimeManageRatesIndexRoute
   '/w/$workspaceSlug/teams/$teamId/settings': typeof WWorkspaceSlugTeamsTeamIdSettingsIndexRoute
   '/w/$workspaceSlug/teams/$teamId/time/': typeof WWorkspaceSlugTeamsTeamIdTimeIndexRoute
+  '/engagements/finance/team/$teamId/project/$bookId': typeof ExecutionEngagementsFinanceTeamTeamIdProjectBookIdRoute
   '/w/$workspaceSlug/teams/$teamId/time/log/$logId': typeof WWorkspaceSlugTeamsTeamIdTimeLogLogIdRoute
   '/w/$workspaceSlug/teams/$teamId/time/manage-rates/$userId': typeof WWorkspaceSlugTeamsTeamIdTimeManageRatesUserIdRoute
   '/w/$workspaceSlug/teams/$teamId/time/manage-rates': typeof WWorkspaceSlugTeamsTeamIdTimeManageRatesIndexRoute
@@ -1432,8 +1501,12 @@ export interface FileRoutesByTo {
   '/marketplace/talent': typeof MarketplaceTalentIndexRoute
   '/workspace/settings': typeof WorkspaceSettingsIndexRoute
   '/brief/$briefId/edit': typeof ExecutionBriefBriefIdEditRoute
+  '/engagements/contracts/$contractId': typeof ExecutionEngagementsContractsContractIdRoute
   '/engagements/finance/$contractId': typeof ExecutionEngagementsFinanceContractIdRoute
-  '/engagements/finance': typeof ExecutionEngagementsFinanceIndexRoute
+  '/engagements/finance/contracts': typeof ExecutionEngagementsFinanceContractsRoute
+  '/engagements/finance/portfolio': typeof ExecutionEngagementsFinancePortfolioRoute
+  '/engagements/finance/shared': typeof ExecutionEngagementsFinanceSharedRoute
+  '/engagements/finance/teams': typeof ExecutionEngagementsFinanceTeamsRoute
   '/project/$projectId/change-requests': typeof ExecutionProjectProjectIdChangeRequestsRouteWithChildren
   '/project/$projectId/decisions': typeof ExecutionProjectProjectIdDecisionsRouteWithChildren
   '/project/$projectId/deliverables': typeof ExecutionProjectProjectIdDeliverablesRouteWithChildren
@@ -1454,16 +1527,14 @@ export interface FileRoutesByTo {
   '/w/$workspaceSlug/settings/billing': typeof WWorkspaceSlugSettingsBillingRoute
   '/w/$workspaceSlug/settings/members': typeof WWorkspaceSlugSettingsMembersRoute
   '/brief/$briefId': typeof ExecutionBriefBriefIdIndexRoute
+  '/engagements/contracts': typeof ExecutionEngagementsContractsIndexRoute
+  '/engagements/finance': typeof ExecutionEngagementsFinanceIndexRoute
   '/project/roadmap': typeof ExecutionProjectRoadmapIndexRoute
   '/teams/$teamId': typeof ExecutionTeamsTeamIdIndexRoute
   '/marketplace/category/$categorySlug': typeof MarketplaceCategoryCategorySlugIndexRoute
   '/marketplace/services/$serviceId': typeof MarketplaceServicesServiceIdIndexRoute
   '/w/$workspaceSlug/settings': typeof WWorkspaceSlugSettingsIndexRoute
   '/w/$workspaceSlug/teams': typeof WWorkspaceSlugTeamsIndexRoute
-  '/engagements/finance/contracts': typeof ExecutionEngagementsFinancePortfolioContractsRoute
-  '/engagements/finance/imports': typeof ExecutionEngagementsFinancePortfolioImportsRoute
-  '/engagements/finance/invoices': typeof ExecutionEngagementsFinancePortfolioInvoicesRoute
-  '/engagements/finance/portfolio': typeof ExecutionEngagementsFinancePortfolioPortfolioRoute
   '/engagements/finance/imports/$documentId': typeof ExecutionEngagementsFinanceImportsDocumentIdRoute
   '/engagements/finance/invite/$token': typeof ExecutionEngagementsFinanceInviteTokenRoute
   '/engagements/finance/invoices/new': typeof ExecutionEngagementsFinanceInvoicesNewRoute
@@ -1496,6 +1567,8 @@ export interface FileRoutesByTo {
   '/teams/$teamId/time/team-logs': typeof ExecutionTeamsTeamIdTimeTeamLogsRoute
   '/marketplace/category/$categorySlug/$subcategorySlug/$topicSlug': typeof MarketplaceCategoryCategorySlugSubcategorySlugTopicSlugRoute
   '/marketplace/finance/invoices/$invoiceId/edit': typeof MarketplaceFinanceInvoicesInvoiceIdEditRoute
+  '/engagements/finance/imports': typeof ExecutionEngagementsFinanceImportsIndexRoute
+  '/engagements/finance/invoices': typeof ExecutionEngagementsFinanceInvoicesIndexRoute
   '/engagements/finance/me': typeof ExecutionEngagementsFinanceMeIndexRoute
   '/project/$projectId/settings': typeof ExecutionProjectProjectIdSettingsIndexRoute
   '/project/$projectId/team': typeof ExecutionProjectProjectIdTeamIndexRoute
@@ -1506,7 +1579,13 @@ export interface FileRoutesByTo {
   '/engagements/finance/invoices/$invoiceId/edit': typeof ExecutionEngagementsFinanceInvoicesInvoiceIdEditRoute
   '/engagements/finance/team/$teamId/addons': typeof ExecutionEngagementsFinanceTeamTeamIdAddonsRoute
   '/engagements/finance/team/$teamId/contracts': typeof ExecutionEngagementsFinanceTeamTeamIdContractsRoute
+  '/engagements/finance/team/$teamId/expenses': typeof ExecutionEngagementsFinanceTeamTeamIdExpensesRoute
+  '/engagements/finance/team/$teamId/imports': typeof ExecutionEngagementsFinanceTeamTeamIdImportsRoute
   '/engagements/finance/team/$teamId/invoices': typeof ExecutionEngagementsFinanceTeamTeamIdInvoicesRoute
+  '/engagements/finance/team/$teamId/members': typeof ExecutionEngagementsFinanceTeamTeamIdMembersRoute
+  '/engagements/finance/team/$teamId/payouts': typeof ExecutionEngagementsFinanceTeamTeamIdPayoutsRoute
+  '/engagements/finance/team/$teamId/rates': typeof ExecutionEngagementsFinanceTeamTeamIdRatesRoute
+  '/engagements/finance/team/$teamId/time-logs': typeof ExecutionEngagementsFinanceTeamTeamIdTimeLogsRoute
   '/teams/$teamId/time/log/$logId': typeof ExecutionTeamsTeamIdTimeLogLogIdRoute
   '/teams/$teamId/time/manage-rates/$userId': typeof ExecutionTeamsTeamIdTimeManageRatesUserIdRoute
   '/w/$workspaceSlug/teams/$teamId/settings/general': typeof WWorkspaceSlugTeamsTeamIdSettingsGeneralRoute
@@ -1521,6 +1600,7 @@ export interface FileRoutesByTo {
   '/teams/$teamId/time/manage-rates': typeof ExecutionTeamsTeamIdTimeManageRatesIndexRoute
   '/w/$workspaceSlug/teams/$teamId/settings': typeof WWorkspaceSlugTeamsTeamIdSettingsIndexRoute
   '/w/$workspaceSlug/teams/$teamId/time': typeof WWorkspaceSlugTeamsTeamIdTimeIndexRoute
+  '/engagements/finance/team/$teamId/project/$bookId': typeof ExecutionEngagementsFinanceTeamTeamIdProjectBookIdRoute
   '/w/$workspaceSlug/teams/$teamId/time/log/$logId': typeof WWorkspaceSlugTeamsTeamIdTimeLogLogIdRoute
   '/w/$workspaceSlug/teams/$teamId/time/manage-rates/$userId': typeof WWorkspaceSlugTeamsTeamIdTimeManageRatesUserIdRoute
   '/w/$workspaceSlug/teams/$teamId/time/manage-rates': typeof WWorkspaceSlugTeamsTeamIdTimeManageRatesIndexRoute
@@ -1607,9 +1687,12 @@ export interface FileRoutesById {
   '/workspace/settings/': typeof WorkspaceSettingsIndexRoute
   '/_execution/teams/$teamId/time': typeof ExecutionTeamsTeamIdTimeRouteRouteWithChildren
   '/_execution/brief/$briefId/edit': typeof ExecutionBriefBriefIdEditRoute
+  '/_execution/engagements/contracts/$contractId': typeof ExecutionEngagementsContractsContractIdRoute
   '/_execution/engagements/finance/$contractId': typeof ExecutionEngagementsFinanceContractIdRoute
-  '/_execution/engagements/finance': typeof ExecutionEngagementsFinanceRouteWithChildren
-  '/_execution/engagements/finance/_portfolio': typeof ExecutionEngagementsFinancePortfolioRouteWithChildren
+  '/_execution/engagements/finance/contracts': typeof ExecutionEngagementsFinanceContractsRoute
+  '/_execution/engagements/finance/portfolio': typeof ExecutionEngagementsFinancePortfolioRoute
+  '/_execution/engagements/finance/shared': typeof ExecutionEngagementsFinanceSharedRoute
+  '/_execution/engagements/finance/teams': typeof ExecutionEngagementsFinanceTeamsRoute
   '/_execution/project/$projectId/change-requests': typeof ExecutionProjectProjectIdChangeRequestsRouteWithChildren
   '/_execution/project/$projectId/decisions': typeof ExecutionProjectProjectIdDecisionsRouteWithChildren
   '/_execution/project/$projectId/deliverables': typeof ExecutionProjectProjectIdDeliverablesRouteWithChildren
@@ -1630,6 +1713,7 @@ export interface FileRoutesById {
   '/w/$workspaceSlug/settings/billing': typeof WWorkspaceSlugSettingsBillingRoute
   '/w/$workspaceSlug/settings/members': typeof WWorkspaceSlugSettingsMembersRoute
   '/_execution/brief/$briefId/': typeof ExecutionBriefBriefIdIndexRoute
+  '/_execution/engagements/contracts/': typeof ExecutionEngagementsContractsIndexRoute
   '/_execution/engagements/finance/': typeof ExecutionEngagementsFinanceIndexRoute
   '/_execution/project/roadmap/': typeof ExecutionProjectRoadmapIndexRoute
   '/_execution/teams/$teamId/': typeof ExecutionTeamsTeamIdIndexRoute
@@ -1639,10 +1723,6 @@ export interface FileRoutesById {
   '/w/$workspaceSlug/settings/': typeof WWorkspaceSlugSettingsIndexRoute
   '/w/$workspaceSlug/teams/': typeof WWorkspaceSlugTeamsIndexRoute
   '/w/$workspaceSlug/teams/$teamId/time': typeof WWorkspaceSlugTeamsTeamIdTimeRouteRouteWithChildren
-  '/_execution/engagements/finance/_portfolio/contracts': typeof ExecutionEngagementsFinancePortfolioContractsRoute
-  '/_execution/engagements/finance/_portfolio/imports': typeof ExecutionEngagementsFinancePortfolioImportsRoute
-  '/_execution/engagements/finance/_portfolio/invoices': typeof ExecutionEngagementsFinancePortfolioInvoicesRoute
-  '/_execution/engagements/finance/_portfolio/portfolio': typeof ExecutionEngagementsFinancePortfolioPortfolioRoute
   '/_execution/engagements/finance/imports/$documentId': typeof ExecutionEngagementsFinanceImportsDocumentIdRoute
   '/_execution/engagements/finance/invite/$token': typeof ExecutionEngagementsFinanceInviteTokenRoute
   '/_execution/engagements/finance/invoices/new': typeof ExecutionEngagementsFinanceInvoicesNewRoute
@@ -1675,6 +1755,8 @@ export interface FileRoutesById {
   '/_execution/teams/$teamId/time/team-logs': typeof ExecutionTeamsTeamIdTimeTeamLogsRoute
   '/marketplace/category/$categorySlug/$subcategorySlug/$topicSlug': typeof MarketplaceCategoryCategorySlugSubcategorySlugTopicSlugRoute
   '/marketplace/finance/invoices/$invoiceId/edit': typeof MarketplaceFinanceInvoicesInvoiceIdEditRoute
+  '/_execution/engagements/finance/imports/': typeof ExecutionEngagementsFinanceImportsIndexRoute
+  '/_execution/engagements/finance/invoices/': typeof ExecutionEngagementsFinanceInvoicesIndexRoute
   '/_execution/engagements/finance/me/': typeof ExecutionEngagementsFinanceMeIndexRoute
   '/_execution/project/$projectId/settings/': typeof ExecutionProjectProjectIdSettingsIndexRoute
   '/_execution/project/$projectId/team/': typeof ExecutionProjectProjectIdTeamIndexRoute
@@ -1685,7 +1767,13 @@ export interface FileRoutesById {
   '/_execution/engagements/finance/invoices/$invoiceId/edit': typeof ExecutionEngagementsFinanceInvoicesInvoiceIdEditRoute
   '/_execution/engagements/finance/team/$teamId/addons': typeof ExecutionEngagementsFinanceTeamTeamIdAddonsRoute
   '/_execution/engagements/finance/team/$teamId/contracts': typeof ExecutionEngagementsFinanceTeamTeamIdContractsRoute
+  '/_execution/engagements/finance/team/$teamId/expenses': typeof ExecutionEngagementsFinanceTeamTeamIdExpensesRoute
+  '/_execution/engagements/finance/team/$teamId/imports': typeof ExecutionEngagementsFinanceTeamTeamIdImportsRoute
   '/_execution/engagements/finance/team/$teamId/invoices': typeof ExecutionEngagementsFinanceTeamTeamIdInvoicesRoute
+  '/_execution/engagements/finance/team/$teamId/members': typeof ExecutionEngagementsFinanceTeamTeamIdMembersRoute
+  '/_execution/engagements/finance/team/$teamId/payouts': typeof ExecutionEngagementsFinanceTeamTeamIdPayoutsRoute
+  '/_execution/engagements/finance/team/$teamId/rates': typeof ExecutionEngagementsFinanceTeamTeamIdRatesRoute
+  '/_execution/engagements/finance/team/$teamId/time-logs': typeof ExecutionEngagementsFinanceTeamTeamIdTimeLogsRoute
   '/_execution/teams/$teamId/time/log/$logId': typeof ExecutionTeamsTeamIdTimeLogLogIdRoute
   '/_execution/teams/$teamId/time/manage-rates/$userId': typeof ExecutionTeamsTeamIdTimeManageRatesUserIdRoute
   '/w/$workspaceSlug/teams/$teamId/settings/general': typeof WWorkspaceSlugTeamsTeamIdSettingsGeneralRoute
@@ -1700,6 +1788,7 @@ export interface FileRoutesById {
   '/_execution/teams/$teamId/time/manage-rates/': typeof ExecutionTeamsTeamIdTimeManageRatesIndexRoute
   '/w/$workspaceSlug/teams/$teamId/settings/': typeof WWorkspaceSlugTeamsTeamIdSettingsIndexRoute
   '/w/$workspaceSlug/teams/$teamId/time/': typeof WWorkspaceSlugTeamsTeamIdTimeIndexRoute
+  '/_execution/engagements/finance/team/$teamId/project/$bookId': typeof ExecutionEngagementsFinanceTeamTeamIdProjectBookIdRoute
   '/w/$workspaceSlug/teams/$teamId/time/log/$logId': typeof WWorkspaceSlugTeamsTeamIdTimeLogLogIdRoute
   '/w/$workspaceSlug/teams/$teamId/time/manage-rates/$userId': typeof WWorkspaceSlugTeamsTeamIdTimeManageRatesUserIdRoute
   '/w/$workspaceSlug/teams/$teamId/time/manage-rates/': typeof WWorkspaceSlugTeamsTeamIdTimeManageRatesIndexRoute
@@ -1785,8 +1874,12 @@ export interface FileRouteTypes {
     | '/workspace/settings'
     | '/teams/$teamId/time'
     | '/brief/$briefId/edit'
+    | '/engagements/contracts/$contractId'
     | '/engagements/finance/$contractId'
-    | '/engagements/finance'
+    | '/engagements/finance/contracts'
+    | '/engagements/finance/portfolio'
+    | '/engagements/finance/shared'
+    | '/engagements/finance/teams'
     | '/project/$projectId/change-requests'
     | '/project/$projectId/decisions'
     | '/project/$projectId/deliverables'
@@ -1807,7 +1900,8 @@ export interface FileRouteTypes {
     | '/w/$workspaceSlug/settings/billing'
     | '/w/$workspaceSlug/settings/members'
     | '/brief/$briefId'
-    | '/engagements/finance/'
+    | '/engagements/contracts'
+    | '/engagements/finance'
     | '/project/roadmap'
     | '/teams/$teamId/'
     | '/marketplace/category/$categorySlug'
@@ -1816,10 +1910,6 @@ export interface FileRouteTypes {
     | '/w/$workspaceSlug/settings/'
     | '/w/$workspaceSlug/teams'
     | '/w/$workspaceSlug/teams/$teamId/time'
-    | '/engagements/finance/contracts'
-    | '/engagements/finance/imports'
-    | '/engagements/finance/invoices'
-    | '/engagements/finance/portfolio'
     | '/engagements/finance/imports/$documentId'
     | '/engagements/finance/invite/$token'
     | '/engagements/finance/invoices/new'
@@ -1852,6 +1942,8 @@ export interface FileRouteTypes {
     | '/teams/$teamId/time/team-logs'
     | '/marketplace/category/$categorySlug/$subcategorySlug/$topicSlug'
     | '/marketplace/finance/invoices/$invoiceId/edit'
+    | '/engagements/finance/imports'
+    | '/engagements/finance/invoices'
     | '/engagements/finance/me'
     | '/project/$projectId/settings'
     | '/project/$projectId/team'
@@ -1862,7 +1954,13 @@ export interface FileRouteTypes {
     | '/engagements/finance/invoices/$invoiceId/edit'
     | '/engagements/finance/team/$teamId/addons'
     | '/engagements/finance/team/$teamId/contracts'
+    | '/engagements/finance/team/$teamId/expenses'
+    | '/engagements/finance/team/$teamId/imports'
     | '/engagements/finance/team/$teamId/invoices'
+    | '/engagements/finance/team/$teamId/members'
+    | '/engagements/finance/team/$teamId/payouts'
+    | '/engagements/finance/team/$teamId/rates'
+    | '/engagements/finance/team/$teamId/time-logs'
     | '/teams/$teamId/time/log/$logId'
     | '/teams/$teamId/time/manage-rates/$userId'
     | '/w/$workspaceSlug/teams/$teamId/settings/general'
@@ -1877,6 +1975,7 @@ export interface FileRouteTypes {
     | '/teams/$teamId/time/manage-rates'
     | '/w/$workspaceSlug/teams/$teamId/settings'
     | '/w/$workspaceSlug/teams/$teamId/time/'
+    | '/engagements/finance/team/$teamId/project/$bookId'
     | '/w/$workspaceSlug/teams/$teamId/time/log/$logId'
     | '/w/$workspaceSlug/teams/$teamId/time/manage-rates/$userId'
     | '/w/$workspaceSlug/teams/$teamId/time/manage-rates'
@@ -1952,8 +2051,12 @@ export interface FileRouteTypes {
     | '/marketplace/talent'
     | '/workspace/settings'
     | '/brief/$briefId/edit'
+    | '/engagements/contracts/$contractId'
     | '/engagements/finance/$contractId'
-    | '/engagements/finance'
+    | '/engagements/finance/contracts'
+    | '/engagements/finance/portfolio'
+    | '/engagements/finance/shared'
+    | '/engagements/finance/teams'
     | '/project/$projectId/change-requests'
     | '/project/$projectId/decisions'
     | '/project/$projectId/deliverables'
@@ -1974,16 +2077,14 @@ export interface FileRouteTypes {
     | '/w/$workspaceSlug/settings/billing'
     | '/w/$workspaceSlug/settings/members'
     | '/brief/$briefId'
+    | '/engagements/contracts'
+    | '/engagements/finance'
     | '/project/roadmap'
     | '/teams/$teamId'
     | '/marketplace/category/$categorySlug'
     | '/marketplace/services/$serviceId'
     | '/w/$workspaceSlug/settings'
     | '/w/$workspaceSlug/teams'
-    | '/engagements/finance/contracts'
-    | '/engagements/finance/imports'
-    | '/engagements/finance/invoices'
-    | '/engagements/finance/portfolio'
     | '/engagements/finance/imports/$documentId'
     | '/engagements/finance/invite/$token'
     | '/engagements/finance/invoices/new'
@@ -2016,6 +2117,8 @@ export interface FileRouteTypes {
     | '/teams/$teamId/time/team-logs'
     | '/marketplace/category/$categorySlug/$subcategorySlug/$topicSlug'
     | '/marketplace/finance/invoices/$invoiceId/edit'
+    | '/engagements/finance/imports'
+    | '/engagements/finance/invoices'
     | '/engagements/finance/me'
     | '/project/$projectId/settings'
     | '/project/$projectId/team'
@@ -2026,7 +2129,13 @@ export interface FileRouteTypes {
     | '/engagements/finance/invoices/$invoiceId/edit'
     | '/engagements/finance/team/$teamId/addons'
     | '/engagements/finance/team/$teamId/contracts'
+    | '/engagements/finance/team/$teamId/expenses'
+    | '/engagements/finance/team/$teamId/imports'
     | '/engagements/finance/team/$teamId/invoices'
+    | '/engagements/finance/team/$teamId/members'
+    | '/engagements/finance/team/$teamId/payouts'
+    | '/engagements/finance/team/$teamId/rates'
+    | '/engagements/finance/team/$teamId/time-logs'
     | '/teams/$teamId/time/log/$logId'
     | '/teams/$teamId/time/manage-rates/$userId'
     | '/w/$workspaceSlug/teams/$teamId/settings/general'
@@ -2041,6 +2150,7 @@ export interface FileRouteTypes {
     | '/teams/$teamId/time/manage-rates'
     | '/w/$workspaceSlug/teams/$teamId/settings'
     | '/w/$workspaceSlug/teams/$teamId/time'
+    | '/engagements/finance/team/$teamId/project/$bookId'
     | '/w/$workspaceSlug/teams/$teamId/time/log/$logId'
     | '/w/$workspaceSlug/teams/$teamId/time/manage-rates/$userId'
     | '/w/$workspaceSlug/teams/$teamId/time/manage-rates'
@@ -2126,9 +2236,12 @@ export interface FileRouteTypes {
     | '/workspace/settings/'
     | '/_execution/teams/$teamId/time'
     | '/_execution/brief/$briefId/edit'
+    | '/_execution/engagements/contracts/$contractId'
     | '/_execution/engagements/finance/$contractId'
-    | '/_execution/engagements/finance'
-    | '/_execution/engagements/finance/_portfolio'
+    | '/_execution/engagements/finance/contracts'
+    | '/_execution/engagements/finance/portfolio'
+    | '/_execution/engagements/finance/shared'
+    | '/_execution/engagements/finance/teams'
     | '/_execution/project/$projectId/change-requests'
     | '/_execution/project/$projectId/decisions'
     | '/_execution/project/$projectId/deliverables'
@@ -2149,6 +2262,7 @@ export interface FileRouteTypes {
     | '/w/$workspaceSlug/settings/billing'
     | '/w/$workspaceSlug/settings/members'
     | '/_execution/brief/$briefId/'
+    | '/_execution/engagements/contracts/'
     | '/_execution/engagements/finance/'
     | '/_execution/project/roadmap/'
     | '/_execution/teams/$teamId/'
@@ -2158,10 +2272,6 @@ export interface FileRouteTypes {
     | '/w/$workspaceSlug/settings/'
     | '/w/$workspaceSlug/teams/'
     | '/w/$workspaceSlug/teams/$teamId/time'
-    | '/_execution/engagements/finance/_portfolio/contracts'
-    | '/_execution/engagements/finance/_portfolio/imports'
-    | '/_execution/engagements/finance/_portfolio/invoices'
-    | '/_execution/engagements/finance/_portfolio/portfolio'
     | '/_execution/engagements/finance/imports/$documentId'
     | '/_execution/engagements/finance/invite/$token'
     | '/_execution/engagements/finance/invoices/new'
@@ -2194,6 +2304,8 @@ export interface FileRouteTypes {
     | '/_execution/teams/$teamId/time/team-logs'
     | '/marketplace/category/$categorySlug/$subcategorySlug/$topicSlug'
     | '/marketplace/finance/invoices/$invoiceId/edit'
+    | '/_execution/engagements/finance/imports/'
+    | '/_execution/engagements/finance/invoices/'
     | '/_execution/engagements/finance/me/'
     | '/_execution/project/$projectId/settings/'
     | '/_execution/project/$projectId/team/'
@@ -2204,7 +2316,13 @@ export interface FileRouteTypes {
     | '/_execution/engagements/finance/invoices/$invoiceId/edit'
     | '/_execution/engagements/finance/team/$teamId/addons'
     | '/_execution/engagements/finance/team/$teamId/contracts'
+    | '/_execution/engagements/finance/team/$teamId/expenses'
+    | '/_execution/engagements/finance/team/$teamId/imports'
     | '/_execution/engagements/finance/team/$teamId/invoices'
+    | '/_execution/engagements/finance/team/$teamId/members'
+    | '/_execution/engagements/finance/team/$teamId/payouts'
+    | '/_execution/engagements/finance/team/$teamId/rates'
+    | '/_execution/engagements/finance/team/$teamId/time-logs'
     | '/_execution/teams/$teamId/time/log/$logId'
     | '/_execution/teams/$teamId/time/manage-rates/$userId'
     | '/w/$workspaceSlug/teams/$teamId/settings/general'
@@ -2219,6 +2337,7 @@ export interface FileRouteTypes {
     | '/_execution/teams/$teamId/time/manage-rates/'
     | '/w/$workspaceSlug/teams/$teamId/settings/'
     | '/w/$workspaceSlug/teams/$teamId/time/'
+    | '/_execution/engagements/finance/team/$teamId/project/$bookId'
     | '/w/$workspaceSlug/teams/$teamId/time/log/$logId'
     | '/w/$workspaceSlug/teams/$teamId/time/manage-rates/$userId'
     | '/w/$workspaceSlug/teams/$teamId/time/manage-rates/'
@@ -2592,13 +2711,6 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ExecutionEngagementsRouteRouteImport
       parentRoute: typeof ExecutionRoute
     }
-    '/_execution/engagements/finance': {
-      id: '/_execution/engagements/finance'
-      path: '/finance'
-      fullPath: '/engagements/finance'
-      preLoaderRoute: typeof ExecutionEngagementsFinanceRouteImport
-      parentRoute: typeof ExecutionEngagementsRouteRoute
-    }
     '/workspace/settings/': {
       id: '/workspace/settings/'
       path: '/settings'
@@ -2860,10 +2972,17 @@ declare module '@tanstack/react-router' {
     }
     '/_execution/engagements/finance/': {
       id: '/_execution/engagements/finance/'
-      path: '/'
-      fullPath: '/engagements/finance/'
+      path: '/finance'
+      fullPath: '/engagements/finance'
       preLoaderRoute: typeof ExecutionEngagementsFinanceIndexRouteImport
-      parentRoute: typeof ExecutionEngagementsFinanceRoute
+      parentRoute: typeof ExecutionEngagementsRouteRoute
+    }
+    '/_execution/engagements/contracts/': {
+      id: '/_execution/engagements/contracts/'
+      path: '/contracts'
+      fullPath: '/engagements/contracts'
+      preLoaderRoute: typeof ExecutionEngagementsContractsIndexRouteImport
+      parentRoute: typeof ExecutionEngagementsRouteRoute
     }
     '/_execution/brief/$briefId/': {
       id: '/_execution/brief/$briefId/'
@@ -3005,18 +3124,46 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ExecutionProjectProjectIdChangeRequestsRouteImport
       parentRoute: typeof ExecutionProjectProjectIdRoute
     }
-    '/_execution/engagements/finance/_portfolio': {
-      id: '/_execution/engagements/finance/_portfolio'
-      path: '/finance'
-      fullPath: '/engagements/finance'
+    '/_execution/engagements/finance/teams': {
+      id: '/_execution/engagements/finance/teams'
+      path: '/finance/teams'
+      fullPath: '/engagements/finance/teams'
+      preLoaderRoute: typeof ExecutionEngagementsFinanceTeamsRouteImport
+      parentRoute: typeof ExecutionEngagementsRouteRoute
+    }
+    '/_execution/engagements/finance/shared': {
+      id: '/_execution/engagements/finance/shared'
+      path: '/finance/shared'
+      fullPath: '/engagements/finance/shared'
+      preLoaderRoute: typeof ExecutionEngagementsFinanceSharedRouteImport
+      parentRoute: typeof ExecutionEngagementsRouteRoute
+    }
+    '/_execution/engagements/finance/portfolio': {
+      id: '/_execution/engagements/finance/portfolio'
+      path: '/finance/portfolio'
+      fullPath: '/engagements/finance/portfolio'
       preLoaderRoute: typeof ExecutionEngagementsFinancePortfolioRouteImport
-      parentRoute: typeof ExecutionEngagementsFinanceRoute
+      parentRoute: typeof ExecutionEngagementsRouteRoute
+    }
+    '/_execution/engagements/finance/contracts': {
+      id: '/_execution/engagements/finance/contracts'
+      path: '/finance/contracts'
+      fullPath: '/engagements/finance/contracts'
+      preLoaderRoute: typeof ExecutionEngagementsFinanceContractsRouteImport
+      parentRoute: typeof ExecutionEngagementsRouteRoute
     }
     '/_execution/engagements/finance/$contractId': {
       id: '/_execution/engagements/finance/$contractId'
       path: '/finance/$contractId'
       fullPath: '/engagements/finance/$contractId'
       preLoaderRoute: typeof ExecutionEngagementsFinanceContractIdRouteImport
+      parentRoute: typeof ExecutionEngagementsRouteRoute
+    }
+    '/_execution/engagements/contracts/$contractId': {
+      id: '/_execution/engagements/contracts/$contractId'
+      path: '/contracts/$contractId'
+      fullPath: '/engagements/contracts/$contractId'
+      preLoaderRoute: typeof ExecutionEngagementsContractsContractIdRouteImport
       parentRoute: typeof ExecutionEngagementsRouteRoute
     }
     '/_execution/brief/$briefId/edit': {
@@ -3077,10 +3224,24 @@ declare module '@tanstack/react-router' {
     }
     '/_execution/engagements/finance/me/': {
       id: '/_execution/engagements/finance/me/'
-      path: '/me'
+      path: '/finance/me'
       fullPath: '/engagements/finance/me'
       preLoaderRoute: typeof ExecutionEngagementsFinanceMeIndexRouteImport
-      parentRoute: typeof ExecutionEngagementsFinanceRoute
+      parentRoute: typeof ExecutionEngagementsRouteRoute
+    }
+    '/_execution/engagements/finance/invoices/': {
+      id: '/_execution/engagements/finance/invoices/'
+      path: '/finance/invoices'
+      fullPath: '/engagements/finance/invoices'
+      preLoaderRoute: typeof ExecutionEngagementsFinanceInvoicesIndexRouteImport
+      parentRoute: typeof ExecutionEngagementsRouteRoute
+    }
+    '/_execution/engagements/finance/imports/': {
+      id: '/_execution/engagements/finance/imports/'
+      path: '/finance/imports'
+      fullPath: '/engagements/finance/imports'
+      preLoaderRoute: typeof ExecutionEngagementsFinanceImportsIndexRouteImport
+      parentRoute: typeof ExecutionEngagementsRouteRoute
     }
     '/marketplace/finance/invoices/$invoiceId/edit': {
       id: '/marketplace/finance/invoices/$invoiceId/edit'
@@ -3273,66 +3434,38 @@ declare module '@tanstack/react-router' {
     }
     '/_execution/engagements/finance/setup/team': {
       id: '/_execution/engagements/finance/setup/team'
-      path: '/setup/team'
+      path: '/finance/setup/team'
       fullPath: '/engagements/finance/setup/team'
       preLoaderRoute: typeof ExecutionEngagementsFinanceSetupTeamRouteImport
-      parentRoute: typeof ExecutionEngagementsFinanceRoute
+      parentRoute: typeof ExecutionEngagementsRouteRoute
     }
     '/_execution/engagements/finance/setup/personal': {
       id: '/_execution/engagements/finance/setup/personal'
-      path: '/setup/personal'
+      path: '/finance/setup/personal'
       fullPath: '/engagements/finance/setup/personal'
       preLoaderRoute: typeof ExecutionEngagementsFinanceSetupPersonalRouteImport
-      parentRoute: typeof ExecutionEngagementsFinanceRoute
+      parentRoute: typeof ExecutionEngagementsRouteRoute
     }
     '/_execution/engagements/finance/invoices/new': {
       id: '/_execution/engagements/finance/invoices/new'
-      path: '/invoices/new'
+      path: '/finance/invoices/new'
       fullPath: '/engagements/finance/invoices/new'
       preLoaderRoute: typeof ExecutionEngagementsFinanceInvoicesNewRouteImport
-      parentRoute: typeof ExecutionEngagementsFinanceRoute
+      parentRoute: typeof ExecutionEngagementsRouteRoute
     }
     '/_execution/engagements/finance/invite/$token': {
       id: '/_execution/engagements/finance/invite/$token'
-      path: '/invite/$token'
+      path: '/finance/invite/$token'
       fullPath: '/engagements/finance/invite/$token'
       preLoaderRoute: typeof ExecutionEngagementsFinanceInviteTokenRouteImport
-      parentRoute: typeof ExecutionEngagementsFinanceRoute
+      parentRoute: typeof ExecutionEngagementsRouteRoute
     }
     '/_execution/engagements/finance/imports/$documentId': {
       id: '/_execution/engagements/finance/imports/$documentId'
-      path: '/imports/$documentId'
+      path: '/finance/imports/$documentId'
       fullPath: '/engagements/finance/imports/$documentId'
       preLoaderRoute: typeof ExecutionEngagementsFinanceImportsDocumentIdRouteImport
-      parentRoute: typeof ExecutionEngagementsFinanceRoute
-    }
-    '/_execution/engagements/finance/_portfolio/portfolio': {
-      id: '/_execution/engagements/finance/_portfolio/portfolio'
-      path: '/portfolio'
-      fullPath: '/engagements/finance/portfolio'
-      preLoaderRoute: typeof ExecutionEngagementsFinancePortfolioPortfolioRouteImport
-      parentRoute: typeof ExecutionEngagementsFinancePortfolioRoute
-    }
-    '/_execution/engagements/finance/_portfolio/invoices': {
-      id: '/_execution/engagements/finance/_portfolio/invoices'
-      path: '/invoices'
-      fullPath: '/engagements/finance/invoices'
-      preLoaderRoute: typeof ExecutionEngagementsFinancePortfolioInvoicesRouteImport
-      parentRoute: typeof ExecutionEngagementsFinancePortfolioRoute
-    }
-    '/_execution/engagements/finance/_portfolio/imports': {
-      id: '/_execution/engagements/finance/_portfolio/imports'
-      path: '/imports'
-      fullPath: '/engagements/finance/imports'
-      preLoaderRoute: typeof ExecutionEngagementsFinancePortfolioImportsRouteImport
-      parentRoute: typeof ExecutionEngagementsFinancePortfolioRoute
-    }
-    '/_execution/engagements/finance/_portfolio/contracts': {
-      id: '/_execution/engagements/finance/_portfolio/contracts'
-      path: '/contracts'
-      fullPath: '/engagements/finance/contracts'
-      preLoaderRoute: typeof ExecutionEngagementsFinancePortfolioContractsRouteImport
-      parentRoute: typeof ExecutionEngagementsFinancePortfolioRoute
+      parentRoute: typeof ExecutionEngagementsRouteRoute
     }
     '/w/$workspaceSlug/teams/$teamId/time': {
       id: '/w/$workspaceSlug/teams/$teamId/time'
@@ -3364,17 +3497,17 @@ declare module '@tanstack/react-router' {
     }
     '/_execution/engagements/finance/team/$teamId/': {
       id: '/_execution/engagements/finance/team/$teamId/'
-      path: '/team/$teamId'
+      path: '/finance/team/$teamId'
       fullPath: '/engagements/finance/team/$teamId'
       preLoaderRoute: typeof ExecutionEngagementsFinanceTeamTeamIdIndexRouteImport
-      parentRoute: typeof ExecutionEngagementsFinanceRoute
+      parentRoute: typeof ExecutionEngagementsRouteRoute
     }
     '/_execution/engagements/finance/book/$bookId/': {
       id: '/_execution/engagements/finance/book/$bookId/'
-      path: '/book/$bookId'
+      path: '/finance/book/$bookId'
       fullPath: '/engagements/finance/book/$bookId'
       preLoaderRoute: typeof ExecutionEngagementsFinanceBookBookIdIndexRouteImport
-      parentRoute: typeof ExecutionEngagementsFinanceRoute
+      parentRoute: typeof ExecutionEngagementsRouteRoute
     }
     '/w/$workspaceSlug/teams/$teamId/time/team-logs': {
       id: '/w/$workspaceSlug/teams/$teamId/time/team-logs'
@@ -3439,33 +3572,75 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ExecutionTeamsTeamIdTimeLogLogIdRouteImport
       parentRoute: typeof ExecutionTeamsTeamIdTimeRouteRoute
     }
+    '/_execution/engagements/finance/team/$teamId/time-logs': {
+      id: '/_execution/engagements/finance/team/$teamId/time-logs'
+      path: '/finance/team/$teamId/time-logs'
+      fullPath: '/engagements/finance/team/$teamId/time-logs'
+      preLoaderRoute: typeof ExecutionEngagementsFinanceTeamTeamIdTimeLogsRouteImport
+      parentRoute: typeof ExecutionEngagementsRouteRoute
+    }
+    '/_execution/engagements/finance/team/$teamId/rates': {
+      id: '/_execution/engagements/finance/team/$teamId/rates'
+      path: '/finance/team/$teamId/rates'
+      fullPath: '/engagements/finance/team/$teamId/rates'
+      preLoaderRoute: typeof ExecutionEngagementsFinanceTeamTeamIdRatesRouteImport
+      parentRoute: typeof ExecutionEngagementsRouteRoute
+    }
+    '/_execution/engagements/finance/team/$teamId/payouts': {
+      id: '/_execution/engagements/finance/team/$teamId/payouts'
+      path: '/finance/team/$teamId/payouts'
+      fullPath: '/engagements/finance/team/$teamId/payouts'
+      preLoaderRoute: typeof ExecutionEngagementsFinanceTeamTeamIdPayoutsRouteImport
+      parentRoute: typeof ExecutionEngagementsRouteRoute
+    }
+    '/_execution/engagements/finance/team/$teamId/members': {
+      id: '/_execution/engagements/finance/team/$teamId/members'
+      path: '/finance/team/$teamId/members'
+      fullPath: '/engagements/finance/team/$teamId/members'
+      preLoaderRoute: typeof ExecutionEngagementsFinanceTeamTeamIdMembersRouteImport
+      parentRoute: typeof ExecutionEngagementsRouteRoute
+    }
     '/_execution/engagements/finance/team/$teamId/invoices': {
       id: '/_execution/engagements/finance/team/$teamId/invoices'
-      path: '/team/$teamId/invoices'
+      path: '/finance/team/$teamId/invoices'
       fullPath: '/engagements/finance/team/$teamId/invoices'
       preLoaderRoute: typeof ExecutionEngagementsFinanceTeamTeamIdInvoicesRouteImport
-      parentRoute: typeof ExecutionEngagementsFinanceRoute
+      parentRoute: typeof ExecutionEngagementsRouteRoute
+    }
+    '/_execution/engagements/finance/team/$teamId/imports': {
+      id: '/_execution/engagements/finance/team/$teamId/imports'
+      path: '/finance/team/$teamId/imports'
+      fullPath: '/engagements/finance/team/$teamId/imports'
+      preLoaderRoute: typeof ExecutionEngagementsFinanceTeamTeamIdImportsRouteImport
+      parentRoute: typeof ExecutionEngagementsRouteRoute
+    }
+    '/_execution/engagements/finance/team/$teamId/expenses': {
+      id: '/_execution/engagements/finance/team/$teamId/expenses'
+      path: '/finance/team/$teamId/expenses'
+      fullPath: '/engagements/finance/team/$teamId/expenses'
+      preLoaderRoute: typeof ExecutionEngagementsFinanceTeamTeamIdExpensesRouteImport
+      parentRoute: typeof ExecutionEngagementsRouteRoute
     }
     '/_execution/engagements/finance/team/$teamId/contracts': {
       id: '/_execution/engagements/finance/team/$teamId/contracts'
-      path: '/team/$teamId/contracts'
+      path: '/finance/team/$teamId/contracts'
       fullPath: '/engagements/finance/team/$teamId/contracts'
       preLoaderRoute: typeof ExecutionEngagementsFinanceTeamTeamIdContractsRouteImport
-      parentRoute: typeof ExecutionEngagementsFinanceRoute
+      parentRoute: typeof ExecutionEngagementsRouteRoute
     }
     '/_execution/engagements/finance/team/$teamId/addons': {
       id: '/_execution/engagements/finance/team/$teamId/addons'
-      path: '/team/$teamId/addons'
+      path: '/finance/team/$teamId/addons'
       fullPath: '/engagements/finance/team/$teamId/addons'
       preLoaderRoute: typeof ExecutionEngagementsFinanceTeamTeamIdAddonsRouteImport
-      parentRoute: typeof ExecutionEngagementsFinanceRoute
+      parentRoute: typeof ExecutionEngagementsRouteRoute
     }
     '/_execution/engagements/finance/invoices/$invoiceId/edit': {
       id: '/_execution/engagements/finance/invoices/$invoiceId/edit'
-      path: '/invoices/$invoiceId/edit'
+      path: '/finance/invoices/$invoiceId/edit'
       fullPath: '/engagements/finance/invoices/$invoiceId/edit'
       preLoaderRoute: typeof ExecutionEngagementsFinanceInvoicesInvoiceIdEditRouteImport
-      parentRoute: typeof ExecutionEngagementsFinanceRoute
+      parentRoute: typeof ExecutionEngagementsRouteRoute
     }
     '/w/$workspaceSlug/teams/$teamId/time/manage-rates/': {
       id: '/w/$workspaceSlug/teams/$teamId/time/manage-rates/'
@@ -3487,6 +3662,13 @@ declare module '@tanstack/react-router' {
       fullPath: '/w/$workspaceSlug/teams/$teamId/time/log/$logId'
       preLoaderRoute: typeof WWorkspaceSlugTeamsTeamIdTimeLogLogIdRouteImport
       parentRoute: typeof WWorkspaceSlugTeamsTeamIdTimeRouteRoute
+    }
+    '/_execution/engagements/finance/team/$teamId/project/$bookId': {
+      id: '/_execution/engagements/finance/team/$teamId/project/$bookId'
+      path: '/finance/team/$teamId/project/$bookId'
+      fullPath: '/engagements/finance/team/$teamId/project/$bookId'
+      preLoaderRoute: typeof ExecutionEngagementsFinanceTeamTeamIdProjectBookIdRouteImport
+      parentRoute: typeof ExecutionEngagementsRouteRoute
     }
   }
 }
@@ -3650,51 +3832,59 @@ const WorkspaceRouteRouteWithChildren = WorkspaceRouteRoute._addFileChildren(
   WorkspaceRouteRouteChildren,
 )
 
-interface ExecutionEngagementsFinancePortfolioRouteChildren {
-  ExecutionEngagementsFinancePortfolioContractsRoute: typeof ExecutionEngagementsFinancePortfolioContractsRoute
-  ExecutionEngagementsFinancePortfolioImportsRoute: typeof ExecutionEngagementsFinancePortfolioImportsRoute
-  ExecutionEngagementsFinancePortfolioInvoicesRoute: typeof ExecutionEngagementsFinancePortfolioInvoicesRoute
-  ExecutionEngagementsFinancePortfolioPortfolioRoute: typeof ExecutionEngagementsFinancePortfolioPortfolioRoute
-}
-
-const ExecutionEngagementsFinancePortfolioRouteChildren: ExecutionEngagementsFinancePortfolioRouteChildren =
-  {
-    ExecutionEngagementsFinancePortfolioContractsRoute:
-      ExecutionEngagementsFinancePortfolioContractsRoute,
-    ExecutionEngagementsFinancePortfolioImportsRoute:
-      ExecutionEngagementsFinancePortfolioImportsRoute,
-    ExecutionEngagementsFinancePortfolioInvoicesRoute:
-      ExecutionEngagementsFinancePortfolioInvoicesRoute,
-    ExecutionEngagementsFinancePortfolioPortfolioRoute:
-      ExecutionEngagementsFinancePortfolioPortfolioRoute,
-  }
-
-const ExecutionEngagementsFinancePortfolioRouteWithChildren =
-  ExecutionEngagementsFinancePortfolioRoute._addFileChildren(
-    ExecutionEngagementsFinancePortfolioRouteChildren,
-  )
-
-interface ExecutionEngagementsFinanceRouteChildren {
-  ExecutionEngagementsFinancePortfolioRoute: typeof ExecutionEngagementsFinancePortfolioRouteWithChildren
+interface ExecutionEngagementsRouteRouteChildren {
+  ExecutionEngagementsEngagementIdRoute: typeof ExecutionEngagementsEngagementIdRoute
+  ExecutionEngagementsIndexRoute: typeof ExecutionEngagementsIndexRoute
+  ExecutionEngagementsContractsContractIdRoute: typeof ExecutionEngagementsContractsContractIdRoute
+  ExecutionEngagementsFinanceContractIdRoute: typeof ExecutionEngagementsFinanceContractIdRoute
+  ExecutionEngagementsFinanceContractsRoute: typeof ExecutionEngagementsFinanceContractsRoute
+  ExecutionEngagementsFinancePortfolioRoute: typeof ExecutionEngagementsFinancePortfolioRoute
+  ExecutionEngagementsFinanceSharedRoute: typeof ExecutionEngagementsFinanceSharedRoute
+  ExecutionEngagementsFinanceTeamsRoute: typeof ExecutionEngagementsFinanceTeamsRoute
+  ExecutionEngagementsContractsIndexRoute: typeof ExecutionEngagementsContractsIndexRoute
   ExecutionEngagementsFinanceIndexRoute: typeof ExecutionEngagementsFinanceIndexRoute
   ExecutionEngagementsFinanceImportsDocumentIdRoute: typeof ExecutionEngagementsFinanceImportsDocumentIdRoute
   ExecutionEngagementsFinanceInviteTokenRoute: typeof ExecutionEngagementsFinanceInviteTokenRoute
   ExecutionEngagementsFinanceInvoicesNewRoute: typeof ExecutionEngagementsFinanceInvoicesNewRoute
   ExecutionEngagementsFinanceSetupPersonalRoute: typeof ExecutionEngagementsFinanceSetupPersonalRoute
   ExecutionEngagementsFinanceSetupTeamRoute: typeof ExecutionEngagementsFinanceSetupTeamRoute
+  ExecutionEngagementsFinanceImportsIndexRoute: typeof ExecutionEngagementsFinanceImportsIndexRoute
+  ExecutionEngagementsFinanceInvoicesIndexRoute: typeof ExecutionEngagementsFinanceInvoicesIndexRoute
   ExecutionEngagementsFinanceMeIndexRoute: typeof ExecutionEngagementsFinanceMeIndexRoute
   ExecutionEngagementsFinanceInvoicesInvoiceIdEditRoute: typeof ExecutionEngagementsFinanceInvoicesInvoiceIdEditRoute
   ExecutionEngagementsFinanceTeamTeamIdAddonsRoute: typeof ExecutionEngagementsFinanceTeamTeamIdAddonsRoute
   ExecutionEngagementsFinanceTeamTeamIdContractsRoute: typeof ExecutionEngagementsFinanceTeamTeamIdContractsRoute
+  ExecutionEngagementsFinanceTeamTeamIdExpensesRoute: typeof ExecutionEngagementsFinanceTeamTeamIdExpensesRoute
+  ExecutionEngagementsFinanceTeamTeamIdImportsRoute: typeof ExecutionEngagementsFinanceTeamTeamIdImportsRoute
   ExecutionEngagementsFinanceTeamTeamIdInvoicesRoute: typeof ExecutionEngagementsFinanceTeamTeamIdInvoicesRoute
+  ExecutionEngagementsFinanceTeamTeamIdMembersRoute: typeof ExecutionEngagementsFinanceTeamTeamIdMembersRoute
+  ExecutionEngagementsFinanceTeamTeamIdPayoutsRoute: typeof ExecutionEngagementsFinanceTeamTeamIdPayoutsRoute
+  ExecutionEngagementsFinanceTeamTeamIdRatesRoute: typeof ExecutionEngagementsFinanceTeamTeamIdRatesRoute
+  ExecutionEngagementsFinanceTeamTeamIdTimeLogsRoute: typeof ExecutionEngagementsFinanceTeamTeamIdTimeLogsRoute
   ExecutionEngagementsFinanceBookBookIdIndexRoute: typeof ExecutionEngagementsFinanceBookBookIdIndexRoute
   ExecutionEngagementsFinanceTeamTeamIdIndexRoute: typeof ExecutionEngagementsFinanceTeamTeamIdIndexRoute
+  ExecutionEngagementsFinanceTeamTeamIdProjectBookIdRoute: typeof ExecutionEngagementsFinanceTeamTeamIdProjectBookIdRoute
 }
 
-const ExecutionEngagementsFinanceRouteChildren: ExecutionEngagementsFinanceRouteChildren =
+const ExecutionEngagementsRouteRouteChildren: ExecutionEngagementsRouteRouteChildren =
   {
+    ExecutionEngagementsEngagementIdRoute:
+      ExecutionEngagementsEngagementIdRoute,
+    ExecutionEngagementsIndexRoute: ExecutionEngagementsIndexRoute,
+    ExecutionEngagementsContractsContractIdRoute:
+      ExecutionEngagementsContractsContractIdRoute,
+    ExecutionEngagementsFinanceContractIdRoute:
+      ExecutionEngagementsFinanceContractIdRoute,
+    ExecutionEngagementsFinanceContractsRoute:
+      ExecutionEngagementsFinanceContractsRoute,
     ExecutionEngagementsFinancePortfolioRoute:
-      ExecutionEngagementsFinancePortfolioRouteWithChildren,
+      ExecutionEngagementsFinancePortfolioRoute,
+    ExecutionEngagementsFinanceSharedRoute:
+      ExecutionEngagementsFinanceSharedRoute,
+    ExecutionEngagementsFinanceTeamsRoute:
+      ExecutionEngagementsFinanceTeamsRoute,
+    ExecutionEngagementsContractsIndexRoute:
+      ExecutionEngagementsContractsIndexRoute,
     ExecutionEngagementsFinanceIndexRoute:
       ExecutionEngagementsFinanceIndexRoute,
     ExecutionEngagementsFinanceImportsDocumentIdRoute:
@@ -3707,6 +3897,10 @@ const ExecutionEngagementsFinanceRouteChildren: ExecutionEngagementsFinanceRoute
       ExecutionEngagementsFinanceSetupPersonalRoute,
     ExecutionEngagementsFinanceSetupTeamRoute:
       ExecutionEngagementsFinanceSetupTeamRoute,
+    ExecutionEngagementsFinanceImportsIndexRoute:
+      ExecutionEngagementsFinanceImportsIndexRoute,
+    ExecutionEngagementsFinanceInvoicesIndexRoute:
+      ExecutionEngagementsFinanceInvoicesIndexRoute,
     ExecutionEngagementsFinanceMeIndexRoute:
       ExecutionEngagementsFinanceMeIndexRoute,
     ExecutionEngagementsFinanceInvoicesInvoiceIdEditRoute:
@@ -3715,35 +3909,26 @@ const ExecutionEngagementsFinanceRouteChildren: ExecutionEngagementsFinanceRoute
       ExecutionEngagementsFinanceTeamTeamIdAddonsRoute,
     ExecutionEngagementsFinanceTeamTeamIdContractsRoute:
       ExecutionEngagementsFinanceTeamTeamIdContractsRoute,
+    ExecutionEngagementsFinanceTeamTeamIdExpensesRoute:
+      ExecutionEngagementsFinanceTeamTeamIdExpensesRoute,
+    ExecutionEngagementsFinanceTeamTeamIdImportsRoute:
+      ExecutionEngagementsFinanceTeamTeamIdImportsRoute,
     ExecutionEngagementsFinanceTeamTeamIdInvoicesRoute:
       ExecutionEngagementsFinanceTeamTeamIdInvoicesRoute,
+    ExecutionEngagementsFinanceTeamTeamIdMembersRoute:
+      ExecutionEngagementsFinanceTeamTeamIdMembersRoute,
+    ExecutionEngagementsFinanceTeamTeamIdPayoutsRoute:
+      ExecutionEngagementsFinanceTeamTeamIdPayoutsRoute,
+    ExecutionEngagementsFinanceTeamTeamIdRatesRoute:
+      ExecutionEngagementsFinanceTeamTeamIdRatesRoute,
+    ExecutionEngagementsFinanceTeamTeamIdTimeLogsRoute:
+      ExecutionEngagementsFinanceTeamTeamIdTimeLogsRoute,
     ExecutionEngagementsFinanceBookBookIdIndexRoute:
       ExecutionEngagementsFinanceBookBookIdIndexRoute,
     ExecutionEngagementsFinanceTeamTeamIdIndexRoute:
       ExecutionEngagementsFinanceTeamTeamIdIndexRoute,
-  }
-
-const ExecutionEngagementsFinanceRouteWithChildren =
-  ExecutionEngagementsFinanceRoute._addFileChildren(
-    ExecutionEngagementsFinanceRouteChildren,
-  )
-
-interface ExecutionEngagementsRouteRouteChildren {
-  ExecutionEngagementsEngagementIdRoute: typeof ExecutionEngagementsEngagementIdRoute
-  ExecutionEngagementsIndexRoute: typeof ExecutionEngagementsIndexRoute
-  ExecutionEngagementsFinanceContractIdRoute: typeof ExecutionEngagementsFinanceContractIdRoute
-  ExecutionEngagementsFinanceRoute: typeof ExecutionEngagementsFinanceRouteWithChildren
-}
-
-const ExecutionEngagementsRouteRouteChildren: ExecutionEngagementsRouteRouteChildren =
-  {
-    ExecutionEngagementsEngagementIdRoute:
-      ExecutionEngagementsEngagementIdRoute,
-    ExecutionEngagementsIndexRoute: ExecutionEngagementsIndexRoute,
-    ExecutionEngagementsFinanceContractIdRoute:
-      ExecutionEngagementsFinanceContractIdRoute,
-    ExecutionEngagementsFinanceRoute:
-      ExecutionEngagementsFinanceRouteWithChildren,
+    ExecutionEngagementsFinanceTeamTeamIdProjectBookIdRoute:
+      ExecutionEngagementsFinanceTeamTeamIdProjectBookIdRoute,
   }
 
 const ExecutionEngagementsRouteRouteWithChildren =

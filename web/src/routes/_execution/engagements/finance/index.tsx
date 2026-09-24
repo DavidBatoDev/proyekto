@@ -1,115 +1,95 @@
 import { useQuery } from "@tanstack/react-query";
-import { createFileRoute, Link } from "@tanstack/react-router";
+import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import {
-	BarChart3,
-	BookOpen,
+	ArrowRight,
 	ChevronRight,
 	CircleDollarSign,
-	Folder,
-	Plus,
-	Share2,
-	Wallet,
+	FileSignature,
 } from "lucide-react";
-import { useState } from "react";
 import {
 	AppEmptyState,
 	AppSurfaceCard,
 } from "@/components/common/AppPrimitives";
-import { FinanceShareDialog } from "@/components/finance/FinanceShareDialog";
 import { InitialsTile } from "@/components/finance/InitialsTile";
 import {
-	FINANCE_CRUMB_LINK_CLASS,
-	FinanceBreadcrumbs,
-	FinanceCurrentCrumb,
-} from "@/components/finance/portfolio/FinanceBreadcrumbs";
+	InvoicesToPaySection,
+	MyRateCard,
+} from "@/components/finance/me/PersonalSections";
+import { FinanceTrail } from "@/components/finance/nav/FinanceTrail";
 import {
-	countLabel,
-	FinanceLoading,
-	FinanceStatusBadge,
-} from "@/components/finance/portfolio/FinancePrimitives";
+	findProjectHome,
+	useFinanceHub,
+} from "@/components/finance/nav/useManagedTeams";
+import { FinanceLoading } from "@/components/finance/portfolio/FinancePrimitives";
+import { PortfolioOverview } from "@/components/finance/portfolio/PortfolioOverview";
 import { isActiveConsultant } from "@/lib/auth-utils";
+import { formatCurrency } from "@/lib/currency";
+import { engagementService } from "@/services/engagement.service";
 import { financeService } from "@/services/finance.service";
 import {
-	type FinanceHub,
-	type FinanceHubTeam,
 	financeBooksService,
+	type MyFinanceSummary,
+	type MyFinanceTeam,
 } from "@/services/financeBooks.service";
 import { useProfile } from "@/stores/authStore";
 
 /**
- * Finance home — the launcher, and every role's front door.
+ * My finance — the consolidated view across every team the caller owns or
+ * belongs to:
  *
- * Three levels, Google-Drive style: Personal (your own book), Teams (each
- * with its project books nested inside), and Shared with me. This page names
- * the places; the numbers live inside them. The one exception is the
- * consultant portfolio card at the bottom — the cross-project rollup is a
- * destination of its own at `/engagements/finance/portfolio`, and the card is
- * its door.
+ * - My hours: the caller's own logs, every team.
+ * - Money in: for teams whose money the caller runs (owner, or a finance
+ *   role of owner/manager/accountant), what the team billed and collected;
+ *   for teams where they are only a member, just what was paid to them.
+ * - Money out: payouts plus recorded expenses, for the teams they run.
  *
- * Deliberately no tabs and no filter bar: this route sits OUTSIDE the
- * `_portfolio` layout that carries them. Legacy links arriving with the old
- * portfolio search params are accepted and ignored.
+ * Nothing is summed across currencies. Contracts are not listed here — they
+ * live in Engagements → Contracts; this page only nudges when one is waiting.
  */
 export const Route = createFileRoute("/_execution/engagements/finance/")({
 	validateSearch: () => ({}),
-	component: FinanceHomePage,
+	component: MyFinancePage,
 });
 
-const BOOK_ROLE_LABELS: Record<string, string> = {
-	owner: "Owner",
-	manager: "Manager",
-	accountant: "Accountant",
-	viewer_client: "Client viewer",
-	viewer: "Viewer",
-};
+function formatHours(seconds: number): string {
+	return `${(seconds / 3600).toFixed(1)}h`;
+}
 
-function FinanceHomePage() {
-	const profile = useProfile();
-	const isConsultant = isActiveConsultant(profile);
-
-	const hubQuery = useQuery({
-		queryKey: ["finance-books", "hub"],
-		queryFn: financeBooksService.hub,
+function MyFinancePage() {
+	const summaryQuery = useQuery({
+		queryKey: ["finance-books", "me-summary"],
+		queryFn: financeBooksService.mySummary,
 	});
 
 	return (
 		<div className="app-shell-bg min-h-full px-5 py-4 md:px-8 md:py-5">
-			<div className="mx-auto w-full max-w-6xl pb-10">
-				<FinanceBreadcrumbs
-					items={[
-						<Link
-							key="engagements"
-							to="/engagements"
-							className={FINANCE_CRUMB_LINK_CLASS}
-						>
-							Engagements
-						</Link>,
-						<FinanceCurrentCrumb key="finance">Finance</FinanceCurrentCrumb>,
-					]}
-				/>
+			<div className="mx-auto w-full max-w-7xl pb-10">
+				<FinanceTrail />
 
 				<div className="mt-2">
 					<h1 className="text-2xl font-bold tracking-tight text-foreground">
-						Finance
+						My finance
 					</h1>
 					<p className="mt-1 max-w-2xl text-sm text-muted-foreground">
-						Your money in one place — your personal book, the teams you run, and
-						the books others shared with you.
+						Your hours and the money moving in and out, across every team you
+						own or belong to. Only you see this page.
 					</p>
 				</div>
 
-				{hubQuery.isPending ? (
+				<SignatureNudge />
+
+				{summaryQuery.isPending ? (
 					<FinanceLoading />
-				) : hubQuery.isError ? (
+				) : summaryQuery.isError ? (
 					<AppEmptyState
 						icon={CircleDollarSign}
 						title="Could not load your finance"
-						description={hubQuery.error.message}
+						description={summaryQuery.error.message}
 						className="mt-8"
 						action={
 							<button
 								type="button"
-								onClick={() => void hubQuery.refetch()}
+								onClick={() => void summaryQuery.refetch()}
 								className="app-cta inline-flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold text-white"
 							>
 								Try again
@@ -117,357 +97,309 @@ function FinanceHomePage() {
 						}
 					/>
 				) : (
-					<HomeBody hub={hubQuery.data} isConsultant={isConsultant} />
+					<SummaryBody summary={summaryQuery.data} />
 				)}
 			</div>
 		</div>
 	);
 }
 
-function HomeBody({
-	hub,
-	isConsultant,
-}: {
-	hub: FinanceHub;
-	isConsultant: boolean;
-}) {
+/** Contracts live in Engagements; this is only the doorbell. */
+function SignatureNudge() {
+	const agreementsQuery = useQuery({
+		queryKey: ["engagements", "agreements"],
+		queryFn: () => engagementService.agreements(),
+	});
+	const waiting = (agreementsQuery.data ?? []).filter(
+		(agreement) => agreement.status === "sent" && !agreement.signed_at,
+	).length;
+	if (waiting === 0) return null;
+	return (
+		<Link
+			to="/engagements/contracts"
+			search={{ view: "mine" }}
+			className="mt-5 flex items-center justify-between gap-4 rounded-2xl border border-warning/40 bg-warning/10 px-5 py-3.5 transition-colors hover:bg-warning/15"
+		>
+			<span className="flex items-center gap-3 text-sm font-semibold text-warning-foreground">
+				<FileSignature className="h-4 w-4 shrink-0" />
+				{waiting === 1
+					? "1 contract is waiting for your signature"
+					: `${waiting} contracts are waiting for your signature`}
+			</span>
+			<span className="flex items-center gap-1 text-xs font-semibold text-warning-foreground">
+				Open in Engagements <ArrowRight className="h-3.5 w-3.5" />
+			</span>
+		</Link>
+	);
+}
+
+function moneyLines(rows: Array<{ currency: string; amount: number }>): string {
+	return rows.length
+		? rows.map((row) => formatCurrency(row.amount, row.currency)).join("\n")
+		: "—";
+}
+
+function SummaryBody({ summary }: { summary: MyFinanceSummary }) {
+	const { hours, totals, teams } = summary;
+	const profile = useProfile();
+
+	const moneyIn = totals.money_in.map((row) => ({
+		currency: row.currency,
+		amount: row.collected + row.paid_to_me,
+	}));
+	const invoicedHint = totals.money_in
+		.filter((row) => row.invoiced > 0)
+		.map(
+			(row) =>
+				`${formatCurrency(row.invoiced, row.currency)} billed · ${formatCurrency(row.outstanding, row.currency)} open`,
+		)
+		.join(" · ");
+	const moneyOut = totals.money_out.map((row) => ({
+		currency: row.currency,
+		amount: row.total,
+	}));
+
 	return (
 		<>
-			{/* ─── Personal ────────────────────────────────────────────────── */}
-			<h2 className="mt-8 text-base font-semibold text-foreground">Personal</h2>
-			{hub.personal ? (
-				<Link to="/engagements/finance/me" className="mt-3 block">
-					<PersonalCard currency={hub.personal.currency} />
-				</Link>
-			) : (
-				<AppSurfaceCard className="mt-3 flex flex-wrap items-center justify-between gap-4 px-5 py-4">
-					<div className="flex min-w-0 items-center gap-3">
-						<span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary">
-							<Wallet className="h-5 w-5" />
-						</span>
-						<div className="min-w-0">
-							<p className="text-sm font-semibold text-foreground">
-								My finance
-							</p>
-							<p className="text-xs text-muted-foreground">
-								Anyone can create one — a signed contract is what unlocks the
-								timer and payout data.
-							</p>
+			<div className="mt-6 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+				<StatTile
+					label="My hours"
+					value={formatHours(hours.month_seconds)}
+					hint={`this month · ${formatHours(hours.total_seconds)} all time${
+						hours.pending_seconds > 0
+							? ` · ${formatHours(hours.pending_seconds)} awaiting approval`
+							: ""
+					}`}
+				/>
+				<StatTile
+					label="Money in"
+					value={moneyLines(moneyIn)}
+					hint={invoicedHint || "collected from clients + paid to you"}
+					compact={moneyIn.length > 1}
+					tone="positive"
+				/>
+				<StatTile
+					label="Money out"
+					value={moneyLines(moneyOut)}
+					hint="payouts + expenses, teams you run"
+					compact={moneyOut.length > 1}
+				/>
+				<StatTile
+					label="Net"
+					value={moneyLines(totals.net)}
+					hint="money in − money out, per currency"
+					compact={totals.net.length > 1}
+					tone={
+						totals.net.some((row) => row.amount < 0) ? "attention" : undefined
+					}
+				/>
+			</div>
+
+			<section className="mt-8">
+				<h2 className="text-base font-semibold text-foreground">By team</h2>
+				<p className="mb-3 mt-0.5 text-sm text-muted-foreground">
+					Teams you run show their full money in and out. Teams where you are a
+					member show only your hours and what they paid you.
+				</p>
+				{teams.length === 0 ? (
+					<AppSurfaceCard className="px-5 py-4 text-sm text-muted-foreground">
+						No teams yet. When you create or join one, its money appears here.
+					</AppSurfaceCard>
+				) : (
+					<AppSurfaceCard className="overflow-hidden">
+						<div className="hidden grid-cols-[minmax(0,2fr)_repeat(3,minmax(0,1fr))_24px] gap-4 border-b border-border/60 px-5 py-2.5 text-[11px] font-semibold uppercase tracking-[0.1em] text-muted-foreground md:grid">
+							<span>Team</span>
+							<span>My hours (month)</span>
+							<span>Money in</span>
+							<span>Money out</span>
+							<span />
 						</div>
-					</div>
-					<Link
-						to="/engagements/finance/setup/personal"
-						className="app-cta inline-flex shrink-0 items-center gap-1.5 rounded-lg px-4 py-2 text-sm font-semibold text-white"
-					>
-						Set up my finance
-					</Link>
-				</AppSurfaceCard>
-			)}
-
-			{/* ─── Teams ───────────────────────────────────────────────────── */}
-			{hub.teams.length > 0 && (
-				<>
-					<div className="mt-8">
-						<h2 className="text-base font-semibold text-foreground">Teams</h2>
-						<p className="mt-0.5 text-sm text-muted-foreground">
-							Teams you own or administer. Each project gets its own finance
-							once a client contract is signed.
-						</p>
-					</div>
-					<div className="mt-3 grid gap-4 lg:grid-cols-2">
-						{hub.teams.map((team) => (
-							<HomeTeamCard key={team.team_id} team={team} />
-						))}
-					</div>
-				</>
-			)}
-
-			{/* ─── Shared with me ──────────────────────────────────────────── */}
-			{hub.shared.length > 0 && (
-				<>
-					<div className="mt-8">
-						<h2 className="text-base font-semibold text-foreground">
-							Shared with me
-						</h2>
-						<p className="mt-0.5 text-sm text-muted-foreground">
-							Books other owners granted you. Your role decides what you see.
-						</p>
-					</div>
-					<AppSurfaceCard className="mt-3 divide-y divide-border overflow-hidden">
-						{hub.shared.map((entry) => (
-							<Link
-								key={entry.book.id}
-								to="/engagements/finance/book/$bookId"
-								params={{ bookId: entry.book.id }}
-								className="flex items-center justify-between gap-4 p-4 transition-colors hover:bg-muted/40 md:px-5"
-							>
-								<span className="flex min-w-0 items-center gap-3">
-									<span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-success/10 text-success-foreground">
-										<BookOpen className="h-5 w-5" />
-									</span>
-									<span className="min-w-0">
-										<span className="block truncate text-sm font-semibold text-foreground">
-											{entry.project_title ?? entry.team_name ?? "Finance book"}
-										</span>
-										<span className="block truncate text-xs text-muted-foreground">
-											{entry.team_name && entry.project_title
-												? `${entry.team_name} · `
-												: ""}
-											{entry.book.kind === "project"
-												? "Project finance"
-												: entry.book.kind === "team"
-													? "Team finance"
-													: "Personal finance"}{" "}
-											· {entry.book.currency}
-										</span>
-									</span>
-								</span>
-								<span className="flex shrink-0 items-center gap-3">
-									<span className="rounded-lg bg-muted px-2 py-1 text-xs font-semibold text-muted-foreground">
-										{BOOK_ROLE_LABELS[entry.role] ?? entry.role}
-									</span>
-									<ChevronRight className="h-4 w-4 text-muted-foreground" />
-								</span>
-							</Link>
+						{teams.map((team) => (
+							<TeamRow key={team.team_id} team={team} />
 						))}
 					</AppSurfaceCard>
-				</>
-			)}
+				)}
+			</section>
 
-			{/* ─── Consultant portfolio door ───────────────────────────────── */}
-			{isConsultant && <PortfolioDoor />}
+			<InvoicesToPaySection />
+
+			{isActiveConsultant(profile) ? <ProjectsYouLead /> : null}
+
+			<MyRateCard />
 		</>
 	);
 }
 
-/** The personal card, with live stats once the book exists. */
-function PersonalCard({ currency }: { currency: string }) {
-	const dashboardQuery = useQuery({
-		queryKey: ["finance-books", "personal-dashboard"],
-		queryFn: financeBooksService.personalDashboard,
-	});
-	const dashboard = dashboardQuery.data;
-	const monthHours = dashboard
-		? `${(dashboard.hours.month_seconds / 3600).toFixed(1)}h`
-		: "—";
-	const moneyIn = dashboard
-		? (dashboard.payouts_in.find((entry) => entry.currency === currency) ??
-			dashboard.payouts_in[0])
-		: undefined;
-	const contracts = dashboard ? dashboard.engaged_projects.length : undefined;
+const ROLE_LABEL: Record<string, string> = {
+	owner: "Owner",
+	admin: "Admin",
+	member: "Member",
+	manager: "Manager",
+	accountant: "Accountant",
+};
 
-	return (
-		<AppSurfaceCard className="flex flex-wrap items-center gap-5 px-5 py-4 transition-colors hover:border-primary/40">
-			<span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary">
-				<Wallet className="h-5 w-5" />
+function TeamRow({ team }: { team: MyFinanceTeam }) {
+	const runsMoney = team.scope === "team";
+	const roleLabel =
+		team.team_role === "member" && team.finance_role
+			? ROLE_LABEL[team.finance_role]
+			: ROLE_LABEL[team.team_role];
+	const moneyIn = runsMoney
+		? team.money_in.map((row) => ({
+				currency: row.currency,
+				amount: row.collected,
+			}))
+		: team.paid_to_me;
+	const moneyOut = team.money_out.map((row) => ({
+		currency: row.currency,
+		amount: row.total,
+	}));
+
+	const content = (
+		<>
+			<span className="flex min-w-0 items-center gap-3">
+				<InitialsTile name={team.team_name} />
+				<span className="min-w-0">
+					<span className="block truncate text-sm font-semibold text-foreground">
+						{team.team_name}
+					</span>
+					<span className="block truncate text-xs text-muted-foreground">
+						{roleLabel ?? "Member"} ·{" "}
+						{runsMoney ? "full team finance" : "your share only"}
+					</span>
+				</span>
 			</span>
-			<div className="min-w-0 flex-1">
-				<p className="text-sm font-semibold text-foreground">My finance</p>
-				<p className="text-xs text-muted-foreground">
-					Your hours, payouts, rates, and every contract you hold — in any seat.
-				</p>
-			</div>
-			<div className="hidden items-center gap-7 md:flex">
-				<HomeStat label="This month" value={monthHours} />
-				<HomeStat
-					label="Money in"
-					value={
-						moneyIn
-							? `${moneyIn.total.toLocaleString()} ${moneyIn.currency}`
-							: "—"
-					}
-				/>
-				<HomeStat
-					label="Contracts"
-					value={contracts !== undefined ? `${contracts} engaged` : "—"}
-				/>
-			</div>
-			<span className="app-cta inline-flex shrink-0 items-center rounded-lg px-4 py-2 text-sm font-semibold text-white">
-				Open
+			<Cell label="My hours (month)">
+				{formatHours(team.hours.month_seconds)}
+				{team.hours.pending_seconds > 0 ? (
+					<span className="block text-[11px] font-normal text-warning-foreground">
+						{formatHours(team.hours.pending_seconds)} pending
+					</span>
+				) : null}
+			</Cell>
+			<Cell label={runsMoney ? "Collected" : "Paid to you"}>
+				{moneyLines(moneyIn)}
+			</Cell>
+			<Cell label="Money out">{runsMoney ? moneyLines(moneyOut) : "—"}</Cell>
+			<span className="hidden items-center justify-end md:flex">
+				{runsMoney ? (
+					<ChevronRight className="h-4 w-4 text-muted-foreground" />
+				) : null}
 			</span>
-		</AppSurfaceCard>
+		</>
+	);
+
+	const className =
+		"grid grid-cols-2 items-center gap-4 border-b border-border/50 px-5 py-4 last:border-b-0 md:grid-cols-[minmax(0,2fr)_repeat(3,minmax(0,1fr))_24px]";
+
+	// A team whose money you run is a place to go; a membership is a row.
+	return runsMoney ? (
+		<Link
+			to="/engagements/finance/team/$teamId"
+			params={{ teamId: team.team_id }}
+			className={`${className} transition-colors hover:bg-muted/40`}
+		>
+			{content}
+		</Link>
+	) : (
+		<div className={className}>{content}</div>
 	);
 }
 
-function HomeStat({ label, value }: { label: string; value: string }) {
+function Cell({
+	label,
+	children,
+}: {
+	label: string;
+	children: React.ReactNode;
+}) {
 	return (
-		<span className="block text-right">
-			<span className="block text-[11px] font-bold tracking-wider text-muted-foreground/70 uppercase">
+		<span className="min-w-0">
+			<span className="block text-[11px] font-semibold uppercase tracking-[0.1em] text-muted-foreground md:hidden">
 				{label}
 			</span>
-			<span className="mt-0.5 block whitespace-pre-line font-['Sora',sans-serif] text-base font-bold text-foreground">
-				{value}
+			<span className="block whitespace-pre-line text-sm font-semibold tabular-nums text-foreground">
+				{children}
 			</span>
 		</span>
 	);
 }
 
-function HomeTeamCard({ team }: { team: FinanceHubTeam }) {
-	const [shareOpen, setShareOpen] = useState(false);
-	const canManage = team.book_role === "owner" || team.book_role === "manager";
-
-	return (
-		<AppSurfaceCard className="self-start overflow-hidden">
-			<div className="flex items-center gap-3.5 border-b border-border/60 px-5 py-4">
-				{team.avatar_url ? (
-					<img
-						src={team.avatar_url}
-						alt=""
-						className="h-10 w-10 shrink-0 rounded-xl object-cover"
-					/>
-				) : (
-					<InitialsTile name={team.team_name} />
-				)}
-				<div className="min-w-0 flex-1">
-					<div className="flex items-center gap-2">
-						<Link
-							to="/engagements/finance/team/$teamId"
-							params={{ teamId: team.team_id }}
-							className="truncate text-sm font-semibold text-foreground hover:text-primary"
-						>
-							{team.team_name}
-						</Link>
-						<span className="rounded-full bg-muted px-2 py-0.5 text-[11px] font-semibold text-muted-foreground capitalize">
-							{team.my_team_role.replace(/_/g, " ")}
-						</span>
-					</div>
-					<p className="text-xs text-muted-foreground">
-						{team.project_books.length === 0
-							? "No project finance yet"
-							: countLabel(team.project_books.length, "project")}
-					</p>
-				</div>
-				{team.book && canManage ? (
-					<button
-						type="button"
-						onClick={() => setShareOpen(true)}
-						className="inline-flex shrink-0 items-center gap-1.5 rounded-lg border border-border px-3 py-1.5 text-xs font-semibold text-foreground transition-colors hover:bg-muted"
-					>
-						<Share2 className="h-3.5 w-3.5" />
-						Share
-					</button>
-				) : !team.book && team.can_create ? (
-					<Link
-						to="/engagements/finance/setup/team"
-						className="app-cta inline-flex shrink-0 items-center gap-1 rounded-lg px-3 py-1.5 text-xs font-semibold text-white"
-					>
-						<Plus className="h-3.5 w-3.5" />
-						Create
-					</Link>
-				) : null}
-			</div>
-
-			{team.project_books.map((entry) => (
-				<Link
-					key={entry.book.id}
-					to="/engagements/finance/book/$bookId"
-					params={{ bookId: entry.book.id }}
-					className="flex items-center justify-between gap-3 border-b border-border/40 px-5 py-3.5 transition-colors hover:bg-muted/40"
-				>
-					<span className="flex min-w-0 items-center gap-3.5">
-						<span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-muted text-muted-foreground">
-							<Folder className="h-[18px] w-[18px]" />
-						</span>
-						<span className="min-w-0">
-							<span className="block truncate text-sm font-semibold text-foreground">
-								{entry.project_title}
-							</span>
-							<span className="block truncate text-xs text-muted-foreground">
-								Project finance · {entry.book.currency}
-							</span>
-						</span>
-					</span>
-					<span className="flex shrink-0 items-center gap-2">
-						<FinanceStatusBadge status={entry.contract_status} />
-						<ChevronRight className="h-4 w-4 text-muted-foreground" />
-					</span>
-				</Link>
-			))}
-
-			{/*
-			 * Not a button: a project book is opened by a signed client contract,
-			 * never by hand. The row says so where the person would look for "new".
-			 */}
-			<div className="flex items-center gap-3.5 px-5 py-3.5">
-				<span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-dashed border-border text-muted-foreground">
-					<Plus className="h-4 w-4" />
-				</span>
-				<span className="min-w-0">
-					<span className="block text-sm font-semibold text-muted-foreground">
-						New project finance
-					</span>
-					<span className="block text-xs text-muted-foreground">
-						Opens once a project has a signed client contract
-					</span>
-				</span>
-			</div>
-
-			{team.book ? (
-				<FinanceShareDialog
-					bookId={team.book.id}
-					bookTitle={`${team.team_name} · Team finance`}
-					canManage={canManage}
-					open={shareOpen}
-					onClose={() => setShareOpen(false)}
-				/>
-			) : null}
-		</AppSurfaceCard>
-	);
-}
-
-/** The consultant's cross-project rollup lives one level down. */
-function PortfolioDoor() {
+/**
+ * The consultant's cross-project rollup (what the old Portfolio page showed).
+ * A project opens where its finance lives — its team's project page.
+ */
+function ProjectsYouLead() {
+	const navigate = useNavigate();
+	const hubQuery = useFinanceHub();
 	const portfolioQuery = useQuery({
 		queryKey: ["finance", "portfolio", {}],
 		queryFn: () => financeService.portfolio({}),
 	});
-	// Every currency, never just the first: amounts in different currencies
-	// cannot be summed or ranked, and showing one silently hides the rest of
-	// the book (an AUD import used to displace the whole PHP ledger here).
-	const totals = portfolioQuery.data?.totals_by_currency ?? [];
-
+	if (!portfolioQuery.isPending && !portfolioQuery.data?.projects.length) {
+		return null;
+	}
 	return (
-		<>
-			<h2 className="mt-8 text-base font-semibold text-foreground">
-				Consultant portfolio
+		<section className="mt-8">
+			<h2 className="text-base font-semibold text-foreground">
+				Projects you lead
 			</h2>
-			<Link to="/engagements/finance/portfolio" className="mt-3 block">
-				<AppSurfaceCard className="flex flex-wrap items-center gap-5 px-5 py-4 transition-colors hover:border-primary/40">
-					<span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-info/10 text-info-foreground">
-						<BarChart3 className="h-5 w-5" />
-					</span>
-					<div className="min-w-0 flex-1">
-						<p className="text-sm font-semibold text-foreground">
-							Your book of business
-						</p>
-						<p className="text-xs text-muted-foreground">
-							Revenue, receivables, and margin across every project you lead.
-						</p>
-					</div>
-					{totals.length > 0 && (
-						<div className="hidden items-start gap-7 md:flex">
-							<HomeStat
-								label="Billed"
-								value={totals
-									.map(
-										(row) => `${row.revenue.toLocaleString()} ${row.currency}`,
-									)
-									.join("\n")}
-							/>
-							<HomeStat
-								label="Outstanding"
-								value={totals
-									.map(
-										(row) =>
-											`${row.outstanding.toLocaleString()} ${row.currency}`,
-									)
-									.join("\n")}
-							/>
-						</div>
-					)}
-					<ChevronRight className="h-5 w-5 shrink-0 text-muted-foreground" />
-				</AppSurfaceCard>
-			</Link>
-		</>
+			<p className="mb-1 mt-0.5 text-sm text-muted-foreground">
+				Revenue, receivables, and margin on the projects you lead as consultant.
+			</p>
+			<PortfolioOverview
+				loading={portfolioQuery.isPending}
+				portfolio={portfolioQuery.data}
+				onOpen={(projectId) => {
+					const home = findProjectHome(hubQuery.data, projectId);
+					if (home) {
+						void navigate({
+							to: "/engagements/finance/team/$teamId/project/$bookId",
+							params: home,
+							search: { tab: "invoices" },
+						});
+					} else {
+						void navigate({
+							to: "/engagements/finance/invoices",
+							search: { projectId },
+						});
+					}
+				}}
+			/>
+		</section>
+	);
+}
+
+function StatTile({
+	label,
+	value,
+	hint,
+	tone,
+	compact,
+}: {
+	label: string;
+	value: string;
+	hint: string;
+	tone?: "attention" | "positive";
+	compact?: boolean;
+}) {
+	return (
+		<div className="rounded-2xl border border-border bg-card px-5 py-4">
+			<p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">
+				{label}
+			</p>
+			<p
+				className={`mt-1.5 whitespace-pre-line font-bold tracking-tight ${compact ? "text-base" : "text-2xl"} ${
+					tone === "attention"
+						? "text-warning-foreground"
+						: tone === "positive"
+							? "text-success-foreground"
+							: "text-foreground"
+				}`}
+			>
+				{value}
+			</p>
+			<p className="mt-1 text-xs text-muted-foreground">{hint}</p>
+		</div>
 	);
 }

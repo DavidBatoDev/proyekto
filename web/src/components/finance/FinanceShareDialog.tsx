@@ -6,6 +6,7 @@ import {
 	type FinanceBookMember,
 	financeBooksService,
 	type GrantableFinanceRole,
+	isInvitePending,
 } from "@/services/financeBooks.service";
 
 /**
@@ -145,9 +146,7 @@ export function FinanceShareDialog({
 		cancelMutation.isPending;
 
 	const selectedRole = ROLE_OPTIONS.find((option) => option.value === role);
-	const pendingInvites = (invitesQuery.data ?? []).filter(
-		(invite) => invite.status === "pending",
-	);
+	const pendingInvites = (invitesQuery.data ?? []).filter(isInvitePending);
 
 	return (
 		<AppDialog
