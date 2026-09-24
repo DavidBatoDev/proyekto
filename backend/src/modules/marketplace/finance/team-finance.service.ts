@@ -258,11 +258,34 @@ export class TeamFinanceService {
       projects.map((project) => [project.id, project]),
     );
     const projectIds = projects.map((project) => project.id);
-    // Strictly project-scoped: a team surface has no severed/flexible arms —
-    // relationship contracts with no project belong to their holders only.
-    if (projectIds.length === 0) {
+    // Two ways a contract belongs to a team: it is on one of the team's
+    // projects, or it is a TALENT contract whose hirer seat signed on behalf
+    // of this team (contract_positions.team_id). The second is what makes a
+    // flexible talent contract — which has no project — show up on the team
+    // that pays it. Other flexible contracts still belong to their holders only.
+    const { data: seatRows, error: seatError } = await this.supabase
+      .from('contract_positions')
+      .select('contract_id, contract:contracts!inner(relationship_kind)')
+      .eq('team_id', teamId)
+      .eq('position', 'hirer')
+      .eq('contract.relationship_kind', 'talent_services');
+    if (seatError) throw new Error(seatError.message);
+    const seatContractIds = [
+      ...new Set(
+        ((seatRows ?? []) as Array<{ contract_id: string }>).map(
+          (row) => row.contract_id,
+        ),
+      ),
+    ];
+    if (projectIds.length === 0 && seatContractIds.length === 0) {
       return { items: [], total: 0, page: query.page, limit: query.limit };
     }
+    const scope = [
+      projectIds.length ? `project_id.in.(${projectIds.join(',')})` : null,
+      seatContractIds.length ? `id.in.(${seatContractIds.join(',')})` : null,
+    ]
+      .filter(Boolean)
+      .join(',');
 
     const offset = (query.page - 1) * query.limit;
     let contractsQuery = this.supabase
@@ -271,7 +294,7 @@ export class TeamFinanceService {
         'id, project_id, project_title_snapshot, consultant_user_id, relationship_kind, scope_mode, engagement_id, contract_number, status, version, currency, billing_mode, fixed_fee, recurring_fee, client_hourly_rate, client_name, provider_name, service_start_date, service_end_date, created_at, updated_at',
         { count: 'exact' },
       )
-      .in('project_id', projectIds)
+      .or(scope)
       .order('updated_at', { ascending: false })
       .range(offset, offset + query.limit - 1);
     if (query.contract_status) {

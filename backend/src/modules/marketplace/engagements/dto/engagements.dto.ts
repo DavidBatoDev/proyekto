@@ -1,4 +1,11 @@
-import { IsIn, IsOptional, IsUUID } from 'class-validator';
+import {
+  IsIn,
+  IsOptional,
+  IsString,
+  IsUUID,
+  Matches,
+  MaxLength,
+} from 'class-validator';
 
 export const ENGAGEMENT_KINDS = ['client_services', 'talent_services'] as const;
 export const ENGAGEMENT_STATUSES = ['active', 'ended', 'cancelled'] as const;
@@ -19,4 +26,41 @@ export class EngagementListQueryDto {
   @IsOptional()
   @IsUUID()
   project_id?: string;
+}
+
+/**
+ * Put a signed client engagement to work: create a project under the team the
+ * contract was signed for, or link one the consultant already owns.
+ */
+export class SetUpEngagementProjectDto {
+  @IsIn(['create', 'link'])
+  mode!: 'create' | 'link';
+
+  /** create: the new project's name. */
+  @IsOptional()
+  @IsString()
+  @MaxLength(200)
+  title?: string;
+
+  /** create: defaults to the contract's currency. */
+  @IsOptional()
+  @Matches(/^[A-Z]{3}$/)
+  currency?: string;
+
+  @IsOptional()
+  @IsUUID()
+  workspace_id?: string;
+
+  /** link: a project the caller owns. */
+  @IsOptional()
+  @IsUUID()
+  project_id?: string;
+
+  /**
+   * Only for contracts signed before seats carried a team: which of the
+   * caller's own teams the project lands under.
+   */
+  @IsOptional()
+  @IsUUID()
+  team_id?: string;
 }

@@ -1,15 +1,21 @@
 import {
+  Body,
   Controller,
   Get,
   Param,
   ParseUUIDPipe,
+  Post,
   Query,
   UseGuards,
 } from '@nestjs/common';
 import { CurrentUser } from '../../../common/decorators/current-user.decorator';
 import { SupabaseAuthGuard } from '../../../common/guards/supabase-auth.guard';
 import type { AuthenticatedUser } from '../../../common/interfaces/authenticated-request.interface';
-import { EngagementListQueryDto } from './dto/engagements.dto';
+import {
+  EngagementListQueryDto,
+  SetUpEngagementProjectDto,
+} from './dto/engagements.dto';
+import { EngagementProjectService } from './engagement-project.service';
 import { EngagementsService } from './engagements.service';
 
 /**
@@ -22,7 +28,10 @@ import { EngagementsService } from './engagements.service';
 @UseGuards(SupabaseAuthGuard)
 @Controller('engagements')
 export class EngagementsController {
-  constructor(private readonly engagements: EngagementsService) {}
+  constructor(
+    private readonly engagements: EngagementsService,
+    private readonly engagementProjects: EngagementProjectService,
+  ) {}
 
   @Get()
   list(
@@ -48,5 +57,24 @@ export class EngagementsController {
     @Param('id', ParseUUIDPipe) id: string,
   ) {
     return this.engagements.getById(user.id, id);
+  }
+
+  /** What the project step needs: defaults, the team, linkable projects. */
+  @Get(':id/project')
+  projectDefaults(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('id', ParseUUIDPipe) id: string,
+  ) {
+    return this.engagementProjects.defaults(user.id, id);
+  }
+
+  /** The step after signing: create or link the project, under the team. */
+  @Post(':id/project')
+  setUpProject(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: SetUpEngagementProjectDto,
+  ) {
+    return this.engagementProjects.setUp(user.id, id, dto);
   }
 }

@@ -10,7 +10,7 @@ const ENGAGEMENT_SELECT = `
 
 const PARTY_SELECT = `
   engagement_id, position, user_id, capacity,
-  display_name_snapshot, email_snapshot
+  display_name_snapshot, email_snapshot, team_id, team_name_snapshot
 `;
 
 const PROJECT_LINK_SELECT = `
@@ -38,6 +38,9 @@ export interface EngagementPartyRow {
   capacity: string;
   display_name_snapshot: string | null;
   email_snapshot: string | null;
+  /** The team this seat signed on behalf of (snapshot at activation). */
+  team_id: string | null;
+  team_name_snapshot: string | null;
 }
 
 export interface EngagementProjectLinkRow {
@@ -101,7 +104,9 @@ interface EngagementRow {
 export interface EngagementView extends EngagementRow {
   viewer_position: EngagementPosition;
   viewer_capacity: string;
-  counterparty: Omit<EngagementPartyRow, 'engagement_id'> | null;
+  /** The team the viewer's own seat signed on behalf of. */
+  viewer_team: { id: string; name: string } | null;
+  counterparty: Omit<EngagementPartyRow, 'engagement_id' | 'team_id'> | null;
   project_links: EngagementProjectLinkRow[];
   current_settings: EngagementTimeSettingsRow | null;
   current_rates: EngagementTimeRateRow[];
@@ -133,6 +138,12 @@ export interface AgreementView {
   currency: string | null;
   signed_at: string | null;
   client_hourly_rate?: number | null;
+  /** The team the caller's seat signs on behalf of. */
+  my_team_name: string | null;
+  /** The team the other seat signs on behalf of. */
+  counterparty_team_name: string | null;
+  /** The paper's own title — "Service Agreement", "Consulting Agreement". */
+  document_title: string | null;
 }
 
 /**
@@ -221,11 +232,13 @@ export class EngagementsService {
       position: string;
       capacity: string;
       signed_at: string | null;
+      team_name_snapshot: string | null;
       contract: {
         id: string;
         contract_number: string | null;
         status: string;
         relationship_kind: string;
+        document_title: string | null;
         currency: string | null;
         client_hourly_rate: number | null;
         project_id: string | null;
@@ -235,9 +248,9 @@ export class EngagementsService {
     const { data, error } = await this.supabase
       .from('contract_positions')
       .select(
-        `contract_id, position, capacity, signed_at,
+        `contract_id, position, capacity, signed_at, team_name_snapshot,
          contract:contracts(id, contract_number, status, relationship_kind,
-           currency, client_hourly_rate, project_id,
+           document_title, currency, client_hourly_rate, project_id,
            project:projects(id, title))`,
       )
       .eq('user_id', callerId);
@@ -251,7 +264,9 @@ export class EngagementsService {
     const contractIds = [...new Set(seats.map((seat) => seat.contract_id))];
     const { data: siblingData, error: siblingError } = await this.supabase
       .from('contract_positions')
-      .select('contract_id, position, user_id, display_name_snapshot')
+      .select(
+        'contract_id, position, user_id, display_name_snapshot, team_name_snapshot',
+      )
       .in('contract_id', contractIds);
     if (siblingError) throw new Error(siblingError.message);
     const siblings = (siblingData ?? []) as Array<{
@@ -259,6 +274,7 @@ export class EngagementsService {
       position: string;
       user_id: string | null;
       display_name_snapshot: string | null;
+      team_name_snapshot: string | null;
     }>;
 
     return seats.map((seat) => {
@@ -280,6 +296,9 @@ export class EngagementsService {
         project_title: contract.project?.title ?? null,
         currency: contract.currency,
         signed_at: seat.signed_at,
+        my_team_name: seat.team_name_snapshot,
+        counterparty_team_name: counterparty?.team_name_snapshot ?? null,
+        document_title: contract.document_title,
       };
       // Talent never receives the client price; and internal cost rates were
       // never selected in the first place.
@@ -345,6 +364,10 @@ export class EngagementsService {
         ...engagement,
         viewer_position: seat?.position ?? 'provider',
         viewer_capacity: seat?.capacity ?? '',
+        viewer_team:
+          seat?.team_id && seat.team_name_snapshot
+            ? { id: seat.team_id, name: seat.team_name_snapshot }
+            : null,
         // Built field by field rather than spread so `engagement_id` cannot
         // ride along, and so adding a column to the table never silently
         // widens what a counterparty exposes.
@@ -355,6 +378,9 @@ export class EngagementsService {
               capacity: counterpartyRow.capacity,
               display_name_snapshot: counterpartyRow.display_name_snapshot,
               email_snapshot: counterpartyRow.email_snapshot,
+              // The name only: which team a party signed for is on the paper
+              // both of them signed; its id is not the viewer's business.
+              team_name_snapshot: counterpartyRow.team_name_snapshot,
             }
           : null,
         project_links: links.filter(

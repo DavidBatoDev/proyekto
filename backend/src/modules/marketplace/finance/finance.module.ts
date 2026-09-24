@@ -38,6 +38,7 @@ import { TeamFinanceService } from './team-finance.service';
     FinanceExportService,
   ],
   exports: [
+    FinanceBooksService,
     ConsultantFinanceAccessService,
     TeamFinanceAccessService,
     FinanceBookAccessService,

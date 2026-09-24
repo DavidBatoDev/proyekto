@@ -993,6 +993,34 @@ export class FinanceBooksService {
     }>) {
       byProject.set(contract.project_id, contract.currency);
     }
+
+    // A flexible client engagement never carries a project on its contract;
+    // it reaches one through an operational link (the "set up the project"
+    // step after signing). That is the same signed client authority, so the
+    // project qualifies — at the currency of the contract that activated it.
+    const unlinked = [...attached].filter((id) => !byProject.has(id));
+    if (unlinked.length > 0) {
+      const { data: placed, error: placedError } = await this.supabase
+        .from('engagement_project_links')
+        .select(
+          'project_id, engagement:engagements!inner(kind, status, contract:contracts!engagements_activated_by_contract_id_fkey(currency))',
+        )
+        .in('project_id', unlinked)
+        .eq('status', 'active')
+        .eq('basis', 'operational_assignment')
+        .eq('engagement.kind', 'client_services')
+        .eq('engagement.status', 'active');
+      if (placedError) throw new Error(placedError.message);
+      for (const link of (placed ?? []) as unknown as Array<{
+        project_id: string;
+        engagement: { contract: { currency: string } | null } | null;
+      }>) {
+        const currency = link.engagement?.contract?.currency;
+        if (currency && !byProject.has(link.project_id)) {
+          byProject.set(link.project_id, currency);
+        }
+      }
+    }
     return [...byProject.entries()].map(([project_id, currency]) => ({
       project_id,
       currency,
