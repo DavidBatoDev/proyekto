@@ -43,6 +43,7 @@ authority; engagements organize their operational and financial effects.
 | [Lifecycle and edge cases](./lifecycle-and-edge-cases.md) | When records are created, what can change, who approves time, and how exceptional cases behave |
 | [Action surface](./action-surface.md) | What each seat's next action is and where it lives — the linear path, the detail action rail, and the UI/UX contract (draft) |
 | [Test matrix](./test-matrix.md) | The per-seat walkthroughs, including which dead ends are expected (draft) |
+| [Finance navigation](./finance-navigation.md) | The one Engagements → Finance tree, My finance scopes, money out, legacy redirects, and known follow-ups (draft) |
 
 ## The model in one picture
 
