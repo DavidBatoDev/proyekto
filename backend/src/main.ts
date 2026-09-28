@@ -94,7 +94,9 @@ async function bootstrap() {
       credentials: true,
       // MCP clients must be able to read the RFC 9728 challenge to discover the
       // authorization server, and the protocol version during handshake.
-      exposedHeaders: ['WWW-Authenticate', 'MCP-Protocol-Version'],
+      // `Date` is not CORS-safelisted; the web reads it to correct live timers
+      // for a skewed device clock (web/src/lib/serverClock.ts).
+      exposedHeaders: ['WWW-Authenticate', 'MCP-Protocol-Version', 'Date'],
     });
   };
   app.enableCors(corsDelegate);
