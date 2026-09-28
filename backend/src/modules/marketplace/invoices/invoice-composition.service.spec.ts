@@ -68,6 +68,7 @@ const BASE_CONTRACT: ContractRow = {
   contract_family_id: null,
   engagement_id: null,
   version: 1,
+  revision: 1,
   contract_number: 'BS2026-001',
   status: 'signed',
   provider_kind: 'agency',

@@ -4,6 +4,7 @@ import {
   ConflictException,
   Inject,
   Injectable,
+  Logger,
   NotFoundException,
 } from '@nestjs/common';
 import { SupabaseClient } from '@supabase/supabase-js';
@@ -89,6 +90,11 @@ export interface ContractRow {
   contract_family_id: string | null;
   engagement_id: string | null;
   version: number;
+  /**
+   * Counts changes to the terms. Raised by every edit; a signature is only
+   * valid for the revision it was made on (see commitTermsChange).
+   */
+  revision: number;
   contract_number: string | null;
   status: ContractStatus;
 
@@ -224,6 +230,11 @@ const SIGNING_ERRORS: Record<
     message:
       'This contract is already fully signed. Amend it to change its terms.',
   },
+  CONTRACT_REVISION_STALE: {
+    conflict: true,
+    message:
+      'The terms changed after you opened this contract. Review the latest version and sign again.',
+  },
   CONTRACT_NOT_SIGNABLE: {
     conflict: true,
     message: 'An ended or cancelled contract cannot be signed.',
@@ -310,6 +321,16 @@ function signingError(raw: string | undefined) {
   return new BadRequestException(raw ?? 'Failed to sign contract.');
 }
 
+/** The legacy signature columns, emptied whenever the terms change. */
+const CLEARED_LEGACY_SIGNATURES = {
+  signed_by_consultant_at: null,
+  signed_by_consultant_name: null,
+  signed_by_consultant_signature_url: null,
+  signed_by_client_at: null,
+  signed_by_client_name: null,
+  signed_by_client_signature_url: null,
+} as const;
+
 const MIN_SIGNATURE_SCALE = 0.5;
 const MAX_SIGNATURE_SCALE = 3;
 const MAX_SIGNATURE_OFFSET = 3;
@@ -334,6 +355,8 @@ function clampSignatureOffset(value: number | undefined): number {
 
 @Injectable()
 export class ContractsService {
+  private readonly logger = new Logger(ContractsService.name);
+
   constructor(
     @Inject(SUPABASE_ADMIN) private readonly supabase: SupabaseClient,
     private readonly financeAccess: ConsultantFinanceAccessService,
@@ -581,19 +604,83 @@ export class ContractsService {
       return this.withSchedule(existing);
     }
 
+    return this.withSchedule(await this.commitTermsChange(existing, patch));
+  }
+
+  /**
+   * Apply a change to what the agreement says, and void every signature on it.
+   *
+   * A signature covers exactly the terms on the page when it was made. So the
+   * change, the revision bump and the clearing of the legacy signed_by_*
+   * columns go out as ONE update, guarded on the revision the caller read: if
+   * anyone else changed the contract in between, nothing is written.
+   *
+   * Seat signatures live on contract_positions and are cleared afterwards. That
+   * second write is housekeeping, not the guarantee: activation only counts a
+   * seat signed on the current revision, so a stale one can never complete the
+   * contract even if the cleanup below fails.
+   */
+  private async commitTermsChange(
+    existing: ContractRow,
+    patch: Record<string, unknown>,
+  ): Promise<ContractRow> {
+    const nextRevision = existing.revision + 1;
     // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
     const { data, error } = await this.supabase
       .from('contracts')
-      .update({ ...patch, updated_at: new Date().toISOString() })
-      .eq('id', contractId)
+      .update({
+        ...patch,
+        ...CLEARED_LEGACY_SIGNATURES,
+        revision: nextRevision,
+        updated_at: new Date().toISOString(),
+      })
+      .eq('id', existing.id)
+      .eq('revision', existing.revision)
       .select('*')
-      .single();
-    if (error || !data) {
-      throw new BadRequestException(
-        error?.message ?? 'Failed to update contract.',
+      .maybeSingle();
+    if (error) {
+      throw new BadRequestException(error.message);
+    }
+    if (!data) {
+      throw new ConflictException(
+        'This contract changed while you were editing it. Reload to see the latest terms.',
       );
     }
-    return this.withSchedule(data as ContractRow);
+    await this.clearStaleSignatures(existing.id, nextRevision);
+    return data as ContractRow;
+  }
+
+  /** Seat signatures and page initials made before `revision`. */
+  private async clearStaleSignatures(
+    contractId: string,
+    revision: number,
+  ): Promise<void> {
+    const { error: seatError } = await this.supabase
+      .from('contract_positions')
+      .update({
+        signer_name: null,
+        signature_url: null,
+        signed_at: null,
+        signed_revision: null,
+      })
+      .eq('contract_id', contractId)
+      .not('signed_at', 'is', null)
+      // A seat that already signed the NEW revision keeps its signature.
+      .or(`signed_revision.is.null,signed_revision.lt.${revision}`);
+    if (seatError) {
+      this.logger.warn(
+        `Contract ${contractId}: stale seat signatures not cleared: ${seatError.message}`,
+      );
+    }
+    const { error: initialsError } = await this.supabase
+      .from('contract_page_initials')
+      .delete()
+      .eq('contract_id', contractId);
+    if (initialsError) {
+      this.logger.warn(
+        `Contract ${contractId}: page initials not cleared: ${initialsError.message}`,
+      );
+    }
   }
 
   /** Drafts have no legal force yet and may be discarded by the consultant. */
@@ -802,6 +889,7 @@ export class ContractsService {
         ...patch,
         contract_family_id: existing.contract_family_id ?? randomUUID(),
         version: await this.nextVersion(existing),
+        revision: 1,
         status: 'draft',
         supersedes_contract_id: existing.id,
         amendment_effective_date: effectiveFrom,
@@ -911,6 +999,7 @@ export class ContractsService {
             p_offset_x: offsetX,
             p_offset_y: offsetY,
             p_signed_at: now,
+            p_expected_revision: dto.revision,
           })
         : await this.supabase.rpc('sign_contract_and_flip', {
             p_contract_id: contractId,
@@ -921,6 +1010,7 @@ export class ContractsService {
             p_offset_x: offsetX,
             p_offset_y: offsetY,
             p_signed_at: now,
+            p_expected_revision: dto.revision,
           });
     const data: unknown = response.data;
     const error = response.error;
@@ -1887,15 +1977,9 @@ export class ContractsService {
       await this.resolveProfile(callerId),
       team,
     );
-    // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
-    const { data, error } = await this.supabase
-      .from('contracts')
-      .update(patch)
-      .eq('id', contractId)
-      .select('*')
-      .single();
-    if (error) throw new BadRequestException(error.message);
-    return this.withSchedule(data as ContractRow);
+    // The seat's identity is printed on the agreement, so the counterparty's
+    // signature (if any) covered the old one.
+    return this.withSchedule(await this.commitTermsChange(contract, patch));
   }
 
   /** The caller's own teams, for the "sign on behalf of" picker. */
@@ -2099,15 +2183,7 @@ export class ContractsService {
       kind,
       teamId,
     );
-    // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
-    const { data, error } = await this.supabase
-      .from('contracts')
-      .update(patch)
-      .eq('id', contractId)
-      .select('*')
-      .single();
-    if (error) throw new BadRequestException(error.message);
-    return this.withSchedule(data as ContractRow);
+    return this.withSchedule(await this.commitTermsChange(existing, patch));
   }
 
   private profileLabel(profile: unknown): string | null {

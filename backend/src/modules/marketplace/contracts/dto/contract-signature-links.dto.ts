@@ -40,6 +40,15 @@ export class CreateSignatureLinkDto {
  * the in-app flow.
  */
 export class PublicSignContractDto {
+  /**
+   * The contract revision the signer was shown. Refused with 409 if the terms
+   * have changed since, so nobody signs terms they did not see.
+   */
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  revision!: number;
+
   @IsString() @MaxLength(200) signer_name!: string;
 
   /** Optional drawn signature, as a `data:image/png;base64,...` URL. */

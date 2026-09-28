@@ -28,6 +28,8 @@ const publicClient = axios.create({
  * `Contract` — no project_id, no created_by, no internal notes.
  */
 export interface ContractDocumentView {
+	/** Sent back on sign, so the signature is pinned to these terms. */
+	revision: number;
 	/** The paper's own title — "Service Agreement", "Consulting Agreement". */
 	document_title?: string | null;
 	id: string;
@@ -130,6 +132,7 @@ export const contractSigningService = {
 	async sign(
 		token: string,
 		payload: {
+			revision: number;
 			signer_name: string;
 			/** `data:image/png;base64,...` — omit for a typed-name-only signature. */
 			signature_png?: string;

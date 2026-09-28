@@ -58,12 +58,22 @@ function PublicSignPage() {
 	});
 
 	const signMutation = useMutation({
-		mutationFn: (signaturePng?: string) =>
+		mutationFn: ({
+			revision,
+			signaturePng,
+		}: {
+			revision: number;
+			signaturePng?: string;
+		}) =>
 			contractSigningService.sign(token, {
+				revision,
 				signer_name: name.trim(),
 				...(signaturePng ? { signature_png: signaturePng } : {}),
 			}),
 		onSuccess: (result) => setSigned(result),
+		// If the terms changed while the page was open, show the new ones; the
+		// error message stays up to explain why.
+		onError: () => void contractQuery.refetch(),
 	});
 
 	if (contractQuery.isPending) {
@@ -115,7 +125,12 @@ function PublicSignPage() {
 			),
 			confirmLabel: "Sign agreement",
 		});
-		if (confirmed) signMutation.mutate(signaturePng ?? undefined);
+		if (confirmed) {
+			signMutation.mutate({
+				revision: contract.revision,
+				signaturePng: signaturePng ?? undefined,
+			});
+		}
 	};
 
 	return (

@@ -373,6 +373,15 @@ export class ReseedProviderDto {
 }
 
 export class SignContractDto {
+  /**
+   * The contract revision the signer was shown. Refused with 409 if the terms
+   * have changed since, so nobody signs terms they did not see.
+   */
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  revision!: number;
+
   @IsOptional()
   @IsIn(['consultant', 'client'])
   party?: 'consultant' | 'client';

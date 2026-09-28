@@ -16,7 +16,17 @@ type Result = { data: unknown; error: null };
 /** A chainable query builder that records every update payload it is given. */
 function table(result: Result, updates: unknown[]) {
   const builder: Record<string, unknown> = {};
-  for (const method of ['select', 'eq', 'is', 'in', 'order', 'limit']) {
+  for (const method of [
+    'select',
+    'eq',
+    'is',
+    'in',
+    'not',
+    'or',
+    'order',
+    'limit',
+    'delete',
+  ]) {
     builder[method] = jest.fn(() => builder);
   }
   builder.update = jest.fn((payload: unknown) => {

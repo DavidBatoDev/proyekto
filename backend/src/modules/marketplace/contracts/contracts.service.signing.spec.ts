@@ -97,6 +97,7 @@ describe('ContractsService transactional signing', () => {
 
     await service.signContract('consultant-1', 'contract-1', {
       party: 'consultant',
+      revision: 1,
       signer_name: ' Consultant One ',
     });
 
@@ -149,6 +150,7 @@ describe('ContractsService transactional signing', () => {
 
     await service.signContract('consultant-1', 'contract-1', {
       position: 'provider',
+      revision: 1,
       signer_name: 'Consultant One',
     });
 
@@ -219,6 +221,7 @@ describe('ContractsService transactional signing', () => {
 
     await service.signContract('client-owner', contract.id, {
       party: 'client',
+      revision: 1,
       signer_name: 'Client Owner',
     });
 
@@ -238,6 +241,7 @@ describe('ContractsService transactional signing', () => {
     await expect(
       service.signContract('consultant-1', contract.id, {
         party: 'client',
+        revision: 1,
         signer_name: 'Consultant One',
       }),
     ).rejects.toBeInstanceOf(NotFoundException);
@@ -252,6 +256,7 @@ describe('ContractsService transactional signing', () => {
       await expect(
         service.signContract('consultant-1', 'contract-1', {
           party: 'consultant',
+          revision: 1,
           signer_name: 'Consultant One',
         }),
       ).rejects.toBeInstanceOf(ConflictException);
@@ -265,6 +270,7 @@ describe('ContractsService transactional signing', () => {
 
     await service.signContract('consultant-1', contract.id, {
       party: 'consultant',
+      revision: 1,
       signer_name: 'Consultant One',
     });
 
@@ -281,6 +287,7 @@ describe('ContractsService transactional signing', () => {
     await expect(
       service.signContract('original-author', contract.id, {
         party: 'consultant',
+        revision: 1,
         signer_name: 'Original Author',
       }),
     ).rejects.toBeInstanceOf(NotFoundException);
@@ -294,6 +301,7 @@ describe('ContractsService transactional signing', () => {
     await expect(
       service.signAsTokenBearer(contract, {
         party: 'client',
+        revision: 1,
         signer_name: 'Client One',
       }),
     ).rejects.toBeInstanceOf(BadRequestException);
@@ -307,6 +315,7 @@ describe('ContractsService transactional signing', () => {
     await expect(
       service.signAsTokenBearer(contract, {
         party: 'client',
+        revision: 1,
         signer_name: 'Client One',
       }),
     ).rejects.toBeInstanceOf(ConflictException);
@@ -322,6 +331,7 @@ describe('ContractsService transactional signing', () => {
     await expect(
       service.signContract('consultant-1', 'contract-1', {
         party: 'consultant',
+        revision: 1,
         signer_name: 'Consultant One',
       }),
     ).rejects.toBeInstanceOf(ConflictException);
@@ -338,6 +348,7 @@ describe('ContractsService transactional signing', () => {
     await expect(
       service.signContract('consultant-1', 'contract-1', {
         party: 'consultant',
+        revision: 1,
         signer_name: 'Consultant One',
       }),
     ).rejects.toThrow(/hirer and the provider must be set/i);
@@ -352,6 +363,7 @@ describe('ContractsService transactional signing', () => {
     await expect(
       service.signContract('consultant-1', 'contract-1', {
         party: 'consultant',
+        revision: 1,
         signer_name: 'Consultant One',
       }),
     ).rejects.toThrow('SOME_NEW_TOKEN_NOBODY_MAPPED');

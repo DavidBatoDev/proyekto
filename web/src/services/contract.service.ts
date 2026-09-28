@@ -102,6 +102,8 @@ export interface Contract {
 	contract_family_id: string | null;
 	engagement_id: string | null;
 	version: number;
+	/** Counts changes to the terms; a signature is only valid for the one it was made on. */
+	revision: number;
 	contract_number: string | null;
 	status: ContractStatus;
 
@@ -467,6 +469,7 @@ export const contractService = {
 
 	async sign(
 		contractId: string,
+		revision: number,
 		party: "consultant" | "client",
 		signerName: string,
 		signatureUrl?: string | null,
@@ -477,6 +480,7 @@ export const contractService = {
 				`/api/contracts/${contractId}/sign`,
 				{
 					party,
+					revision,
 					signer_name: signerName,
 					...(signatureUrl ? { signature_url: signatureUrl } : {}),
 					...(placement

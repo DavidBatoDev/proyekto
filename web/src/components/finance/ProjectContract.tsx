@@ -25,6 +25,7 @@ import {
 	ListPlus,
 	Loader2,
 	Minus,
+	PenLine,
 	Plus,
 	Send,
 	Trash2,
@@ -145,6 +146,11 @@ export function ProjectContract({
 	const [zoom, setZoom] = useState(80);
 	const [fitSignal, setFitSignal] = useState(0);
 	const [signingLinkOpen, setSigningLinkOpen] = useState(false);
+	// Which contract the viewer chose to edit despite its signatures. Keyed by
+	// id so opening another contract starts locked again.
+	const [editDespiteSignatures, setEditDespiteSignatures] = useState<
+		string | null
+	>(null);
 	const [canvasStats, setCanvasStats] = useState<ContractCanvasStats>({
 		currentPage: 1,
 		pageCount: 1,
@@ -228,22 +234,35 @@ export function ProjectContract({
 	};
 	const signMutation = useMutation({
 		mutationFn: ({
+			revision,
 			party,
 			name,
 			signatureUrl,
 			placement,
 		}: {
+			revision: number;
 			party: "consultant" | "client";
 			name: string;
 			signatureUrl?: string | null;
 			placement?: SignaturePlacement;
 		}) =>
-			contractService.sign(contractId, party, name, signatureUrl, placement),
+			contractService.sign(
+				contractId,
+				revision,
+				party,
+				name,
+				signatureUrl,
+				placement,
+			),
 		onSuccess: () => {
 			toast.success("Signature recorded");
 			invalidateAll();
 		},
-		onError: (error: Error) => toast.error(error.message),
+		onError: (error: Error) => {
+			toast.error(error.message);
+			// A 409 means the terms moved under the signer; show them the new ones.
+			invalidateAll();
+		},
 	});
 	const placementMutation = useMutation({
 		mutationFn: ({
@@ -333,7 +352,31 @@ export function ProjectContract({
 		);
 	}
 
-	const editable = isConsultant && isEditableStatus(contract.status);
+	const signatures = signatureHolders(contract, user?.id);
+	// Every save voids every signature on the contract, and the editor
+	// autosaves, so a signed contract stays read-only until the viewer says
+	// they mean to change it.
+	const signatureLock =
+		isConsultant &&
+		isEditableStatus(contract.status) &&
+		signatures.length > 0 &&
+		editDespiteSignatures !== contract.id;
+	const editable =
+		isConsultant && isEditableStatus(contract.status) && !signatureLock;
+	const sectionsEditable = isConsultant && !signatureLock;
+	const unlockSignedContract = async () => {
+		const confirmed = await confirm({
+			title: "Change a signed contract?",
+			message: `Saving will remove ${signaturePhrase(signatures)}. ${
+				signatures.some((holder) => !holder.isViewer)
+					? "They will need to review the new terms and sign again."
+					: "You will need to sign again."
+			}`,
+			confirmLabel: "Edit and remove signature",
+			tone: "danger",
+		});
+		if (confirmed) setEditDespiteSignatures(contract.id);
+	};
 	const adjustZoom = (delta: number) =>
 		setZoom((current) => Math.max(30, Math.min(200, current + delta)));
 
@@ -422,6 +465,21 @@ export function ProjectContract({
 					</button>
 				</div>
 			</header>
+			{signatureLock && (
+				<div className="flex shrink-0 flex-wrap items-center justify-between gap-2 border-b border-amber-300/60 bg-amber-50 px-4 py-2 text-xs text-amber-900 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-200">
+					<span>
+						Signed by {signatures.map((holder) => holder.label).join(" and ")}.
+						Saving any change will remove {signaturePhrase(signatures)}.
+					</span>
+					<button
+						type="button"
+						onClick={() => void unlockSignedContract()}
+						className="inline-flex items-center gap-1.5 rounded-md border border-amber-400/70 px-2.5 py-1 font-semibold hover:bg-amber-100 dark:hover:bg-amber-500/20"
+					>
+						<PenLine className="h-3.5 w-3.5" /> Edit anyway
+					</button>
+				</div>
+			)}
 			<div className="grid min-h-0 flex-1 grid-cols-[minmax(0,7fr)_minmax(0,3fr)]">
 				<div className="min-w-0 overflow-hidden">
 					<ContractEditorCanvas
@@ -470,25 +528,28 @@ export function ProjectContract({
 						{activeStep === "parties" && (
 							<PartiesSection
 								contract={contract}
-								editable={isConsultant}
+								editable={sectionsEditable}
 								onDraftChange={setPreviewParties}
 							/>
 						)}
 						{activeStep === "terms" && (
 							<TermsSection
 								contract={contract}
-								editable={isConsultant}
+								editable={sectionsEditable}
 								onDraftChange={setPreviewTerms}
 								onAmended={(created) => onOpenContract?.(created.id)}
 							/>
 						)}
 						{activeStep === "services" && (
-							<ServicesSection contract={contract} editable={isConsultant} />
+							<ServicesSection
+								contract={contract}
+								editable={sectionsEditable}
+							/>
 						)}
 						{activeStep === "agreement" && (
 							<AgreementSection
 								contract={contract}
-								editable={isConsultant}
+								editable={sectionsEditable}
 								clauses={documentClauses}
 								onChange={updateDocumentClauses}
 								saveStatus={clausesSaveStatus}
@@ -530,6 +591,7 @@ export function ProjectContract({
 								}
 								onSign={(party, name, signatureUrl, placement) =>
 									signMutation.mutate({
+										revision: contract.revision,
 										party,
 										name,
 										signatureUrl,
@@ -2479,6 +2541,7 @@ function SignatureSection({
 function SignOnBehalfOf({ contract }: { contract: Contract }) {
 	const qc = useQueryClient();
 	const toast = useToast();
+	const confirm = useConfirm();
 	const user = useUser();
 	const seat = contract.positions.find((p) => p.user_id === user?.id);
 	const teamsQuery = useQuery({
@@ -2507,6 +2570,23 @@ function SignOnBehalfOf({ contract }: { contract: Contract }) {
 	});
 	const teams = teamsQuery.data ?? [];
 	if (!seat || teams.length === 0) return null;
+	// The team is printed on the agreement, so changing it voids the other
+	// party's signature just like any other edit.
+	const chooseTeam = async (teamId: string | null) => {
+		const others = signatureHolders(contract, user?.id).filter(
+			(holder) => !holder.isViewer,
+		);
+		if (others.length > 0) {
+			const confirmed = await confirm({
+				title: "Change who you sign for?",
+				message: `Saving will remove ${signaturePhrase(others)}. They will need to review the agreement and sign again.`,
+				confirmLabel: "Change and remove signature",
+				tone: "danger",
+			});
+			if (!confirmed) return;
+		}
+		mutation.mutate(teamId);
+	};
 
 	return (
 		<div className="space-y-1 rounded-md border border-border px-2.5 py-2">
@@ -2515,7 +2595,7 @@ function SignOnBehalfOf({ contract }: { contract: Contract }) {
 			</span>
 			<Dropdown
 				value={seat.team_id ?? ""}
-				onChange={(value) => mutation.mutate(value || null)}
+				onChange={(value) => void chooseTeam(value || null)}
 				disabled={mutation.isPending}
 				options={[
 					{ value: "", label: "Myself" },
@@ -2636,6 +2716,58 @@ function SignatureBlock({
 /* ── Activation ───────────────────────────────────────────────────────────── */
 
 /* ── Shared field primitives ──────────────────────────────────────────────── */
+
+interface SignatureHolder {
+	/** "Kim Reyes", or "you" for the viewer. */
+	label: string;
+	isViewer: boolean;
+}
+
+/** Who currently has a signature on the contract, seats first, legacy after. */
+function signatureHolders(
+	contract: Contract,
+	viewerId: string | undefined,
+): SignatureHolder[] {
+	if (contract.positions.length > 0) {
+		return contract.positions
+			.filter((seat) => seat.signed_at)
+			.map((seat) =>
+				seat.user_id === viewerId
+					? { label: "you", isViewer: true }
+					: { label: seat.display_name_snapshot, isViewer: false },
+			);
+	}
+	const viewerIsConsultant =
+		(contract.consultant_user_id ?? contract.created_by) === viewerId;
+	const holders: SignatureHolder[] = [];
+	if (contract.signed_by_consultant_at) {
+		holders.push(
+			viewerIsConsultant
+				? { label: "you", isViewer: true }
+				: {
+						label: contract.signed_by_consultant_name ?? "the consultant",
+						isViewer: false,
+					},
+		);
+	}
+	if (contract.signed_by_client_at) {
+		holders.push({
+			label: contract.signed_by_client_name ?? "the client",
+			isViewer: false,
+		});
+	}
+	return holders;
+}
+
+/** "Kim Reyes's signature", "your signature", "Kim Reyes's and your signatures". */
+function signaturePhrase(holders: SignatureHolder[]): string {
+	const owners = holders.map((holder) =>
+		holder.isViewer ? "your" : `${holder.label}'s`,
+	);
+	return owners.length === 1
+		? `${owners[0]} signature`
+		: `${owners.join(" and ")} signatures`;
+}
 
 function isEditableStatus(status: Contract["status"]): boolean {
 	return status === "draft" || status === "sent";

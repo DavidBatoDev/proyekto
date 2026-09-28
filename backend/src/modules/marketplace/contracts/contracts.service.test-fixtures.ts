@@ -13,6 +13,7 @@ export function contractFixture(
     contract_family_id: null,
     engagement_id: null,
     version: 1,
+    revision: 1,
     contract_number: 'CTR-001',
     status: 'sent',
     provider_kind: 'individual',

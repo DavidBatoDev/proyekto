@@ -75,6 +75,8 @@ export interface SignatureLinkSummary {
  */
 export interface PublicContractView {
   id: string;
+  /** Sent back on sign, so the signature is pinned to these terms. */
+  revision: number;
   contract_number: string | null;
   status: ContractRow['status'];
   relationship_kind: ContractRow['relationship_kind'];
@@ -320,6 +322,7 @@ export class ContractSignatureLinksService {
 
     const updated = await this.contracts.signAsTokenBearer(contract, {
       party: 'client',
+      revision: dto.revision,
       signer_name: dto.signer_name,
       signature_url: signatureUrl ?? undefined,
       signature_scale: dto.signature_scale,
@@ -470,6 +473,7 @@ export class ContractSignatureLinksService {
 
     return {
       id: contract.id,
+      revision: contract.revision,
       contract_number: contract.contract_number,
       status: contract.status,
       relationship_kind: contract.relationship_kind,
