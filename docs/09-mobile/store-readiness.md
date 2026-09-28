@@ -107,21 +107,50 @@ must be built with Xcode 26 or later using an SDK for iOS 26."* Plus an Apple De
 Program account, signing certificates, an App Store Connect API key, and a first TestFlight
 build.
 
-**Four things in the repo will fail or misbehave before signing is even reached.** None of
-them need a Mac to fix, and none are done:
+**The repo-side configuration is now done (2026-09-28)** — it needed no Mac, and the audit
+that produced it found six problems, not the four first listed:
 
-1. **No `PrivacyInfo.xcprivacy` anywhere.** Apple: since 12 Nov 2024, apps without a required
-   privacy manifest *"can't be submitted for review in App Store Connect."* The app ships
-   Firebase, which is on Apple's listed-SDK set, and Capacitor touches required-reason APIs.
-2. **No `.entitlements` file at all** (`find web/ios -name "*.entitlements"` → nothing), so
-   there is no Push Notifications entitlement and no `aps-environment`. §6 of
-   [`web/MOBILE.md`](../../web/MOBILE.md) lists these as manual Xcode steps never performed.
-3. **`Info.plist` is stock Capacitor** plus a display name. Missing `UIBackgroundModes` →
-   `remote-notification` (FCM background push will not work), `ITSAppUsesNonExemptEncryption`
-   (every upload otherwise stops to ask export-compliance questions), and `CFBundleURLTypes`
-   for the Google Sign-In callback — **without that URL scheme Google sign-in cannot work on
-   iOS at all**.
-4. **Version fields are placeholders**: `MARKETING_VERSION = 1.0`, `CURRENT_PROJECT_VERSION = 1`.
+| Was | Now |
+|---|---|
+| No privacy manifest → submission refused since 12 Nov 2024 | `App/PrivacyInfo.xcprivacy`, in Copy Bundle Resources |
+| No `.entitlements` at all → no push entitlement, no `aps-environment` | `App/App.entitlements`, wired via `CODE_SIGN_ENTITLEMENTS` on both configs |
+| No `UIBackgroundModes` → no background push | `remote-notification` declared |
+| No `ITSAppUsesNonExemptEncryption` → every upload re-asks export compliance | declared `false` |
+| `AppDelegate` never forwarded the APNs token | the three methods `@capacitor-firebase/messaging` requires |
+| **`GoogleService-Info.plist` was not in the Xcode target at all** | added to Copy Bundle Resources |
+| `MARKETING_VERSION 1.0` / `CURRENT_PROJECT_VERSION 1` | `0.7.0` / `7000`, matching the Android `versionCode` scheme |
+
+The `GoogleService-Info.plist` one is worth noting: the file sat on disk but had no
+`PBXFileReference`, so it would never have reached the bundle and Firebase would have failed
+to initialise at runtime. `web/MOBILE.md` §3 says "add to the Xcode target"; that had not been
+done.
+
+`npx cap sync ios` parses the rewritten project cleanly, and all four plists validate as XML.
+None of it is compile-verified — that needs the Mac.
+
+**Two things still block Google sign-in on iOS, and both are console work:**
+
+1. **There is no iOS OAuth client.** The committed `GoogleService-Info.plist` has only the
+   messaging keys — no `CLIENT_ID`, no `REVERSED_CLIENT_ID`. Create an iOS OAuth client for
+   `tech.proyekto.app` in the Google Cloud console; that regenerates the file with both.
+2. Then set **`VITE_GOOGLE_IOS_CLIENT_ID`** (the code reads it already — see `IOS_CLIENT_ID`
+   in `web/src/services/googleAuth.ts`) and add the URL scheme to `ios/App/App/Info.plist`:
+
+   ```xml
+   <key>CFBundleURLTypes</key>
+   <array>
+     <dict>
+       <key>CFBundleURLSchemes</key>
+       <array><string>PASTE_REVERSED_CLIENT_ID_HERE</string></array>
+     </dict>
+   </array>
+   ```
+
+   No placeholder was committed on purpose: a wrong URL scheme fails exactly like a missing
+   one, and a committed placeholder is easy to ship by accident.
+   `isNativeGoogleAuthAvailable()` returns false on iOS until the env var is set, so today the
+   button correctly falls back to the web redirect flow rather than opening a sheet that
+   cannot complete.
 
 ### 5. Sign in with Apple — assess before the iOS build
 The app offers email/password **and** native Google sign-in

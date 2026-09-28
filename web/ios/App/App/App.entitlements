@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  Capabilities for the Proyekto iOS app.
+
+  Until this file existed there was no Push Notifications entitlement and no
+  aps-environment at all, so FCM could never have received a device token no
+  matter what the JavaScript did. web/MOBILE.md section 6 listed adding the
+  capability as a manual Xcode step that was never performed.
+
+  aps-environment stays "development". Xcode rewrites it to "production" when it
+  signs a distribution build against an App Store provisioning profile, so
+  hardcoding "production" here breaks local and TestFlight debugging without
+  buying anything.
+-->
+<plist version="1.0">
+<dict>
+	<key>aps-environment</key>
+	<string>development</string>
+</dict>
+</plist>
