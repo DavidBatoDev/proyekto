@@ -116,9 +116,8 @@ function harness(options: {
     [],
   );
   const enrollment = table({ data: null, error: null }, []);
-  (enrollment as { then: unknown }).then = (
-    resolve: (value: object) => void,
-  ) => resolve({ data: null, count: 1, error: null });
+  (enrollment as { then: unknown }).then = (resolve: (value: object) => void) =>
+    resolve({ data: null, count: 1, error: null });
   const supabase = {
     from: jest.fn((name: string) => {
       if (name === 'contracts') return contracts;
@@ -143,7 +142,12 @@ describe('ContractsService — the team a seat signs on behalf of', () => {
   it('refilling a talent contract rewrites the consultant, never the talent', async () => {
     const { service, contractUpdates } = harness({});
 
-    await service.reseedProvider('consultant-1', 'contract-1', 'agency', 'team-1');
+    await service.reseedProvider(
+      'consultant-1',
+      'contract-1',
+      'agency',
+      'team-1',
+    );
 
     // The consultant is the HIRER on a talent contract, so only `client_*`
     // may change. `provider_*` is the talent's block and must stay untouched.
@@ -204,11 +208,24 @@ describe('ContractsService — the team a seat signs on behalf of', () => {
   });
 
   it('signing as yourself clears the team and the company fields', async () => {
-    const { service, contractUpdates, positionUpdates } = harness({});
+    // Start from a company block, so switching to "myself" is a real change.
+    const { service, contractUpdates, positionUpdates } = harness({
+      contract: contractFixture({
+        relationship_kind: 'talent_services',
+        status: 'draft',
+        client_kind: 'company',
+        client_name: 'JC Studio Inc.',
+        client_tin: '617-100-003',
+        client_contact_name: 'Juan Carlos',
+      }),
+    });
 
     await service.setSeatTeam('consultant-1', 'contract-1', 'hirer', null);
 
-    expect(positionUpdates[0]).toEqual({ team_id: null, team_name_snapshot: null });
+    expect(positionUpdates[0]).toEqual({
+      team_id: null,
+      team_name_snapshot: null,
+    });
     expect(contractUpdates[0]).toMatchObject({
       client_kind: 'individual',
       client_name: 'Juan Carlos',

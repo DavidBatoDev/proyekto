@@ -321,6 +321,47 @@ function signingError(raw: string | undefined) {
   return new BadRequestException(raw ?? 'Failed to sign contract.');
 }
 
+/**
+ * Whether a value about to be written equals what is stored, ignoring the
+ * differences a round trip introduces: jsonb key order, numeric columns read
+ * back as strings, and null versus undefined.
+ */
+function sameStoredValue(stored: unknown, next: unknown): boolean {
+  if (stored == null || next == null) return stored == null && next == null;
+  const asNumber = (value: unknown) =>
+    typeof value === 'number'
+      ? value
+      : typeof value === 'string' &&
+          value.trim() !== '' &&
+          !Number.isNaN(Number(value))
+        ? Number(value)
+        : null;
+  if (typeof stored === 'number' || typeof next === 'number') {
+    const storedNumber = asNumber(stored);
+    const nextNumber = asNumber(next);
+    return (
+      storedNumber !== null &&
+      nextNumber !== null &&
+      storedNumber === nextNumber
+    );
+  }
+  if (Array.isArray(stored) || Array.isArray(next)) {
+    return (
+      Array.isArray(stored) &&
+      Array.isArray(next) &&
+      stored.length === next.length &&
+      stored.every((item, index) => sameStoredValue(item, next[index]))
+    );
+  }
+  if (typeof stored === 'object' && typeof next === 'object') {
+    const a = stored as Record<string, unknown>;
+    const b = next as Record<string, unknown>;
+    const keys = new Set([...Object.keys(a), ...Object.keys(b)]);
+    return [...keys].every((key) => sameStoredValue(a[key], b[key]));
+  }
+  return stored === next;
+}
+
 /** The legacy signature columns, emptied whenever the terms change. */
 const CLEARED_LEGACY_SIGNATURES = {
   signed_by_consultant_at: null,
@@ -622,8 +663,20 @@ export class ContractsService {
    */
   private async commitTermsChange(
     existing: ContractRow,
-    patch: Record<string, unknown>,
+    requested: Record<string, unknown>,
   ): Promise<ContractRow> {
+    // Editors autosave, and some resend values they did not change (the clause
+    // editor does on load). A save that changes nothing must not void anyone's
+    // signature, so only fields that actually differ count as a change.
+    const current = existing as unknown as Record<string, unknown>;
+    const patch = Object.fromEntries(
+      Object.entries(requested).filter(
+        ([key, value]) => !sameStoredValue(current[key], value),
+      ),
+    );
+    if (Object.keys(patch).length === 0) {
+      return existing;
+    }
     const nextRevision = existing.revision + 1;
     // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
     const { data, error } = await this.supabase
@@ -1813,7 +1866,8 @@ export class ContractsService {
 
     const consultantSeat: 'hirer' | 'provider' =
       relationshipKind === 'client_services' ? 'provider' : 'hirer';
-    const counterpartySeat = consultantSeat === 'provider' ? 'hirer' : 'provider';
+    const counterpartySeat =
+      consultantSeat === 'provider' ? 'hirer' : 'provider';
     const blocks = {
       ...this.identityPatch(counterpartySeat, counterparty, null),
       ...this.identityPatch(consultantSeat, consultant, consultantTeam),
@@ -1873,7 +1927,9 @@ export class ContractsService {
   ): Promise<TeamIdentity> {
     const { data, error } = await this.supabase
       .from('teams')
-      .select('id, name, owner_id, legal_name, billing_address, tax_id, billing_email')
+      .select(
+        'id, name, owner_id, legal_name, billing_address, tax_id, billing_email',
+      )
       .eq('id', teamId)
       .maybeSingle();
     if (error) throw new BadRequestException(error.message);
@@ -1918,7 +1974,8 @@ export class ContractsService {
     if (requested) return this.ownedTeamIdentity(callerId, requested);
     if (providerKind === 'individual') return null;
     const owned = await this.listOwnedTeams(callerId);
-    if (owned.length === 1) return this.ownedTeamIdentity(callerId, owned[0].id);
+    if (owned.length === 1)
+      return this.ownedTeamIdentity(callerId, owned[0].id);
     if (projectId && owned.length > 1) {
       const { data: project } = await this.supabase
         .from('projects')
@@ -1967,7 +2024,10 @@ export class ContractsService {
     const team = teamId ? await this.ownedTeamIdentity(callerId, teamId) : null;
     const { error: seatError } = await this.supabase
       .from('contract_positions')
-      .update({ team_id: team?.id ?? null, team_name_snapshot: team?.name ?? null })
+      .update({
+        team_id: team?.id ?? null,
+        team_name_snapshot: team?.name ?? null,
+      })
       .eq('contract_id', contractId)
       .eq('position', position);
     if (seatError) throw new BadRequestException(seatError.message);
@@ -2159,8 +2219,14 @@ export class ContractsService {
       const chosen =
         teamId ??
         seat.team_id ??
-        (await this.resolveCreatorTeam(callerId, existing.project_id, undefined, 'agency'))
-          ?.id;
+        (
+          await this.resolveCreatorTeam(
+            callerId,
+            existing.project_id,
+            undefined,
+            'agency',
+          )
+        )?.id;
       if (!chosen) {
         throw new BadRequestException(
           'Choose which of your teams you sign on behalf of.',

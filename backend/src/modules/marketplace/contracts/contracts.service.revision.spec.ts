@@ -102,7 +102,37 @@ describe('ContractsService — signatures are pinned to a revision', () => {
       }),
     );
     // Guarded on the revision the caller read.
-    expect(writes.calls).toContainEqual({ method: 'eq', args: ['revision', 4] });
+    expect(writes.calls).toContainEqual({
+      method: 'eq',
+      args: ['revision', 4],
+    });
+  });
+
+  it('a save that changes nothing leaves the revision and every signature alone', async () => {
+    const clauses = [
+      { key: 'parties', title: 'Parties', body: 'Between us.', position: 0 },
+    ];
+    const contract = contractFixture({
+      revision: 6,
+      recurring_fee: 1300,
+      clauses: clauses as never,
+      signed_by_client_at: '2026-09-28T12:02:26.826Z',
+    });
+    const { service, writes, positions } = harness({ contract });
+
+    // What the clause editor sends on load: the same clauses, keys reordered,
+    // plus the fee echoed back as a string.
+    await service.updateContract('consultant-1', contract.id, {
+      clauses: [
+        { position: 0, body: 'Between us.', title: 'Parties', key: 'parties' },
+      ] as never,
+      recurring_fee: '1300' as never,
+    });
+
+    expect(writes.calls.some((call) => call.method === 'update')).toBe(false);
+    expect(positions.calls.some((call) => call.method === 'update')).toBe(
+      false,
+    );
   });
 
   it('refuses an edit when someone else changed the contract first', async () => {

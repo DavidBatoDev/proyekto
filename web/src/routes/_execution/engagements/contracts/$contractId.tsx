@@ -1,3 +1,4 @@
+import { useQuery } from "@tanstack/react-query";
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { ProjectContract } from "@/components/finance/ProjectContract";
 import {
@@ -10,6 +11,8 @@ import {
 	validateContractStep,
 } from "@/components/finance/portfolio/financeSearch";
 import { NotFoundRoute } from "@/components/layout/NotFoundRoute";
+import { type Contract, contractService } from "@/services/contract.service";
+import { useUser } from "@/stores/authStore";
 
 /**
  * The contract document editor — parties, terms, services, agreement,
@@ -32,16 +35,28 @@ function ContractEditorPage() {
 	const { contractId } = Route.useParams();
 	const { section } = Route.useSearch();
 	const navigate = useNavigate();
+	const user = useUser();
+	const isContractId = UUID_RE.test(contractId);
+	// Same key the editor uses, so this shares its request rather than adding one.
+	const contractQuery = useQuery({
+		queryKey: ["contract", contractId],
+		queryFn: () => contractService.getById(contractId),
+		enabled: isContractId,
+	});
 
 	// The dynamic segment is the router's last resort under /engagements/finance,
 	// so any junk path lands here. A param that is not shaped like an id is a
 	// 404, not a contract — without this, the contract query would hold a
 	// spinner forever retrying an id that can never exist.
-	if (!UUID_RE.test(contractId)) return <NotFoundRoute />;
+	if (!isContractId) return <NotFoundRoute />;
 
 	return (
-		<div className="app-shell-bg min-h-full">
-			<div className="px-5 pt-4 md:px-8 md:pt-5">
+		// One column exactly the height below the app bar: the breadcrumb takes
+		// what it needs and the editor fills the rest, so its footer stays on
+		// screen.
+		<div className="app-shell-bg flex h-[calc(100dvh-3.5rem-var(--safe-top))] flex-col">
+			{/* White like the editor header below it, so the two read as one bar. */}
+			<div className="shrink-0 bg-card px-5 pt-3 md:px-8">
 				<FinanceBreadcrumbs
 					items={[
 						<Link
@@ -58,7 +73,13 @@ function ContractEditorPage() {
 						>
 							Contracts
 						</Link>,
-						<FinanceCurrentCrumb key="contract">Contract</FinanceCurrentCrumb>,
+						<FinanceCurrentCrumb key="contract">
+							<span className="inline-block max-w-[28rem] truncate align-bottom">
+								{contractQuery.data
+									? contractCrumbLabel(contractQuery.data, user?.id)
+									: "Contract"}
+							</span>
+						</FinanceCurrentCrumb>,
 					]}
 				/>
 			</div>
@@ -77,4 +98,26 @@ function ContractEditorPage() {
 			/>
 		</div>
 	);
+}
+
+/**
+ * The contract's name as the viewer would say it: its number (or document
+ * title when it has none) and who it is with, from the viewer's side.
+ */
+function contractCrumbLabel(
+	contract: Contract,
+	viewerId: string | undefined,
+): string {
+	const title =
+		contract.contract_number ?? contract.document_title ?? "Service Agreement";
+	const viewerIsProvider = contract.positions.some(
+		(seat) => seat.user_id === viewerId && seat.position === "provider",
+	);
+	const counterparty = viewerIsProvider
+		? contract.client_name
+		: contract.provider_name;
+	const version = contract.version > 1 ? ` · v${contract.version}` : "";
+	return counterparty
+		? `${title} with ${counterparty}${version}`
+		: `${title}${version}`;
 }

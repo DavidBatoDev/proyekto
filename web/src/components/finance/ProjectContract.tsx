@@ -204,7 +204,13 @@ export function ProjectContract({
 		},
 		{
 			enabled: Boolean(
-				contract && isConsultant && isEditableStatus(contract.status),
+				contract &&
+					isConsultant &&
+					isEditableStatus(contract.status) &&
+					// Same lock as the other editors: never autosave over a signature
+					// the viewer has not agreed to remove.
+					(signatureHolders(contract, user?.id).length === 0 ||
+						editDespiteSignatures === contract.id),
 			),
 			onError: (error, failedClauses) => {
 				if (
@@ -323,14 +329,14 @@ export function ProjectContract({
 		(contract?.project_id && projectQuery.isPending)
 	) {
 		return (
-			<div className="flex h-[calc(100dvh-3.5rem-var(--safe-top))] items-center justify-center">
+			<div className="flex min-h-0 flex-1 items-center justify-center">
 				<Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
 			</div>
 		);
 	}
 	if (contractQuery.isError || !contract) {
 		return (
-			<div className="flex h-[calc(100dvh-3.5rem-var(--safe-top))] items-center justify-center p-6">
+			<div className="flex min-h-0 flex-1 items-center justify-center p-6">
 				<AppSurfaceCard className="max-w-md p-8 text-center">
 					<FileSignature className="mx-auto h-10 w-10 text-muted-foreground" />
 					<h1 className="mt-3 text-base font-semibold text-foreground">
@@ -381,7 +387,7 @@ export function ProjectContract({
 		setZoom((current) => Math.max(30, Math.min(200, current + delta)));
 
 	return (
-		<div className="flex h-[calc(100dvh-3.5rem-var(--safe-top))] min-h-[520px] flex-col overflow-hidden bg-background">
+		<div className="flex min-h-[520px] flex-1 flex-col overflow-hidden bg-background">
 			<header className="flex h-14 shrink-0 items-center justify-between gap-3 border-b border-border bg-card px-3 shadow-sm">
 				<div className="flex min-w-0 items-center gap-2">
 					<button
