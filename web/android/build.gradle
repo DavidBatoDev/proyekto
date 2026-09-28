@@ -7,8 +7,8 @@ buildscript {
         mavenCentral()
     }
     dependencies {
-        classpath 'com.android.tools.build:gradle:8.7.2'
-        classpath 'com.google.gms:google-services:4.4.2'
+        classpath 'com.android.tools.build:gradle:8.13.0'
+        classpath 'com.google.gms:google-services:4.4.4'
 
         // NOTE: Do not place your application dependencies here; they belong
         // in the individual module build.gradle files
@@ -23,24 +23,18 @@ allprojects {
         mavenCentral()
     }
 
-    // Pin androidx.browser for @capgo/capacitor-social-login.
+    // The androidx.browser:browser:1.4.0 force that used to live here is gone.
     //
-    // The plugin's Apple provider declares androidx.browser:browser:1.9.0 while
-    // its Google provider pulls androidbrowserhelper:2.5.0, which pins
-    // {strictly 1.4.0}. With Apple disabled (capacitor.config.ts — we only ship
-    // Google) that 1.9.0 stays on the COMPILE classpath as a compileOnly dep, so
-    // compile and runtime disagree and the build dies with "Cannot find a version
-    // of androidx.browser:browser that satisfies the version constraints".
+    // It existed because @capgo/capacitor-social-login's Apple provider declares
+    // androidx.browser 1.9.0 while its Google provider pulls
+    // androidbrowserhelper:2.5.0, which pins {strictly 1.4.0} — and 1.9.0 needs
+    // AGP 8.9.1 / compileSdk 36, which this project did not have. Its own comment
+    // said to revisit once AGP was upgraded.
     //
-    // Enabling Apple is not the escape hatch: 1.9.0 requires AGP 8.9.1 and
-    // compileSdk 36, and this project is on AGP 8.7.2 / compileSdk 35. So force
-    // the version androidbrowserhelper actually wants. Revisit when AGP is
-    // upgraded.
-    configurations.all {
-        resolutionStrategy {
-            force 'androidx.browser:browser:1.4.0'
-        }
-    }
+    // Capacitor 8 took us to AGP 8.13.0 and compileSdk 36, so the constraint the
+    // force worked around no longer applies and Gradle can resolve it normally.
+    // If "Cannot find a version of androidx.browser:browser that satisfies the
+    // version constraints" ever comes back, this is the history.
 }
 
 task clean(type: Delete) {

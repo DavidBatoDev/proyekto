@@ -1,11 +1,12 @@
 # Store readiness — Google Play & App Store
 
-> **Last updated:** 2026-09-23 · **Status:** partly built — items 1 and 2 are done, the rest are open
+> **Last updated:** 2026-09-28 · **Status:** partly built — items 1-3 are done, 4-7 are open
 
 What the two stores will want before Proyekto can ship, checked against the repo on
-2026-09-23. Three things are now **done**: the commerce/marketplace gate (see
+2026-09-28. Four things are now **done**: the commerce/marketplace gate (see
 [Routing & Access → What the installed app carries](../04-web/routing-and-access.md#what-the-installed-app-carries)),
-the legal pages (item 1), and in-app account deletion (item 2). Items 3-6 are open.
+the legal pages (item 1), in-app account deletion (item 2), and the Android API 36 target
+(item 3). Items 4-7 are open, and item 4 (iOS) is the long pole.
 
 ## The business model, and why it is allowed
 
@@ -66,22 +67,70 @@ expires (`jwt_expiry = 3600`), because `SupabaseAuthGuard` verifies JWTs locally
 database round-trip. A Redis deny-list (`RevokedUsersService`) closes this to ≤60s per
 instance; the structural fix is lowering `jwt_expiry`, which is a project-config change.
 
-### 3. iOS has never been built — **the long pole for the App Store**
-`web/ios/` is scaffolded (`App.xcworkspace`, Podfile, Capacitor plugins) but §6 of
-[`web/MOBILE.md`](../../web/MOBILE.md) lists the signing, Push Notifications and Background
-Modes capabilities as **manual Xcode steps on a Mac**, and there is no iOS workflow in
-`.github/workflows/` (Android only, `android-release.yml`). Needs: an Apple Developer
-Program account, a Mac or a macOS runner, signing certificates, an App Store Connect API key,
-and a first TestFlight build.
+### 3. ~~Android targeted API 35, Play requires 36~~ — **DONE 2026-09-28**
+Google Play, since 31 Aug 2026: *"New apps and app updates must target Android 16 (API
+level 36) or higher to be submitted to Google Play."* The project was on `targetSdkVersion
+= 35`, so a new-app submission would have been rejected outright.
 
-### 4. Sign in with Apple — assess before the iOS build
+Fixed by the **Capacitor 7 → 8** upgrade, which is what carries Android 16:
+
+| | was | now |
+|---|---|---|
+| `@capacitor/*` and all 6 plugins | 7.x | 8.x |
+| `minSdk` / `compileSdk` / `targetSdk` | 23 / 35 / 35 | 24 / 36 / 36 |
+| Android Gradle Plugin | 8.7.2 | 8.13.0 |
+| Gradle | 8.11.1 | 8.14.3 |
+| `com.google.gms:google-services` | 4.4.2 | 4.4.4 |
+| iOS deployment target (Capacitor 8 floor) | 14.0 | 15.0 |
+| `firebase` JS SDK (peer of the messaging plugin) | 11.x | 12.x |
+
+Verified by a real local build: `assembleDebug` succeeds and the APK reports
+`targetSdkVersion='36'`, `compileSdkVersion='36'`, `platformBuildVersionName='16'`.
+
+Two follow-ons worth knowing:
+
+- The `androidx.browser:browser:1.4.0` **resolution force in `android/build.gradle` is
+  gone.** Its own comment said to revisit once AGP was upgraded — 1.9.0 needed AGP 8.9.1 +
+  compileSdk 36, which we now have, and it resolves cleanly.
+- **`native_build_min` in `mobile-ota-deploy.yml` went from `1` to `7000`.** A Capacitor 8
+  web bundle must not be served over the air to a Capacitor 7 shell. See the comment at the
+  top of that workflow; it also means the first Capacitor 8 store release has to be
+  **≥ v0.7.0**.
+
+### 4. iOS has never been built — **the long pole for the App Store**
+`web/ios/` is scaffolded (`App.xcworkspace`, Podfile, Capacitor plugins, and
+`GoogleService-Info.plist` is present) but nothing has ever been compiled. There is no iOS
+workflow in `.github/workflows/` — Android only.
+
+Needs a Mac: Apple requires, since 28 Apr 2026, that *"Apps uploaded to App Store Connect
+must be built with Xcode 26 or later using an SDK for iOS 26."* Plus an Apple Developer
+Program account, signing certificates, an App Store Connect API key, and a first TestFlight
+build.
+
+**Four things in the repo will fail or misbehave before signing is even reached.** None of
+them need a Mac to fix, and none are done:
+
+1. **No `PrivacyInfo.xcprivacy` anywhere.** Apple: since 12 Nov 2024, apps without a required
+   privacy manifest *"can't be submitted for review in App Store Connect."* The app ships
+   Firebase, which is on Apple's listed-SDK set, and Capacitor touches required-reason APIs.
+2. **No `.entitlements` file at all** (`find web/ios -name "*.entitlements"` → nothing), so
+   there is no Push Notifications entitlement and no `aps-environment`. §6 of
+   [`web/MOBILE.md`](../../web/MOBILE.md) lists these as manual Xcode steps never performed.
+3. **`Info.plist` is stock Capacitor** plus a display name. Missing `UIBackgroundModes` →
+   `remote-notification` (FCM background push will not work), `ITSAppUsesNonExemptEncryption`
+   (every upload otherwise stops to ask export-compliance questions), and `CFBundleURLTypes`
+   for the Google Sign-In callback — **without that URL scheme Google sign-in cannot work on
+   iOS at all**.
+4. **Version fields are placeholders**: `MARKETING_VERSION = 1.0`, `CURRENT_PROJECT_VERSION = 1`.
+
+### 5. Sign in with Apple — assess before the iOS build
 The app offers email/password **and** native Google sign-in
 (`@capgo/capacitor-social-login`, `web/src/services/googleAuth.ts`). Apple's requirement
 bites when a third-party login is the *only* option; an equivalent first-party email/password
 path normally satisfies it. Worth confirming against the current guideline text before
 submitting rather than after a rejection.
 
-### 5. Publishing is still dark
+### 6. Publishing is still dark
 Both switches ship off, by design:
 - `PLAY_PUBLISH_ENABLED` gates the Play upload step in `android-release.yml` (`track:
   internal`, `status: draft`), and needs `PLAY_SERVICE_ACCOUNT_JSON`.
@@ -90,7 +139,7 @@ Both switches ship off, by design:
   workflow's comments.
 - `OTA_PUBLISH_ENABLED` gates the OTA bundle publish.
 
-### 6. Data Safety / App Privacy declarations
+### 7. Data Safety / App Privacy declarations
 Needs an inventory of what leaves the device: FCM push tokens (`device_tokens`), the Capgo
 OTA check/stats calls (`api.proyekto.tech/api/mobile-updates/*`, which report app version and
 device id), Supabase auth, uploads to R2, and anything the AI agent receives.
