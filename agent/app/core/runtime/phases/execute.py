@@ -570,6 +570,8 @@ def _is_stale_revision_409(exc: HTTPException) -> bool:
 
 
 def _is_transient(exc: HTTPException) -> bool:
+    # A 403 is final, including `plan_limit` (the workspace's plan refuses the
+    # write): it is recorded with that code and never retried.
     return exc.status_code >= 500 or exc.status_code in {408, 429}
 
 
@@ -861,6 +863,21 @@ async def _preview_once(ctx: Any, batch: RunBatch, token: str | None, base: int 
     return {'token': token_after if isinstance(token_after, str) and token_after.strip() else None}
 
 
+def _plan_limit_failure(issues: list[dict[str, Any]]) -> dict[str, Any] | None:
+    """A PLAN_LIMIT preview issue means the workspace's plan refuses the
+    change (the per-roadmap node limit). No repair can fix it without dropping
+    items the user asked for, so the batch fails as ``plan_limit`` with the
+    backend's readable message and no model turn is spent."""
+    for issue in issues:
+        if str(issue.get('code') or '').strip().upper() == 'PLAN_LIMIT':
+            return {
+                'failed': True,
+                'code': 'plan_limit',
+                'message': str(issue.get('message') or GENERIC_COMMIT_ERROR),
+            }
+    return None
+
+
 def _issues_text(issues: list[dict[str, Any]]) -> str:
     lines = []
     for issue in issues[:10]:
@@ -884,6 +901,9 @@ async def _preview_with_repair(ctx: Any, session: AgentSession, run_state: Any, 
     issues = result.get('issues') or []
     if not issues:
         return result
+    plan_limit = _plan_limit_failure(issues)
+    if plan_limit is not None:
+        return plan_limit
     repaired = _repair(ctx, session, run_state, batch, issues)
     if not repaired:
         return {
@@ -896,6 +916,9 @@ async def _preview_with_repair(ctx: Any, session: AgentSession, run_state: Any, 
         return result
     issues = result.get('issues') or []
     if issues:
+        plan_limit = _plan_limit_failure(issues)
+        if plan_limit is not None:
+            return plan_limit
         return {
             'failed': True,
             'code': 'VALIDATION_FAILED',

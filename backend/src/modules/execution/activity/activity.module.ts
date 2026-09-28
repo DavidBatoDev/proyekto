@@ -1,5 +1,6 @@
 import { Module } from '@nestjs/common';
 import { SupabaseModule } from '../../../config/supabase.module';
+import { EntitlementsCoreModule } from '../../shared/entitlements/entitlements-core.module';
 import { AuthorizationModule } from '../projects/authorization/authorization.module';
 import { ActivityController } from './activity.controller';
 import { ActivityService } from './activity.service';
@@ -12,9 +13,11 @@ import { ActivityService } from './activity.service';
  * ProjectAuthorizationService.assertPermission is the whole dependency, and
  * ProjectsService.assertProjectPermission would add a getProjectOrThrow query
  * and turn a non-member's 403 into a 404.
+ *
+ * EntitlementsCoreModule supplies the plan's retention window.
  */
 @Module({
-  imports: [SupabaseModule, AuthorizationModule],
+  imports: [SupabaseModule, AuthorizationModule, EntitlementsCoreModule],
   controllers: [ActivityController],
   providers: [ActivityService],
 })

@@ -257,7 +257,10 @@ export type RoadmapValidationIssueCode =
   | 'OUT_OF_SCOPE_MUTATION'
   // A field the allow-list accepts carries a value of the wrong shape (e.g. a
   // task `assignee_ids` patch that is not an array of user ids).
-  | 'INVALID_FIELD_VALUE';
+  | 'INVALID_FIELD_VALUE'
+  // The change would take the roadmap past its workspace plan's per-roadmap
+  // node limit (grandfathered: an over-limit roadmap may still shrink).
+  | 'PLAN_LIMIT';
 
 export class RoadmapValidationIssueDto {
   @IsEnum([
@@ -273,6 +276,7 @@ export class RoadmapValidationIssueDto {
     'STALE_REVISION',
     'OUT_OF_SCOPE_MUTATION',
     'INVALID_FIELD_VALUE',
+    'PLAN_LIMIT',
   ])
   code: RoadmapValidationIssueCode;
 

@@ -7,6 +7,7 @@ import * as jwt from 'jsonwebtoken';
 import { McpAuthGuard, McpAuthenticatedRequest } from './mcp-auth.guard';
 import { McpTokenService } from './mcp-token.service';
 import { McpCapabilitiesService } from './mcp-capabilities.service';
+import type { RevokedUsersService } from '../../../common/auth/revoked-users.service';
 import { MCP_READ_SCOPES, MCP_WRITE_SCOPES } from './mcp-scopes';
 import { OAuthConfigService } from './oauth/oauth-config.service';
 import { OAuthJwtService } from './oauth/oauth-jwt.service';
@@ -35,7 +36,7 @@ function makeGuard(
   enabled: boolean,
   resolveToken: jest.Mock,
   oauthEnabled = false,
-): { guard: McpAuthGuard; oauthJwt: OAuthJwtService } {
+): { guard: McpAuthGuard; oauthJwt: OAuthJwtService; isRevoked: jest.Mock } {
   const values: Record<string, string | undefined> = {
     MCP_ENABLED: enabled ? 'true' : undefined,
     MCP_OAUTH_ENABLED: oauthEnabled ? 'true' : undefined,
@@ -54,9 +55,18 @@ function makeGuard(
     new McpCapabilitiesService(config),
   );
   const oauthJwt = new OAuthJwtService(oauthConfig);
+  const isRevoked = jest.fn().mockResolvedValue(false);
+  const revokedUsers = { isRevoked } as unknown as RevokedUsersService;
   return {
-    guard: new McpAuthGuard(config, tokens, oauthConfig, oauthJwt),
+    guard: new McpAuthGuard(
+      config,
+      tokens,
+      oauthConfig,
+      oauthJwt,
+      revokedUsers,
+    ),
     oauthJwt,
+    isRevoked,
   };
 }
 
@@ -199,6 +209,44 @@ describe('McpAuthGuard', () => {
         UnauthorizedException,
       );
       expect(setHeader).not.toHaveBeenCalled();
+    });
+  });
+
+  /**
+   * MCP OAuth access tokens are self-signed and stateless — deleting the
+   * mcp_oauth_grants row does not invalidate one already in a host's hands. The
+   * deny-list is the only thing that stops it, so it needs its own test.
+   */
+  describe('deleted accounts', () => {
+    it('rejects a deleted user holding an OAuth access token', async () => {
+      const { guard, oauthJwt, isRevoked } = makeGuard(true, jest.fn(), true);
+      isRevoked.mockResolvedValue(true);
+      const { token } = oauthJwt.mintAccessToken({
+        userId: 'gone-1',
+        clientId: 'https://claude.ai/oauth/claude-code-client-metadata',
+        scopes: ['roadmaps:read'],
+        resource: RESOURCE,
+      });
+      const { ctx } = contextFor({ authorization: `Bearer ${token}` });
+
+      await expect(guard.canActivate(ctx)).rejects.toBeInstanceOf(
+        UnauthorizedException,
+      );
+      expect(isRevoked).toHaveBeenCalledWith('gone-1');
+    });
+
+    it('rejects a deleted user holding a Supabase session token', async () => {
+      const { guard, isRevoked } = makeGuard(true, jest.fn(), false);
+      isRevoked.mockResolvedValue(true);
+      const token = jwt.sign({ sub: 'gone-2' }, JWT_SECRET, {
+        algorithm: 'HS256',
+      });
+      const { ctx } = contextFor({ authorization: `Bearer ${token}` });
+
+      await expect(guard.canActivate(ctx)).rejects.toBeInstanceOf(
+        UnauthorizedException,
+      );
+      expect(isRevoked).toHaveBeenCalledWith('gone-2');
     });
   });
 });

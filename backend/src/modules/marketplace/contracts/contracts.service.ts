@@ -110,7 +110,7 @@ export interface ContractRow {
   client_email: string | null;
   client_user_id: string | null;
   client_kind: ClientKind;
-  /** Chosen by kind at creation and never recomputed — see migration 20260923090000. */
+  /** Chosen by kind at creation and never recomputed — see migration 20260923090300_contract_seat_teams. */
   document_title: string;
 
   currency: string;

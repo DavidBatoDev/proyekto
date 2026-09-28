@@ -7,6 +7,7 @@ import type {
 } from '../dto/patch-roadmap.dto';
 import { RoadmapJsonPatchProcessor } from '../patch/roadmap-json-patch.processor';
 import { RoadmapPatchService } from './roadmap-patch.service';
+import { allowAllPlanLimits } from './__roadmap-plan-limits-test-kit-spec';
 
 /**
  * Task assignees on the legacy full-roadmap paths (POST /roadmaps/full and
@@ -93,6 +94,7 @@ describe('RoadmapPatchService task assignees', () => {
         assertProjectRoadmapPermission: jest.fn().mockResolvedValue({}),
       } as never,
       { publishRoadmapChange: jest.fn() } as never,
+      allowAllPlanLimits(),
     );
     return { service, patchRepo, roadmapsRepo };
   };

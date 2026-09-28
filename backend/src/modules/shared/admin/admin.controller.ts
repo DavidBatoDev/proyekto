@@ -13,6 +13,7 @@ import {
 import { AdminService } from './admin.service';
 import { SupabaseAuthGuard } from '../../../common/guards/supabase-auth.guard';
 import { AdminGuard } from '../../../common/guards/admin.guard';
+import { SuperAdminGuard } from '../../../common/guards/super-admin.guard';
 import { CurrentUser } from '../../../common/decorators/current-user.decorator';
 import type { AuthenticatedUser } from '../../../common/interfaces/authenticated-request.interface';
 import {
@@ -118,15 +119,19 @@ export class AdminController {
     return this.adminService.listAdmins();
   }
 
+  /**
+   * Super admins only. With AdminGuard alone a support admin could grant
+   * themselves super_admin, which would make every super-admin gate moot.
+   */
   @Post('admins/:userId/grant')
-  @UseGuards(AdminGuard)
+  @UseGuards(AdminGuard, SuperAdminGuard)
   grantAdmin(@Param('userId') userId: string, @Body() dto: GrantAdminDto) {
     return this.adminService.grantAdmin(userId, dto);
   }
 
   @Delete('admins/:userId/revoke')
   @HttpCode(HttpStatus.NO_CONTENT)
-  @UseGuards(AdminGuard)
+  @UseGuards(AdminGuard, SuperAdminGuard)
   revokeAdmin(@Param('userId') userId: string) {
     return this.adminService.revokeAdmin(userId);
   }

@@ -69,6 +69,14 @@ import { RoadmapAiPreviewStoreService } from './roadmap-ai-preview-store.service
 import { RealtimePublisher } from '../../../shared/realtime/realtime-publisher.service';
 import { deriveFeatureStatus } from './derive-feature-status';
 import { TaskAssigneeNotifierService } from './task-assignee-notifier.service';
+import {
+  RoadmapPlanLimitsService,
+  type RoadmapPlanTarget,
+} from './roadmap-plan-limits.service';
+import {
+  countRoadmapNodes,
+  totalRoadmapNodes,
+} from '../utils/count-roadmap-nodes';
 
 type Severity = 'error' | 'warning';
 
@@ -344,6 +352,7 @@ export class RoadmapAiService {
     private readonly realtime: RealtimePublisher,
     private readonly audit: AuditService,
     private readonly assigneeNotifier: TaskAssigneeNotifierService,
+    private readonly planLimits: RoadmapPlanLimitsService,
   ) {}
 
   async preview(
@@ -382,6 +391,14 @@ export class RoadmapAiService {
       ...this.validateState(candidate),
       ...this.validateOptimisticRevision(dto.base_revision),
     ];
+    // The plan's per-roadmap node limit, surfaced before commit (which
+    // enforces the same grandfathered rule). Counted in memory.
+    const planLimitIssue = await this.planLimits.previewIssue(
+      baseRoadmap as RoadmapPlanTarget,
+      totalRoadmapNodes(base),
+      totalRoadmapNodes(candidate),
+    );
+    if (planLimitIssue) validationIssues.push(planLimitIssue);
     const semanticDiff = this.computeSemanticDiff(base, candidate);
     const semanticDiffApplyMs = Date.now() - applyStartedAt;
 
@@ -1880,7 +1897,15 @@ export class RoadmapAiService {
       );
     }
 
-    const stateCounts = this.summarizeRoadmapState(candidate);
+    const stateCounts = countRoadmapNodes(candidate);
+    // Grandfathered node limit, counted in memory: only growth past the plan's
+    // limit is refused, so edits and deletes on an over-limit roadmap land.
+    // An idempotent replay returned above and is never re-checked.
+    await this.planLimits.assertFullStateWrite(
+      current as RoadmapPlanTarget,
+      totalRoadmapNodes(base),
+      stateCounts.epics + stateCounts.features + stateCounts.tasks,
+    );
     const semanticDiffSummary = semanticDiff.summary ?? {};
     this.logger.log(
       [
@@ -2169,29 +2194,6 @@ export class RoadmapAiService {
     return response;
   }
 
-  private summarizeRoadmapState(state: FullRoadmapState): {
-    epics: number;
-    features: number;
-    tasks: number;
-  } {
-    const epics = state.roadmap_epics?.length ?? 0;
-    const features = (state.roadmap_epics ?? []).reduce(
-      (count, epic) => count + (epic.roadmap_features?.length ?? 0),
-      0,
-    );
-    const tasks = (state.roadmap_epics ?? []).reduce(
-      (count, epic) =>
-        count +
-        (epic.roadmap_features ?? []).reduce(
-          (featureCount, feature) =>
-            featureCount + (feature.roadmap_tasks?.length ?? 0),
-          0,
-        ),
-      0,
-    );
-    return { epics, features, tasks };
-  }
-
   async discard(
     roadmapId: string,
     dto: RoadmapAiDiscardDto,
@@ -2215,6 +2217,13 @@ export class RoadmapAiService {
     const discardedAt = new Date().toISOString();
     const rollbackState = this.clone(
       timelineRecord.entries[targetIndex].stateBefore,
+    );
+    // Undoing a delete restores nodes: judged against the live count (read
+    // only when the plan's limit is finite), so undoing growth always works.
+    await this.planLimits.assertFullStateWrite(
+      current as RoadmapPlanTarget,
+      'live',
+      totalRoadmapNodes(rollbackState),
     );
     await this.patchRepo.upsertFullRoadmap({
       roadmapId,
@@ -2317,6 +2326,11 @@ export class RoadmapAiService {
     const reappliedAt = new Date().toISOString();
     const replayState = this.clone(
       timelineRecord.entries[applyUntilIndex].stateAfter,
+    );
+    await this.planLimits.assertFullStateWrite(
+      current as RoadmapPlanTarget,
+      'live',
+      totalRoadmapNodes(replayState),
     );
     await this.patchRepo.upsertFullRoadmap({
       roadmapId,
@@ -2624,6 +2638,10 @@ export class RoadmapAiService {
    *
    * `operations` is omitted unless asked for: a single commit's operation array
    * can be large, and most callers only want the timeline shape.
+   *
+   * Rows older than the plan's activity retention window are hidden (never
+   * purged). The agent's run guard reads the log through ai-context instead,
+   * which is deliberately not windowed.
    */
   async listChangeHistory(
     roadmapId: string,
@@ -2634,7 +2652,11 @@ export class RoadmapAiService {
       includeOperations?: boolean;
     } = {},
   ): Promise<RoadmapChangeHistoryEntry[]> {
-    await this.assertCanViewRoadmap(roadmapId, userId);
+    const roadmap = (await this.assertCanViewRoadmap(
+      roadmapId,
+      userId,
+    )) as RoadmapPlanTarget;
+    const cutoff = await this.planLimits.retentionCutoff(roadmap);
 
     const limit = Math.min(Math.max(options.limit ?? 25, 1), 100);
     const columns = [
@@ -2662,6 +2684,7 @@ export class RoadmapAiService {
       .order('committed_at', { ascending: false })
       .limit(limit);
     if (options.before) query = query.lt('committed_at', options.before);
+    if (cutoff) query = query.gte('committed_at', cutoff);
 
     const { data, error } = await query;
     if (error) {

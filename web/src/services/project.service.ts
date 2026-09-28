@@ -1,5 +1,22 @@
 import { extractApiErrorMessage } from "@/lib/permissionErrors";
+import {
+	notifyPlanLimit,
+	PlanLimitError,
+	parsePlanLimitBody,
+} from "@/lib/planLimitErrors";
 import { supabase } from "@/lib/supabase";
+
+/**
+ * The two creates below use `fetch`, so the axios interceptor never sees their
+ * plan-limit 403. They raise the upgrade prompt themselves and throw a
+ * `PlanLimitError`, which keeps the code for a page that shows its own notice.
+ */
+function throwIfPlanLimit(body: unknown, status: number): void {
+	const info = parsePlanLimitBody(body, status);
+	if (!info) return;
+	notifyPlanLimit(info);
+	throw new PlanLimitError(info);
+}
 
 export interface CreateProjectData {
 	creation_mode?: "client" | "consultant";
@@ -384,7 +401,8 @@ class ProjectService {
 		);
 
 		if (!response.ok) {
-			const error = await response.json();
+			const error = await response.json().catch(() => null);
+			throwIfPlanLimit(error, response.status);
 			throw new Error(
 				extractApiErrorMessage(error, "Failed to create project"),
 			);
@@ -424,7 +442,8 @@ class ProjectService {
 		);
 
 		if (!response.ok) {
-			const error = await response.json();
+			const error = await response.json().catch(() => null);
+			throwIfPlanLimit(error, response.status);
 			throw new Error(
 				extractApiErrorMessage(error, "Failed to create project from roadmap"),
 			);

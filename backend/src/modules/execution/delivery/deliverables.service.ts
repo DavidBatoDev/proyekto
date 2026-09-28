@@ -10,8 +10,16 @@ import { SupabaseClient } from '@supabase/supabase-js';
 import { SUPABASE_ADMIN } from '../../../config/supabase.module';
 import { ACTIVITY_ACTIONS } from '../../shared/audit/activity-actions';
 import { AuditService } from '../../shared/audit/audit.service';
+import {
+  EntitlementsService,
+  type FeatureKey,
+} from '../../shared/entitlements/entitlements.service';
 import { ProjectAuthorizationService } from '../projects/authorization/project-authorization.service';
 import { getPermission } from '../projects/permissions/project-permissions';
+import {
+  assertDeliveryFeature,
+  DELIVERABLE_REVIEW_FEATURES,
+} from './delivery-plan-gate';
 import {
   computeProgress,
   expandLinkedTasks,
@@ -98,6 +106,7 @@ export class DeliverablesService {
     @Inject(SUPABASE_ADMIN) private readonly db: SupabaseClient,
     private readonly authorization: ProjectAuthorizationService,
     private readonly audit: AuditService,
+    private readonly entitlements: EntitlementsService,
   ) {}
 
   async list(
@@ -147,6 +156,10 @@ export class DeliverablesService {
       userId,
       projectId,
       'deliverables.edit',
+    );
+    await this.assertPlan(
+      projectId,
+      dto.reviewer_ids?.length ? DELIVERABLE_REVIEW_FEATURES : 'deliverables',
     );
 
     const links = normalizeLinkTargets(dto.links, LINK_COLUMNS);
@@ -231,6 +244,7 @@ export class DeliverablesService {
       projectId,
       'deliverables.edit',
     );
+    await this.assertPlan(projectId, 'deliverables');
     const existing = await this.loadOrThrow(projectId, deliverableId);
 
     // The review verbs own the rest of the ladder; letting `update` set
@@ -278,6 +292,7 @@ export class DeliverablesService {
       projectId,
       'deliverables.edit',
     );
+    await this.assertPlan(projectId, DELIVERABLE_REVIEW_FEATURES);
     const existing = await this.loadOrThrow(projectId, deliverableId);
 
     if (existing.status === 'in_review') {
@@ -341,6 +356,7 @@ export class DeliverablesService {
       projectId,
       'access.delivery',
     );
+    await this.assertPlan(projectId, DELIVERABLE_REVIEW_FEATURES);
     const hasApprove = getPermission(perms, 'deliverables.approve');
     const existing = await this.loadOrThrow(projectId, deliverableId);
     const reviewers = existing.reviewers ?? [];
@@ -423,6 +439,7 @@ export class DeliverablesService {
       projectId,
       'deliverables.edit',
     );
+    await this.assertPlan(projectId, 'deliverables');
     const existing = await this.loadOrThrow(projectId, deliverableId);
 
     const { error } = await this.db.from(CRITERIA_TABLE).insert({
@@ -452,6 +469,7 @@ export class DeliverablesService {
       projectId,
       'deliverables.edit',
     );
+    await this.assertPlan(projectId, 'deliverables');
     await this.loadOrThrow(projectId, deliverableId);
 
     const patch: Record<string, unknown> = {
@@ -492,6 +510,7 @@ export class DeliverablesService {
       projectId,
       'deliverables.edit',
     );
+    await this.assertPlan(projectId, 'deliverables');
     await this.loadOrThrow(projectId, deliverableId);
 
     const { error } = await this.db
@@ -521,6 +540,7 @@ export class DeliverablesService {
       projectId,
       'deliverables.edit',
     );
+    await this.assertPlan(projectId, DELIVERABLE_REVIEW_FEATURES);
     await this.loadOrThrow(projectId, deliverableId);
 
     // A reviewer must actually be on the project — otherwise naming someone
@@ -552,6 +572,7 @@ export class DeliverablesService {
       projectId,
       'deliverables.edit',
     );
+    await this.assertPlan(projectId, DELIVERABLE_REVIEW_FEATURES);
     const existing = await this.loadOrThrow(projectId, deliverableId);
 
     const { error } = await this.db
@@ -597,6 +618,7 @@ export class DeliverablesService {
       projectId,
       'deliverables.edit',
     );
+    await this.assertPlan(projectId, 'deliverables');
     const existing = await this.loadOrThrow(projectId, deliverableId);
     const [normalized] = normalizeLinkTargets([link], LINK_COLUMNS);
 
@@ -625,6 +647,7 @@ export class DeliverablesService {
       projectId,
       'deliverables.edit',
     );
+    await this.assertPlan(projectId, 'deliverables');
     const existing = await this.loadOrThrow(projectId, deliverableId);
 
     const { error } = await this.db
@@ -661,6 +684,7 @@ export class DeliverablesService {
       projectId,
       'deliverables.edit',
     );
+    await this.assertPlan(projectId, 'deliverables');
     await this.loadOrThrow(projectId, deliverableId);
 
     const { error } = await this.db.from(ATTACHMENTS_TABLE).insert({
@@ -694,6 +718,7 @@ export class DeliverablesService {
       projectId,
       'deliverables.edit',
     );
+    await this.assertPlan(projectId, 'deliverables');
     await this.loadOrThrow(projectId, deliverableId);
 
     const { error } = await this.db
@@ -716,6 +741,7 @@ export class DeliverablesService {
       projectId,
       'deliverables.edit',
     );
+    await this.assertPlan(projectId, 'deliverables');
     const existing = await this.loadOrThrow(projectId, deliverableId);
 
     const { error } = await this.db
@@ -739,6 +765,14 @@ export class DeliverablesService {
     });
 
     return { id: deliverableId, deleted: true };
+  }
+
+  /** The plan gate; see delivery-plan-gate.ts for why it follows the permission check. */
+  private assertPlan(
+    projectId: string,
+    keys: FeatureKey | readonly FeatureKey[],
+  ): Promise<void> {
+    return assertDeliveryFeature(this.entitlements, projectId, keys);
   }
 
   // ── internals ─────────────────────────────────────────────────────────────

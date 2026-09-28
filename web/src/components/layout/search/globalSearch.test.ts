@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { classifySurface } from "@/lib/platformSurfaces";
 import type { Project } from "@/services/project.service";
 import type { FullRoadmapWithProject } from "@/services/roadmap.service";
 import {
@@ -33,7 +34,7 @@ const task = (id: string, title: string) => ({ id, title }) as never;
 
 describe("buildSearchablePages", () => {
 	it("hides consultant-gated destinations from non-consultants", () => {
-		const pages = buildSearchablePages(false);
+		const pages = buildSearchablePages(false, false);
 		const paths = pages.map((p) => p.to);
 
 		// Finance is a surface every execution user can hold, so My finance,
@@ -48,8 +49,8 @@ describe("buildSearchablePages", () => {
 		expect(paths).toContain("/marketplace/consultant/browse");
 	});
 
-	it("surfaces gated destinations to consultants", () => {
-		const pages = buildSearchablePages(true);
+	it("surfaces gated destinations, children included, to consultants", () => {
+		const pages = buildSearchablePages(true, false);
 		const invoices = pages.find(
 			(p) => p.to === "/engagements/finance/invoices",
 		);
@@ -58,8 +59,26 @@ describe("buildSearchablePages", () => {
 		expect(pages.some((p) => p.to === "/marketplace/talent/browse")).toBe(true);
 	});
 
+	it("offers the installed app nothing it cannot open", () => {
+		// Search is the one place that lists every destination at once, so this
+		// is the test that catches a marketplace or billing entry added to any
+		// nav source later.
+		const paths = buildSearchablePages(true, true).map((p) => p.to);
+
+		expect(paths.length).toBeGreaterThan(0);
+		for (const path of paths) {
+			expect(classifySurface(path), path).toBe("app");
+		}
+		expect(paths).not.toContain("/marketplace");
+		expect(paths).not.toContain("/engagements");
+		expect(paths).not.toContain("/brief/new");
+		// The SaaS destinations are untouched.
+		expect(paths).toContain("/dashboard");
+		expect(paths).toContain("/inbox");
+	});
+
 	it("dedupes paths that appear in several nav sources", () => {
-		const pages = buildSearchablePages(true);
+		const pages = buildSearchablePages(true, false);
 
 		// /engagements is in both the header nav and the marketplace sidebar;
 		// /dashboard is in both the header nav and the execution sidebar.
@@ -71,7 +90,7 @@ describe("buildSearchablePages", () => {
 });
 
 describe("buildGlobalSearchCandidates", () => {
-	const pages = buildSearchablePages(true);
+	const pages = buildSearchablePages(true, false);
 
 	it("returns nothing for an empty or whitespace query", () => {
 		expect(

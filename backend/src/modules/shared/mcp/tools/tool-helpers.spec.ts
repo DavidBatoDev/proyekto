@@ -1,10 +1,15 @@
 import { ForbiddenException, NotFoundException } from '@nestjs/common';
+import { buildPlanLimitPayload } from '../../entitlements/__entitlements-test-kit-spec';
+import { PlanLimitException } from '../../entitlements/plan-limit.exception';
+import { MissingPermissionException } from '../../../execution/projects/authorization/missing-permission.exception';
 import {
   McpToolError,
   assertProjectViewer,
   clampLimit,
+  normalizeError,
   requireScope,
   runTool,
+  toErrorResult,
   type McpToolDeps,
 } from './tool-helpers';
 
@@ -133,6 +138,30 @@ describe('MCP tool helpers', () => {
       );
     });
 
+    it('maps a PlanLimitException (403 plan_limit) to PLAN_LIMIT, keeping its message', async () => {
+      const payload = buildPlanLimitPayload({
+        kind: 'feature',
+        limit_key: 'change_requests',
+        message: 'Change requests are available on Pro and above.',
+      });
+      const res = (await runTool(() => {
+        throw new PlanLimitException(payload);
+      })) as { isError?: boolean; content: { text: string }[] };
+
+      expect(res.isError).toBe(true);
+      expect(JSON.parse(res.content[0].text)).toEqual({
+        error: 'PLAN_LIMIT',
+        message: 'Change requests are available on Pro and above.',
+      });
+    });
+
+    it('keeps a missing_permission 403 as FORBIDDEN', async () => {
+      const res = (await runTool(() => {
+        throw new MissingPermissionException({ path: 'risks.edit' });
+      })) as { isError?: boolean; content: { text: string }[] };
+      expect(JSON.parse(res.content[0].text).error).toBe('FORBIDDEN');
+    });
+
     it('does not create a visual when it is disabled', async () => {
       const create = jest.fn();
       const res = (await runTool(() => ({ ok: 1 }), {
@@ -144,6 +173,35 @@ describe('MCP tool helpers', () => {
       expect(res.content).toHaveLength(1);
       expect(res.content[0].type).toBe('text');
       expect(res.structuredContent).toEqual({ ok: 1 });
+    });
+  });
+
+  describe('normalizeError / toErrorResult', () => {
+    it('recognises plan_limit by the response code, not the class', () => {
+      // Any 403 whose body says plan_limit, e.g. one rethrown across a module.
+      const err = new ForbiddenException({
+        code: 'plan_limit',
+        message: 'MCP server is available on Pro and above.',
+      });
+      expect(normalizeError(err)).toEqual({
+        code: 'PLAN_LIMIT',
+        message: 'MCP server is available on Pro and above.',
+      });
+    });
+
+    it('passes an McpToolError PLAN_LIMIT through unchanged', () => {
+      expect(
+        normalizeError(new McpToolError('PLAN_LIMIT', 'Not on Free.')),
+      ).toEqual({ code: 'PLAN_LIMIT', message: 'Not on Free.' });
+    });
+
+    it('builds the same error result runTool returns', async () => {
+      const err = new NotFoundException('missing');
+      expect(toErrorResult(err)).toEqual(
+        await runTool(() => {
+          throw err;
+        }),
+      );
     });
   });
 });

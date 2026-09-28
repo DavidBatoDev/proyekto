@@ -1,6 +1,6 @@
 # Mobile
 
-> **Last updated:** 2026-08-11 · **Status:** current
+> **Last updated:** 2026-09-23 · **Status:** current
 
 The Android and iOS apps are the `web/` app wrapped with **Capacitor** — same
 codebase, running in a native WebView. Push is **FCM**, and product changes ship
@@ -17,6 +17,7 @@ changes.
 | [capacitor.md](./capacitor.md) | The Capacitor wrapper, build/run, the two update layers, native releases |
 | [push-fcm.md](./push-fcm.md) | FCM push — the flow, backend credentials (keyless ADC), enabling |
 | [ota-updates.md](./ota-updates.md) | Self-hosted web-bundle OTA, the native-compatibility rule, publish/rollback |
+| [store-readiness.md](./store-readiness.md) | What Play and the App Store still need before submission; what the app deliberately does not carry |
 
 ## Glossary
 

@@ -8,6 +8,7 @@ import {
 import { ConfigService } from '@nestjs/config';
 import type { Response } from 'express';
 import * as jwt from 'jsonwebtoken';
+import { RevokedUsersService } from '../../../common/auth/revoked-users.service';
 import { AuthenticatedRequest } from '../../../common/interfaces/authenticated-request.interface';
 import { MCP_READ_SCOPES } from './mcp-scopes';
 import { McpTokenService } from './mcp-token.service';
@@ -47,6 +48,7 @@ export class McpAuthGuard implements CanActivate {
     private readonly tokens: McpTokenService,
     private readonly oauthConfig: OAuthConfigService,
     private readonly oauthJwt: OAuthJwtService,
+    private readonly revokedUsers: RevokedUsersService,
   ) {
     this.jwtSecret = this.config.get<string>('SUPABASE_JWT_SECRET');
   }
@@ -96,6 +98,9 @@ export class McpAuthGuard implements CanActivate {
     const token = authHeader.slice(7);
 
     // --- Proyekto PAT ---
+    // No deny-list check here, deliberately: resolveToken reads the database,
+    // and account deletion deletes the mcp_personal_access_tokens rows, so this
+    // path is already dead the moment the transaction commits.
     if (token.startsWith('pk_')) {
       const resolved = await this.tokens.resolveToken(token);
       if (!resolved) {
@@ -110,6 +115,12 @@ export class McpAuthGuard implements CanActivate {
     if (this.oauthConfig.enabled) {
       const verified = this.oauthJwt.verifyAccessToken(token);
       if (verified) {
+        // These are self-signed and stateless: deleting the mcp_oauth_grants
+        // row does not invalidate an access token already in a host's hands,
+        // so the deny-list is the only thing that stops it.
+        if (await this.revokedUsers.isRevoked(verified.userId)) {
+          throw this.deny(context, 'Account deleted.');
+        }
         request.user = { id: verified.userId };
         request.mcpScopes = verified.scopes;
         return true;
@@ -120,6 +131,9 @@ export class McpAuthGuard implements CanActivate {
     const user = this.verifySupabaseToken(token);
     if (!user) {
       throw this.deny(context, 'Invalid or expired token.');
+    }
+    if (await this.revokedUsers.isRevoked(user.id)) {
+      throw this.deny(context, 'Account deleted.');
     }
     request.user = user;
     // A real logged-in session may use any read tool during development.

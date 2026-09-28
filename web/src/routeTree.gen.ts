@@ -11,25 +11,34 @@
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as WelcomeRouteImport } from './routes/welcome'
 import { Route as UnsubscribeRouteImport } from './routes/unsubscribe'
+import { Route as TermsRouteImport } from './routes/terms'
 import { Route as StartSellingRouteImport } from './routes/start-selling'
+import { Route as ProductRouteImport } from './routes/product'
+import { Route as PrivacyRouteImport } from './routes/privacy'
 import { Route as PricingRouteImport } from './routes/pricing'
 import { Route as OnboardingRouteImport } from './routes/onboarding'
 import { Route as NotificationsRouteImport } from './routes/notifications'
+import { Route as NotAvailableRouteImport } from './routes/not-available'
 import { Route as HomeRouteImport } from './routes/home'
+import { Route as GoodbyeRouteImport } from './routes/goodbye'
 import { Route as GetStartedRouteImport } from './routes/get-started'
+import { Route as ContactRouteImport } from './routes/contact'
 import { Route as AdminRouteImport } from './routes/admin'
 import { Route as ExecutionRouteImport } from './routes/_execution'
 import { Route as WorkspaceRouteRouteImport } from './routes/workspace/route'
 import { Route as SettingsRouteRouteImport } from './routes/settings/route'
 import { Route as RoadmapTemplatesRouteRouteImport } from './routes/roadmap-templates/route'
 import { Route as MarketplaceRouteRouteImport } from './routes/marketplace/route'
+import { Route as DocsRouteRouteImport } from './routes/docs/route'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as SettingsIndexRouteImport } from './routes/settings/index'
 import { Route as RoadmapTemplatesIndexRouteImport } from './routes/roadmap-templates/index'
 import { Route as MarketplaceIndexRouteImport } from './routes/marketplace/index'
+import { Route as DocsIndexRouteImport } from './routes/docs/index'
 import { Route as AdminIndexRouteImport } from './routes/admin/index'
 import { Route as SettingsNotificationsRouteImport } from './routes/settings/notifications'
 import { Route as SettingsMcpTokensRouteImport } from './routes/settings/mcp-tokens'
+import { Route as SettingsDeleteAccountRouteImport } from './routes/settings/delete-account'
 import { Route as SettingsAppearanceRouteImport } from './routes/settings/appearance'
 import { Route as RoadmapTemplatesSlugRouteImport } from './routes/roadmap-templates/$slug'
 import { Route as ProfileProfileIdRouteImport } from './routes/profile/$profileId'
@@ -41,7 +50,9 @@ import { Route as AuthSignupRouteImport } from './routes/auth/signup'
 import { Route as AuthLoginRouteImport } from './routes/auth/login'
 import { Route as AuthForgotPasswordRouteImport } from './routes/auth/forgot-password'
 import { Route as AuthCallbackRouteImport } from './routes/auth/callback'
+import { Route as AdminWorkspacesRouteImport } from './routes/admin/workspaces'
 import { Route as AdminSettingsRouteImport } from './routes/admin/settings'
+import { Route as AdminPlansRouteImport } from './routes/admin/plans'
 import { Route as AdminMatchRouteImport } from './routes/admin/match'
 import { Route as AdminConsultantsRouteImport } from './routes/admin/consultants'
 import { Route as AdminApproveAdminRouteImport } from './routes/admin/approve-admin'
@@ -77,6 +88,7 @@ import { Route as MarketplaceConsultantTemplatesRouteImport } from './routes/mar
 import { Route as MarketplaceConsultantBrowseRouteImport } from './routes/marketplace/consultant/browse'
 import { Route as MarketplaceConsultantApplyRouteImport } from './routes/marketplace/consultant/apply'
 import { Route as MarketplaceConsultantProfileIdRouteImport } from './routes/marketplace/consultant/$profileId'
+import { Route as DocsSectionSlugRouteImport } from './routes/docs/$section/$slug'
 import { Route as ContractSignTokenRouteImport } from './routes/contract/sign/$token'
 import { Route as AuthAdminSigninRouteImport } from './routes/auth/admin/signin'
 import { Route as AuthAdminLoginRouteImport } from './routes/auth/admin/login'
@@ -97,6 +109,7 @@ import { Route as ExecutionProjectRoadmapIndexRouteImport } from './routes/_exec
 import { Route as ExecutionEngagementsFinanceIndexRouteImport } from './routes/_execution/engagements/finance/index'
 import { Route as ExecutionEngagementsContractsIndexRouteImport } from './routes/_execution/engagements/contracts/index'
 import { Route as ExecutionBriefBriefIdIndexRouteImport } from './routes/_execution/brief/$briefId/index'
+import { Route as WWorkspaceSlugSettingsUsageRouteImport } from './routes/w/$workspaceSlug/settings/usage'
 import { Route as WWorkspaceSlugSettingsMembersRouteImport } from './routes/w/$workspaceSlug/settings/members'
 import { Route as WWorkspaceSlugSettingsBillingRouteImport } from './routes/w/$workspaceSlug/settings/billing'
 import { Route as MarketplaceServicesServiceIdEditRouteImport } from './routes/marketplace/services/$serviceId/edit'
@@ -205,9 +218,24 @@ const UnsubscribeRoute = UnsubscribeRouteImport.update({
   path: '/unsubscribe',
   getParentRoute: () => rootRouteImport,
 } as any)
+const TermsRoute = TermsRouteImport.update({
+  id: '/terms',
+  path: '/terms',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const StartSellingRoute = StartSellingRouteImport.update({
   id: '/start-selling',
   path: '/start-selling',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ProductRoute = ProductRouteImport.update({
+  id: '/product',
+  path: '/product',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const PrivacyRoute = PrivacyRouteImport.update({
+  id: '/privacy',
+  path: '/privacy',
   getParentRoute: () => rootRouteImport,
 } as any)
 const PricingRoute = PricingRouteImport.update({
@@ -225,14 +253,29 @@ const NotificationsRoute = NotificationsRouteImport.update({
   path: '/notifications',
   getParentRoute: () => rootRouteImport,
 } as any)
+const NotAvailableRoute = NotAvailableRouteImport.update({
+  id: '/not-available',
+  path: '/not-available',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const HomeRoute = HomeRouteImport.update({
   id: '/home',
   path: '/home',
   getParentRoute: () => rootRouteImport,
 } as any)
+const GoodbyeRoute = GoodbyeRouteImport.update({
+  id: '/goodbye',
+  path: '/goodbye',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const GetStartedRoute = GetStartedRouteImport.update({
   id: '/get-started',
   path: '/get-started',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ContactRoute = ContactRouteImport.update({
+  id: '/contact',
+  path: '/contact',
   getParentRoute: () => rootRouteImport,
 } as any)
 const AdminRoute = AdminRouteImport.update({
@@ -264,6 +307,11 @@ const MarketplaceRouteRoute = MarketplaceRouteRouteImport.update({
   path: '/marketplace',
   getParentRoute: () => rootRouteImport,
 } as any)
+const DocsRouteRoute = DocsRouteRouteImport.update({
+  id: '/docs',
+  path: '/docs',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const IndexRoute = IndexRouteImport.update({
   id: '/',
   path: '/',
@@ -284,6 +332,11 @@ const MarketplaceIndexRoute = MarketplaceIndexRouteImport.update({
   path: '/',
   getParentRoute: () => MarketplaceRouteRoute,
 } as any)
+const DocsIndexRoute = DocsIndexRouteImport.update({
+  id: '/',
+  path: '/',
+  getParentRoute: () => DocsRouteRoute,
+} as any)
 const AdminIndexRoute = AdminIndexRouteImport.update({
   id: '/',
   path: '/',
@@ -297,6 +350,11 @@ const SettingsNotificationsRoute = SettingsNotificationsRouteImport.update({
 const SettingsMcpTokensRoute = SettingsMcpTokensRouteImport.update({
   id: '/mcp-tokens',
   path: '/mcp-tokens',
+  getParentRoute: () => SettingsRouteRoute,
+} as any)
+const SettingsDeleteAccountRoute = SettingsDeleteAccountRouteImport.update({
+  id: '/delete-account',
+  path: '/delete-account',
   getParentRoute: () => SettingsRouteRoute,
 } as any)
 const SettingsAppearanceRoute = SettingsAppearanceRouteImport.update({
@@ -355,9 +413,19 @@ const AuthCallbackRoute = AuthCallbackRouteImport.update({
   path: '/auth/callback',
   getParentRoute: () => rootRouteImport,
 } as any)
+const AdminWorkspacesRoute = AdminWorkspacesRouteImport.update({
+  id: '/workspaces',
+  path: '/workspaces',
+  getParentRoute: () => AdminRoute,
+} as any)
 const AdminSettingsRoute = AdminSettingsRouteImport.update({
   id: '/settings',
   path: '/settings',
+  getParentRoute: () => AdminRoute,
+} as any)
+const AdminPlansRoute = AdminPlansRouteImport.update({
+  id: '/plans',
+  path: '/plans',
   getParentRoute: () => AdminRoute,
 } as any)
 const AdminMatchRoute = AdminMatchRouteImport.update({
@@ -549,6 +617,11 @@ const MarketplaceConsultantProfileIdRoute =
     path: '/consultant/$profileId',
     getParentRoute: () => MarketplaceRouteRoute,
   } as any)
+const DocsSectionSlugRoute = DocsSectionSlugRouteImport.update({
+  id: '/$section/$slug',
+  path: '/$section/$slug',
+  getParentRoute: () => DocsRouteRoute,
+} as any)
 const ContractSignTokenRoute = ContractSignTokenRouteImport.update({
   id: '/contract/sign/$token',
   path: '/contract/sign/$token',
@@ -662,6 +735,12 @@ const ExecutionBriefBriefIdIndexRoute =
     id: '/brief/$briefId/',
     path: '/brief/$briefId/',
     getParentRoute: () => ExecutionRoute,
+  } as any)
+const WWorkspaceSlugSettingsUsageRoute =
+  WWorkspaceSlugSettingsUsageRouteImport.update({
+    id: '/usage',
+    path: '/usage',
+    getParentRoute: () => WWorkspaceSlugSettingsRouteRoute,
   } as any)
 const WWorkspaceSlugSettingsMembersRoute =
   WWorkspaceSlugSettingsMembersRouteImport.update({
@@ -1247,17 +1326,24 @@ const ExecutionEngagementsFinanceTeamTeamIdProjectBookIdRoute =
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
+  '/docs': typeof DocsRouteRouteWithChildren
   '/marketplace': typeof MarketplaceRouteRouteWithChildren
   '/roadmap-templates': typeof RoadmapTemplatesRouteRouteWithChildren
   '/settings': typeof SettingsRouteRouteWithChildren
   '/workspace': typeof WorkspaceRouteRouteWithChildren
   '/admin': typeof AdminRouteWithChildren
+  '/contact': typeof ContactRoute
   '/get-started': typeof GetStartedRoute
+  '/goodbye': typeof GoodbyeRoute
   '/home': typeof HomeRoute
+  '/not-available': typeof NotAvailableRoute
   '/notifications': typeof NotificationsRoute
   '/onboarding': typeof OnboardingRoute
   '/pricing': typeof PricingRoute
+  '/privacy': typeof PrivacyRoute
+  '/product': typeof ProductRoute
   '/start-selling': typeof StartSellingRoute
+  '/terms': typeof TermsRoute
   '/unsubscribe': typeof UnsubscribeRoute
   '/welcome': typeof WelcomeRoute
   '/engagements': typeof ExecutionEngagementsRouteRouteWithChildren
@@ -1275,7 +1361,9 @@ export interface FileRoutesByFullPath {
   '/admin/approve-admin': typeof AdminApproveAdminRoute
   '/admin/consultants': typeof AdminConsultantsRoute
   '/admin/match': typeof AdminMatchRoute
+  '/admin/plans': typeof AdminPlansRoute
   '/admin/settings': typeof AdminSettingsRoute
+  '/admin/workspaces': typeof AdminWorkspacesRoute
   '/auth/callback': typeof AuthCallbackRoute
   '/auth/forgot-password': typeof AuthForgotPasswordRoute
   '/auth/login': typeof AuthLoginRoute
@@ -1287,9 +1375,11 @@ export interface FileRoutesByFullPath {
   '/profile/$profileId': typeof ProfileProfileIdRoute
   '/roadmap-templates/$slug': typeof RoadmapTemplatesSlugRoute
   '/settings/appearance': typeof SettingsAppearanceRoute
+  '/settings/delete-account': typeof SettingsDeleteAccountRoute
   '/settings/mcp-tokens': typeof SettingsMcpTokensRoute
   '/settings/notifications': typeof SettingsNotificationsRoute
   '/admin/': typeof AdminIndexRoute
+  '/docs/': typeof DocsIndexRoute
   '/marketplace/': typeof MarketplaceIndexRoute
   '/roadmap-templates/': typeof RoadmapTemplatesIndexRoute
   '/settings/': typeof SettingsIndexRoute
@@ -1303,6 +1393,7 @@ export interface FileRoutesByFullPath {
   '/auth/admin/login': typeof AuthAdminLoginRoute
   '/auth/admin/signin': typeof AuthAdminSigninRoute
   '/contract/sign/$token': typeof ContractSignTokenRoute
+  '/docs/$section/$slug': typeof DocsSectionSlugRoute
   '/marketplace/consultant/$profileId': typeof MarketplaceConsultantProfileIdRoute
   '/marketplace/consultant/apply': typeof MarketplaceConsultantApplyRoute
   '/marketplace/consultant/browse': typeof MarketplaceConsultantBrowseRoute
@@ -1349,6 +1440,7 @@ export interface FileRoutesByFullPath {
   '/marketplace/services/$serviceId/edit': typeof MarketplaceServicesServiceIdEditRoute
   '/w/$workspaceSlug/settings/billing': typeof WWorkspaceSlugSettingsBillingRoute
   '/w/$workspaceSlug/settings/members': typeof WWorkspaceSlugSettingsMembersRoute
+  '/w/$workspaceSlug/settings/usage': typeof WWorkspaceSlugSettingsUsageRoute
   '/brief/$briefId': typeof ExecutionBriefBriefIdIndexRoute
   '/engagements/contracts': typeof ExecutionEngagementsContractsIndexRoute
   '/engagements/finance': typeof ExecutionEngagementsFinanceIndexRoute
@@ -1433,12 +1525,18 @@ export interface FileRoutesByFullPath {
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/workspace': typeof WorkspaceRouteRouteWithChildren
+  '/contact': typeof ContactRoute
   '/get-started': typeof GetStartedRoute
+  '/goodbye': typeof GoodbyeRoute
   '/home': typeof HomeRoute
+  '/not-available': typeof NotAvailableRoute
   '/notifications': typeof NotificationsRoute
   '/onboarding': typeof OnboardingRoute
   '/pricing': typeof PricingRoute
+  '/privacy': typeof PrivacyRoute
+  '/product': typeof ProductRoute
   '/start-selling': typeof StartSellingRoute
+  '/terms': typeof TermsRoute
   '/unsubscribe': typeof UnsubscribeRoute
   '/welcome': typeof WelcomeRoute
   '/marketplace/category': typeof MarketplaceCategoryRouteRouteWithChildren
@@ -1455,7 +1553,9 @@ export interface FileRoutesByTo {
   '/admin/approve-admin': typeof AdminApproveAdminRoute
   '/admin/consultants': typeof AdminConsultantsRoute
   '/admin/match': typeof AdminMatchRoute
+  '/admin/plans': typeof AdminPlansRoute
   '/admin/settings': typeof AdminSettingsRoute
+  '/admin/workspaces': typeof AdminWorkspacesRoute
   '/auth/callback': typeof AuthCallbackRoute
   '/auth/forgot-password': typeof AuthForgotPasswordRoute
   '/auth/login': typeof AuthLoginRoute
@@ -1467,9 +1567,11 @@ export interface FileRoutesByTo {
   '/profile/$profileId': typeof ProfileProfileIdRoute
   '/roadmap-templates/$slug': typeof RoadmapTemplatesSlugRoute
   '/settings/appearance': typeof SettingsAppearanceRoute
+  '/settings/delete-account': typeof SettingsDeleteAccountRoute
   '/settings/mcp-tokens': typeof SettingsMcpTokensRoute
   '/settings/notifications': typeof SettingsNotificationsRoute
   '/admin': typeof AdminIndexRoute
+  '/docs': typeof DocsIndexRoute
   '/marketplace': typeof MarketplaceIndexRoute
   '/roadmap-templates': typeof RoadmapTemplatesIndexRoute
   '/settings': typeof SettingsIndexRoute
@@ -1481,6 +1583,7 @@ export interface FileRoutesByTo {
   '/auth/admin/login': typeof AuthAdminLoginRoute
   '/auth/admin/signin': typeof AuthAdminSigninRoute
   '/contract/sign/$token': typeof ContractSignTokenRoute
+  '/docs/$section/$slug': typeof DocsSectionSlugRoute
   '/marketplace/consultant/$profileId': typeof MarketplaceConsultantProfileIdRoute
   '/marketplace/consultant/apply': typeof MarketplaceConsultantApplyRoute
   '/marketplace/consultant/browse': typeof MarketplaceConsultantBrowseRoute
@@ -1526,6 +1629,7 @@ export interface FileRoutesByTo {
   '/marketplace/services/$serviceId/edit': typeof MarketplaceServicesServiceIdEditRoute
   '/w/$workspaceSlug/settings/billing': typeof WWorkspaceSlugSettingsBillingRoute
   '/w/$workspaceSlug/settings/members': typeof WWorkspaceSlugSettingsMembersRoute
+  '/w/$workspaceSlug/settings/usage': typeof WWorkspaceSlugSettingsUsageRoute
   '/brief/$briefId': typeof ExecutionBriefBriefIdIndexRoute
   '/engagements/contracts': typeof ExecutionEngagementsContractsIndexRoute
   '/engagements/finance': typeof ExecutionEngagementsFinanceIndexRoute
@@ -1608,18 +1712,25 @@ export interface FileRoutesByTo {
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
+  '/docs': typeof DocsRouteRouteWithChildren
   '/marketplace': typeof MarketplaceRouteRouteWithChildren
   '/roadmap-templates': typeof RoadmapTemplatesRouteRouteWithChildren
   '/settings': typeof SettingsRouteRouteWithChildren
   '/workspace': typeof WorkspaceRouteRouteWithChildren
   '/_execution': typeof ExecutionRouteWithChildren
   '/admin': typeof AdminRouteWithChildren
+  '/contact': typeof ContactRoute
   '/get-started': typeof GetStartedRoute
+  '/goodbye': typeof GoodbyeRoute
   '/home': typeof HomeRoute
+  '/not-available': typeof NotAvailableRoute
   '/notifications': typeof NotificationsRoute
   '/onboarding': typeof OnboardingRoute
   '/pricing': typeof PricingRoute
+  '/privacy': typeof PrivacyRoute
+  '/product': typeof ProductRoute
   '/start-selling': typeof StartSellingRoute
+  '/terms': typeof TermsRoute
   '/unsubscribe': typeof UnsubscribeRoute
   '/welcome': typeof WelcomeRoute
   '/_execution/engagements': typeof ExecutionEngagementsRouteRouteWithChildren
@@ -1637,7 +1748,9 @@ export interface FileRoutesById {
   '/admin/approve-admin': typeof AdminApproveAdminRoute
   '/admin/consultants': typeof AdminConsultantsRoute
   '/admin/match': typeof AdminMatchRoute
+  '/admin/plans': typeof AdminPlansRoute
   '/admin/settings': typeof AdminSettingsRoute
+  '/admin/workspaces': typeof AdminWorkspacesRoute
   '/auth/callback': typeof AuthCallbackRoute
   '/auth/forgot-password': typeof AuthForgotPasswordRoute
   '/auth/login': typeof AuthLoginRoute
@@ -1649,9 +1762,11 @@ export interface FileRoutesById {
   '/profile/$profileId': typeof ProfileProfileIdRoute
   '/roadmap-templates/$slug': typeof RoadmapTemplatesSlugRoute
   '/settings/appearance': typeof SettingsAppearanceRoute
+  '/settings/delete-account': typeof SettingsDeleteAccountRoute
   '/settings/mcp-tokens': typeof SettingsMcpTokensRoute
   '/settings/notifications': typeof SettingsNotificationsRoute
   '/admin/': typeof AdminIndexRoute
+  '/docs/': typeof DocsIndexRoute
   '/marketplace/': typeof MarketplaceIndexRoute
   '/roadmap-templates/': typeof RoadmapTemplatesIndexRoute
   '/settings/': typeof SettingsIndexRoute
@@ -1665,6 +1780,7 @@ export interface FileRoutesById {
   '/auth/admin/login': typeof AuthAdminLoginRoute
   '/auth/admin/signin': typeof AuthAdminSigninRoute
   '/contract/sign/$token': typeof ContractSignTokenRoute
+  '/docs/$section/$slug': typeof DocsSectionSlugRoute
   '/marketplace/consultant/$profileId': typeof MarketplaceConsultantProfileIdRoute
   '/marketplace/consultant/apply': typeof MarketplaceConsultantApplyRoute
   '/marketplace/consultant/browse': typeof MarketplaceConsultantBrowseRoute
@@ -1712,6 +1828,7 @@ export interface FileRoutesById {
   '/marketplace/services/$serviceId/edit': typeof MarketplaceServicesServiceIdEditRoute
   '/w/$workspaceSlug/settings/billing': typeof WWorkspaceSlugSettingsBillingRoute
   '/w/$workspaceSlug/settings/members': typeof WWorkspaceSlugSettingsMembersRoute
+  '/w/$workspaceSlug/settings/usage': typeof WWorkspaceSlugSettingsUsageRoute
   '/_execution/brief/$briefId/': typeof ExecutionBriefBriefIdIndexRoute
   '/_execution/engagements/contracts/': typeof ExecutionEngagementsContractsIndexRoute
   '/_execution/engagements/finance/': typeof ExecutionEngagementsFinanceIndexRoute
@@ -1797,17 +1914,24 @@ export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
   fullPaths:
     | '/'
+    | '/docs'
     | '/marketplace'
     | '/roadmap-templates'
     | '/settings'
     | '/workspace'
     | '/admin'
+    | '/contact'
     | '/get-started'
+    | '/goodbye'
     | '/home'
+    | '/not-available'
     | '/notifications'
     | '/onboarding'
     | '/pricing'
+    | '/privacy'
+    | '/product'
     | '/start-selling'
+    | '/terms'
     | '/unsubscribe'
     | '/welcome'
     | '/engagements'
@@ -1825,7 +1949,9 @@ export interface FileRouteTypes {
     | '/admin/approve-admin'
     | '/admin/consultants'
     | '/admin/match'
+    | '/admin/plans'
     | '/admin/settings'
+    | '/admin/workspaces'
     | '/auth/callback'
     | '/auth/forgot-password'
     | '/auth/login'
@@ -1837,9 +1963,11 @@ export interface FileRouteTypes {
     | '/profile/$profileId'
     | '/roadmap-templates/$slug'
     | '/settings/appearance'
+    | '/settings/delete-account'
     | '/settings/mcp-tokens'
     | '/settings/notifications'
     | '/admin/'
+    | '/docs/'
     | '/marketplace/'
     | '/roadmap-templates/'
     | '/settings/'
@@ -1853,6 +1981,7 @@ export interface FileRouteTypes {
     | '/auth/admin/login'
     | '/auth/admin/signin'
     | '/contract/sign/$token'
+    | '/docs/$section/$slug'
     | '/marketplace/consultant/$profileId'
     | '/marketplace/consultant/apply'
     | '/marketplace/consultant/browse'
@@ -1899,6 +2028,7 @@ export interface FileRouteTypes {
     | '/marketplace/services/$serviceId/edit'
     | '/w/$workspaceSlug/settings/billing'
     | '/w/$workspaceSlug/settings/members'
+    | '/w/$workspaceSlug/settings/usage'
     | '/brief/$briefId'
     | '/engagements/contracts'
     | '/engagements/finance'
@@ -1983,12 +2113,18 @@ export interface FileRouteTypes {
   to:
     | '/'
     | '/workspace'
+    | '/contact'
     | '/get-started'
+    | '/goodbye'
     | '/home'
+    | '/not-available'
     | '/notifications'
     | '/onboarding'
     | '/pricing'
+    | '/privacy'
+    | '/product'
     | '/start-selling'
+    | '/terms'
     | '/unsubscribe'
     | '/welcome'
     | '/marketplace/category'
@@ -2005,7 +2141,9 @@ export interface FileRouteTypes {
     | '/admin/approve-admin'
     | '/admin/consultants'
     | '/admin/match'
+    | '/admin/plans'
     | '/admin/settings'
+    | '/admin/workspaces'
     | '/auth/callback'
     | '/auth/forgot-password'
     | '/auth/login'
@@ -2017,9 +2155,11 @@ export interface FileRouteTypes {
     | '/profile/$profileId'
     | '/roadmap-templates/$slug'
     | '/settings/appearance'
+    | '/settings/delete-account'
     | '/settings/mcp-tokens'
     | '/settings/notifications'
     | '/admin'
+    | '/docs'
     | '/marketplace'
     | '/roadmap-templates'
     | '/settings'
@@ -2031,6 +2171,7 @@ export interface FileRouteTypes {
     | '/auth/admin/login'
     | '/auth/admin/signin'
     | '/contract/sign/$token'
+    | '/docs/$section/$slug'
     | '/marketplace/consultant/$profileId'
     | '/marketplace/consultant/apply'
     | '/marketplace/consultant/browse'
@@ -2076,6 +2217,7 @@ export interface FileRouteTypes {
     | '/marketplace/services/$serviceId/edit'
     | '/w/$workspaceSlug/settings/billing'
     | '/w/$workspaceSlug/settings/members'
+    | '/w/$workspaceSlug/settings/usage'
     | '/brief/$briefId'
     | '/engagements/contracts'
     | '/engagements/finance'
@@ -2157,18 +2299,25 @@ export interface FileRouteTypes {
   id:
     | '__root__'
     | '/'
+    | '/docs'
     | '/marketplace'
     | '/roadmap-templates'
     | '/settings'
     | '/workspace'
     | '/_execution'
     | '/admin'
+    | '/contact'
     | '/get-started'
+    | '/goodbye'
     | '/home'
+    | '/not-available'
     | '/notifications'
     | '/onboarding'
     | '/pricing'
+    | '/privacy'
+    | '/product'
     | '/start-selling'
+    | '/terms'
     | '/unsubscribe'
     | '/welcome'
     | '/_execution/engagements'
@@ -2186,7 +2335,9 @@ export interface FileRouteTypes {
     | '/admin/approve-admin'
     | '/admin/consultants'
     | '/admin/match'
+    | '/admin/plans'
     | '/admin/settings'
+    | '/admin/workspaces'
     | '/auth/callback'
     | '/auth/forgot-password'
     | '/auth/login'
@@ -2198,9 +2349,11 @@ export interface FileRouteTypes {
     | '/profile/$profileId'
     | '/roadmap-templates/$slug'
     | '/settings/appearance'
+    | '/settings/delete-account'
     | '/settings/mcp-tokens'
     | '/settings/notifications'
     | '/admin/'
+    | '/docs/'
     | '/marketplace/'
     | '/roadmap-templates/'
     | '/settings/'
@@ -2214,6 +2367,7 @@ export interface FileRouteTypes {
     | '/auth/admin/login'
     | '/auth/admin/signin'
     | '/contract/sign/$token'
+    | '/docs/$section/$slug'
     | '/marketplace/consultant/$profileId'
     | '/marketplace/consultant/apply'
     | '/marketplace/consultant/browse'
@@ -2261,6 +2415,7 @@ export interface FileRouteTypes {
     | '/marketplace/services/$serviceId/edit'
     | '/w/$workspaceSlug/settings/billing'
     | '/w/$workspaceSlug/settings/members'
+    | '/w/$workspaceSlug/settings/usage'
     | '/_execution/brief/$briefId/'
     | '/_execution/engagements/contracts/'
     | '/_execution/engagements/finance/'
@@ -2345,18 +2500,25 @@ export interface FileRouteTypes {
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
+  DocsRouteRoute: typeof DocsRouteRouteWithChildren
   MarketplaceRouteRoute: typeof MarketplaceRouteRouteWithChildren
   RoadmapTemplatesRouteRoute: typeof RoadmapTemplatesRouteRouteWithChildren
   SettingsRouteRoute: typeof SettingsRouteRouteWithChildren
   WorkspaceRouteRoute: typeof WorkspaceRouteRouteWithChildren
   ExecutionRoute: typeof ExecutionRouteWithChildren
   AdminRoute: typeof AdminRouteWithChildren
+  ContactRoute: typeof ContactRoute
   GetStartedRoute: typeof GetStartedRoute
+  GoodbyeRoute: typeof GoodbyeRoute
   HomeRoute: typeof HomeRoute
+  NotAvailableRoute: typeof NotAvailableRoute
   NotificationsRoute: typeof NotificationsRoute
   OnboardingRoute: typeof OnboardingRoute
   PricingRoute: typeof PricingRoute
+  PrivacyRoute: typeof PrivacyRoute
+  ProductRoute: typeof ProductRoute
   StartSellingRoute: typeof StartSellingRoute
+  TermsRoute: typeof TermsRoute
   UnsubscribeRoute: typeof UnsubscribeRoute
   WelcomeRoute: typeof WelcomeRoute
   WWorkspaceSlugRouteRoute: typeof WWorkspaceSlugRouteRouteWithChildren
@@ -2389,11 +2551,32 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof UnsubscribeRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/terms': {
+      id: '/terms'
+      path: '/terms'
+      fullPath: '/terms'
+      preLoaderRoute: typeof TermsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/start-selling': {
       id: '/start-selling'
       path: '/start-selling'
       fullPath: '/start-selling'
       preLoaderRoute: typeof StartSellingRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/product': {
+      id: '/product'
+      path: '/product'
+      fullPath: '/product'
+      preLoaderRoute: typeof ProductRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/privacy': {
+      id: '/privacy'
+      path: '/privacy'
+      fullPath: '/privacy'
+      preLoaderRoute: typeof PrivacyRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/pricing': {
@@ -2417,6 +2600,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof NotificationsRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/not-available': {
+      id: '/not-available'
+      path: '/not-available'
+      fullPath: '/not-available'
+      preLoaderRoute: typeof NotAvailableRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/home': {
       id: '/home'
       path: '/home'
@@ -2424,11 +2614,25 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof HomeRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/goodbye': {
+      id: '/goodbye'
+      path: '/goodbye'
+      fullPath: '/goodbye'
+      preLoaderRoute: typeof GoodbyeRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/get-started': {
       id: '/get-started'
       path: '/get-started'
       fullPath: '/get-started'
       preLoaderRoute: typeof GetStartedRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/contact': {
+      id: '/contact'
+      path: '/contact'
+      fullPath: '/contact'
+      preLoaderRoute: typeof ContactRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/admin': {
@@ -2473,6 +2677,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof MarketplaceRouteRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/docs': {
+      id: '/docs'
+      path: '/docs'
+      fullPath: '/docs'
+      preLoaderRoute: typeof DocsRouteRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/': {
       id: '/'
       path: '/'
@@ -2501,6 +2712,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof MarketplaceIndexRouteImport
       parentRoute: typeof MarketplaceRouteRoute
     }
+    '/docs/': {
+      id: '/docs/'
+      path: '/'
+      fullPath: '/docs/'
+      preLoaderRoute: typeof DocsIndexRouteImport
+      parentRoute: typeof DocsRouteRoute
+    }
     '/admin/': {
       id: '/admin/'
       path: '/'
@@ -2520,6 +2738,13 @@ declare module '@tanstack/react-router' {
       path: '/mcp-tokens'
       fullPath: '/settings/mcp-tokens'
       preLoaderRoute: typeof SettingsMcpTokensRouteImport
+      parentRoute: typeof SettingsRouteRoute
+    }
+    '/settings/delete-account': {
+      id: '/settings/delete-account'
+      path: '/delete-account'
+      fullPath: '/settings/delete-account'
+      preLoaderRoute: typeof SettingsDeleteAccountRouteImport
       parentRoute: typeof SettingsRouteRoute
     }
     '/settings/appearance': {
@@ -2599,11 +2824,25 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthCallbackRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/admin/workspaces': {
+      id: '/admin/workspaces'
+      path: '/workspaces'
+      fullPath: '/admin/workspaces'
+      preLoaderRoute: typeof AdminWorkspacesRouteImport
+      parentRoute: typeof AdminRoute
+    }
     '/admin/settings': {
       id: '/admin/settings'
       path: '/settings'
       fullPath: '/admin/settings'
       preLoaderRoute: typeof AdminSettingsRouteImport
+      parentRoute: typeof AdminRoute
+    }
+    '/admin/plans': {
+      id: '/admin/plans'
+      path: '/plans'
+      fullPath: '/admin/plans'
+      preLoaderRoute: typeof AdminPlansRouteImport
       parentRoute: typeof AdminRoute
     }
     '/admin/match': {
@@ -2851,6 +3090,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof MarketplaceConsultantProfileIdRouteImport
       parentRoute: typeof MarketplaceRouteRoute
     }
+    '/docs/$section/$slug': {
+      id: '/docs/$section/$slug'
+      path: '/$section/$slug'
+      fullPath: '/docs/$section/$slug'
+      preLoaderRoute: typeof DocsSectionSlugRouteImport
+      parentRoute: typeof DocsRouteRoute
+    }
     '/contract/sign/$token': {
       id: '/contract/sign/$token'
       path: '/contract/sign/$token'
@@ -2990,6 +3236,13 @@ declare module '@tanstack/react-router' {
       fullPath: '/brief/$briefId'
       preLoaderRoute: typeof ExecutionBriefBriefIdIndexRouteImport
       parentRoute: typeof ExecutionRoute
+    }
+    '/w/$workspaceSlug/settings/usage': {
+      id: '/w/$workspaceSlug/settings/usage'
+      path: '/usage'
+      fullPath: '/w/$workspaceSlug/settings/usage'
+      preLoaderRoute: typeof WWorkspaceSlugSettingsUsageRouteImport
+      parentRoute: typeof WWorkspaceSlugSettingsRouteRoute
     }
     '/w/$workspaceSlug/settings/members': {
       id: '/w/$workspaceSlug/settings/members'
@@ -3673,6 +3926,20 @@ declare module '@tanstack/react-router' {
   }
 }
 
+interface DocsRouteRouteChildren {
+  DocsIndexRoute: typeof DocsIndexRoute
+  DocsSectionSlugRoute: typeof DocsSectionSlugRoute
+}
+
+const DocsRouteRouteChildren: DocsRouteRouteChildren = {
+  DocsIndexRoute: DocsIndexRoute,
+  DocsSectionSlugRoute: DocsSectionSlugRoute,
+}
+
+const DocsRouteRouteWithChildren = DocsRouteRoute._addFileChildren(
+  DocsRouteRouteChildren,
+)
+
 interface MarketplaceCategoryRouteRouteChildren {
   MarketplaceCategoryCategorySlugIndexRoute: typeof MarketplaceCategoryCategorySlugIndexRoute
   MarketplaceCategoryCategorySlugSubcategorySlugTopicSlugRoute: typeof MarketplaceCategoryCategorySlugSubcategorySlugTopicSlugRoute
@@ -3800,6 +4067,7 @@ const RoadmapTemplatesRouteRouteWithChildren =
 
 interface SettingsRouteRouteChildren {
   SettingsAppearanceRoute: typeof SettingsAppearanceRoute
+  SettingsDeleteAccountRoute: typeof SettingsDeleteAccountRoute
   SettingsMcpTokensRoute: typeof SettingsMcpTokensRoute
   SettingsNotificationsRoute: typeof SettingsNotificationsRoute
   SettingsIndexRoute: typeof SettingsIndexRoute
@@ -3807,6 +4075,7 @@ interface SettingsRouteRouteChildren {
 
 const SettingsRouteRouteChildren: SettingsRouteRouteChildren = {
   SettingsAppearanceRoute: SettingsAppearanceRoute,
+  SettingsDeleteAccountRoute: SettingsDeleteAccountRoute,
   SettingsMcpTokensRoute: SettingsMcpTokensRoute,
   SettingsNotificationsRoute: SettingsNotificationsRoute,
   SettingsIndexRoute: SettingsIndexRoute,
@@ -4220,7 +4489,9 @@ interface AdminRouteChildren {
   AdminApproveAdminRoute: typeof AdminApproveAdminRoute
   AdminConsultantsRoute: typeof AdminConsultantsRoute
   AdminMatchRoute: typeof AdminMatchRoute
+  AdminPlansRoute: typeof AdminPlansRoute
   AdminSettingsRoute: typeof AdminSettingsRoute
+  AdminWorkspacesRoute: typeof AdminWorkspacesRoute
   AdminIndexRoute: typeof AdminIndexRoute
 }
 
@@ -4229,7 +4500,9 @@ const AdminRouteChildren: AdminRouteChildren = {
   AdminApproveAdminRoute: AdminApproveAdminRoute,
   AdminConsultantsRoute: AdminConsultantsRoute,
   AdminMatchRoute: AdminMatchRoute,
+  AdminPlansRoute: AdminPlansRoute,
   AdminSettingsRoute: AdminSettingsRoute,
+  AdminWorkspacesRoute: AdminWorkspacesRoute,
   AdminIndexRoute: AdminIndexRoute,
 }
 
@@ -4238,6 +4511,7 @@ const AdminRouteWithChildren = AdminRoute._addFileChildren(AdminRouteChildren)
 interface WWorkspaceSlugSettingsRouteRouteChildren {
   WWorkspaceSlugSettingsBillingRoute: typeof WWorkspaceSlugSettingsBillingRoute
   WWorkspaceSlugSettingsMembersRoute: typeof WWorkspaceSlugSettingsMembersRoute
+  WWorkspaceSlugSettingsUsageRoute: typeof WWorkspaceSlugSettingsUsageRoute
   WWorkspaceSlugSettingsIndexRoute: typeof WWorkspaceSlugSettingsIndexRoute
 }
 
@@ -4245,6 +4519,7 @@ const WWorkspaceSlugSettingsRouteRouteChildren: WWorkspaceSlugSettingsRouteRoute
   {
     WWorkspaceSlugSettingsBillingRoute: WWorkspaceSlugSettingsBillingRoute,
     WWorkspaceSlugSettingsMembersRoute: WWorkspaceSlugSettingsMembersRoute,
+    WWorkspaceSlugSettingsUsageRoute: WWorkspaceSlugSettingsUsageRoute,
     WWorkspaceSlugSettingsIndexRoute: WWorkspaceSlugSettingsIndexRoute,
   }
 
@@ -4324,18 +4599,25 @@ const WWorkspaceSlugRouteRouteWithChildren =
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
+  DocsRouteRoute: DocsRouteRouteWithChildren,
   MarketplaceRouteRoute: MarketplaceRouteRouteWithChildren,
   RoadmapTemplatesRouteRoute: RoadmapTemplatesRouteRouteWithChildren,
   SettingsRouteRoute: SettingsRouteRouteWithChildren,
   WorkspaceRouteRoute: WorkspaceRouteRouteWithChildren,
   ExecutionRoute: ExecutionRouteWithChildren,
   AdminRoute: AdminRouteWithChildren,
+  ContactRoute: ContactRoute,
   GetStartedRoute: GetStartedRoute,
+  GoodbyeRoute: GoodbyeRoute,
   HomeRoute: HomeRoute,
+  NotAvailableRoute: NotAvailableRoute,
   NotificationsRoute: NotificationsRoute,
   OnboardingRoute: OnboardingRoute,
   PricingRoute: PricingRoute,
+  PrivacyRoute: PrivacyRoute,
+  ProductRoute: ProductRoute,
   StartSellingRoute: StartSellingRoute,
+  TermsRoute: TermsRoute,
   UnsubscribeRoute: UnsubscribeRoute,
   WelcomeRoute: WelcomeRoute,
   WWorkspaceSlugRouteRoute: WWorkspaceSlugRouteRouteWithChildren,

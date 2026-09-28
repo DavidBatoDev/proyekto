@@ -1,8 +1,12 @@
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { AnimatePresence, motion } from "framer-motion";
 import { ExternalLink, Loader2, MapIcon } from "lucide-react";
 import { useEffect, useState } from "react";
+import {
+	countLimitInfo,
+	PlanLimitNotice,
+} from "@/components/billing/PlanLimitNotice";
 import { BackLink } from "@/components/common/BackLink";
 import {
 	GoLiveCallout,
@@ -14,12 +18,16 @@ import {
 } from "@/components/marketplace/wizard/GoLiveForm";
 import { GoLiveNav } from "@/components/marketplace/wizard/GoLiveNav";
 import { ProjectTeamPicker } from "@/components/project-brief/ProjectTeamPicker";
+import { useEntitlements } from "@/hooks/useEntitlements";
 import { useToast } from "@/hooks/useToast";
+import { useCurrentWorkspace } from "@/hooks/useWorkspaceQueries";
 import { isActiveConsultant } from "@/lib/auth-utils";
 // The same vocabulary the brief uses, rather than the hand-copied twin that
 // lived here — the two screens describe the same thing to the same people.
 // `custom` is deliberately absent: `projects` has no column to keep the text in.
 import { DURATION_OPTIONS } from "@/lib/durations";
+import { type PlanLimitInfo, parsePlanLimitError } from "@/lib/planLimitErrors";
+import { workspaceKeys } from "@/queries/workspaces";
 import { projectService } from "@/services/project.service";
 import { roadmapService } from "@/services/roadmap.service";
 import { listMyTeams } from "@/services/teams.service";
@@ -69,6 +77,7 @@ const STEP_COPY: { title: string; body: string }[] = [
 
 function NewProjectPage() {
 	const navigate = useNavigate();
+	const queryClient = useQueryClient();
 	const toast = useToast();
 	const profile = useProfile();
 	const user = useUser();
@@ -89,6 +98,19 @@ function NewProjectPage() {
 		title?: string;
 		description?: string;
 	}>({});
+	// A create the server refused at the project cap.
+	const [planLimit, setPlanLimit] = useState<PlanLimitInfo | null>(null);
+
+	// The project lands in the current workspace (or the backend's default when
+	// none is selected, where this has nothing to read and so fails open).
+	const { workspace, workspaces } = useCurrentWorkspace();
+	const entitlements = useEntitlements(workspace?.id);
+	const projectCap = countLimitInfo(entitlements, "projects");
+	const noticeInfo = planLimit ?? projectCap;
+	const noticeWorkspace =
+		(noticeInfo?.workspaceId
+			? workspaces.find((item) => item.id === noticeInfo.workspaceId)
+			: null) ?? workspace;
 
 	const isVerifiedConsultant = isActiveConsultant(profile);
 	const effectiveIntent: ProjectCreationIntent =
@@ -146,6 +168,7 @@ function NewProjectPage() {
 	const handleSubmit = async () => {
 		if (isCreating) return;
 		setIsCreating(true);
+		setPlanLimit(null);
 		try {
 			const { project } = await projectService.create({
 				creation_mode: effectiveIntent,
@@ -161,6 +184,9 @@ function NewProjectPage() {
 				// falls through to the backend's default-workspace rule.
 				workspace_id: getCurrentWorkspaceId() ?? undefined,
 			});
+			// The project meter moved; refresh every workspace's usage, since the
+			// backend may have chosen the default workspace.
+			void queryClient.invalidateQueries({ queryKey: workspaceKeys.usageAll });
 
 			if (referencedRoadmap) {
 				try {
@@ -180,6 +206,12 @@ function NewProjectPage() {
 				params: { projectId: project.id },
 			});
 		} catch (error) {
+			const info = parsePlanLimitError(error);
+			if (info) {
+				// Stated on the page; the upgrade prompt is already on screen.
+				setPlanLimit(info);
+				return;
+			}
 			toast.error(
 				error instanceof Error ? error.message : "Failed to create project.",
 			);
@@ -204,6 +236,9 @@ function NewProjectPage() {
 			}
 		}
 		if (currentStep === TOTAL_STEPS) {
+			// At the project cap the create would only be refused; the notice
+			// above the panel says why.
+			if (projectCap) return;
 			void handleSubmit();
 			return;
 		}
@@ -245,6 +280,15 @@ function NewProjectPage() {
 					</div>
 
 					<div className="min-h-[400px]">
+						{noticeInfo &&
+						(planLimit || currentStep === 1 || currentStep === TOTAL_STEPS) ? (
+							<PlanLimitNotice
+								info={noticeInfo}
+								workspace={noticeWorkspace}
+								isComplimentary={entitlements.isComplimentary}
+								className="mb-5"
+							/>
+						) : null}
 						<AnimatePresence mode="wait">
 							<motion.div
 								key={currentStep}

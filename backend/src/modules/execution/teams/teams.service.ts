@@ -17,6 +17,7 @@ import {
   type ProjectRoadmapSummary,
 } from '../../../common/roadmap/roadmap-summary';
 import { SUPABASE_ADMIN } from '../../../config/supabase.module';
+import { EntitlementsService } from '../../shared/entitlements/entitlements.service';
 import { isEmailSuppressed } from '../../shared/notifications/email/email-suppression';
 import { NotificationsService } from '../../shared/notifications/notifications.service';
 import { buildTeamInviteEmail } from './team-invite-email.template';
@@ -290,6 +291,7 @@ export class TeamsService {
     private readonly mailer: MailerService,
     private readonly config: ConfigService,
     private readonly workspaces: WorkspacesService,
+    private readonly entitlements: EntitlementsService,
   ) {}
 
   /**
@@ -304,7 +306,9 @@ export class TeamsService {
 
     const name = await this.buildDefaultPersonalTeamName(userId);
     // No dto here — this is the post-vetting consultant flow — so the personal
-    // team lands in the owner's default workspace.
+    // team lands in the owner's default workspace. resolveWorkspaceForWrite,
+    // not ForCreate, on purpose: personal teams never count toward the plan's
+    // team limit.
     const workspaceId = await this.workspaces.resolveWorkspaceForWrite(userId);
 
     const { data: created, error } = await this.supabase
@@ -474,8 +478,11 @@ export class TeamsService {
   async createTeam(userId: string, dto: CreateTeamDto): Promise<TeamRow> {
     // Which organization this team belongs to. Throws if the caller named a
     // workspace they are not a member of; falls back to their default one.
-    const workspaceId = await this.workspaces.resolveWorkspaceForWrite(
+    // Also refuses (403 plan_limit) when that workspace is at its plan's team
+    // limit, before anything is written.
+    const workspaceId = await this.workspaces.resolveWorkspaceForCreate(
       userId,
+      'teams',
       dto.workspace_id,
     );
 
@@ -581,6 +588,12 @@ export class TeamsService {
     }
 
     if (dto.time_tracking_enabled !== undefined) {
+      // Only switching it ON is a plan question. Turning it off, or re-sending
+      // true to a team that already has it, is never gated, so a team on a
+      // downgraded plan can always wind tracking down.
+      if (dto.time_tracking_enabled === true && !team.time_tracking_enabled) {
+        await this.assertTimeTrackingAllowed(team);
+      }
       patch.time_tracking_enabled = dto.time_tracking_enabled;
     }
     if (dto.member_rates_enabled !== undefined) {
@@ -1084,6 +1097,22 @@ export class TeamsService {
   }
 
   // ─── helpers ─────────────────────────────────────────────────────────────
+
+  /**
+   * The team's own workspace decides, not any project's: in marketplace work
+   * the team (the consultant's) and the project (the client's) sit in
+   * different workspaces. A team with no workspace left is judged on Free
+   * unless its owner is a guest; resolveScopeForTeam knows both rules, so it
+   * is asked only in that rare case.
+   */
+  private async assertTimeTrackingAllowed(team: TeamRow): Promise<void> {
+    const ref =
+      team.workspace_id ??
+      (await this.entitlements.resolveScopeForTeam(team.id));
+    await this.entitlements.assertFeature(ref, 'time_tracking', {
+      context: 'enable',
+    });
+  }
 
   async fetchTeamOrThrow(teamId: string): Promise<TeamRow> {
     const { data, error } = await this.supabase

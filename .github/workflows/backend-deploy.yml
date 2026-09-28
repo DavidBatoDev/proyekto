@@ -45,6 +45,10 @@ jobs:
       MCP_ENABLED: ${{ vars.MCP_ENABLED }}
       MCP_OAUTH_ENABLED: ${{ vars.MCP_OAUTH_ENABLED }}
       MCP_CHAT_WRITE_ENABLED: ${{ vars.MCP_CHAT_WRITE_ENABLED }}
+      STRIPE_PRICE_PRO_MONTHLY: ${{ vars.STRIPE_PRICE_PRO_MONTHLY }}
+      STRIPE_PRICE_PRO_YEARLY: ${{ vars.STRIPE_PRICE_PRO_YEARLY }}
+      STRIPE_PRICE_BUSINESS_MONTHLY: ${{ vars.STRIPE_PRICE_BUSINESS_MONTHLY }}
+      STRIPE_PRICE_BUSINESS_YEARLY: ${{ vars.STRIPE_PRICE_BUSINESS_YEARLY }}
 
     steps:
       - name: Checkout
@@ -173,6 +177,29 @@ jobs:
             echo "Knowledge ingest enabled for this deploy."
           else
             echo "Knowledge ingest disabled (create KNOWLEDGE_INGEST_SECRET secret, then set the KNOWLEDGE_INGEST_ENABLED repo var to enable)."
+          fi
+
+          # Platform billing (Stripe). Not a feature gate -- billing is on
+          # wherever Stripe is configured; this only wires up the credentials.
+          # Guarded because --set-secrets FULL-REPLACES: naming STRIPE_SECRET_KEY
+          # before the secret exists would break EVERY deploy.
+          #
+          # To configure: create STRIPE_SECRET_KEY and STRIPE_WEBHOOK_SECRET in
+          # Secret Manager FIRST, then set the four STRIPE_PRICE_* repo vars.
+          # Setting the vars first aborts the deploy (the previous revision
+          # keeps serving -- annoying, not dangerous).
+          #
+          # Price ids are NOT secrets and ride ENV_VARS. The reconcile cron
+          # authenticates with MEETINGS_CRON_SECRET, so that must already be set.
+          if [[ -n "${STRIPE_PRICE_PRO_MONTHLY:-}" ]]; then
+            ENV_VARS="${ENV_VARS},STRIPE_PRICE_PRO_MONTHLY=${STRIPE_PRICE_PRO_MONTHLY}"
+            ENV_VARS="${ENV_VARS},STRIPE_PRICE_PRO_YEARLY=${STRIPE_PRICE_PRO_YEARLY}"
+            ENV_VARS="${ENV_VARS},STRIPE_PRICE_BUSINESS_MONTHLY=${STRIPE_PRICE_BUSINESS_MONTHLY}"
+            ENV_VARS="${ENV_VARS},STRIPE_PRICE_BUSINESS_YEARLY=${STRIPE_PRICE_BUSINESS_YEARLY}"
+            SECRETS="${SECRETS},STRIPE_SECRET_KEY=STRIPE_SECRET_KEY:latest,STRIPE_WEBHOOK_SECRET=STRIPE_WEBHOOK_SECRET:latest"
+            echo "Stripe configured for this deploy."
+          else
+            echo "Stripe not configured (create STRIPE_SECRET_KEY + STRIPE_WEBHOOK_SECRET in Secret Manager, then set the four STRIPE_PRICE_* repo vars)."
           fi
 
           # Project-brief AI generator. Not a feature gate -- the brief surfaces

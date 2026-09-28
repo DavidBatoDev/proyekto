@@ -1,6 +1,6 @@
 require_relative '../../node_modules/@capacitor/ios/scripts/pods_helpers'
 
-platform :ios, '14.0'
+platform :ios, '15.0'
 use_frameworks!
 
 # workaround to avoid Xcode caching of Pods that requires
@@ -13,7 +13,9 @@ def capacitor_pods
   pod 'CapacitorCordova', :path => '../../node_modules/@capacitor/ios'
   pod 'CapacitorFirebaseMessaging', :path => '../../node_modules/@capacitor-firebase/messaging'
   pod 'CapacitorApp', :path => '../../node_modules/@capacitor/app'
+  pod 'CapgoCapacitorSocialLogin', :path => '../../node_modules/@capgo/capacitor-social-login'
   pod 'CapgoCapacitorUpdater', :path => '../../node_modules/@capgo/capacitor-updater'
+  pod 'CapacitorNativeSettings', :path => '../../node_modules/capacitor-native-settings'
 end
 
 target 'App' do

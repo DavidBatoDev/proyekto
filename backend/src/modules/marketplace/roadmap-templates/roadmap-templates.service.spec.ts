@@ -1,5 +1,15 @@
-import { BadRequestException } from '@nestjs/common';
+import {
+  BadRequestException,
+  ForbiddenException,
+  Logger,
+} from '@nestjs/common';
 import { RoadmapTemplatesService } from './roadmap-templates.service';
+import {
+  allowAllPlanLimits,
+  planLimitsHarness,
+  type PlanLimitsHarnessOptions,
+} from '../../execution/roadmaps/services/__roadmap-plan-limits-test-kit-spec';
+import { PlanLimitException } from '../../shared/entitlements/plan-limit.exception';
 
 describe('RoadmapTemplatesService', () => {
   const maybeSingle = jest.fn();
@@ -28,6 +38,7 @@ describe('RoadmapTemplatesService', () => {
     cacheInvalidation as unknown as ConstructorParameters<
       typeof RoadmapTemplatesService
     >[2],
+    allowAllPlanLimits(),
   );
   const validateSnapshot = (content: unknown) =>
     (
@@ -257,5 +268,151 @@ describe('RoadmapTemplatesService', () => {
     expect(
       cacheInvalidation.invalidateRoadmapTemplatesCache,
     ).toHaveBeenCalledWith('saas-mvp-launch');
+  });
+});
+
+/**
+ * Instantiating a template creates a roadmap that must fit the per-roadmap
+ * node limit of the plan it lands in (real rule: Free = 250 nodes). The
+ * version content is read only when that limit is finite, and a project
+ * target is judged only after its edit access is confirmed.
+ */
+describe('RoadmapTemplatesService instantiate plan limits', () => {
+  /** epics x features x tasks: epics + epics*features + epics*features*tasks nodes. */
+  const contentOf = (epics: number, features: number, tasks: number) => ({
+    milestones: [],
+    epics: Array.from({ length: epics }, () => ({
+      features: Array.from({ length: features }, () => ({
+        tasks: Array.from({ length: tasks }, () => ({})),
+      })),
+    })),
+  });
+
+  function build(harness: PlanLimitsHarnessOptions, content: unknown) {
+    const reads: Record<string, unknown> = {
+      roadmap_public_templates: {
+        id: 'template-1',
+        slug: 'big-template',
+        current_version_id: 'version-1',
+      },
+      roadmap_template_versions: { content },
+    };
+    const from = jest.fn((table: string) => {
+      const chain = {
+        select: jest.fn(() => chain),
+        eq: jest.fn(() => chain),
+        maybeSingle: jest.fn(() =>
+          Promise.resolve({ data: reads[table] ?? null, error: null }),
+        ),
+      };
+      return chain;
+    });
+    const rpc = jest.fn((fn: string) =>
+      Promise.resolve(
+        fn === 'get_user_project_role'
+          ? { data: null, error: null }
+          : { data: { roadmap_id: 'roadmap-1' }, error: null },
+      ),
+    );
+    const { planLimits } = planLimitsHarness(harness);
+    const service = new RoadmapTemplatesService(
+      { from, rpc } as never,
+      {} as never,
+      {
+        invalidateDashboardCacheForUser: jest.fn().mockResolvedValue(undefined),
+        invalidateRoadmapTemplatesCache: jest.fn().mockResolvedValue(undefined),
+      } as never,
+      planLimits,
+    );
+    return { service, from, rpc };
+  }
+
+  const dto = (extra: Record<string, unknown> = {}) =>
+    ({
+      start_date: '2026-07-14',
+      idempotency_key: '10000000-0000-4000-8000-000000000001',
+      source_surface: 'marketplace',
+      ...extra,
+    }) as never;
+
+  beforeEach(() => {
+    jest.spyOn(Logger.prototype, 'warn').mockImplementation(() => undefined);
+  });
+  afterEach(() => jest.restoreAllMocks());
+
+  it('refuses a 310-node template on Free and never calls the RPC', async () => {
+    const { service, rpc } = build(
+      { owners: { 'user-1': { workspaceId: 'ws-free' } } },
+      contentOf(10, 5, 5),
+    );
+
+    const error = await service
+      .instantiate('template-1', 'user-1', dto())
+      .catch((caught: unknown) => caught);
+
+    expect(error).toBeInstanceOf(PlanLimitException);
+    expect((error as PlanLimitException).payload).toMatchObject({
+      limit_key: 'roadmap_nodes_per_roadmap',
+      limit: 250,
+      used: 0,
+      context: 'create',
+    });
+    expect((error as PlanLimitException).payload.message).toContain(
+      '310 nodes',
+    );
+    expect(rpc).not.toHaveBeenCalledWith(
+      'instantiate_roadmap_public_template',
+      expect.anything(),
+    );
+  });
+
+  it('lets a template that fits through', async () => {
+    const { service, rpc } = build(
+      { owners: { 'user-1': { workspaceId: 'ws-free' } } },
+      contentOf(4, 3, 2),
+    );
+
+    await service.instantiate('template-1', 'user-1', dto());
+    expect(rpc).toHaveBeenCalledWith(
+      'instantiate_roadmap_public_template',
+      expect.anything(),
+    );
+  });
+
+  it('never reads the version content on an unlimited plan', async () => {
+    const { service, from, rpc } = build(
+      { owners: { 'user-1': { workspaceId: 'ws-pro' } } },
+      contentOf(10, 5, 5),
+    );
+
+    await service.instantiate('template-1', 'user-1', dto());
+
+    expect(from).not.toHaveBeenCalledWith('roadmap_template_versions');
+    expect(rpc).toHaveBeenCalledWith(
+      'instantiate_roadmap_public_template',
+      expect.anything(),
+    );
+  });
+
+  it('answers a non-member of the target project with 403, not the plan', async () => {
+    const { service, rpc } = build(
+      { subjects: { 'project:project-9': { workspace_id: 'ws-free' } } },
+      contentOf(10, 5, 5),
+    );
+
+    await expect(
+      service.instantiate(
+        'template-1',
+        'user-1',
+        dto({ project_id: 'project-9' }),
+      ),
+    ).rejects.toMatchObject({
+      constructor: ForbiddenException,
+      message: 'Project edit access required',
+    });
+    expect(rpc).toHaveBeenCalledWith('get_user_project_role', {
+      uid: 'user-1',
+      project: 'project-9',
+    });
   });
 });

@@ -10,10 +10,12 @@ import {
 import {
 	ArrowLeft,
 	Briefcase,
+	Building2,
 	LayoutGrid,
 	Loader2,
 	Settings,
 	ShieldCheck,
+	SlidersHorizontal,
 	UserCheck,
 	Users,
 } from "lucide-react";
@@ -52,6 +54,18 @@ const NAV_ITEMS = [
 		label: "Match Projects",
 		icon: Briefcase,
 		description: "Assign consultants to projects",
+	},
+	{
+		to: "/admin/plans",
+		label: "Plans & limits",
+		icon: SlidersHorizontal,
+		description: "Edit what each plan includes",
+	},
+	{
+		to: "/admin/workspaces",
+		label: "Workspaces",
+		icon: Building2,
+		description: "Workspace plans, usage and complimentary plans",
 	},
 	{
 		to: "/admin/settings",

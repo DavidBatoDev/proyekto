@@ -54,6 +54,7 @@ import {
 import { SpecializationModal } from "@/components/profile/SpecializationModal";
 import { UploadModal } from "@/components/profile/UploadModal";
 import { useToast } from "@/hooks/useToast";
+import { isNativeApp } from "@/lib/platform";
 import {
 	type FullProfile,
 	type ProficiencyLevel,
@@ -151,6 +152,9 @@ function ProfilePage() {
 	const { profileId } = Route.useParams();
 	const { user } = useAuthStore();
 	const isOwner = user?.id === profileId;
+	// Listing yourself on the marketplace is not something the installed app
+	// offers, so the owner keeps "Edit profile" and loses the listing controls.
+	const showTalentControls = !isNativeApp();
 	const qc = useQueryClient();
 	const toast = useToast();
 
@@ -621,7 +625,7 @@ function ProfilePage() {
 								{/* Owner actions, aligned to the bottom of the avatar row */}
 								{isOwner && (
 									<div className="flex flex-wrap items-center gap-2 pb-1 sm:justify-end">
-										{profile.talent_status === null && (
+										{showTalentControls && profile.talent_status === null && (
 											<Link
 												to="/marketplace/talent/go-live"
 												className="inline-flex items-center gap-1.5 rounded-full bg-primary px-4 py-2 text-[13px] font-semibold text-primary-foreground transition-colors hover:bg-primary/90"
@@ -629,27 +633,29 @@ function ProfilePage() {
 												Offer your services
 											</Link>
 										)}
-										{profile.talent_status === "active" && (
-											<PillButton
-												onClick={() => pauseTalent.mutate()}
-												disabled={pauseTalent.isPending}
-											>
-												{pauseTalent.isPending
-													? "Pausing…"
-													: "Pause marketplace listing"}
-											</PillButton>
-										)}
-										{profile.talent_status === "paused" && (
-											<PillButton
-												variant="primary"
-												onClick={() => resumeTalent.mutate()}
-												disabled={resumeTalent.isPending}
-											>
-												{resumeTalent.isPending
-													? "Resuming…"
-													: "Resume listing"}
-											</PillButton>
-										)}
+										{showTalentControls &&
+											profile.talent_status === "active" && (
+												<PillButton
+													onClick={() => pauseTalent.mutate()}
+													disabled={pauseTalent.isPending}
+												>
+													{pauseTalent.isPending
+														? "Pausing…"
+														: "Pause marketplace listing"}
+												</PillButton>
+											)}
+										{showTalentControls &&
+											profile.talent_status === "paused" && (
+												<PillButton
+													variant="primary"
+													onClick={() => resumeTalent.mutate()}
+													disabled={resumeTalent.isPending}
+												>
+													{resumeTalent.isPending
+														? "Resuming…"
+														: "Resume listing"}
+												</PillButton>
+											)}
 										<PillButton onClick={() => setHeaderModalOpen(true)}>
 											<Edit2 className="h-3.5 w-3.5" />
 											Edit profile

@@ -12,6 +12,7 @@ import { RoadmapNodeGlyph } from "@/components/common/NodeGlyph";
 import { useDashboardProjectsQuery } from "@/hooks/useDashboardProjectsQuery";
 import { useAllRoadmapsFullQuery } from "@/hooks/useProjectQueries";
 import { isActiveConsultant } from "@/lib/auth-utils";
+import { isNativeApp } from "@/lib/platform";
 import type { Project } from "@/services/project.service";
 import type { FullRoadmapWithProject } from "@/services/roadmap.service";
 import { useProfile, useUser } from "@/stores/authStore";
@@ -61,7 +62,9 @@ function GlobalSearchBarInner({
 	const listId = useId();
 
 	const pages = useMemo(
-		() => buildSearchablePages(isActiveConsultant(profile)),
+		// The platform cannot change within a page's lifetime, so it is not a
+		// memo key — do not "fix" it into one.
+		() => buildSearchablePages(isActiveConsultant(profile), isNativeApp()),
 		[profile],
 	);
 	const projectsQuery = useDashboardProjectsQuery();

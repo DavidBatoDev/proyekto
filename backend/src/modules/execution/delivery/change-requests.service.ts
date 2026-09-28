@@ -11,7 +11,12 @@ import { SUPABASE_ADMIN } from '../../../config/supabase.module';
 import { ACTIVITY_ACTIONS } from '../../shared/audit/activity-actions';
 import { AuditService } from '../../shared/audit/audit.service';
 import { NotificationsService } from '../../shared/notifications/notifications.service';
+import {
+  EntitlementsService,
+  type FeatureKey,
+} from '../../shared/entitlements/entitlements.service';
 import { ProjectAuthorizationService } from '../projects/authorization/project-authorization.service';
+import { assertDeliveryFeature } from './delivery-plan-gate';
 import { normalizeLinkTargets } from './delivery-links';
 import type { ChangeRequestRow } from './delivery.types';
 import type {
@@ -93,6 +98,7 @@ export class ChangeRequestsService {
     private readonly authorization: ProjectAuthorizationService,
     private readonly audit: AuditService,
     private readonly notifications: NotificationsService,
+    private readonly entitlements: EntitlementsService,
   ) {}
 
   async list(
@@ -151,6 +157,7 @@ export class ChangeRequestsService {
       projectId,
       'change_requests.create',
     );
+    await this.assertPlan(projectId, 'change_requests');
 
     const links = normalizeLinkTargets(dto.links, LINK_COLUMNS);
     const reference = await this.nextReference(projectId);
@@ -240,6 +247,7 @@ export class ChangeRequestsService {
       projectId,
       'change_requests.create',
     );
+    await this.assertPlan(projectId, 'change_requests');
     const existing = await this.loadOrThrow(projectId, id);
     this.assertEditable(existing, 'be edited');
 
@@ -291,6 +299,7 @@ export class ChangeRequestsService {
       projectId,
       'change_requests.create',
     );
+    await this.assertPlan(projectId, 'change_requests');
     const existing = await this.loadOrThrow(projectId, id);
     this.assertEditable(existing, 'be submitted');
 
@@ -326,6 +335,7 @@ export class ChangeRequestsService {
       projectId,
       'change_requests.create',
     );
+    await this.assertPlan(projectId, 'change_requests');
     const existing = await this.loadOrThrow(projectId, id);
 
     if (['applied', 'withdrawn'].includes(existing.status as string)) {
@@ -362,6 +372,7 @@ export class ChangeRequestsService {
       projectId,
       'change_requests.decide',
     );
+    await this.assertPlan(projectId, 'change_requests');
     const existing = await this.loadOrThrow(projectId, id);
 
     if (existing.status !== 'submitted') {
@@ -441,6 +452,7 @@ export class ChangeRequestsService {
       projectId,
       'change_requests.decide',
     );
+    await this.assertPlan(projectId, 'change_requests');
     const existing = await this.loadOrThrow(projectId, id);
 
     if (existing.status !== 'approved') {
@@ -515,6 +527,7 @@ export class ChangeRequestsService {
       projectId,
       'change_requests.create',
     );
+    await this.assertPlan(projectId, 'change_requests');
     const existing = await this.loadOrThrow(projectId, id);
     this.assertEditable(existing, 'have its links changed');
 
@@ -556,6 +569,7 @@ export class ChangeRequestsService {
       projectId,
       'change_requests.create',
     );
+    await this.assertPlan(projectId, 'change_requests');
     const existing = await this.loadOrThrow(projectId, id);
     this.assertEditable(existing, 'have its links changed');
 
@@ -590,6 +604,7 @@ export class ChangeRequestsService {
       projectId,
       'change_requests.decide',
     );
+    await this.assertPlan(projectId, 'change_requests');
     const existing = await this.loadOrThrow(projectId, id);
 
     const { error } = await this.db
@@ -617,6 +632,14 @@ export class ChangeRequestsService {
     });
 
     return { id, deleted: true };
+  }
+
+  /** The plan gate; see delivery-plan-gate.ts for why it follows the permission check. */
+  private assertPlan(
+    projectId: string,
+    keys: FeatureKey | readonly FeatureKey[],
+  ): Promise<void> {
+    return assertDeliveryFeature(this.entitlements, projectId, keys);
   }
 
   // ── internals ─────────────────────────────────────────────────────────────

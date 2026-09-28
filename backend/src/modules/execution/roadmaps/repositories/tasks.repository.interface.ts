@@ -22,5 +22,9 @@ export interface ITasksRepository {
     dto: BulkReorderDto,
   ): Promise<void>;
   remove(id: string): Promise<void>;
-  getHistory(taskId: string): Promise<any[]>;
+  /**
+   * Newest first, at most 50. `since` (ISO timestamp) hides older rows: the
+   * plan's activity retention window.
+   */
+  getHistory(taskId: string, opts?: { since?: string }): Promise<any[]>;
 }

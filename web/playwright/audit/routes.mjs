@@ -27,6 +27,16 @@ export const STATIC_ROUTES = [
   { path: "/marketplace/consultant", group: "public", auth: false },
   { path: "/marketplace/consultant/browse", group: "public", auth: false },
   { path: "/marketplace/talent", group: "public", auth: false },
+  { path: "/pricing", group: "public", auth: false },
+  // Where the installed app sends the pages it does not carry (commerce and
+  // the marketplace). Public and chrome-less, like /get-started.
+  { path: "/not-available", group: "public", auth: false },
+  { path: "/goodbye", group: "public", auth: false },
+  { path: "/product", group: "public", auth: false },
+  { path: "/docs", group: "public", auth: false },
+  { path: "/contact", group: "public", auth: false },
+  { path: "/privacy", group: "public", auth: false },
+  { path: "/terms", group: "public", auth: false },
 
   // ── global authed (list/landing pages, no id needed) ────────────────────
   { path: "/welcome", group: "global", auth: true },
@@ -61,6 +71,7 @@ export const STATIC_ROUTES = [
   { path: "/settings/appearance", group: "settings", auth: true },
   { path: "/settings/notifications", group: "settings", auth: true },
   { path: "/settings/mcp-tokens", group: "settings", auth: true },
+  { path: "/settings/delete-account", group: "settings", auth: true },
   { path: "/project/roadmap", group: "roadmap", auth: false },
 
   // ── teams (list + self) ─────────────────────────────────────────────────
@@ -85,10 +96,16 @@ export const STATIC_ROUTES = [
   { path: "/admin", group: "admin", auth: true },
   { path: "/admin/match", group: "admin", auth: true },
   { path: "/admin/approve-admin", group: "admin", auth: true },
+  { path: "/admin/consultants", group: "admin", auth: true },
+  { path: "/admin/plans", group: "admin", auth: true },
+  { path: "/admin/workspaces", group: "admin", auth: true },
   { path: "/admin/settings", group: "admin", auth: true },
 ];
 
 export const DYNAMIC_ROUTES = [
+  // A docs article. Both placeholders are fixed strings from the docs manifest
+  // rather than ids discovered at runtime, so this always resolves.
+  { tpl: "/docs/:section/:slug", needs: [], group: "public", auth: false },
   { tpl: "/project/:projectId", needs: ["projectId"], group: "project", auth: true },
   // ── project-scoped ──────────────────────────────────────────────────────
   { tpl: "/project/:projectId/overview", needs: ["projectId"], group: "project", auth: true },
@@ -135,6 +152,7 @@ export const DYNAMIC_ROUTES = [
   { tpl: "/w/:workspaceSlug/dashboard", needs: ["workspaceSlug"], group: "global", auth: true },
   { tpl: "/w/:workspaceSlug/settings", needs: ["workspaceSlug"], group: "workspace", auth: true },
   { tpl: "/w/:workspaceSlug/settings/members", needs: ["workspaceSlug"], group: "workspace", auth: true },
+  { tpl: "/w/:workspaceSlug/settings/usage", needs: ["workspaceSlug"], group: "workspace", auth: true },
   { tpl: "/w/:workspaceSlug/settings/billing", needs: ["workspaceSlug"], group: "workspace", auth: true },
   { tpl: "/w/:workspaceSlug/teams", needs: ["workspaceSlug"], group: "teams", auth: true },
   { tpl: "/w/:workspaceSlug/teams/:teamId", needs: ["workspaceSlug", "teamId"], group: "teams", auth: true },

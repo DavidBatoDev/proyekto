@@ -1,9 +1,17 @@
 /**
  * Admin Service
- * API calls for the admin dashboard — applications, admin management, matchmaking
+ * API calls for the admin dashboard — applications, admin management,
+ * matchmaking, plan limits and complimentary workspace plans
  */
 
 import apiClient from "@/api/axios";
+import { toServiceError } from "@/lib/planLimitErrors";
+import type { PlanId, PlanSource } from "@/lib/planLimits";
+import type {
+	AdminPlanLimits,
+	CompPlan,
+	UpdatePlanLimitsInput,
+} from "@/lib/planLimitsAdmin";
 import type {
 	UserCertification,
 	UserEducation,
@@ -173,6 +181,133 @@ export interface AdminConsultantEnrollment {
 	} | null;
 }
 
+// —— Plan limits & workspace plans ——————————————————————————
+
+export type {
+	AdminLimitCell,
+	AdminLimitKeyMeta,
+	AdminPlanLimits,
+	CompPlan,
+	PlanLimitChange,
+	UpdatePlanLimitsInput,
+} from "@/lib/planLimitsAdmin";
+
+export type AdminPlanLimitsSaveResult = AdminPlanLimits & {
+	/** Tier inversions the save introduced; warned, never blocked. */
+	warnings: string[];
+};
+
+export type AdminWorkspaceFilter = "all" | "comped" | "paid" | "free";
+
+export interface AdminWorkspaceListParams {
+	search?: string;
+	filter?: AdminWorkspaceFilter;
+	page?: number;
+	page_size?: number;
+}
+
+export interface AdminWorkspaceRow {
+	id: string;
+	name: string;
+	slug: string;
+	created_at: string;
+	owner: { id: string; email: string | null } | null;
+	members: number;
+	pending_invites: number;
+	projects: number;
+	teams: number;
+	/** The raw subscription row: `plan` stays e.g. "pro" after a cancel. */
+	subscription: {
+		plan: PlanId;
+		status: string | null;
+		has_provider_subscription: boolean;
+	};
+	complimentary: {
+		plan: CompPlan;
+		since: string | null;
+		until: string | null;
+		active: boolean;
+	} | null;
+	effective_plan: PlanId;
+	plan_source: PlanSource;
+	/** Limit keys the workspace is over on its effective plan (grandfathered). */
+	over_limit: string[];
+}
+
+export interface AdminWorkspacePage {
+	items: AdminWorkspaceRow[];
+	page: number;
+	page_size: number;
+	total: number;
+}
+
+export interface AdminWorkspaceAuditEntry {
+	id: string;
+	action: string;
+	actor_id: string | null;
+	note: string | null;
+	before: unknown;
+	after: unknown;
+	created_at: string;
+}
+
+export interface AdminWorkspaceDetail extends AdminWorkspaceRow {
+	largest_roadmaps: Array<{
+		roadmap_id: string;
+		name: string;
+		project_id: string | null;
+		project_title: string | null;
+		owner_id: string;
+		nodes: number;
+	}>;
+	audit: AdminWorkspaceAuditEntry[];
+}
+
+export interface SetWorkspaceCompInput {
+	plan: CompPlan;
+	/** ISO timestamp the comp lapses at; null or absent = never. */
+	until?: string | null;
+	/** Why, 1..1000 characters. Lands in the admin audit log. */
+	note: string;
+}
+
+/**
+ * An admin API failure that keeps the HTTP status and the server's `code`
+ * (e.g. 409 `plan_limits_stale`) next to its readable message.
+ */
+export class AdminApiError extends Error {
+	readonly status: number | null;
+	readonly code: string | null;
+
+	constructor(
+		message: string,
+		status: number | null,
+		code: string | null,
+		options?: { cause?: unknown },
+	) {
+		super(message, options);
+		this.name = "AdminApiError";
+		this.status = status;
+		this.code = code;
+	}
+}
+
+function toAdminApiError(err: unknown, fallback: string): AdminApiError {
+	const response = (
+		err as { response?: { status?: unknown; data?: unknown } } | null
+	)?.response;
+	const body = response?.data as
+		| { error?: { code?: unknown }; code?: unknown }
+		| undefined;
+	const code = body?.error?.code ?? body?.code;
+	return new AdminApiError(
+		toServiceError(err, fallback).message,
+		typeof response?.status === "number" ? response.status : null,
+		typeof code === "string" ? code : null,
+		{ cause: err },
+	);
+}
+
 // ─── Service ─────────────────────────────────────────────────────────────────
 
 class AdminService {
@@ -325,6 +460,103 @@ class AdminService {
 			project_id: projectId,
 			consultant_id: consultantId,
 		});
+	}
+
+	// —— Plan limits ——————————————————————————————————————
+
+	/** The editable limits matrix. Readable by any active admin. */
+	async getPlanLimits(): Promise<AdminPlanLimits> {
+		try {
+			const { data } = await apiClient.get(`${this.base}/plan-limits`);
+			return data.data;
+		} catch (err) {
+			throw toAdminApiError(err, "Couldn't load plan limits.");
+		}
+	}
+
+	/**
+	 * Save every changed cell in one request. A newer save since `base_version`
+	 * rejects with an `AdminApiError` whose code is `plan_limits_stale`.
+	 */
+	async updatePlanLimits(
+		input: UpdatePlanLimitsInput,
+	): Promise<AdminPlanLimitsSaveResult> {
+		try {
+			const { data } = await apiClient.put(`${this.base}/plan-limits`, input);
+			const result = data.data as AdminPlanLimitsSaveResult;
+			return { ...result, warnings: result.warnings ?? [] };
+		} catch (err) {
+			throw toAdminApiError(err, "Couldn't save plan limits.");
+		}
+	}
+
+	// —— Workspaces & complimentary plans —————————————————————
+
+	async listWorkspaces(
+		params: AdminWorkspaceListParams = {},
+	): Promise<AdminWorkspacePage> {
+		const qs = new URLSearchParams();
+		const search = params.search?.trim();
+		if (search) qs.set("search", search);
+		if (params.filter && params.filter !== "all") {
+			qs.set("filter", params.filter);
+		}
+		if (params.page) qs.set("page", String(params.page));
+		if (params.page_size) qs.set("page_size", String(params.page_size));
+		const suffix = qs.toString() ? `?${qs}` : "";
+		try {
+			const { data } = await apiClient.get(`${this.base}/workspaces${suffix}`);
+			const page = data.data as AdminWorkspacePage;
+			return { ...page, items: page.items ?? [] };
+		} catch (err) {
+			throw toAdminApiError(err, "Couldn't load workspaces.");
+		}
+	}
+
+	async getWorkspace(id: string): Promise<AdminWorkspaceDetail> {
+		try {
+			const { data } = await apiClient.get(`${this.base}/workspaces/${id}`);
+			return data.data;
+		} catch (err) {
+			throw toAdminApiError(err, "Couldn't load this workspace.");
+		}
+	}
+
+	/** Grant or edit a complimentary plan. Needs a super admin. */
+	async setWorkspaceComp(
+		id: string,
+		input: SetWorkspaceCompInput,
+	): Promise<{ workspace: AdminWorkspaceRow; warnings: string[] }> {
+		try {
+			const { data } = await apiClient.put(
+				`${this.base}/workspaces/${id}/comp`,
+				input,
+			);
+			const result = data.data as {
+				workspace: AdminWorkspaceRow;
+				warnings?: string[];
+			};
+			return { workspace: result.workspace, warnings: result.warnings ?? [] };
+		} catch (err) {
+			throw toAdminApiError(err, "Couldn't save the complimentary plan.");
+		}
+	}
+
+	/** Remove a complimentary plan (idempotent). Needs a super admin. */
+	async clearWorkspaceComp(
+		id: string,
+		note?: string,
+	): Promise<{ workspace: AdminWorkspaceRow }> {
+		const trimmed = note?.trim();
+		try {
+			const { data } = await apiClient.delete(
+				`${this.base}/workspaces/${id}/comp`,
+				trimmed ? { data: { note: trimmed } } : undefined,
+			);
+			return data.data;
+		} catch (err) {
+			throw toAdminApiError(err, "Couldn't remove the complimentary plan.");
+		}
 	}
 
 	// —— Users ————————————————————————————————————————————

@@ -1,6 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useMemo } from "react";
 import { useToast } from "@/contexts/ToastContext";
+import { serverNow } from "@/lib/serverClock";
 import {
 	type TaskTimeLog,
 	teamTimeService,
@@ -113,7 +114,10 @@ export function useActiveTimer(options?: {
 			await queryClient.cancelQueries({ queryKey: runningKey });
 			const previous = queryClient.getQueryData<TaskTimeLog | null>(runningKey);
 			if (previous?.id === logId) {
-				setRunning({ ...previous, paused_at: new Date().toISOString() });
+				setRunning({
+					...previous,
+					paused_at: new Date(serverNow()).toISOString(),
+				});
 			}
 			return { previous };
 		},
@@ -138,7 +142,7 @@ export function useActiveTimer(options?: {
 				setRunning({
 					...previous,
 					paused_at: null,
-					break_seconds: liveBreakSecondsFromLog(previous, Date.now()),
+					break_seconds: liveBreakSecondsFromLog(previous, serverNow()),
 				});
 			}
 			return { previous };

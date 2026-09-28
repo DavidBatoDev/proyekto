@@ -93,15 +93,31 @@ export class Harness {
     );
   }
 
-  async boot(): Promise<void> {
-    const moduleRef = await Test.createTestingModule({ imports: [AppModule] })
+  /**
+   * @param overrides extra provider stubs, e.g. the billing registry. Explicit
+   * object literals only — a catch-all Proxy makes DI lifecycle and thenable
+   * probes misfire during boot.
+   */
+  async boot(
+    overrides: Array<{ token: unknown; value: unknown }> = [],
+  ): Promise<void> {
+    let builder = Test.createTestingModule({ imports: [AppModule] })
       .overrideProvider(RealtimePublisher)
       .useValue(realtimeStub)
       .overrideProvider(KnowledgeOutboxService)
-      .useValue(knowledgeOutboxStub)
-      .compile();
+      .useValue(knowledgeOutboxStub);
+    for (const override of overrides) {
+      builder = builder
+        .overrideProvider(override.token as never)
+        .useValue(override.value);
+    }
+    const moduleRef = await builder.compile();
 
-    const app = moduleRef.createNestApplication();
+    // rawBody MUST mirror src/main.ts. The harness builds its own app rather
+    // than importing main.ts, so without this the billing webhook's raw-body
+    // test would pass against a pipeline production does not have — i.e. prove
+    // nothing about the thing it exists to protect.
+    const app = moduleRef.createNestApplication({ rawBody: true });
     // Mirror the production request pipeline (src/main.ts) so route prefixes,
     // validation, the {data} envelope, and error shapes match prod exactly.
     app.setGlobalPrefix('api', {

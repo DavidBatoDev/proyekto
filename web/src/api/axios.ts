@@ -6,7 +6,26 @@ import {
 	formatMissingPermission,
 	parseMissingPermissionError,
 } from "../lib/permissionErrors";
+import { notifyPlanLimit, parsePlanLimitError } from "../lib/planLimitErrors";
+import { recordServerDate } from "../lib/serverClock";
 import { getAccessToken } from "../lib/supabase";
+
+// When each request left, so a response's `Date` header can be placed at the
+// request's midpoint. See lib/serverClock.ts.
+const requestSentAt = new WeakMap<InternalAxiosRequestConfig, number>();
+
+function sampleServerClock(
+	config: InternalAxiosRequestConfig | undefined,
+	headers: unknown,
+): void {
+	const sentAt = config ? requestSentAt.get(config) : undefined;
+	if (sentAt === undefined || !headers || typeof headers !== "object") return;
+	recordServerDate(
+		(headers as Record<string, unknown>).date,
+		sentAt,
+		Date.now(),
+	);
+}
 
 // Module-level toast handler. The ToastProvider wires this on mount so the
 // axios interceptor — which doesn't live inside React — can fire toasts on
@@ -56,6 +75,9 @@ apiClient.interceptors.request.use(
 			console.error("Error adding auth headers:", error);
 		}
 
+		// Stamped after the async token lookup so the clock sample measures the
+		// network round trip, not the session refresh.
+		requestSentAt.set(config, Date.now());
 		return config;
 	},
 	(error) => {
@@ -66,11 +88,13 @@ apiClient.interceptors.request.use(
 // Response interceptor - Handle common errors
 apiClient.interceptors.response.use(
 	(response) => {
+		sampleServerClock(response.config, response.headers);
 		return response;
 	},
 	(error) => {
 		// Handle common error scenarios
 		if (error.response) {
+			sampleServerClock(error.config, error.response.headers);
 			// Server responded with error status
 			const status = error.response.status;
 
@@ -81,6 +105,15 @@ apiClient.interceptors.response.use(
 					break;
 				case 403:
 					{
+						// A plan limit is not a permission problem: raise the upgrade
+						// prompt (PlanLimitBridge shows it) and let the error propagate
+						// unchanged so the caller can still render its own notice.
+						const planLimit = parsePlanLimitError(error);
+						if (planLimit) {
+							notifyPlanLimit(planLimit);
+							break;
+						}
+
 						const url = String(error.config?.url ?? "");
 						const isExpectedTeamTimeForbidden =
 							url.includes("/api/team-time/teams/") &&

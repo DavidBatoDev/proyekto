@@ -1,4 +1,5 @@
 import { TeamsService } from './teams.service';
+import { allowAllEntitlements } from '../../shared/entitlements/__entitlements-test-kit-spec';
 
 /**
  * Team invitations must reach the invitee.
@@ -91,7 +92,11 @@ describe('TeamsService — invitation email', () => {
           key === 'CLIENT_URL' ? 'https://www.proyekto.test' : undefined,
         ),
       } as any,
-      { resolveWorkspaceForWrite: jest.fn().mockResolvedValue('ws-1') } as any,
+      {
+        resolveWorkspaceForWrite: jest.fn().mockResolvedValue('ws-1'),
+        resolveWorkspaceForCreate: jest.fn().mockResolvedValue('ws-1'),
+      } as any,
+      allowAllEntitlements(),
     );
 
     // Authorization and team lookup are exercised by their own specs; stub the

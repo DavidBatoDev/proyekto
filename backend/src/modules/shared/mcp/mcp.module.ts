@@ -4,6 +4,7 @@ import { ProjectsModule } from '../../execution/projects/projects.module';
 import { RoadmapsModule } from '../../execution/roadmaps/roadmaps.module';
 import { ChatModule } from '../../execution/chat/chat.module';
 import { DeliveryModule } from '../../execution/delivery/delivery.module';
+import { EntitlementsCoreModule } from '../entitlements/entitlements-core.module';
 import { McpController } from './mcp.controller';
 import { McpTokensController } from './mcp-tokens.controller';
 import { McpAuthGuard } from './mcp-auth.guard';
@@ -31,6 +32,8 @@ import { WellKnownController } from './oauth/well-known.controller';
  *  - Phase 4 chat writes are gated by MCP_CHAT_WRITE_ENABLED via
  *    McpCapabilitiesService. MCP_ENABLED is already on in prod, so without that
  *    flag the new scope would go live on deploy with no activation step.
+ *  - Every tool and resource runs the mcp_server plan gate first (McpPlanGate):
+ *    MCP access is a paid-plan feature, checked per call, not per token.
  */
 @Module({
   imports: [
@@ -40,6 +43,8 @@ import { WellKnownController } from './oauth/well-known.controller';
     DeliveryModule,
     // The cross-roadmap read tools reuse the in-app assistant's context reader.
     AiContextModule,
+    // The per-call mcp_server plan gate (McpPlanGate).
+    EntitlementsCoreModule,
   ],
   controllers: [
     McpController,

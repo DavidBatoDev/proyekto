@@ -1,4 +1,5 @@
 import { RoadmapsService } from './roadmaps.service';
+import { allowAllPlanLimits } from './__roadmap-plan-limits-test-kit-spec';
 describe('RoadmapsService', () => {
   const roadmapAuthz = {
     assertProjectRoadmapPermission: jest.fn(),
@@ -9,11 +10,13 @@ describe('RoadmapsService', () => {
   const repo = {
     create: jest.fn(),
   };
+  const planLimits = allowAllPlanLimits();
 
   const service = new RoadmapsService(
     repo as any,
     supabase as any,
     roadmapAuthz as any,
+    planLimits as any,
   );
 
   beforeEach(() => {

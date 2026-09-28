@@ -62,4 +62,12 @@ export const POSTER_FRAME = {
 	boardEmpty: 292,
 	timelineEmpty: 294,
 	deliverableEmpty: 290,
+	/**
+	 * The four /product clips. Same rule as the empty states: late in the
+	 * fourth beat, after the closing move lands and before the teardown at 298.
+	 */
+	aiAssistant: 290,
+	chat: 290,
+	meetings: 292,
+	timeRates: 290,
 } as const;

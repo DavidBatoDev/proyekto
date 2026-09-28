@@ -203,11 +203,13 @@ export class TasksRepositorySupabase implements ITasksRepository {
     );
   }
 
-  async getHistory(taskId: string): Promise<any[]> {
-    const { data, error } = await this.db
+  async getHistory(taskId: string, opts?: { since?: string }): Promise<any[]> {
+    let query = this.db
       .from('task_activity_log')
       .select('*, changed_by_user:profiles(id, display_name, avatar_url)')
-      .eq('task_id', taskId)
+      .eq('task_id', taskId);
+    if (opts?.since) query = query.gte('created_at', opts.since);
+    const { data, error } = await query
       .order('created_at', { ascending: false })
       .limit(50);
     if (error) throw new Error(error.message);

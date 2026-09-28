@@ -5,6 +5,7 @@ import {
   ForbiddenException,
   Inject,
   Injectable,
+  Logger,
   NotFoundException,
 } from '@nestjs/common';
 import { createHash } from 'crypto';
@@ -19,6 +20,8 @@ import {
   REDIS_CACHE_KEYS,
 } from '../../../common/cache/redis-cache.keys';
 import { RedisCacheInvalidationService } from '../../../common/cache/redis-cache-invalidation.service';
+import { RoadmapPlanLimitsService } from '../../execution/roadmaps/services/roadmap-plan-limits.service';
+import { isPlanLimitException } from '../../shared/entitlements/plan-limit.exception';
 import type {
   ConsultantTemplateAnalytics,
   RoadmapTemplateDetail,
@@ -39,12 +42,18 @@ import {
 type CacheOptions = { onCacheStatus?: (status: AppCacheStatus) => void };
 type TemplateRow = Record<string, any>;
 
+/** Roles the instantiate RPC accepts for a project target. */
+const PROJECT_EDIT_ROLES = new Set(['owner', 'admin', 'editor']);
+
 @Injectable()
 export class RoadmapTemplatesService {
+  private readonly logger = new Logger(RoadmapTemplatesService.name);
+
   constructor(
     @Inject(SUPABASE_ADMIN) private readonly db: SupabaseClient,
     private readonly cache: RedisDataCacheService,
     private readonly cacheInvalidation: RedisCacheInvalidationService,
+    private readonly planLimits: RoadmapPlanLimitsService,
   ) {}
 
   async list(
@@ -147,6 +156,7 @@ export class RoadmapTemplatesService {
     dto: InstantiateRoadmapTemplateDto,
   ) {
     const template = await this.requirePublishedTemplate(templateId);
+    await this.assertTemplateFitsPlan(template, userId, dto.project_id ?? null);
     const { data, error } = await this.db.rpc(
       'instantiate_roadmap_public_template',
       {
@@ -1007,6 +1017,89 @@ export class RoadmapTemplatesService {
       throw new BadRequestException(
         'Template contains personal or runtime execution data',
       );
+    }
+  }
+
+  /**
+   * The new roadmap must fit the per-roadmap node limit of the plan it will
+   * answer to: the target project's workspace, else the user's own (a guest
+   * is exempt). The template's content is read only when that limit is
+   * finite. A project target is judged only after its edit access is
+   * confirmed, so a non-member learns nothing about another workspace's plan.
+   */
+  private async assertTemplateFitsPlan(
+    template: TemplateRow,
+    userId: string,
+    projectId: string | null,
+  ): Promise<void> {
+    const scope = await this.planLimits.scopeFor({
+      roadmapId: null,
+      projectId,
+      ownerId: userId,
+    });
+    const limit = await this.planLimits.nodeLimit(scope);
+    if (limit === null) return;
+    const nodes = await this.countTemplateVersionNodes(
+      template.current_version_id as string | null,
+    );
+    if (nodes <= limit) return;
+    try {
+      await this.planLimits.assertNodeTotal(scope, {
+        previous: 0,
+        next: nodes,
+        context: 'create',
+      });
+    } catch (error) {
+      if (projectId && isPlanLimitException(error)) {
+        await this.assertProjectEditAccess(userId, projectId);
+      }
+      throw error;
+    }
+  }
+
+  /** epics + features + tasks of a version (milestones excluded), as toDetail counts them. Fails open to 0. */
+  private async countTemplateVersionNodes(
+    versionId: string | null,
+  ): Promise<number> {
+    if (!versionId) return 0;
+    const { data, error } = await this.db
+      .from('roadmap_template_versions')
+      .select('content')
+      .eq('id', versionId)
+      .maybeSingle();
+    if (error) {
+      this.logger.warn(
+        `entitlements_lookup_failed op=template_node_count subject=template_version:${versionId} message=${error.message}`,
+      );
+      return 0;
+    }
+    const content = (data?.content ?? null) as {
+      epics?: Array<{ features?: Array<{ tasks?: unknown[] }> }>;
+    } | null;
+    const epics = Array.isArray(content?.epics) ? content.epics : [];
+    const features = epics.flatMap((epic) =>
+      Array.isArray(epic?.features) ? epic.features : [],
+    );
+    const tasks = features.reduce(
+      (sum, feature) =>
+        sum + (Array.isArray(feature?.tasks) ? feature.tasks.length : 0),
+      0,
+    );
+    return epics.length + features.length + tasks;
+  }
+
+  /** The same gate the instantiate RPC applies, with its message. */
+  private async assertProjectEditAccess(
+    userId: string,
+    projectId: string,
+  ): Promise<void> {
+    const { data, error } = await this.db.rpc('get_user_project_role', {
+      uid: userId,
+      project: projectId,
+    });
+    if (error) throw new BadRequestException(error.message);
+    if (typeof data !== 'string' || !PROJECT_EDIT_ROLES.has(data)) {
+      throw new ForbiddenException('Project edit access required');
     }
   }
 

@@ -161,6 +161,10 @@ export function useWorkspaceInviteMutation(workspaceId: string) {
 			void queryClient.invalidateQueries({
 				queryKey: workspaceKeys.invites(workspaceId),
 			});
+			// A pending invite holds a member spot, so the member meter moves.
+			void queryClient.invalidateQueries({
+				queryKey: workspaceKeys.usage(workspaceId),
+			});
 		},
 	});
 }
@@ -173,6 +177,10 @@ export function useCancelWorkspaceInviteMutation(workspaceId: string) {
 		onSuccess: () => {
 			void queryClient.invalidateQueries({
 				queryKey: workspaceKeys.invites(workspaceId),
+			});
+			// Cancelling frees the member spot the invite was holding.
+			void queryClient.invalidateQueries({
+				queryKey: workspaceKeys.usage(workspaceId),
 			});
 		},
 	});

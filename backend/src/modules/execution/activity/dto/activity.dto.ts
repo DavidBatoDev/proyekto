@@ -121,6 +121,19 @@ export interface ListProjectActivityResult {
    * hidden" — on an audit surface, honest omission beats silent omission.
    */
   can_view_sensitive: boolean;
+  /**
+   * The workspace plan's activity window, the same honest omission: rows
+   * older than `cutoff` exist but are hidden (never purged) on this plan.
+   * Both null means unlimited.
+   */
+  retention: ActivityRetention;
+}
+
+export interface ActivityRetention {
+  /** activity_retention_days of the project's workspace plan; null = unlimited. */
+  days: number | null;
+  /** ISO timestamp of the oldest visible row; null = unlimited. */
+  cutoff: string | null;
 }
 
 export interface ActivityCursor {

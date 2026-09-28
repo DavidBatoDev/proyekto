@@ -163,12 +163,12 @@ export function CTAFooterSection({ isActive = false }: { isActive?: boolean }) {
 									</button>
 								</li>
 								<li>
-									<button
-										type="button"
+									<Link
+										to="/pricing"
 										className="text-left transition-colors hover:text-slate-900"
 									>
 										Pricing
-									</button>
+									</Link>
 								</li>
 							</ul>
 						</motion.div>
@@ -179,30 +179,49 @@ export function CTAFooterSection({ isActive = false }: { isActive?: boolean }) {
 							animate={animate}
 						>
 							<h4 className="mb-4 font-semibold text-slate-900">Company</h4>
+							{/* These were three buttons with no handler. A control that
+							    does nothing is worse in a footer than a shorter list, so
+							    they are now the pages that actually exist. */}
 							<ul className="space-y-2 text-sm text-slate-600">
 								<li>
-									<button
-										type="button"
+									<Link
+										to="/product"
 										className="text-left transition-colors hover:text-slate-900"
 									>
-										About
-									</button>
+										Product
+									</Link>
 								</li>
 								<li>
-									<button
-										type="button"
+									<Link
+										to="/docs"
 										className="text-left transition-colors hover:text-slate-900"
 									>
-										Security
-									</button>
+										Docs
+									</Link>
 								</li>
 								<li>
-									<button
-										type="button"
+									<Link
+										to="/contact"
+										className="text-left transition-colors hover:text-slate-900"
+									>
+										Contact
+									</Link>
+								</li>
+								<li>
+									<Link
+										to="/privacy"
 										className="text-left transition-colors hover:text-slate-900"
 									>
 										Privacy
-									</button>
+									</Link>
+								</li>
+								<li>
+									<Link
+										to="/terms"
+										className="text-left transition-colors hover:text-slate-900"
+									>
+										Terms
+									</Link>
 								</li>
 							</ul>
 						</motion.div>

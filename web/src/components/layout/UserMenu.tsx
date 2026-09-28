@@ -12,6 +12,7 @@ import { useEffect, useRef, useState } from "react";
 import { replayProductTour } from "@/components/tour/tourEvents";
 import { useProfileQuery } from "@/hooks/useProfileQuery";
 import { isActiveConsultant } from "@/lib/auth-utils";
+import { isNativeApp } from "@/lib/platform";
 import { resolveTourForPath } from "@/lib/tours/registry";
 import { adminService } from "@/services/admin.service";
 import { useAuthStore } from "@/stores/authStore";
@@ -37,6 +38,10 @@ export default function UserMenu() {
 		retry: false,
 	});
 	const isAdmin = !!adminProfile;
+	// The staff console is not in the installed app (it is mostly commerce and
+	// marketplace, and its index redirects into one of those), so the entry
+	// would only bounce.
+	const showAdminEntry = !isNativeApp();
 
 	useEffect(() => {
 		const handleClickOutside = (event: MouseEvent) => {
@@ -124,7 +129,7 @@ export default function UserMenu() {
 					</div>
 
 					<div className="py-1">
-						{isAdmin && (
+						{isAdmin && showAdminEntry && (
 							<>
 								<Link
 									to="/admin/applications"

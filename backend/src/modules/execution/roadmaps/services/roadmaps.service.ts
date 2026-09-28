@@ -14,6 +14,10 @@ import type { IRoadmapsRepository } from '../repositories/roadmaps.repository.in
 import { countRoadmapChildren } from '../repositories/roadmaps.repository.supabase';
 import { CreateRoadmapDto, UpdateRoadmapDto } from '../dto/roadmaps.dto';
 import { RoadmapAuthorizationService } from './roadmap-authorization.service';
+import {
+  RoadmapPlanLimitsService,
+  type RoadmapPlanTarget,
+} from './roadmap-plan-limits.service';
 
 export const ROADMAPS_REPOSITORY = Symbol('ROADMAPS_REPOSITORY');
 
@@ -25,6 +29,7 @@ export class RoadmapsService {
     @Inject(ROADMAPS_REPOSITORY) private readonly repo: IRoadmapsRepository,
     @Inject(SUPABASE_ADMIN) private readonly supabase: SupabaseClient,
     private readonly roadmapAuthz: RoadmapAuthorizationService,
+    private readonly planLimits: RoadmapPlanLimitsService,
   ) {}
 
   async replaceProjectRoadmap(
@@ -70,6 +75,11 @@ export class RoadmapsService {
         'Replacement roadmap is already linked to a project.',
       );
     }
+    // A standalone roadmap from another workspace must fit this project's plan.
+    await this.planLimits.assertCanLink(
+      replacement as RoadmapPlanTarget,
+      projectId,
+    );
 
     const { data: linked, error } = await this.supabase
       .rpc('replace_project_roadmap', {
@@ -194,6 +204,12 @@ export class RoadmapsService {
         userId,
         'roadmap.edit',
       );
+      // Unlinking moves the roadmap under its owner's default workspace plan;
+      // a roadmap too big for it is refused, as the same unlink through
+      // create-full is (same-workspace moves are never counted).
+      if (dto.project_id === null) {
+        await this.planLimits.assertCanUnlink(existing as RoadmapPlanTarget);
+      }
       return this.repo.update(id, dto);
     }
 
@@ -203,6 +219,14 @@ export class RoadmapsService {
         requiredRole: 'owner',
         label: 'modify this roadmap',
       });
+    // Linking moves the roadmap under the project's workspace plan; a roadmap
+    // too big for it is refused (same-workspace links are never counted).
+    if (targetProjectId) {
+      await this.planLimits.assertCanLink(
+        existing as RoadmapPlanTarget,
+        targetProjectId,
+      );
+    }
     return this.repo.update(id, dto);
   }
 

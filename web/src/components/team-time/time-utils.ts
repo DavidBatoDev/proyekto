@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { serverNow } from "@/lib/serverClock";
 import type { TaskTimeLog } from "@/services/team-time.service";
 
 export const formatDateTime = (value?: string | null) => {
@@ -218,7 +219,11 @@ export function logFee(log: TaskTimeLog): number {
 // A single shared 1Hz timer drives every cell that needs a live
 // duration. Each subscriber gets re-rendered when the tick fires;
 // non-subscribed components (and any cell rendered for a finished log)
-// stay at their initial Date.now() value and don't re-render.
+// stay at their initial value and don't re-render.
+//
+// "Now" is the server's clock, not the device's: live durations are
+// measured from server-stamped `started_at`, and a device clock running
+// slow would otherwise hold a fresh timer at 00:00:00 until it caught up.
 //
 // This lets the time-tracking grids keep their `columns` array stable
 // across ticks. Without it, putting `liveNowMs` in the grid's state
@@ -231,7 +236,7 @@ const nowSubscribers = new Set<(now: number) => void>();
 function startNowTimerIfNeeded() {
 	if (nowTimerHandle !== null) return;
 	nowTimerHandle = window.setInterval(() => {
-		const now = Date.now();
+		const now = serverNow();
 		nowSubscribers.forEach((cb) => cb(now));
 	}, 1000);
 }
@@ -245,12 +250,12 @@ function stopNowTimerIfIdle() {
 
 /**
  * Subscribes the calling component to a 1Hz "now" tick when `active`
- * is true. Returns the latest Date.now() (or the value at first render
+ * is true. Returns the latest server-corrected now (or the value at first render
  * when `active` is false). Many simultaneous subscribers share one
  * setInterval, so cost stays O(1) regardless of row count.
  */
 export function useLiveNowMs(active: boolean): number {
-	const [now, setNow] = useState(() => Date.now());
+	const [now, setNow] = useState(() => serverNow());
 	useEffect(() => {
 		if (!active) return;
 		nowSubscribers.add(setNow);

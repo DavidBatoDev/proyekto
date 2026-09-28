@@ -1,5 +1,5 @@
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
-import { SlidersHorizontal } from "lucide-react";
+import { History, SlidersHorizontal } from "lucide-react";
 import { useMemo, useState } from "react";
 import { PermissionDeniedBanner } from "@/components/common/PermissionDeniedBanner";
 import {
@@ -19,11 +19,26 @@ import {
 import { useProjectActivityQuery } from "@/hooks/useActivityQueries";
 import { useProjectMyPermissionsQuery } from "@/hooks/useProjectQueries";
 import { getPermissionLabel } from "@/lib/permissionErrors";
+import { retentionCopy } from "@/lib/usageCopy";
 
 export const Route = createFileRoute("/_execution/project/$projectId/logs")({
 	validateSearch: parseLogsSearch,
 	component: ProjectLogsPage,
 });
+
+/**
+ * The retention window the server applied to this feed, read defensively:
+ * older backends send no `retention`, and anything malformed reads as none.
+ */
+function readRetentionDays(page: unknown): number | null {
+	if (typeof page !== "object" || page === null) return null;
+	const retention = (page as { retention?: unknown }).retention;
+	if (typeof retention !== "object" || retention === null) return null;
+	const days = (retention as { days?: unknown }).days;
+	return typeof days === "number" && Number.isInteger(days) && days >= 1
+		? days
+		: null;
+}
 
 function ProjectLogsPage() {
 	const { projectId } = Route.useParams();
@@ -55,6 +70,9 @@ function ProjectLogsPage() {
 
 	const items = feed.data?.pages.flatMap((page) => page.items) ?? [];
 	const canViewSensitive = feed.data?.pages[0]?.can_view_sensitive ?? true;
+	// The project's workspace plan decides how far back the feed reaches; the
+	// server hides older activity (it never deletes it) and says so here.
+	const retentionDays = readRetentionDays(feed.data?.pages[0]);
 	const hasFilters = hasActiveLogsFilters(search);
 
 	// Gated inline rather than via RequireProjectAccess: that component's
@@ -142,6 +160,16 @@ function ProjectLogsPage() {
 						<span className="text-xs text-muted-foreground">Refreshing…</span>
 					) : null}
 				</header>
+
+				{retentionDays !== null ? (
+					<p className="flex items-start gap-2 border-b border-border bg-muted/40 px-4 py-2 text-xs text-muted-foreground md:px-6">
+						<History
+							className="mt-0.5 h-3.5 w-3.5 shrink-0"
+							aria-hidden="true"
+						/>
+						{retentionCopy(retentionDays, "This workspace's plan")}
+					</p>
+				) : null}
 
 				<div className="min-h-0 flex-1 overflow-y-auto">
 					{feed.isError ? (

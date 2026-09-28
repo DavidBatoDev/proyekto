@@ -5,9 +5,11 @@ import {
 	KeyRound,
 	type LucideIcon,
 	Palette,
+	Trash2,
 } from "lucide-react";
 import { featureFlags } from "@/config/featureFlags";
 import { useProfileQuery } from "@/hooks/useProfileQuery";
+import { deletionCopy } from "@/lib/accountDeletionCopy";
 import { isActiveConsultant } from "@/lib/auth-utils";
 import { useUser } from "@/stores/authStore";
 
@@ -140,6 +142,32 @@ function SettingsOverviewPage() {
 					<SectionCard key={section.label} section={section} />
 				))}
 			</div>
+
+			{/*
+			 * A band below a rule, not a fourth card in the grid: a card here
+			 * would read as a peer of "Notifications", and this is not a setting.
+			 * Prominent on purpose — Google Play expects to find account deletion
+			 * in account settings, and a reviewer has to be able to see it.
+			 */}
+			<section className="mt-10 border-t border-border pt-8">
+				<div className="flex flex-col gap-4 rounded-2xl border border-destructive/30 bg-card p-5 sm:flex-row sm:items-center sm:justify-between">
+					<div className="min-w-0">
+						<h2 className="text-sm font-semibold text-foreground">
+							{deletionCopy.entryHeading}
+						</h2>
+						<p className="mt-1 max-w-xl text-sm text-muted-foreground">
+							{deletionCopy.entryBody}
+						</p>
+					</div>
+					<Link
+						to="/settings/delete-account"
+						className="inline-flex h-9 shrink-0 items-center justify-center gap-2 rounded-lg border border-destructive/40 bg-background px-3.5 text-sm font-medium text-destructive transition-colors hover:bg-destructive/10"
+					>
+						<Trash2 className="h-4 w-4" aria-hidden />
+						{deletionCopy.entryCta}
+					</Link>
+				</div>
+			</section>
 		</div>
 	);
 }

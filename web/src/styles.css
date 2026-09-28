@@ -100,6 +100,17 @@ body.presentation-mode {
   display: none;
 }
 
+/* Same trick, named for reuse: a scroll area whose own scrollbar would be
+   chrome the reader has no use for (the docs rail). The page scrollbar is
+   already hidden above; this is for nested ones. */
+.no-scrollbar {
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+
 .presentation-inner-scroll {
   overflow-y: auto;
   scrollbar-width: thin;

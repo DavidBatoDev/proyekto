@@ -3,11 +3,15 @@
  * can be shared with the onboarding slide via TeamFormFields; the mutation and
  * the close-on-success behaviour stay here, because the deck advances a step
  * instead of closing.
+ *
+ * A refusal at the workspace's team cap keeps the modal open with the limit
+ * stated in place, so the typed name survives an upgrade in another tab.
  */
 
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { Loader2 } from "lucide-react";
 import { useState } from "react";
+import { PlanLimitNotice } from "@/components/billing/PlanLimitNotice";
 import { ModalPortal } from "@/components/common/ModalPortal";
 import {
 	EMPTY_TEAM_DRAFT,
@@ -15,6 +19,9 @@ import {
 	TeamFormFields,
 } from "@/components/team/TeamFormFields";
 import { useToast } from "@/hooks/useToast";
+import { useCurrentWorkspace } from "@/hooks/useWorkspaceQueries";
+import { type PlanLimitInfo, parsePlanLimitError } from "@/lib/planLimitErrors";
+import { workspaceKeys } from "@/queries/workspaces";
 import { createTeam } from "@/services/teams.service";
 import { getCurrentWorkspaceId } from "@/stores/workspaceStore";
 
@@ -22,6 +29,12 @@ export function CreateTeamModal({ onClose }: { onClose: () => void }) {
 	const queryClient = useQueryClient();
 	const toast = useToast();
 	const [draft, setDraft] = useState<TeamDraft>(EMPTY_TEAM_DRAFT);
+	const [planLimit, setPlanLimit] = useState<PlanLimitInfo | null>(null);
+	const { workspace: currentWorkspace, workspaces } = useCurrentWorkspace();
+	const limitWorkspace =
+		(planLimit?.workspaceId
+			? workspaces.find((item) => item.id === planLimit.workspaceId)
+			: null) ?? currentWorkspace;
 
 	const mutation = useMutation({
 		mutationFn: () =>
@@ -35,10 +48,19 @@ export function CreateTeamModal({ onClose }: { onClose: () => void }) {
 			}),
 		onSuccess: () => {
 			void queryClient.invalidateQueries({ queryKey: ["teams"] });
+			// The team meter moved; the workspace may have been the default one,
+			// so refresh every workspace's usage rather than guess which.
+			void queryClient.invalidateQueries({ queryKey: workspaceKeys.usageAll });
 			toast.success("Team created");
 			onClose();
 		},
 		onError: (err) => {
+			const info = parsePlanLimitError(err);
+			if (info) {
+				// Stated in the modal; the upgrade prompt is already on screen.
+				setPlanLimit(info);
+				return;
+			}
 			toast.error((err as Error).message);
 		},
 	});
@@ -62,6 +84,7 @@ export function CreateTeamModal({ onClose }: { onClose: () => void }) {
 						onSubmit={(e) => {
 							e.preventDefault();
 							if (!draft.name.trim()) return;
+							setPlanLimit(null);
 							mutation.mutate();
 						}}
 					>
@@ -72,6 +95,13 @@ export function CreateTeamModal({ onClose }: { onClose: () => void }) {
 							autoFocus
 							variant="modal"
 						/>
+						{planLimit ? (
+							<PlanLimitNotice
+								info={planLimit}
+								workspace={limitWorkspace}
+								variant="inline"
+							/>
+						) : null}
 						<div className="flex justify-end gap-2 pt-2">
 							<button
 								type="button"

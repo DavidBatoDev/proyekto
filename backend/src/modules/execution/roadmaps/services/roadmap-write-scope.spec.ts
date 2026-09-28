@@ -5,6 +5,7 @@ import { TasksService } from './tasks.service';
 import { RoadmapActivityService } from './roadmap-activity.service';
 import { RoadmapWriteEffects } from './roadmap-write-effects.service';
 import { MissingPermissionException } from '../../projects/authorization/missing-permission.exception';
+import { allowAllPlanLimits } from './__roadmap-plan-limits-test-kit-spec';
 
 /**
  * Regression lock for the Phase 0 latency seam.
@@ -109,6 +110,7 @@ describe('roadmap write services reuse the resolved authz scope', () => {
         activity,
         notifications() as never,
         { inviteMentionedEmails: jest.fn() } as never,
+        allowAllPlanLimits(),
       );
       return { service, repo, rt, authz };
     }
@@ -157,6 +159,7 @@ describe('roadmap write services reuse the resolved authz scope', () => {
         activity,
         notifications() as never,
         { inviteMentionedEmails: jest.fn() } as never,
+        allowAllPlanLimits(),
       );
       return { service, rt, authz };
     }
@@ -255,6 +258,7 @@ describe('roadmap write services reuse the resolved authz scope', () => {
         {
           syncAfterTaskChange: jest.fn().mockResolvedValue(undefined),
         } as never,
+        allowAllPlanLimits(),
       );
       return { service, rt, authz };
     }

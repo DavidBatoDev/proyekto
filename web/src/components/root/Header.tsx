@@ -1,11 +1,23 @@
 import { Link, useLocation, useNavigate } from "@tanstack/react-router";
 import { motion } from "framer-motion";
-import { Sparkles } from "lucide-react";
+import { Menu } from "lucide-react";
+import { useState } from "react";
 import { BrandMark } from "@/components/brand/BrandMark";
+import { SiteDrawer } from "@/components/common/SiteDrawer";
 import { usePresentationContext } from "@/contexts/PresentationContext";
 import { useAuthStore } from "@/stores/authStore";
 import { Button } from "@/ui/button";
 import UserMenu from "../auth/UserMenu";
+
+/**
+ * The marketing pages, in the order someone evaluating Proyekto would want
+ * them: what it is, how it works, what it costs.
+ */
+const MARKETING_LINKS = [
+	{ to: "/product", label: "Product" },
+	{ to: "/docs", label: "Docs" },
+	{ to: "/pricing", label: "Pricing" },
+] as const;
 
 const HEADER_THEME = {
 	bg: "bg-background/90 backdrop-blur-xl",
@@ -15,6 +27,7 @@ const HEADER_THEME = {
 
 export const Header = () => {
 	const { isAuthenticated } = useAuthStore();
+	const [menuOpen, setMenuOpen] = useState(false);
 	const navigate = useNavigate();
 	const location = useLocation();
 	const { goToSection } = usePresentationContext();
@@ -63,35 +76,75 @@ export const Header = () => {
 						</>
 					) : (
 						<>
-							<motion.div
-								whileTap={{ scale: 0.97 }}
-								transition={{ duration: 0.15 }}
-								className="hidden lg:block"
+							<nav
+								aria-label="Marketing"
+								className="hidden items-center sm:flex"
 							>
-								<Link
-									to="/marketplace/consultant"
-									preload="intent"
-									className="inline-flex items-center gap-1 rounded-full border border-border bg-card px-3 py-1 text-[11px] font-semibold transition-colors hover:bg-muted"
-								>
-									<Sparkles className="h-3.5 w-3.5 text-amber-400" />
-									<span className={HEADER_THEME.text}>
-										Apply as a consultant
-									</span>
-								</Link>
-							</motion.div>
-							<motion.div
-								whileTap={{ scale: 0.97 }}
-								transition={{ duration: 0.15 }}
-								className="hidden sm:block"
+								{MARKETING_LINKS.map((item) => (
+									<motion.div
+										key={item.to}
+										whileTap={{ scale: 0.97 }}
+										transition={{ duration: 0.15 }}
+									>
+										<Link
+											to={item.to}
+											preload="intent"
+											className={`inline-flex h-10 items-center rounded-xl px-3 text-sm font-medium transition-colors hover:text-foreground sm:h-11 ${HEADER_THEME.text}`}
+										>
+											{item.label}
+										</Link>
+									</motion.div>
+								))}
+							</nav>
+
+							{/* Below sm the nav above is hidden, so this is the only way to
+							    the marketing pages from a phone. A drawer rather than the
+							    dropdown that was here before: three links in a 44px-tall
+							    popover is a tap target problem, and the drawer has room for
+							    the account actions too. */}
+							<button
+								type="button"
+								aria-expanded={menuOpen}
+								aria-label="Open menu"
+								onClick={() => setMenuOpen(true)}
+								className={`inline-flex h-10 w-10 items-center justify-center rounded-xl border border-border transition-colors hover:bg-muted sm:hidden ${HEADER_THEME.text}`}
 							>
-								<Link
-									to="/pricing"
-									preload="intent"
-									className={`inline-flex h-10 items-center rounded-xl px-3 text-sm font-medium transition-colors hover:text-foreground sm:h-11 ${HEADER_THEME.text}`}
-								>
-									Pricing
-								</Link>
-							</motion.div>
+								<Menu className="h-5 w-5" aria-hidden />
+							</button>
+
+							<SiteDrawer
+								isOpen={menuOpen}
+								onClose={() => setMenuOpen(false)}
+								title="Menu"
+							>
+								<nav aria-label="Marketing" className="space-y-1">
+									{MARKETING_LINKS.map((item) => (
+										<Link
+											key={item.to}
+											to={item.to}
+											className="block rounded-xl px-3 py-3 text-[15px] font-medium text-foreground transition-colors hover:bg-muted"
+										>
+											{item.label}
+										</Link>
+									))}
+								</nav>
+								<div className="mt-4 space-y-2 border-t border-border pt-4">
+									<Link
+										to="/auth/login"
+										className="flex h-11 items-center justify-center rounded-xl border border-border text-sm font-semibold text-foreground transition-colors hover:bg-muted"
+									>
+										Login
+									</Link>
+									<Link
+										to="/auth/signup"
+										search={{ redirect: undefined }}
+										className="flex h-11 items-center justify-center rounded-xl bg-primary text-sm font-semibold text-primary-foreground transition-colors hover:bg-primary/90"
+									>
+										Get Started
+									</Link>
+								</div>
+							</SiteDrawer>
+
 							<motion.div
 								whileTap={{ scale: 0.97 }}
 								transition={{ duration: 0.15 }}

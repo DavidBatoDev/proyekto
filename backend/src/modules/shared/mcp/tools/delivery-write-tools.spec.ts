@@ -1,4 +1,6 @@
 import { ForbiddenException } from '@nestjs/common';
+import { buildPlanLimitPayload } from '../../entitlements/__entitlements-test-kit-spec';
+import { PlanLimitException } from '../../entitlements/plan-limit.exception';
 import { registerDeliveryWriteTools } from './delivery-write.tools';
 import type { McpToolDeps } from './tool-helpers';
 
@@ -200,5 +202,36 @@ describe('MCP delivery write tools', () => {
     });
     expect(isError(res)).toBe(true);
     expect(errorCode(res)).toBe('FORBIDDEN');
+  });
+
+  it('surfaces a service plan-limit refusal as PLAN_LIMIT, not FORBIDDEN', async () => {
+    const { server, handlers } = captureServer();
+    const message = 'Change requests are available on Pro and above.';
+    const create = jest.fn().mockRejectedValue(
+      new PlanLimitException(
+        buildPlanLimitPayload({
+          kind: 'feature',
+          limit_key: 'change_requests',
+          label: 'Change requests',
+          limit: null,
+          used: null,
+          message,
+        }),
+      ),
+    );
+    const deps = depsWith(['delivery:write'], {
+      changeRequests: { create } as any,
+    });
+    registerDeliveryWriteTools(server, deps);
+
+    const res = await handlers.change_request_create({
+      project_id: PROJECT,
+      title: 'Add Google OAuth',
+    });
+    expect(isError(res)).toBe(true);
+    expect(JSON.parse(res.content[0].text)).toEqual({
+      error: 'PLAN_LIMIT',
+      message,
+    });
   });
 });

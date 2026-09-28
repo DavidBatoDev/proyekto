@@ -6,6 +6,7 @@ import { Redis } from '@upstash/redis';
 import { SupabaseModule } from './config/supabase.module';
 import { R2Module } from './config/r2.module';
 import { MailModule } from './common/mail/mail.module';
+import { RevokedUsersModule } from './common/auth/revoked-users.module';
 import { ThrottlerStorageRedisService } from './config/throttler-storage.service';
 import { RedisModule } from './config/redis.module';
 import { UPSTASH_REDIS_CLIENT } from './config/redis.tokens';
@@ -33,11 +34,14 @@ import { RoadmapTemplatesModule } from './modules/marketplace/roadmap-templates/
 import { RoadmapSharesModule } from './modules/execution/roadmap-shares/roadmap-shares.module';
 import { MarketplaceModule } from './modules/marketplace/marketplace/marketplace.module';
 import { NotificationsModule } from './modules/shared/notifications/notifications.module';
+import { ContactModule } from './modules/shared/contact/contact.module';
 import { PushModule } from './modules/shared/push/push.module';
 import { MobileUpdatesModule } from './modules/shared/mobile-updates/mobile-updates.module';
 import { ChatModule } from './modules/execution/chat/chat.module';
 import { TeamsModule } from './modules/execution/teams/teams.module';
 import { WorkspacesModule } from './modules/execution/workspaces/workspaces.module';
+import { PlatformBillingModule } from './modules/shared/platform-billing/platform-billing.module';
+import { EntitlementsModule } from './modules/shared/entitlements/entitlements.module';
 import { TeamTimeModule } from './modules/execution/team-time/team-time.module';
 import { MeetingsModule } from './modules/execution/meetings/meetings.module';
 import { FinanceImportsModule } from './modules/marketplace/finance-imports/finance-imports.module';
@@ -55,6 +59,7 @@ import { DeliveryModule } from './modules/execution/delivery/delivery.module';
 import { KnowledgeModule } from './modules/shared/knowledge/knowledge.module';
 import { McpModule } from './modules/shared/mcp/mcp.module';
 import { QaFixturesModule } from './modules/shared/qa-fixtures/qa-fixtures.module';
+import { AccountModule } from './modules/shared/account/account.module';
 import { AppController } from './app.controller';
 
 @Module({
@@ -79,7 +84,9 @@ import { AppController } from './app.controller';
     SupabaseModule,
     R2Module,
     MailModule,
+    RevokedUsersModule,
     AuthModule,
+    AccountModule,
     UsersModule,
     ProfileModule,
     ProfileImportModule,
@@ -101,11 +108,14 @@ import { AppController } from './app.controller';
     RoadmapSharesModule,
     MarketplaceModule,
     NotificationsModule,
+    ContactModule,
     PushModule,
     MobileUpdatesModule,
     ChatModule,
     TeamsModule,
     WorkspacesModule,
+    PlatformBillingModule,
+    EntitlementsModule,
     TeamTimeModule,
     MeetingsModule,
     FinanceImportsModule,

@@ -10,6 +10,7 @@ import {
 } from "lucide-react";
 import type { ReactNode } from "react";
 import { SemanticBadge } from "@/components/common/SemanticBadge";
+import { MeterBar } from "@/components/common/UsageMeter";
 
 /**
  * Chrome for **Deliverables and Risks**.
@@ -62,9 +63,8 @@ export function StatusPill({
 }
 
 /**
- * Completion meter. No shared ProgressBar exists — this mirrors the epic meter
- * in `roadmap/widgets/EpicWidget.tsx`, kept local rather than promoted to an
- * app-wide primitive until a third caller needs it.
+ * Completion meter: a caption and percentage over the shared `MeterBar`
+ * (components/common/UsageMeter.tsx), which plan-usage meters draw with too.
  */
 export function ProgressMeter({
 	percent,
@@ -86,12 +86,10 @@ export function ProgressMeter({
 					{tracked ? `${percent}%` : "Not tracked"}
 				</span>
 			</div>
-			<div className="h-1.5 overflow-hidden rounded-full bg-muted">
-				<div
-					className="h-full bg-primary transition-all duration-300"
-					style={{ width: `${tracked ? percent : 0}%` }}
-				/>
-			</div>
+			<MeterBar
+				percent={tracked ? percent : null}
+				label={caption ?? "Completion"}
+			/>
 		</div>
 	);
 }

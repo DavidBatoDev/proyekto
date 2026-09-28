@@ -21,6 +21,7 @@ import { useToast } from "@/hooks/useToast";
 import { completeOnboarding } from "@/lib/auth-api";
 import { clearAuthContinuation } from "@/lib/authContinuation";
 import { getPendingProjectFromRoadmap } from "@/lib/guestRoadmapConversion";
+import { isNativeApp } from "@/lib/platform";
 import { workspaceKeys } from "@/queries/workspaces";
 import {
 	createWorkspace,
@@ -345,15 +346,19 @@ export function ClientTalentWelcomeDeck({ firstName }: { firstName: string }) {
 				/>
 			}
 			footer={
-				<>
-					Considering becoming a consultant?{" "}
-					<a
-						href="/marketplace/consultant"
-						className="font-semibold text-foreground underline decoration-border underline-offset-4 hover:text-primary hover:decoration-primary"
-					>
-						Apply to lead →
-					</a>
-				</>
+				// Consultant enrolment is a marketplace surface, so the installed
+				// app does not offer it here.
+				isNativeApp() ? undefined : (
+					<>
+						Considering becoming a consultant?{" "}
+						<a
+							href="/marketplace/consultant"
+							className="font-semibold text-foreground underline decoration-border underline-offset-4 hover:text-primary hover:decoration-primary"
+						>
+							Apply to lead →
+						</a>
+					</>
+				)
 			}
 		>
 			<AnimatePresence mode="wait" initial={false} custom={direction}>

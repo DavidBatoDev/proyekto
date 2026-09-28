@@ -14,8 +14,14 @@ import {
   type SendMailResult,
 } from '../../../common/mail/mailer.service';
 import { SUPABASE_ADMIN } from '../../../config/supabase.module';
+import {
+  EntitlementsService,
+  type PlanSource,
+  type WorkspacePlanState,
+} from '../../shared/entitlements/entitlements.service';
 import { isEmailSuppressed } from '../../shared/notifications/email/email-suppression';
 import { NotificationsService } from '../../shared/notifications/notifications.service';
+import { SeatSyncService } from '../../shared/platform-billing/seat-sync.service';
 import { buildWorkspaceInviteEmail } from './workspace-invite-email.template';
 import { WORKSPACE_INVITES_PATH } from './workspace-invites-path';
 import {
@@ -24,6 +30,7 @@ import {
   RespondWorkspaceInviteDto,
   UpdateWorkspaceDto,
   UpdateWorkspaceMemberDto,
+  WORKSPACE_ASSIGNABLE_ROLES,
   WorkspaceMemberRole,
   WorkspacePlan,
 } from './dto/workspaces.dto';
@@ -60,12 +67,51 @@ export interface WorkspaceRow {
    */
   seats_used?: number;
   subscription?: WorkspaceSubscriptionRow | null;
+  /**
+   * What plan limits are enforced against: the higher of the subscription and
+   * an active complimentary plan (workspace_plan_state decides). `plan` keeps
+   * meaning the subscription plan, so a comped workspace reads plan 'free'
+   * with effective_plan 'pro'. Populated by listMyWorkspaces and getWorkspace.
+   */
+  effective_plan?: WorkspacePlan;
+  plan_source?: PlanSource;
+  /**
+   * A staff-granted complimentary plan. Written only by the admin RPCs: the
+   * workspaces_discount_guard trigger refuses these columns from anon and
+   * authenticated, and UpdateWorkspaceDto does not declare them.
+   */
+  is_discounted_free?: boolean;
+  discounted_plan?: WorkspacePlan | null;
 }
+
+/**
+ * Proyekto's normalized subscription vocabulary, not a curated subset. The
+ * scaffold shipped with four values; billing adds incomplete,
+ * incomplete_expired, unpaid and paused, and every provider adapter maps its
+ * own statuses onto this set. Mirrored in web/src/services/workspaces.service.ts.
+ */
+export type WorkspaceSubscriptionStatus =
+  | 'active'
+  | 'trialing'
+  | 'past_due'
+  | 'canceled'
+  | 'incomplete'
+  | 'incomplete_expired'
+  | 'unpaid'
+  | 'paused';
+
+/**
+ * The statuses that mean money is still moving, so the workspace may not be
+ * deleted out from under a live provider subscription. `past_due` counts: the
+ * subscription still exists and the provider is still retrying it.
+ */
+export const LIVE_SUBSCRIPTION_STATUSES: readonly WorkspaceSubscriptionStatus[] =
+  ['active', 'trialing', 'past_due', 'unpaid', 'incomplete', 'paused'];
 
 export interface WorkspaceSubscriptionRow {
   workspace_id: string;
   plan: WorkspacePlan;
-  status: 'active' | 'trialing' | 'past_due' | 'canceled';
+  status: WorkspaceSubscriptionStatus;
   seat_limit: number | null;
   current_period_start: string | null;
   current_period_end: string | null;
@@ -164,6 +210,43 @@ function firstEmbeddedRow<T>(value: T | T[] | null | undefined): T | null {
   return Array.isArray(value) ? (value[0] ?? null) : value;
 }
 
+/**
+ * The plan fields listMyWorkspaces and getWorkspace add to a row. `state` is
+ * absent when the plan-state lookup failed (e.g. the schema has not reached
+ * this database); the subscription plan then stands in as the effective plan,
+ * which is exactly what the payload said before comps existed.
+ */
+function planFields(
+  row: WorkspaceRow,
+  state: WorkspacePlanState | undefined,
+  subscriptionPlan: WorkspacePlan,
+): Required<
+  Pick<
+    WorkspaceRow,
+    'effective_plan' | 'plan_source' | 'is_discounted_free' | 'discounted_plan'
+  >
+> {
+  const isDiscountedFree = row.is_discounted_free === true;
+  const discountedPlan =
+    isDiscountedFree && row.discounted_plan && row.discounted_plan !== 'free'
+      ? row.discounted_plan
+      : null;
+  if (state) {
+    return {
+      effective_plan: state.effective_plan,
+      plan_source: state.plan_source,
+      is_discounted_free: isDiscountedFree,
+      discounted_plan: discountedPlan,
+    };
+  }
+  return {
+    effective_plan: subscriptionPlan,
+    plan_source: subscriptionPlan === 'free' ? 'default' : 'subscription',
+    is_discounted_free: isDiscountedFree,
+    discounted_plan: discountedPlan,
+  };
+}
+
 type UpdateWorkspaceField = keyof UpdateWorkspaceDto;
 
 /**
@@ -218,6 +301,12 @@ export class WorkspacesService {
     // MailModule is @Global(), so WorkspacesModule needs no import for these.
     private readonly mailer: MailerService,
     private readonly config: ConfigService,
+    // From PlatformBillingCoreModule, which depends only on Supabase — so this
+    // does not make WorkspacesModule cyclic. Inert unless a billing provider is
+    // configured.
+    private readonly seatSync: SeatSyncService,
+    // From EntitlementsCoreModule, which likewise depends only on Supabase.
+    private readonly entitlements: EntitlementsService,
   ) {}
 
   // ─── provisioning ────────────────────────────────────────────────────────
@@ -271,6 +360,36 @@ export class WorkspacesService {
     if (await this.isGuest(userId)) return null;
     const provisioned = await this.provisionDefault(userId);
     return provisioned?.id ?? null;
+  }
+
+  /**
+   * resolveWorkspaceForWrite plus the plan's count limit for what is being
+   * created. createProject, createProjectFromRoadmap and createTeam call this.
+   * provisionPersonalTeam deliberately does not (personal teams are not
+   * counted), and neither does createWorkspace (a new workspace starts with
+   * one member).
+   *
+   * Runs after the membership check inside resolveWorkspaceForWrite, so a
+   * caller naming a workspace they are not in still gets the 403 and learns
+   * nothing about its plan.
+   */
+  async resolveWorkspaceForCreate(
+    userId: string,
+    resource: 'projects' | 'teams',
+    explicitWorkspaceId?: string | null,
+  ): Promise<string | null> {
+    const workspaceId = await this.resolveWorkspaceForWrite(
+      userId,
+      explicitWorkspaceId,
+    );
+    // Null is a guest: they own nothing and are exempt until they convert.
+    if (workspaceId) {
+      await this.entitlements.assertWithinLimit(workspaceId, resource, {
+        adding: 1,
+        context: 'create',
+      });
+    }
+    return workspaceId;
   }
 
   /**
@@ -337,17 +456,26 @@ export class WorkspacesService {
     if (present.length === 0) return [];
 
     const ids = present.map((row) => row.workspace_id);
-    const [counts, plans] = await Promise.all([
+    const [counts, states] = await Promise.all([
       this.countMembersByWorkspace(ids),
-      this.fetchPlansByWorkspace(ids),
+      this.loadPlanStates(ids),
     ]);
+    // The plan state already carries the subscription plan; the direct read is
+    // only the fallback for when that lookup failed.
+    const plans = states ? null : await this.fetchPlansByWorkspace(ids);
 
-    return present.map((row) => ({
-      ...row.workspace,
-      my_role: row.role,
-      member_count: counts.get(row.workspace_id) ?? 0,
-      plan: plans.get(row.workspace_id) ?? 'free',
-    }));
+    return present.map((row) => {
+      const state = states?.get(row.workspace_id);
+      const plan =
+        state?.subscription_plan ?? plans?.get(row.workspace_id) ?? 'free';
+      return {
+        ...row.workspace,
+        my_role: row.role,
+        member_count: counts.get(row.workspace_id) ?? 0,
+        plan,
+        ...planFields(row.workspace, state, plan),
+      };
+    });
   }
 
   async getWorkspace(
@@ -357,8 +485,12 @@ export class WorkspacesService {
     const workspace = await this.fetchWorkspaceOrThrow(workspaceId);
     const role = await this.assertCanRead(workspace, userId);
 
-    const counts = await this.countMembersByWorkspace([workspaceId]);
+    const [counts, states] = await Promise.all([
+      this.countMembersByWorkspace([workspaceId]),
+      this.loadPlanStates([workspaceId]),
+    ]);
     const seatsUsed = counts.get(workspaceId) ?? 0;
+    const state = states?.get(workspaceId);
 
     const base: WorkspaceRow = {
       ...workspace,
@@ -371,27 +503,86 @@ export class WorkspacesService {
     // subscription block, matching the RLS on workspace_subscriptions.
     if (role === 'owner' || role === 'admin') {
       const subscription = await this.fetchSubscription(workspaceId);
+      const plan = subscription?.plan ?? 'free';
       return {
         ...base,
         subscription,
-        plan: subscription?.plan ?? 'free',
+        plan,
+        ...planFields(workspace, state, plan),
       };
     }
-    return base;
+
+    // The effective plan is every member's business, though: members hit the
+    // limits too, and listMyWorkspaces already shows them the plan.
+    const subscriptionPlan =
+      state?.subscription_plan ??
+      (await this.fetchPlansByWorkspace([workspaceId])).get(workspaceId) ??
+      'free';
+    return { ...base, ...planFields(workspace, state, subscriptionPlan) };
   }
 
+  /**
+   * Batched effective plans for the workspace payload. Display only, so a
+   * failed lookup degrades to the subscription plan (see planFields) instead
+   * of failing the read.
+   */
+  private async loadPlanStates(
+    workspaceIds: string[],
+  ): Promise<Map<string, WorkspacePlanState> | null> {
+    try {
+      return await this.entitlements.getEffectivePlans(workspaceIds);
+    } catch (error) {
+      this.logger.warn(
+        `entitlements_lookup_failed op=workspace_plan_states message=${
+          error instanceof Error ? error.message : String(error)
+        }`,
+      );
+      return null;
+    }
+  }
+
+  /**
+   * Seats in use, per workspace. This is the number the billing provider's
+   * subscription quantity is derived from, so it has to be exact.
+   *
+   * The single-id path (getWorkspace -> seats_used) asks PostgREST for an exact
+   * count and fetches no rows. The multi-id path still has to group in JS, but
+   * it pages explicitly: the previous implementation issued one unpaginated
+   * select and counted whatever came back, which PostgREST caps (default 1000
+   * rows), so a large workspace silently under-reported its seats -- i.e.
+   * under-billed. Never reintroduce an unpaginated select here.
+   */
   private async countMembersByWorkspace(
     workspaceIds: string[],
   ): Promise<Map<string, number>> {
     const counts = new Map<string, number>();
     if (workspaceIds.length === 0) return counts;
-    const { data, error } = await this.supabase
-      .from('workspace_members')
-      .select('workspace_id')
-      .in('workspace_id', workspaceIds);
-    if (error) throw new Error(error.message);
-    for (const row of (data ?? []) as Array<{ workspace_id: string }>) {
-      counts.set(row.workspace_id, (counts.get(row.workspace_id) ?? 0) + 1);
+
+    if (workspaceIds.length === 1) {
+      const workspaceId = workspaceIds[0];
+      const { count, error } = await this.supabase
+        .from('workspace_members')
+        .select('*', { count: 'exact', head: true })
+        .eq('workspace_id', workspaceId);
+      if (error) throw new Error(error.message);
+      counts.set(workspaceId, count ?? 0);
+      return counts;
+    }
+
+    const pageSize = 1000;
+    for (let from = 0; ; from += pageSize) {
+      const { data, error } = await this.supabase
+        .from('workspace_members')
+        .select('workspace_id')
+        .in('workspace_id', workspaceIds)
+        .order('workspace_id', { ascending: true })
+        .range(from, from + pageSize - 1);
+      if (error) throw new Error(error.message);
+      const rows = (data ?? []) as Array<{ workspace_id: string }>;
+      for (const row of rows) {
+        counts.set(row.workspace_id, (counts.get(row.workspace_id) ?? 0) + 1);
+      }
+      if (rows.length < pageSize) break;
     }
     return counts;
   }
@@ -490,6 +681,12 @@ export class WorkspacesService {
       throw new Error(insertOwner.error.message);
     }
 
+    // No seat sync here, deliberately: a new workspace is always free with
+    // exactly one member, so there is no provider subscription to update. It also
+    // is not the only unhooked path — provision_default_workspace() inserts an
+    // owner row from inside Postgres, where no TypeScript hook can reach it,
+    // which is why the reconcile cron is required rather than merely prudent.
+    //
     // Best-effort: a missing subscription row degrades to the free defaults
     // everywhere it is read, so it must not fail workspace creation.
     const subscription = await this.supabase
@@ -603,6 +800,7 @@ export class WorkspacesService {
   ): Promise<{ id: string }> {
     const workspace = await this.fetchWorkspaceOrThrow(workspaceId);
     await this.assertOwner(workspace, userId, 'delete the workspace');
+    await this.assertNoLiveSubscription(workspaceId);
 
     const { error } = await this.supabase
       .from('workspaces')
@@ -612,6 +810,47 @@ export class WorkspacesService {
     return { id: workspaceId };
   }
 
+  /**
+   * Deleting a workspace CASCADEs workspace_subscriptions away, which would
+   * leave a live provider subscription billing a card with no row left to trace
+   * it back to -- a silent, recurring, chargeback-generating bug.
+   *
+   * Refuse rather than cancel-inside-delete: deletion is irreversible and
+   * non-transactional here, so folding a cancel (and a possible refund) into it
+   * would leave "the cancel succeeded but the delete failed" as a real state
+   * somebody has to clean up by hand. Cancelling first is one extra deliberate
+   * step for the owner and no ambiguity for anyone.
+   */
+  private async assertNoLiveSubscription(workspaceId: string): Promise<void> {
+    const { data, error } = await this.supabase
+      .from('workspace_subscriptions')
+      .select('status, provider_subscription_id')
+      .eq('workspace_id', workspaceId)
+      .maybeSingle();
+    if (error) throw new Error(error.message);
+    if (!data) return;
+
+    const row = data as {
+      status: WorkspaceSubscriptionStatus;
+      provider_subscription_id: string | null;
+    };
+    // A free workspace has no provider subscription at all, so it is never
+    // blocked -- which keeps this guard invisible to everyone who has not paid.
+    if (!row.provider_subscription_id) return;
+    if (!LIVE_SUBSCRIPTION_STATUSES.includes(row.status)) return;
+
+    throw new ConflictException({
+      message:
+        'Cancel this workspace subscription before deleting the workspace.',
+      code: 'workspace_has_active_subscription',
+    });
+  }
+
+  /**
+   * No seat sync here, deliberately: this only changes a role, and every role
+   * — owner, admin, member — is exactly one seat. There is no seat class that
+   * bills differently, so the quantity the provider holds cannot change.
+   */
   async updateMember(
     workspaceId: string,
     targetUserId: string,
@@ -689,6 +928,8 @@ export class WorkspacesService {
       .eq('workspace_id', workspaceId)
       .eq('user_id', targetUserId);
     if (error) throw new Error(error.message);
+
+    await this.seatSync.syncSeatsBounded(workspaceId, 'member_removed');
     return { workspace_id: workspaceId, user_id: targetUserId };
   }
 
@@ -746,6 +987,19 @@ export class WorkspacesService {
     const { data: existing } = matchedUserId
       ? await existingQuery.eq('invitee_id', matchedUserId).maybeSingle()
       : await existingQuery.eq('invitee_email', email).maybeSingle();
+
+    // A new invite spends a seat the moment it is sent, so pending invites
+    // count toward the member limit here; otherwise an owner could send twenty
+    // invites that can never all be accepted. Refreshing an invite that is
+    // already pending adds nobody and is never checked. Runs before the write,
+    // so a refusal leaves no row and sends no email.
+    if (!existing) {
+      await this.entitlements.assertWithinLimit(workspaceId, 'members', {
+        adding: 1,
+        includePendingInvites: true,
+        context: 'invite',
+      });
+    }
 
     let row: Record<string, unknown>;
     if (existing) {
@@ -979,17 +1233,46 @@ export class WorkspacesService {
     }
 
     if (dto.status === 'accepted') {
+      const workspaceId = invite.workspace_id as string;
+      // Someone already on the roster takes no new seat, so is never checked;
+      // their insert lands on the 23505 path below.
+      const alreadyMember =
+        (await this.findMembership(workspaceId, userId)) !== null;
+      if (!alreadyMember) {
+        // Only real members count here: the accepting invite is itself one of
+        // the pending ones. A refusal throws before anything is written, so
+        // the invite stays pending and can be accepted again after an upgrade.
+        await this.entitlements.assertWithinLimit(workspaceId, 'members', {
+          adding: 1,
+          context: 'accept',
+        });
+      }
+
       // Tolerate the unique-violation race where the user was added between
       // fetch and insert.
-      const { error: insertErr } = await this.supabase
+      const { data: inserted, error: insertErr } = await this.supabase
         .from('workspace_members')
         .insert({
-          workspace_id: invite.workspace_id,
+          workspace_id: workspaceId,
           user_id: userId,
-          role: invite.role ?? 'member',
-        });
+          role: toAssignableRole((invite as { role?: string | null }).role),
+        })
+        .select('id, joined_at')
+        .single();
       if (insertErr && insertErr.code !== '23505') {
         throw new Error(insertErr.message);
+      }
+      if (!insertErr) {
+        if (inserted) {
+          await this.assertJoinWithinLimit(
+            workspaceId,
+            inserted as { id: string; joined_at: string },
+          );
+        }
+        // A seat now exists. Runs after the committed insert and cannot throw,
+        // so a provider outage costs a reconciliation rather than a failed
+        // join. On 23505 the member was already there and no seat was added.
+        await this.seatSync.syncSeatsBounded(workspaceId, 'member_joined');
       }
     }
 
@@ -1006,6 +1289,66 @@ export class WorkspacesService {
       throw new Error(updateErr?.message ?? 'Failed to update invite');
     }
     return updated as unknown as WorkspaceInviteRow;
+  }
+
+  /**
+   * The race behind respondInvite's pre-check: two invitees accepting the last
+   * seat at the same moment both pass it. Each then ranks its own new row by
+   * (joined_at, id) among the workspace's members; a row ranked past the limit
+   * is deleted again and its accept refused, so the earlier joiner always
+   * keeps the seat. Nothing is ranked when the limit is unlimited.
+   *
+   * Fails open like every entitlement lookup: if the rank cannot be read, or
+   * the compensating delete fails, the member stays.
+   */
+  private async assertJoinWithinLimit(
+    workspaceId: string,
+    row: { id: string; joined_at: string },
+  ): Promise<void> {
+    const limit = await this.entitlements.getLimit(workspaceId, 'members');
+    if (limit === null) return;
+
+    // Both values come straight back from the insert, so they are safe to
+    // interpolate. joined_at stays the database's own string: a round trip
+    // through Date would drop its microseconds and break the tie-break.
+    const { count, error } = await this.supabase
+      .from('workspace_members')
+      .select('id', { count: 'exact', head: true })
+      .eq('workspace_id', workspaceId)
+      .lte('joined_at', row.joined_at)
+      .or(
+        `joined_at.lt."${row.joined_at}",and(joined_at.eq."${row.joined_at}",id.lte.${row.id})`,
+      );
+    if (error || typeof count !== 'number') {
+      this.logger.warn(
+        `entitlements_lookup_failed op=member_join_rank subject=${workspaceId} message=${
+          error?.message ?? 'no count returned'
+        }`,
+      );
+      return;
+    }
+
+    try {
+      // used = the members ahead of this row, so this refuses exactly when the
+      // row's rank exceeds the limit, and with the standard payload.
+      await this.entitlements.assertWithinLimit(workspaceId, 'members', {
+        adding: 1,
+        used: count - 1,
+        context: 'accept',
+      });
+    } catch (refusal) {
+      const cleanup = await this.supabase
+        .from('workspace_members')
+        .delete()
+        .eq('id', row.id);
+      if (cleanup.error) {
+        this.logger.error(
+          `Member ${row.id} joined workspace ${workspaceId} past its plan limit and could not be removed: ${cleanup.error.message}`,
+        );
+        return;
+      }
+      throw refusal;
+    }
   }
 
   // ─── helpers ─────────────────────────────────────────────────────────────
@@ -1135,4 +1478,17 @@ export class WorkspacesService {
       .trim();
     return data.display_name || composed || data.email || null;
   }
+}
+
+/**
+ * The role an accepted invite may grant. Owner never arrives by invitation, so
+ * a stored row saying otherwise (a direct write that predates the grant
+ * hardening) joins as a plain member rather than taking the workspace over.
+ */
+function toAssignableRole(
+  role: string | null | undefined,
+): WorkspaceMemberRole {
+  return (WORKSPACE_ASSIGNABLE_ROLES as readonly string[]).includes(role ?? '')
+    ? (role as WorkspaceMemberRole)
+    : 'member';
 }

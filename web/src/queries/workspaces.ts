@@ -16,4 +16,8 @@ export const workspaceKeys = {
 	invites: (workspaceId: string) =>
 		["workspaces", "invites", workspaceId] as const,
 	myInvites: ["workspaces", "my-invites"] as const,
+	// Usage lives under "workspaces" on purpose: the invite, member and respond
+	// mutations already invalidate `workspaceKeys.all`, so meters refresh free.
+	usageAll: ["workspaces", "usage"] as const,
+	usage: (workspaceId: string) => ["workspaces", "usage", workspaceId] as const,
 };

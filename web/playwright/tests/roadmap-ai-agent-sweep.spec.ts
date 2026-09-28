@@ -229,13 +229,13 @@ test("v2 agent: assessment sweep (latency + smartness)", async ({ page }) => {
   fs.mkdirSync(OUT_DIR, { recursive: true });
   fs.writeFileSync(
     `${OUT_DIR}/v2-agent-assessment.json`,
-    JSON.stringify({ session: sessionId, model: "gpt-5.4-mini", stats, results }, null, 2),
+    JSON.stringify({ session: sessionId, model: "gpt-5.6-luna", stats, results }, null, 2),
   );
 
   const md: string[] = [];
   md.push(`# v2 roadmap AI agent — assessment sweep`);
   md.push("");
-  md.push(`- session: \`${sessionId}\`  •  model: \`gpt-5.4-mini\` (Responses API)`);
+  md.push(`- session: \`${sessionId}\`  •  model: \`gpt-5.6-luna\` (Responses API)`);
   md.push(
     `- latency ms — avg **${stats.avg_ms}**, median **${stats.median_ms}**, p95 **${stats.p95_ms}**, min ${stats.min_ms}, max ${stats.max_ms}`,
   );

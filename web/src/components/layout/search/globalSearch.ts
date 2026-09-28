@@ -7,6 +7,7 @@ import {
 } from "@/components/layout/sidebar/engagementsNavigation";
 import { EXECUTION_PRIMARY_NAV_ITEMS } from "@/components/layout/sidebar/executionNavigation";
 import { MARKETPLACE_NAV_ITEMS } from "@/components/layout/sidebar/marketplaceNavigation";
+import { filterNavByPlatform } from "@/lib/platformSurfaces";
 import type { Project } from "@/services/project.service";
 import type { FullRoadmapWithProject } from "@/services/roadmap.service";
 
@@ -51,8 +52,18 @@ const WORK_ITEM_RESULT_CAP = 8;
  *
  * `consultant` is the caller's `isActiveConsultant(profile)` — gated entries
  * must not surface to users who cannot open them.
+ *
+ * `isNative` drops what the installed app does not carry: search is the one
+ * place that lists every destination at once, so an un-filtered box would hand
+ * a phone user the marketplace and the billing page by typing three letters.
+ * The filter runs on the MERGED output, so a fourth nav source added later is
+ * covered without touching this line. It is a required argument on purpose —
+ * an optional one lets a new call site keep the old behaviour silently.
  */
-export function buildSearchablePages(consultant: boolean): SearchablePage[] {
+export function buildSearchablePages(
+	consultant: boolean,
+	isNative: boolean,
+): SearchablePage[] {
 	const byPath = new Map<string, SearchablePage>();
 
 	const add = (page: SearchablePage) => {
@@ -106,7 +117,7 @@ export function buildSearchablePages(consultant: boolean): SearchablePage[] {
 		add({ key: `header-${item.to}`, label: item.label, to: item.to });
 	}
 
-	return [...byPath.values()];
+	return filterNavByPlatform([...byPath.values()], isNative);
 }
 
 export interface GlobalSearchInput {
