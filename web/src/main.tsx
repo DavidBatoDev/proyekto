@@ -14,6 +14,20 @@ import * as TanStackQueryProvider from "./integrations/tanstack-query/root-provi
 // is unaffected regardless of where it is hosted.
 CapacitorUpdater.notifyAppReady().catch(() => {});
 
+// A bundle downloaded last session is only installed on a background event,
+// which a swipe-to-close never delivers — apply it now instead (lib/otaLaunch.ts).
+if (Capacitor.isNativePlatform()) {
+	void import("./lib/otaLaunch")
+		.then(({ applyPendingBundleOnLaunch }) => {
+			let storage: Storage | null = null;
+			try {
+				storage = window.sessionStorage;
+			} catch {}
+			return applyPendingBundleOnLaunch(CapacitorUpdater, storage);
+		})
+		.catch(() => {});
+}
+
 // Android 15 draws edge-to-edge; this plugin pads the WebView below the status bar
 // and above the gesture nav (the Android WebView's env(safe-area-inset-*) is
 // unreliable on Capacitor 7). Android-only — never loaded on iOS/web.
