@@ -55,6 +55,7 @@ import { SpecializationModal } from "@/components/profile/SpecializationModal";
 import { UploadModal } from "@/components/profile/UploadModal";
 import { useToast } from "@/hooks/useToast";
 import { isNativeApp } from "@/lib/platform";
+import { canHandleSensitiveData } from "@/lib/sensitiveData";
 import {
 	type FullProfile,
 	type ProficiencyLevel,
@@ -155,6 +156,9 @@ function ProfilePage() {
 	// Listing yourself on the marketplace is not something the installed app
 	// offers, so the owner keeps "Edit profile" and loses the listing controls.
 	const showTalentControls = !isNativeApp();
+	// Payout details and identity documents are collected on the web only —
+	// see lib/sensitiveData.ts.
+	const showSensitiveSections = canHandleSensitiveData();
 	const qc = useQueryClient();
 	const toast = useToast();
 
@@ -1122,7 +1126,13 @@ function ProfilePage() {
 								</Card>
 							)}
 							{/* Identity Documents (KYC/KYB) - Only visible to owner/admins */}
-							{isOwner && (
+							{isOwner && !showSensitiveSections && (
+								<p className="px-1 text-xs leading-relaxed text-muted-foreground">
+									Payout details and verification documents are managed on the
+									web at proyekto.tech.
+								</p>
+							)}
+							{isOwner && showSensitiveSections && (
 								<Card className="p-5 border-[#14b8a6]/20 bg-teal-50/10">
 									<div className="flex items-center justify-between mb-3 border-b border-[#14b8a6]/10 pb-2">
 										<h3 className="flex items-center gap-2 text-[13.5px] font-semibold text-foreground">
@@ -1803,7 +1813,7 @@ function ProfilePage() {
 							)}
 
 							{/* Payout methods (own profile only) */}
-							{isOwner && <PayoutMethodsSection />}
+							{isOwner && showSensitiveSections && <PayoutMethodsSection />}
 						</div>
 					</div>
 				</div>
@@ -1942,12 +1952,14 @@ function ProfilePage() {
 					editingLang ? updateLanguage.isPending : addLanguage.isPending
 				}
 			/>
-			<IdentityDocumentModal
-				isOpen={idDocModalOpen}
-				onClose={() => setIdDocModalOpen(false)}
-				onSave={(payload, file) => addIdentityDoc.mutate({ payload, file })}
-				isSaving={addIdentityDoc.isPending}
-			/>
+			{showSensitiveSections && (
+				<IdentityDocumentModal
+					isOpen={idDocModalOpen}
+					onClose={() => setIdDocModalOpen(false)}
+					onSave={(payload, file) => addIdentityDoc.mutate({ payload, file })}
+					isSaving={addIdentityDoc.isPending}
+				/>
+			)}
 			<UploadModal
 				isOpen={avatarModalOpen}
 				onClose={() => setAvatarModalOpen(false)}

@@ -1,6 +1,6 @@
 # Routing & Access
 
-> **Last updated:** 2026-09-23 · **Status:** current
+> **Last updated:** 2026-09-29 · **Status:** current
 
 Routing is **file-based** (TanStack Router): files under
 [`web/src/routes/`](../../web/src/routes/) become routes, and
@@ -290,6 +290,21 @@ Plan limits still apply in full on mobile; only the destination disappears. `usa
 takes a `CopySurface` and, in the app, drops the upgrade sentence and the toast button —
 and `PlanLimitBridge`/`PlanLimitNotice` ignore the server's own `plan_limit` message there,
 so `usageCopy.ts` is the only source of limit wording on a phone.
+
+**Payout details and identity documents are web-only, inside `app` pages.** They sit on
+pages the app does carry, so the route gate cannot reach them; a component-level check does.
+[`lib/sensitiveData.ts`](../../web/src/lib/sensitiveData.ts) `canHandleSensitiveData()` is
+`false` on native, and two places read it:
+
+- `routes/profile/$profileId.tsx` — the owner's *Verification Documents* card,
+  `PayoutMethodsSection` and `IdentityDocumentModal` do not mount; a one-line note says both
+  are managed on the web.
+- `components/team-time/PayMemberModal.tsx` (team payouts, team logs, project time) — the
+  member's payout methods are never fetched and the *Pay to* block is replaced by a note.
+  The payout still records, with `payout_method_id` unset.
+
+This keeps the app out of the Data safety / App Privacy financial and government-ID
+categories. The backend is unchanged: the web still reads and writes both.
 
 ## The documentation site
 

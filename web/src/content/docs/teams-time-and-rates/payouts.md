@@ -31,7 +31,8 @@ periods, newest first, with each member's total inside each period.
 
 Members can store where they want to be paid — a bank account or wallet, with
 an optional scan-to-pay image — and whoever records the payout can see those
-details at the moment of paying, rather than hunting for them in chat.
+details at the moment of paying, rather than hunting for them in chat. Those
+details are web-only: the mobile app records the payout without showing them.
 
 You cannot pay your own logs, for the same reason you cannot approve them.
 

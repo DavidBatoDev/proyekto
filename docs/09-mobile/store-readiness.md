@@ -182,6 +182,11 @@ Needs an inventory of what leaves the device: FCM push tokens (`device_tokens`),
 OTA check/stats calls (`api.proyekto.tech/api/mobile-updates/*`, which report app version and
 device id), Supabase auth, uploads to R2, and anything the AI agent receives.
 
+**Narrowed 2026-09-29:** the app no longer collects or shows payout details (bank, GCash,
+PayPal account numbers, scan-to-pay QR) or identity documents — see
+[Routing & Access → What the installed app carries](../04-web/routing-and-access.md#what-the-installed-app-carries).
+So neither declaration needs *Financial info* or a government-ID entry.
+
 ## Residual leaks in the gate — accepted, and why
 
 - **Price strings still ship inside the APK.** `lib/usageCopy.ts`, `lib/billingCopy.ts` and

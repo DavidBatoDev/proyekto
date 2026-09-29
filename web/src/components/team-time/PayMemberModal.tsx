@@ -11,6 +11,7 @@ import {
 import { useEffect, useMemo, useState } from "react";
 import { AppDialog } from "@/components/common/AppDialog";
 import { useToast } from "@/hooks/useToast";
+import { canHandleSensitiveData } from "@/lib/sensitiveData";
 import {
 	type Payout,
 	type PayoutMethod,
@@ -66,6 +67,10 @@ export function PayMemberModal({
 	onSuccess,
 }: PayMemberModalProps) {
 	const toast = useToast();
+	// The member's stored payout details (account numbers, scan-to-pay QR)
+	// are web-only — see lib/sensitiveData.ts. The app still records the
+	// payout, just without a method attached.
+	const showMethods = canHandleSensitiveData();
 	const [methodId, setMethodId] = useState<string>("");
 	const [reveal, setReveal] = useState(false);
 	const [reference, setReference] = useState("");
@@ -77,7 +82,7 @@ export function PayMemberModal({
 	const methodsQuery = useQuery({
 		queryKey: ["payout-methods", "member", teamId, memberId],
 		queryFn: () => payoutsService.listMemberMethods(teamId, memberId),
-		enabled: isOpen,
+		enabled: isOpen && showMethods,
 	});
 
 	const methods = useMemo(() => methodsQuery.data ?? [], [methodsQuery.data]);
@@ -167,7 +172,7 @@ export function PayMemberModal({
 				team_id: teamId,
 				member_user_id: memberId,
 				log_ids: logs.map((l) => l.id),
-				payout_method_id: methodId || undefined,
+				payout_method_id: (showMethods && methodId) || undefined,
 				reference_number: reference.trim() || undefined,
 				proof_path: proofPath,
 				note: note.trim() || undefined,
@@ -288,7 +293,12 @@ export function PayMemberModal({
 					<label className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
 						Pay to
 					</label>
-					{methodsQuery.isPending ? (
+					{!showMethods ? (
+						<p className="rounded-lg bg-muted px-3 py-2 text-xs text-muted-foreground">
+							{memberLabel}'s payout details are shown on the web. You can
+							record this payout here without them.
+						</p>
+					) : methodsQuery.isPending ? (
 						<div className="flex items-center gap-2 text-xs text-muted-foreground">
 							<Loader2 className="h-3.5 w-3.5 animate-spin" /> Loading methods…
 						</div>
