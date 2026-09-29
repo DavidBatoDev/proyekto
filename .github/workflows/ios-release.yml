@@ -4,10 +4,9 @@ name: iOS Release — Build + Upload to TestFlight
 # and upload it to App Store Connect (TestFlight). Mirrors android-release.yml:
 # same tag, same version numbering, so one tag ships both platforms.
 #
-# Signing is Xcode's automatic *cloud* signing, driven by an App Store Connect
-# API key: no .p12 certificate or provisioning profile is kept anywhere, and
-# none has to be created on a Mac. The key needs the Admin role (cloud-managed
-# distribution certificates require it).
+# Signing is App Store distribution signing driven by an App Store Connect API
+# key (see "Fetch signing files"): no Mac, no registered device, and no .p12 or
+# provisioning profile kept in the repo.
 #
 # Ships DARK: the job only runs when the IOS_RELEASE_ENABLED repo variable is
 # set, because until the Apple Developer account, the app record in App Store
@@ -17,6 +16,7 @@ name: iOS Release — Build + Upload to TestFlight
 #   secrets.ASC_KEY_ID                 App Store Connect API key id
 #   secrets.ASC_ISSUER_ID              App Store Connect issuer id
 #   secrets.ASC_KEY_P8_BASE64          the .p8 key file, base64-encoded
+#   secrets.IOS_CERTIFICATE_PRIVATE_KEY  RSA key (PEM) behind the distribution certificate
 #   vars.IOS_RELEASE_ENABLED           any non-empty value turns the job on
 #
 # The web bundle is built in production mode (web/.env.production), exactly as
@@ -87,63 +87,60 @@ jobs:
           npm run build
           npx cap sync ios
 
-      - name: Write App Store Connect API key
+      # Signing without a Mac and without a registered device.
+      #
+      # Plain automatic signing fails here: the archive step signs for
+      # *development* first, which needs a registered iPhone ("Your team has
+      # no devices from which to generate a provisioning profile"). App Store
+      # distribution needs no device, so we fetch (or create) an App Store
+      # distribution certificate + profile through the API with Codemagic's
+      # open-source CLI and switch the project to manual signing with them.
+      #
+      # IOS_CERTIFICATE_PRIVATE_KEY is a fixed RSA key generated once and kept
+      # as a secret, so every run reuses the same distribution certificate
+      # instead of minting a new one (Apple allows only a few per team).
+      - name: Fetch signing files
         env:
-          KEY_B64: ${{ secrets.ASC_KEY_P8_BASE64 }}
-          KEY_ID: ${{ secrets.ASC_KEY_ID }}
+          APP_STORE_CONNECT_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
+          APP_STORE_CONNECT_KEY_IDENTIFIER: ${{ secrets.ASC_KEY_ID }}
+          ASC_KEY_B64: ${{ secrets.ASC_KEY_P8_BASE64 }}
+          CERTIFICATE_PRIVATE_KEY: ${{ secrets.IOS_CERTIFICATE_PRIVATE_KEY }}
         run: |
           set -euo pipefail
-          if [ -z "$KEY_B64" ] || [ -z "$KEY_ID" ] || [ -z "${{ secrets.ASC_ISSUER_ID }}" ] || [ -z "${{ vars.APPLE_TEAM_ID }}" ]; then
-            echo "::error::Missing ASC_KEY_P8_BASE64 / ASC_KEY_ID / ASC_ISSUER_ID secret or APPLE_TEAM_ID variable"; exit 1
+          if [ -z "$ASC_KEY_B64" ] || [ -z "$APP_STORE_CONNECT_KEY_IDENTIFIER" ] || [ -z "$APP_STORE_CONNECT_ISSUER_ID" ] || [ -z "$CERTIFICATE_PRIVATE_KEY" ] || [ -z "${{ vars.APPLE_TEAM_ID }}" ]; then
+            echo "::error::Missing ASC_* / IOS_CERTIFICATE_PRIVATE_KEY secret or APPLE_TEAM_ID variable"; exit 1
           fi
-          echo "$KEY_B64" | base64 --decode > "$RUNNER_TEMP/AuthKey_$KEY_ID.p8"
+          echo "$ASC_KEY_B64" | base64 --decode > "$RUNNER_TEMP/AuthKey_$APP_STORE_CONNECT_KEY_IDENTIFIER.p8"
+          export APP_STORE_CONNECT_PRIVATE_KEY="$(cat "$RUNNER_TEMP/AuthKey_$APP_STORE_CONNECT_KEY_IDENTIFIER.p8")"
+          pip3 install --quiet --break-system-packages codemagic-cli-tools
+          keychain initialize
+          app-store-connect fetch-signing-files "tech.proyekto.app"             --type IOS_APP_STORE             --certificate-key=@env:CERTIFICATE_PRIVATE_KEY             --create
+          keychain add-certificates
+          xcode-project use-profiles             --project web/ios/App/App.xcodeproj             --export-options-plist "$RUNNER_TEMP/ExportOptions.plist"
+
+      - name: Set version + build number
+        working-directory: web/ios/App
+        run: |
+          set -euo pipefail
+          sed -i '' -E             -e "s/MARKETING_VERSION = [^;]+;/MARKETING_VERSION = ${{ steps.ver.outputs.version }};/g"             -e "s/CURRENT_PROJECT_VERSION = [^;]+;/CURRENT_PROJECT_VERSION = ${{ steps.ver.outputs.build }};/g"             App.xcodeproj/project.pbxproj
+          grep -E "MARKETING_VERSION|CURRENT_PROJECT_VERSION" App.xcodeproj/project.pbxproj | sort -u
 
       - name: Archive
         working-directory: web/ios/App
         run: |
           set -euo pipefail
-          xcodebuild archive \
-            -workspace App.xcworkspace \
-            -scheme App \
-            -configuration Release \
-            -destination 'generic/platform=iOS' \
-            -archivePath "$RUNNER_TEMP/Proyekto.xcarchive" \
-            -allowProvisioningUpdates \
-            -authenticationKeyPath "$RUNNER_TEMP/AuthKey_${{ secrets.ASC_KEY_ID }}.p8" \
-            -authenticationKeyID "${{ secrets.ASC_KEY_ID }}" \
-            -authenticationKeyIssuerID "${{ secrets.ASC_ISSUER_ID }}" \
-            DEVELOPMENT_TEAM="${{ vars.APPLE_TEAM_ID }}" \
-            CODE_SIGN_STYLE=Automatic \
-            MARKETING_VERSION="${{ steps.ver.outputs.version }}" \
-            CURRENT_PROJECT_VERSION="${{ steps.ver.outputs.build }}"
+          xcodebuild archive             -workspace App.xcworkspace             -scheme App             -configuration Release             -destination 'generic/platform=iOS'             -archivePath "$RUNNER_TEMP/Proyekto.xcarchive"
 
       # destination=upload sends the build straight to App Store Connect; it
       # appears in TestFlight after Apple's processing (usually 5-30 minutes).
       - name: Export + upload to App Store Connect
         run: |
           set -euo pipefail
-          cat > "$RUNNER_TEMP/ExportOptions.plist" <<EOF
-          <?xml version="1.0" encoding="UTF-8"?>
-          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-          <plist version="1.0">
-          <dict>
-            <key>method</key><string>app-store-connect</string>
-            <key>destination</key><string>upload</string>
-            <key>signingStyle</key><string>automatic</string>
-            <key>teamID</key><string>${{ vars.APPLE_TEAM_ID }}</string>
-            <key>uploadSymbols</key><true/>
-            <key>manageAppVersionAndBuildNumber</key><false/>
-          </dict>
-          </plist>
-          EOF
-          xcodebuild -exportArchive \
-            -archivePath "$RUNNER_TEMP/Proyekto.xcarchive" \
-            -exportOptionsPlist "$RUNNER_TEMP/ExportOptions.plist" \
-            -exportPath "$RUNNER_TEMP/export" \
-            -allowProvisioningUpdates \
-            -authenticationKeyPath "$RUNNER_TEMP/AuthKey_${{ secrets.ASC_KEY_ID }}.p8" \
-            -authenticationKeyID "${{ secrets.ASC_KEY_ID }}" \
-            -authenticationKeyIssuerID "${{ secrets.ASC_ISSUER_ID }}"
+          PL="$RUNNER_TEMP/ExportOptions.plist"
+          /usr/libexec/PlistBuddy -c "Delete :destination" "$PL" 2>/dev/null || true
+          /usr/libexec/PlistBuddy -c "Add :destination string upload" "$PL"
+          /usr/libexec/PlistBuddy -c "Set :method app-store-connect" "$PL" 2>/dev/null || /usr/libexec/PlistBuddy -c "Add :method string app-store-connect" "$PL"
+          xcodebuild -exportArchive             -archivePath "$RUNNER_TEMP/Proyekto.xcarchive"             -exportOptionsPlist "$PL"             -exportPath "$RUNNER_TEMP/export"             -authenticationKeyPath "$RUNNER_TEMP/AuthKey_${{ secrets.ASC_KEY_ID }}.p8"             -authenticationKeyID "${{ secrets.ASC_KEY_ID }}"             -authenticationKeyIssuerID "${{ secrets.ASC_ISSUER_ID }}"
 
       - name: Summary
         run: |
