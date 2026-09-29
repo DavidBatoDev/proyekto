@@ -6,16 +6,15 @@ import { COMPANY, COMPANY_ADDRESS } from "@/lib/company";
 /**
  * The privacy policy.
  *
- * Every factual claim here is checked against the code, not written from a
- * template: the subprocessor list is the services the backend actually holds
- * credentials for, the mobile telemetry section describes the exact fields the
- * OTA check sends, and the "no tracking" claim is true because no analytics or
- * crash-reporting SDK is installed in `web/` or `backend/` — if one is ever
- * added, this page has to change in the same commit.
+ * Deliberately written in general, category-based terms (data categories,
+ * recipient categories, "we may") rather than naming individual vendors or
+ * fields, so routine code and vendor changes don't make it inaccurate. Keep
+ * the overseas-countries line, the OAIC complaint line, and the
+ * account-deletion path: the Privacy Act (APP 1/APP 8) and both app stores
+ * require them.
  *
- * Reachable without an account, and required to be: both app stores want a
- * privacy-policy URL on the listing, and signup has linked here since before
- * the page existed.
+ * Reachable without an account: both app stores want a privacy-policy URL on
+ * the listing, and signup links here.
  */
 export const Route = createFileRoute("/privacy")({
 	component: PrivacyPage,
@@ -24,284 +23,186 @@ export const Route = createFileRoute("/privacy")({
 const SECTIONS: LegalSection[] = [
 	{
 		id: "scope",
-		heading: "What this covers",
+		heading: "What this policy covers",
 		body: (
 			<>
 				<p>
-					Proyekto is a work-delivery platform: you plan work as a roadmap, run
-					it with your team, and keep the decisions and records around it in one
-					place. This policy covers the Proyekto web application at
-					proyekto.tech and the Proyekto apps for Android and iOS. They are the
-					same product — the apps are the same software in a native shell, using
-					the same account and the same data.
+					This Privacy Policy explains how <strong>{COMPANY.legalName}</strong>,{" "}
+					{COMPANY_ADDRESS} ("Proyekto", "we", "us") treats Personal Data that
+					we gather when you access or use our websites, web application and
+					mobile applications (the "Services"). By using the Services, you
+					acknowledge the practices described in this policy.
 				</p>
 				<p>
-					Proyekto is operated by <strong>{COMPANY.legalName}</strong>,{" "}
-					{COMPANY_ADDRESS} ("we", "us"). We are responsible for the personal
-					information described here, and we handle it in line with the
-					Australian Privacy Principles in the <em>Privacy Act 1988</em> (Cth).
-				</p>
-				<p>
-					Proyekto also contains a <strong>marketplace</strong> for finding
-					consultants and talent. It is not generally available, it is not part
-					of the mobile apps at all, and most accounts will never encounter it.
-					Where this policy says something applies only to the marketplace, it
-					applies only if you have actively opted into those features.
+					"Personal Data" means any information that identifies or relates to a
+					particular individual, including information treated as "personal
+					information" under applicable privacy laws. This policy does not cover
+					the practices of companies we don't own or control, or people we don't
+					manage. We handle Personal Data in line with the Australian Privacy
+					Principles in the <em>Privacy Act 1988</em> (Cth).
 				</p>
 			</>
 		),
 	},
 	{
 		id: "what-we-collect",
-		heading: "What we collect",
+		heading: "Personal Data we collect",
 		body: (
 			<>
-				<p>
-					<strong>Your account.</strong> An email address, and either a password
-					(stored only as a hash, never in readable form) or a Google account
-					identifier if you sign in with Google. Optionally a display name and
-					an avatar.
-				</p>
-				<p>
-					<strong>What you create.</strong> The substance of the product:
-					workspaces, projects, roadmaps, epics, features and tasks, comments,
-					chat messages, meetings, files you upload, and the governance records
-					you write — deliverables, change requests, risks and decisions. We
-					hold this because storing it and showing it back to you and your
-					collaborators is the service.
-				</p>
-				<p>
-					<strong>Activity.</strong> A per-project record of who did what and
-					when — a roadmap commit, a task moving, an access change. It exists so
-					a team can answer "who changed this". How far back it reaches depends
-					on your plan.
-				</p>
-				<p>
-					<strong>Technical records.</strong> Ordinary server logs, and the
-					session state needed to keep you signed in.
-				</p>
-				<p>
-					<strong>On mobile, two extra things.</strong> If you turn on push
-					notifications, a device push token so we can send them. And when the
-					app checks for an update it sends its platform, its app version and a
-					generated device identifier — that check is how the app learns whether
-					a newer build exists, and the identifier is not linked to your
-					account.
-				</p>
-			</>
-		),
-	},
-	{
-		id: "what-we-do-not-do",
-		heading: "What we do not do",
-		body: (
-			<>
+				<p>We may collect the following categories of Personal Data:</p>
 				<ul>
 					<li>
-						<strong>We do not sell your data</strong>, and we do not share it
-						with advertisers.
+						<strong>Profile or contact data</strong>, such as your name, email
+						address, sign-in credentials and profile details.
 					</li>
 					<li>
-						<strong>There is no advertising in Proyekto</strong>, and no ad
-						network SDK in the apps.
+						<strong>Payment data</strong>, such as billing details, collected
+						and processed by our payment processing partner.
 					</li>
 					<li>
-						<strong>There are no third-party analytics or tracking SDKs</strong>{" "}
-						in the web app or the mobile apps. We do not build advertising
-						profiles and we do not track you across other apps or websites.
+						<strong>Device and network data</strong>, such as IP address, device
+						identifiers, and the type of device, operating system or browser you
+						use.
 					</li>
 					<li>
-						We do not use the content you create to train machine-learning
-						models.
+						<strong>Usage data</strong>, such as how you interact with the
+						Services, and logs and statistics about that interaction.
+					</li>
+					<li>
+						<strong>Content you provide</strong>, such as the information you
+						create, upload or share through the Services.
+					</li>
+					<li>
+						<strong>Other information you choose to provide</strong>, such as
+						what you include when you contact us.
 					</li>
 				</ul>
+				<p>
+					We collect this information from you directly, automatically when you
+					use the Services (including through cookies and similar technologies),
+					and from third parties such as service providers and services you
+					choose to connect.
+				</p>
 			</>
 		),
 	},
 	{
-		id: "ai",
-		heading: "The AI assistant",
+		id: "how-we-use",
+		heading: "How we use Personal Data",
 		body: (
 			<>
+				<p>We may use Personal Data to:</p>
+				<ul>
+					<li>
+						Provide, customize and improve the Services, including creating and
+						managing accounts, processing transactions and billing, and
+						providing support.
+					</li>
+					<li>
+						Test, research, analyze and develop the Services and new features.
+					</li>
+					<li>Protect against fraud, maintain security, and debug.</li>
+					<li>
+						Correspond with you and send you information about Proyekto or the
+						Services according to your preferences.
+					</li>
+					<li>Market the Services.</li>
+					<li>
+						Meet legal requirements, enforce our terms, resolve disputes, and
+						protect the rights, property or safety of you, us or others.
+					</li>
+				</ul>
 				<p>
-					Proyekto includes an assistant that drafts and edits roadmaps and
-					answers questions about your work. When you use it,{" "}
-					<strong>
-						the content it needs in order to answer is sent to our model
-						provider, OpenAI
-					</strong>
-					, and processed there to generate the reply. That can include the
-					roadmap you have open, the items you reference, and the messages in
-					that thread.
-				</p>
-				<p>
-					This only happens when you use the assistant. If you never open it,
-					nothing is sent. The assistant can only ever read what you yourself
-					have access to — it does not cross into projects you cannot open.
+					We will not use Personal Data for materially different, unrelated or
+					incompatible purposes without giving you notice.
 				</p>
 			</>
 		),
 	},
 	{
 		id: "sharing",
-		heading: "Who else sees it",
+		heading: "How we share Personal Data",
 		body: (
 			<>
-				<p>
-					<strong>People you work with.</strong> Proyekto is collaborative
-					software, so the people you grant access to a project can see the work
-					in it. That is the point of it, and it is under your control: access
-					is granted per person, per project.
-				</p>
-				<p>
-					<strong>Service providers.</strong> We use a small number of companies
-					to run the product. They process data on our instructions only:
-				</p>
 				<ul>
 					<li>
-						<strong>Supabase</strong> — the database and authentication.
+						<strong>Service providers</strong> that help us run the Services and
+						our business, such as hosting, infrastructure, communications, AI
+						and model providers, analytics, support and payment processors.
 					</li>
 					<li>
-						<strong>Google Cloud</strong> — where the backend and the AI service
-						run.
+						<strong>Parties you authorize, access or authenticate</strong>, such
+						as collaborators you give access to your work and third-party
+						services you connect.
 					</li>
 					<li>
-						<strong>Cloudflare</strong> — serving the web app, and storing files
-						you upload.
+						<strong>Legal obligations.</strong> Where required by law, or in
+						connection with the legal purposes described above.
 					</li>
 					<li>
-						<strong>Upstash</strong> — short-lived caching and session state.
-					</li>
-					<li>
-						<strong>OpenAI</strong> — the model behind the assistant (see
-						above).
-					</li>
-					<li>
-						<strong>Firebase Cloud Messaging</strong> — delivering push
-						notifications to mobile devices.
-					</li>
-					<li>
-						<strong>Google Workspace</strong> — sending the emails the product
-						sends.
-					</li>
-					<li>
-						<strong>Stripe</strong> — payment processing, if your workspace is
-						on a paid plan. Card details go to Stripe and are never held by us.
+						<strong>Business transfers.</strong> If we undergo a merger,
+						acquisition, bankruptcy or similar transaction, Personal Data may be
+						transferred to the party that assumes control of our business.
 					</li>
 				</ul>
 				<p>
-					<strong>Optional integrations.</strong> If you connect Google
-					Calendar, meeting details are sent to Google to create the calendar
-					event. That integration is off unless you turn it on.
-				</p>
-				<p>
-					<strong>If the law requires it.</strong> We may disclose data where we
-					are legally obliged to.
+					We may also create aggregated, de-identified or anonymized data and
+					use or share it for lawful business purposes, in a way that does not
+					identify you.
 				</p>
 			</>
 		),
 	},
 	{
-		id: "retention",
-		heading: "How long we keep it",
+		id: "cookies",
+		heading: "Cookies and similar technologies",
+		body: (
+			<p>
+				The Services may use cookies, local storage and similar technologies to
+				keep you signed in, remember your preferences, and understand how the
+				Services are used. You can control cookies through your browser
+				settings, although some features may not work without them.
+			</p>
+		),
+	},
+	{
+		id: "security-retention",
+		heading: "Data security and retention",
 		body: (
 			<>
 				<p>
-					Your content is kept for as long as your account exists, because it is
-					the thing you came to store. Project activity history ages out of a
-					window set by your workspace's plan; nothing else is removed with it.
+					We use appropriate physical, technical, organizational and
+					administrative measures to protect Personal Data. No method of
+					transmission or storage is completely secure, so please also protect
+					your password and devices.
 				</p>
 				<p>
-					Deleting your account is immediate: it happens when you confirm it,
-					not on a schedule. Backups persist for a short period afterwards for
-					disaster recovery, and then roll off.
+					We retain Personal Data for as long as your account is open or as
+					otherwise needed to provide the Services, and longer where necessary
+					to comply with legal obligations, resolve disputes, collect fees, or
+					as permitted by law. We may keep information in anonymized or
+					aggregated form.
 				</p>
 			</>
 		),
 	},
 	{
 		id: "your-choices",
-		heading: "Your choices, and deleting your account",
+		heading: "Your choices and rights",
 		body: (
 			<>
 				<p>
-					You can edit your profile, change your notification preferences, and
-					turn push notifications off from your device settings at any time.
+					You may request access to, correction of, or deletion of your Personal
+					Data, and depending on where you live you may have further rights. We
+					may need to verify your identity, and in some circumstances we may not
+					be able to fully comply with a request, but we will tell you why.
 				</p>
 				<p>
-					<strong>
-						To delete your account, go to Settings → Delete account.
-					</strong>{" "}
-					It is there in the apps as well as on the web. Deletion takes effect
-					immediately, there is no waiting period, and there is no way to
-					restore an account afterwards. Before you confirm, the screen lists
-					exactly what will be deleted, what will be handed to someone else, and
-					what will stay.
-				</p>
-				<p>
-					<strong>What deletion removes.</strong> Your profile, your email
-					address, your sign-in — password or Google link — your notification
-					preferences, your push devices, any API tokens you created, and any
-					identity document you uploaded. Any workspace or team you are the only
-					member of, and everything in it. Any project nobody else has access
-					to.
-				</p>
-				<p>
-					<strong>What it hands over.</strong> A workspace or team you are the
-					only owner of, but other people are still using, does not disappear
-					underneath them. You decide, one by one: hand it to one of its
-					members, or delete it with everything in it. A project you own that
-					other people work on is handed to one of those people.
-				</p>
-				<p>
-					<strong>What it keeps, and why.</strong> What you wrote in shared
-					spaces stays with the people you wrote it for: chat messages,
-					comments, decisions, change requests, deliverables, project activity,
-					and files you added to someone else's project or conversation. Your
-					name on them becomes "Deleted user", and nothing links them back to
-					you — not your email, not your profile. A team's record of how a
-					decision was made should not develop holes because one person left.
-				</p>
-				<p>
-					Separately, we are required to keep records of business we have
-					transacted. Contracts, invoices and payout records that name you are
-					retained for <strong>five years</strong> from when the record was made
-					or the transaction completed, because Australian tax record-keeping
-					rules require it, and then deleted. They are not used for anything
-					else.
-				</p>
-				<p>
-					When we delete your data we also delete it from the services listed
-					above that hold it on our behalf, and ask them to do the same where it
-					is not ours to remove directly.
-				</p>
-				<p>
-					You can also ask for a copy of your data, or ask us to correct it.
-					Depending on where you live you may have further rights over it; ask
-					and we will honour them. If you cannot reach the deletion screen for
-					any reason, email{" "}
+					<strong>To delete your account</strong>, go to Settings → Delete
+					account in the web app or mobile apps, or email{" "}
 					<a href="mailto:support@proyekto.tech">support@proyekto.tech</a> from
-					the address on the account and we will do it for you.
-				</p>
-			</>
-		),
-	},
-	{
-		id: "security",
-		heading: "Security",
-		body: (
-			<>
-				<p>
-					Traffic is encrypted in transit. Passwords are stored only as hashes.
-					Access to a project is checked on the server on every request — the
-					apps never decide for themselves what you are allowed to see, which is
-					what stops a client-side mistake becoming a data leak.
-				</p>
-				<p>
-					No system is perfectly secure, and we would rather say so than imply
-					otherwise. If you find a vulnerability, please report it to{" "}
-					<a href="mailto:support@proyekto.tech">support@proyekto.tech</a>{" "}
-					before disclosing it publicly.
+					the address on the account. Some content you shared with others, and
+					records we are required to keep, may be retained as described above.
 				</p>
 			</>
 		),
@@ -311,21 +212,21 @@ const SECTIONS: LegalSection[] = [
 		heading: "Children",
 		body: (
 			<p>
-				Proyekto is a tool for work and is not directed at children. Do not
-				create an account if you are under 16. If we learn that an account
-				belongs to a child, we will delete it.
+				The Services are not directed at children, and we do not knowingly
+				collect Personal Data from anyone under 16. If we learn that we have, we
+				will delete it.
 			</p>
 		),
 	},
 	{
 		id: "international",
-		heading: "Where your data is processed",
+		heading: "International transfers",
 		body: (
 			<p>
-				Proyekto is operated from Australia, and the services above run in data
-				centres in several regions — primarily Singapore, with parts of the
-				delivery network distributed globally. Using Proyekto means your data
-				may be processed in a country other than your own.
+				Proyekto is operated from Australia, and we and our service providers
+				may store and process Personal Data in other countries, including
+				Singapore and the United States. Laws in those countries may differ from
+				those where you live.
 			</p>
 		),
 	},
@@ -334,10 +235,10 @@ const SECTIONS: LegalSection[] = [
 		heading: "Changes to this policy",
 		body: (
 			<p>
-				If this policy changes in a way that materially affects you, we will
-				update the date at the top and tell you in the product before the change
-				takes effect. Continuing to use Proyekto after that means the updated
-				policy applies.
+				We may change this policy from time to time. We will let you know by
+				updating the date above and, where appropriate, by notice in the
+				Services or by email. Using the Services after a change means you accept
+				the updated policy.
 			</p>
 		),
 	},
@@ -348,9 +249,8 @@ const SECTIONS: LegalSection[] = [
 			<>
 				<p>
 					Email <a href={`mailto:${COMPANY.email}`}>{COMPANY.email}</a> or use
-					the <Link to="/contact">contact form</Link>. If you are writing about
-					a privacy request, say so in the subject so it reaches the right
-					person quickly. By post: {COMPANY.legalName}, {COMPANY_ADDRESS}.
+					the <Link to="/contact">contact form</Link>. By post:{" "}
+					{COMPANY.legalName}, {COMPANY_ADDRESS}.
 				</p>
 				<p>
 					If you are not satisfied with how we handle a privacy complaint, you
@@ -367,7 +267,7 @@ function PrivacyPage() {
 	return (
 		<LegalPage
 			title="Privacy Policy"
-			intro="What Proyekto collects, why, who it goes to, and how to get rid of it. Written to be read rather than to be survived."
+			intro="How Proyekto collects, uses and shares Personal Data."
 			updated="29 September 2026"
 			sections={SECTIONS}
 		/>
