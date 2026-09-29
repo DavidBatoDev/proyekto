@@ -47,7 +47,7 @@ const IOS_CLIENT_ID = import.meta.env.VITE_GOOGLE_IOS_CLIENT_ID as
  * PluginHeaders — so it answers correctly WITHOUT importing the module. Import
  * first and the web fallback registers itself, defeating the check.
  */
-const PLUGIN_NAME = "SocialLogin";
+export const PLUGIN_NAME = "SocialLogin";
 
 export type GoogleAuthResult =
 	| { ok: true }
@@ -83,7 +83,11 @@ let initialized: Promise<
 	typeof import("@capgo/capacitor-social-login")
 > | null = null;
 
-function loadSocialLogin() {
+/**
+ * The plugin is initialized once for every provider this build uses; a second
+ * `initialize` call would reconfigure it. Shared with appleAuth.ts.
+ */
+export function loadSocialLogin() {
 	if (!initialized) {
 		initialized = (async () => {
 			const mod = await import("@capgo/capacitor-social-login");
@@ -93,6 +97,12 @@ function loadSocialLogin() {
 					// Ignored on Android; required on iOS.
 					...(IOS_CLIENT_ID ? { iOSClientId: IOS_CLIENT_ID } : {}),
 				},
+				// Sign in with Apple is iOS-only here (App Store guideline 4.8
+				// applies to the iOS app). An empty redirectUrl keeps it on the
+				// native sheet instead of a web redirect.
+				...(Capacitor.getPlatform() === "ios"
+					? { apple: { redirectUrl: "" } }
+					: {}),
 			});
 			return mod;
 		})().catch((err) => {
@@ -104,13 +114,13 @@ function loadSocialLogin() {
 	return initialized;
 }
 
-const randomNonce = (): string => {
+export const randomNonce = (): string => {
 	const bytes = new Uint8Array(32);
 	crypto.getRandomValues(bytes);
 	return Array.from(bytes, (b) => b.toString(16).padStart(2, "0")).join("");
 };
 
-const sha256Hex = async (value: string): Promise<string> => {
+export const sha256Hex = async (value: string): Promise<string> => {
 	const digest = await crypto.subtle.digest(
 		"SHA-256",
 		new TextEncoder().encode(value),
@@ -121,7 +131,7 @@ const sha256Hex = async (value: string): Promise<string> => {
 };
 
 /** Cancelling the account sheet is a normal outcome; the wording varies by OS. */
-const isCancellation = (message: string): boolean =>
+export const isCancellation = (message: string): boolean =>
 	/cancel|dismiss|closed by user|user_cancel|activity is cancelled/i.test(
 		message,
 	);

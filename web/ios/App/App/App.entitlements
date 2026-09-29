@@ -17,5 +17,11 @@
 <dict>
 	<key>aps-environment</key>
 	<string>development</string>
+	<!-- Sign in with Apple (App Store guideline 4.8: required alongside Google
+	     sign-in). The capability is enabled on the tech.proyekto.app App ID. -->
+	<key>com.apple.developer.applesignin</key>
+	<array>
+		<string>Default</string>
+	</array>
 </dict>
 </plist>

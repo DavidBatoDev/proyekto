@@ -38,6 +38,9 @@ describe("googleAuth", () => {
 		// stubEnv persists across tests otherwise, so an iOS client id set by one
 		// case leaks into the Android ones and silently changes what they assert.
 		vi.unstubAllEnvs();
+		// Pin the iOS id empty: a developer's web/.env (which Vitest loads) may
+		// set it, and these cases assert the no-iOS-client behaviour.
+		vi.stubEnv("VITE_GOOGLE_IOS_CLIENT_ID", "");
 		socialLogin.initialize.mockResolvedValue(undefined);
 		vi.stubEnv(
 			"VITE_GOOGLE_WEB_CLIENT_ID",
@@ -89,11 +92,13 @@ describe("googleAuth", () => {
 			);
 			const { signInWithGoogleNative } = await load();
 			await signInWithGoogleNative();
+			// On iOS the same initialize also enables Sign in with Apple.
 			expect(socialLogin.initialize).toHaveBeenCalledWith({
 				google: {
 					webClientId: "web-client-id.apps.googleusercontent.com",
 					iOSClientId: "ios-client-id.apps.googleusercontent.com",
 				},
+				apple: { redirectUrl: "" },
 			});
 		});
 

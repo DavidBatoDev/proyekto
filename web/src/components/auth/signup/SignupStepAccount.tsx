@@ -1,6 +1,8 @@
 import { Link } from "@tanstack/react-router";
 import { useState } from "react";
+import { useAppleSignIn } from "../../../hooks/useAppleSignIn";
 import { useGoogleSignIn } from "../../../hooks/useGoogleSignIn";
+import { AppleSignInButton } from "../AppleSignInButton";
 import { FloatingInput } from "./FloatingInput";
 import { GoogleButton } from "./SignupButtons";
 import { WizardNav } from "./WizardNav";
@@ -65,6 +67,9 @@ export function SignupStepAccount({
 		source: "signup",
 		redirectTo: authRedirect,
 	});
+
+	const { signIn: handleAppleSignIn, isAvailable: isAppleAvailable } =
+		useAppleSignIn({ source: "signup", redirectTo: authRedirect });
 
 	const validateField = (field: keyof FieldErrors, value: string): string => {
 		if (field === "firstName")
@@ -138,6 +143,15 @@ export function SignupStepAccount({
 					We'll send a verification code to your email.
 				</p>
 			</div>
+
+			{/* Sign in with Apple — iOS app only (App Store guideline 4.8) */}
+			{isAppleAvailable && (
+				<AppleSignInButton
+					onClick={handleAppleSignIn}
+					height={50}
+					radius={14}
+				/>
+			)}
 
 			{/* Google button */}
 			<GoogleButton onClick={handleGoogleSignIn}>
