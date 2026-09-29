@@ -27,6 +27,7 @@ import { isActiveConsultant } from "@/lib/auth-utils";
 // `custom` is deliberately absent: `projects` has no column to keep the text in.
 import { DURATION_OPTIONS } from "@/lib/durations";
 import { type PlanLimitInfo, parsePlanLimitError } from "@/lib/planLimitErrors";
+import { isNativeApp } from "@/lib/platform";
 import { workspaceKeys } from "@/queries/workspaces";
 import { projectService } from "@/services/project.service";
 import { roadmapService } from "@/services/roadmap.service";
@@ -113,8 +114,14 @@ function NewProjectPage() {
 			: null) ?? workspace;
 
 	const isVerifiedConsultant = isActiveConsultant(profile);
+	// The installed app carries no marketplace, so it never posts a project
+	// for consultant bids and never asks which side of a deal you are on: a
+	// verified consultant leads what they create, everyone else gets a plain
+	// draft project.
+	const native = isNativeApp();
+	const showPositionPicker = isVerifiedConsultant && !native;
 	const effectiveIntent: ProjectCreationIntent =
-		isVerifiedConsultant && creationIntent === "consultant"
+		isVerifiedConsultant && (native || creationIntent === "consultant")
 			? "consultant"
 			: "client";
 
@@ -175,7 +182,8 @@ function NewProjectPage() {
 				title: title.trim(),
 				description: description.trim(),
 				duration,
-				status: effectiveIntent === "consultant" ? "draft" : "bidding",
+				status:
+					effectiveIntent === "consultant" || native ? "draft" : "bidding",
 				primary_team_id:
 					effectiveIntent === "consultant" && primaryTeamId
 						? primaryTeamId
@@ -299,7 +307,7 @@ function NewProjectPage() {
 							>
 								{currentStep === 1 && (
 									<section className="space-y-5 rounded-2xl border border-border bg-card p-5 sm:p-6">
-										{isVerifiedConsultant && (
+										{showPositionPicker && (
 											<GoLiveField label="Your position" required>
 												<div className="grid gap-3 sm:grid-cols-2">
 													<GoLiveChoiceCard
@@ -445,7 +453,7 @@ function NewProjectPage() {
 								{currentStep === 3 && (
 									<div className="space-y-5">
 										<GoLivePanel className="space-y-2 p-5">
-											{isVerifiedConsultant && (
+											{showPositionPicker && (
 												<ReviewRow
 													label="Position"
 													value={
@@ -491,7 +499,9 @@ function NewProjectPage() {
 										<GoLiveCallout tone="info">
 											{effectiveIntent === "consultant"
 												? "Creating the project sets up its chat channels and an empty roadmap, and attaches your team. It starts as a draft only you and your collaborators can see."
-												: "Creating the project sets up its chat channels and an empty roadmap, and opens it for consultant bids. You stay in control of who joins."}
+												: native
+													? "Creating the project sets up its chat channels and an empty roadmap. It starts as a draft, and you choose who joins."
+													: "Creating the project sets up its chat channels and an empty roadmap, and opens it for consultant bids. You stay in control of who joins."}
 										</GoLiveCallout>
 									</div>
 								)}

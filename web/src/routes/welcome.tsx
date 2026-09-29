@@ -559,26 +559,49 @@ function SlideOneCF({
 
 // ─── C/F Slide 2: Capabilities ──────────────────────────────────────────────
 
-const cfCapabilities = [
-	{
-		icon: Sparkles,
-		title: "Plan with AI",
-		description:
-			"Draft a clear roadmap before anyone gets hired. Sharper scope, tighter quotes.",
-	},
-	{
-		icon: Users,
-		title: "Bring in a vetted consultant",
-		description:
-			"When you're ready, request a vetted lead. They scope, price, and propose a team within 48 hours.",
-	},
-	{
-		icon: Workflow,
-		title: "Ship together in one workspace",
-		description:
-			"Roadmap, chat, files, and time tracking on one canvas. Pay through escrow on milestones.",
-	},
-];
+// The installed app carries no marketplace, so its version of this slide
+// talks about planning and running the work with your own team rather than
+// hiring a consultant. (Escrow was retired; payment is recorded, never held.)
+const cfCapabilities = isNativeApp()
+	? [
+			{
+				icon: Sparkles,
+				title: "Plan with AI",
+				description:
+					"Describe the work and get a clear roadmap of epics, features and tasks.",
+			},
+			{
+				icon: Users,
+				title: "Bring your team in",
+				description:
+					"Invite the people you deliver with and give each one the access they need.",
+			},
+			{
+				icon: Workflow,
+				title: "Ship together in one workspace",
+				description:
+					"Roadmap, board, chat, meetings and time tracking in one place.",
+			},
+		]
+	: [
+			{
+				icon: Sparkles,
+				title: "Plan with AI",
+				description:
+					"Draft a clear roadmap before anyone gets hired. Sharper scope, tighter quotes.",
+			},
+			{
+				icon: Users,
+				title: "Bring in a vetted consultant",
+				description:
+					"When you're ready, request a vetted lead. They scope, price, and propose a team within 48 hours.",
+			},
+			{
+				icon: Workflow,
+				title: "Ship together in one workspace",
+				description: "Roadmap, chat, files, and time tracking on one canvas.",
+			},
+		];
 
 function SlideTwoCF({
 	onBack,

@@ -1,5 +1,7 @@
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
+import { isNativeApp } from "@/lib/platform";
+import { isVisibleInApp } from "@/lib/platformSurfaces";
 import { cn } from "@/lib/utils";
 
 /**
@@ -108,6 +110,14 @@ export function DocsMarkdown({
 					),
 					a: ({ children: kids, href }) => {
 						const external = /^https?:\/\//i.test(href ?? "");
+						// An in-article link to a web-only page (the marketplace
+						// articles, pricing) would only bounce to "not available" in
+						// the installed app, so it renders as plain text there.
+						if (href?.startsWith("/") && !isVisibleInApp(href, isNativeApp())) {
+							return (
+								<span className="font-medium text-foreground">{kids}</span>
+							);
+						}
 						return (
 							<a
 								href={href}

@@ -11,6 +11,7 @@ import { ProjectSettingsLayout } from "@/components/project/ProjectSettingsLayou
 import { RateBudgetCalculator } from "@/components/team-time/RateBudgetCalculator";
 import { useProjectMyPermissionsQuery } from "@/hooks/useProjectQueries";
 import { useToast } from "@/hooks/useToast";
+import { isNativeApp } from "@/lib/platform";
 import { projectService } from "@/services/project.service";
 import {
 	getTeam,
@@ -137,7 +138,10 @@ function ProjectTimeSettings() {
 					</div>
 				) : (
 					<div className="space-y-6">
-						{ratedRows.length > 0 && (
+						{/* The calculator is contract economics (client rate, recurring
+						    fee, budget split), all set up on the web marketplace; the
+						    installed app has no way to act on it. */}
+						{ratedRows.length > 0 && !isNativeApp() && (
 							<RateBudgetCalculator projectId={projectId} rows={ratedRows} />
 						)}
 						<div className="app-surface-card-strong overflow-hidden rounded-2xl">

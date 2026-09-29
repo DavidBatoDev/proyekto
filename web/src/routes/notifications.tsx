@@ -13,6 +13,8 @@ import {
 	XCircle,
 } from "lucide-react";
 import { useNotificationsRealtime } from "@/hooks/useNotificationsRealtime";
+import { isNotificationShownInApp } from "@/lib/appNotifications";
+import { isNativeApp } from "@/lib/platform";
 import {
 	type NotificationItem,
 	notificationsService,
@@ -160,7 +162,9 @@ function NotificationsPage() {
 		},
 	});
 
-	const notifications = notificationsQuery.data || [];
+	const notifications = (notificationsQuery.data || []).filter((item) =>
+		isNotificationShownInApp(item, isNativeApp()),
+	);
 	const unreadCount = notifications.filter((n) => !n.is_read).length;
 
 	return (

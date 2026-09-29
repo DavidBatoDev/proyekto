@@ -3,7 +3,10 @@ import { createFileRoute } from "@tanstack/react-router";
 import { Check, ChevronDown, Loader2 } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { ProjectStatusBadge } from "@/components/common/SemanticBadge";
-import { PROJECT_STATUS_CONFIG } from "@/components/home/ProjectsGrid";
+import {
+	PROJECT_STATUS_CONFIG,
+	pickableProjectStatuses,
+} from "@/components/home/ProjectsGrid";
 import {
 	deriveTimelineItems,
 	OverviewBanner,
@@ -33,6 +36,7 @@ import {
 	useProjectMyPermissionsQuery,
 	useRoadmapFullQuery,
 } from "@/hooks/useProjectQueries";
+import { isNativeApp } from "@/lib/platform";
 import { hasProjectAdminAccess } from "@/lib/projectAccess";
 import { supabase } from "@/lib/supabase";
 import { projectService } from "@/services/project.service";
@@ -106,7 +110,7 @@ function StatusBadgeSelector({
 
 			{open && (
 				<div className="absolute left-0 top-full z-50 mt-1.5 w-48 rounded-xl border border-border bg-popover py-1 text-popover-foreground shadow-xl">
-					{Object.entries(PROJECT_STATUS_CONFIG).map(([key, c]) => (
+					{pickableProjectStatuses(statusKey, isNativeApp()).map(([key, c]) => (
 						<button
 							key={key}
 							type="button"

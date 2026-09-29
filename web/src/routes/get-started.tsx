@@ -40,8 +40,8 @@ function GetStartedPage() {
 					Projects that actually ship
 				</h1>
 				<p className="mt-3 max-w-[320px] text-center text-sm leading-relaxed text-muted-foreground">
-					Plan it with AI, bring in a vetted consultant, and run the delivery in
-					one place.
+					Plan it with AI, bring your team in, and run the delivery in one
+					place.
 				</p>
 			</section>
 

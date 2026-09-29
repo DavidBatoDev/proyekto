@@ -3,6 +3,7 @@ import { Bell, Loader2, Mail } from "lucide-react";
 import { useEffect, useId, useMemo, useState } from "react";
 import { PushNotificationsSection } from "@/components/settings/PushNotificationsSection";
 import { useToast } from "@/hooks/useToast";
+import { isNativeApp } from "@/lib/platform";
 import {
 	type NotificationPreferences,
 	notificationsService,
@@ -260,6 +261,9 @@ function NotificationSettingsPage() {
 
 							<div className="mt-4 space-y-6">
 								{GROUPS.map((group) => {
+									// The consultant application is part of the marketplace,
+									// which the installed app does not carry.
+									if (group.key === "consultant" && isNativeApp()) return null;
 									const types = grouped.get(group.key) ?? [];
 									if (types.length === 0) return null;
 

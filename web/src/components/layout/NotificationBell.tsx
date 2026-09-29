@@ -5,7 +5,9 @@ import { Bell } from "lucide-react";
 import { type MouseEvent, useState } from "react";
 import { openProjectInviteModal } from "@/components/invites/projectInviteModalEvents";
 import { useNotificationsRealtime } from "@/hooks/useNotificationsRealtime";
+import { isNotificationShownInApp } from "@/lib/appNotifications";
 import { mapLegacyPath } from "@/lib/legacyRoutePaths";
+import { isNativeApp } from "@/lib/platform";
 import { notificationsService } from "@/services/notifications.service";
 import { useAuthStore } from "@/stores/authStore";
 
@@ -98,7 +100,9 @@ export function NotificationBell() {
 	});
 
 	const unreadCount = unreadCountQuery.data ?? 0;
-	const recentNotifications = recentNotificationsQuery.data || [];
+	const recentNotifications = (recentNotificationsQuery.data || []).filter(
+		(notification) => isNotificationShownInApp(notification, isNativeApp()),
+	);
 
 	const openNotifications = (event: MouseEvent<HTMLElement>) => {
 		setNotificationAnchor(event.currentTarget);

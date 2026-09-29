@@ -11,6 +11,7 @@ import { featureFlags } from "@/config/featureFlags";
 import { useProfileQuery } from "@/hooks/useProfileQuery";
 import { deletionCopy } from "@/lib/accountDeletionCopy";
 import { isActiveConsultant } from "@/lib/auth-utils";
+import { isNativeApp } from "@/lib/platform";
 import { useUser } from "@/stores/authStore";
 
 export const Route = createFileRoute("/settings/")({
@@ -57,9 +58,12 @@ function SettingsOverviewPage() {
 			? `${profile.first_name} ${profile.last_name || ""}`.trim()
 			: profile?.email?.split("@")[0] || "User";
 
-	const accountLabel = isActiveConsultant(profile)
-		? "Verified consultant"
-		: "Member";
+	// "Verified consultant" is a marketplace status; the installed app carries
+	// no marketplace, so it just says Member there.
+	const accountLabel =
+		!isNativeApp() && isActiveConsultant(profile)
+			? "Verified consultant"
+			: "Member";
 
 	const sections: SettingsSection[] = [
 		...(featureFlags.themeSystem

@@ -474,7 +474,7 @@ export function ProjectHeader() {
 							type="button"
 							onClick={handleMakeProject}
 							className="app-cta inline-flex items-center gap-2 whitespace-nowrap rounded-lg px-4 py-2 text-sm font-medium text-white"
-							title="Convert to Project for Consultant Bidding"
+							title="Convert this roadmap into a project"
 						>
 							<Briefcase className="h-4 w-4" />
 							Make this a Project
