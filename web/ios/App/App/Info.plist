@@ -16,6 +16,20 @@
 	<string>$(PRODUCT_NAME)</string>
 	<key>CFBundlePackageType</key>
 	<string>APPL</string>
+	<!-- Google sign-in returns to the app through the iOS OAuth client's
+	     REVERSED_CLIENT_ID. Must match VITE_GOOGLE_IOS_CLIENT_ID in
+	     web/.env.production (client "Proyekto iOS" in the proyektotech project). -->
+	<key>CFBundleURLTypes</key>
+	<array>
+		<dict>
+			<key>CFBundleURLName</key>
+			<string>google-sign-in</string>
+			<key>CFBundleURLSchemes</key>
+			<array>
+				<string>com.googleusercontent.apps.177334028893-d7pe0t714ofp411deg0esefucm73cft0</string>
+			</array>
+		</dict>
+	</array>
 	<key>CFBundleShortVersionString</key>
 	<string>$(MARKETING_VERSION)</string>
 	<key>CFBundleVersion</key>
