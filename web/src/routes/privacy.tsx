@@ -53,7 +53,14 @@ const SECTIONS: LegalSection[] = [
 				<ul>
 					<li>
 						<strong>Profile or contact data</strong>, such as your name, email
-						address, sign-in credentials and profile details.
+						address, sign-in credentials and profile details, including optional
+						details you choose to add, such as your phone number, date of birth,
+						gender, country, city and postal code.
+					</li>
+					<li>
+						<strong>Work and compensation data</strong>, on plans that include
+						time tracking, such as time logs, the pay rates a team sets for its
+						members, and records of payouts made outside Proyekto.
 					</li>
 					<li>
 						<strong>Payment data</strong>, such as billing details, collected
@@ -70,7 +77,9 @@ const SECTIONS: LegalSection[] = [
 					</li>
 					<li>
 						<strong>Content you provide</strong>, such as the information you
-						create, upload or share through the Services.
+						create, upload or share through the Services, including projects,
+						tasks, messages, comments, meetings and the files, photos, videos
+						and audio you attach.
 					</li>
 					<li>
 						<strong>Other information you choose to provide</strong>, such as
