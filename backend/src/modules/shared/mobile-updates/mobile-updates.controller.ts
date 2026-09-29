@@ -34,7 +34,7 @@ export class MobileUpdatesController {
   @Post('stats')
   @HttpCode(200)
   @RawResponse()
-  stats(@Body() body: CapgoStatsBody) {
+  stats(@Body() body: CapgoStatsBody | CapgoStatsBody[]) {
     this.service.recordStat(body);
     return { ok: true };
   }
