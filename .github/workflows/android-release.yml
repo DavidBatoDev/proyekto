@@ -84,6 +84,13 @@ jobs:
 
       - name: Setup Android SDK
         uses: android-actions/setup-android@v3
+        with:
+          # The action's default is "tools platform-tools", and the legacy
+          # `tools` package no longer exists for cmdline-tools 16.0 on the
+          # runner image, which failed v0.7.0 before Gradle ran. Gradle fetches
+          # the compileSdk platform and build-tools it needs on its own (the
+          # action has already accepted the licences).
+          packages: platform-tools
 
       - name: Build signed APK + AAB
         working-directory: web/android
