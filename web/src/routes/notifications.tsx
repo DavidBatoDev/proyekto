@@ -14,6 +14,7 @@ import {
 } from "lucide-react";
 import { useNotificationsRealtime } from "@/hooks/useNotificationsRealtime";
 import { isNotificationShownInApp } from "@/lib/appNotifications";
+import { openNotificationTarget } from "@/lib/notificationNavigation";
 import { isNativeApp } from "@/lib/platform";
 import {
 	type NotificationItem,
@@ -167,6 +168,11 @@ function NotificationsPage() {
 	);
 	const unreadCount = notifications.filter((n) => !n.is_read).length;
 
+	const openNotification = (item: NotificationItem) => {
+		if (!item.is_read) markReadMutation.mutate(item.id);
+		openNotificationTarget(item, profile?.id);
+	};
+
 	return (
 		<div className="relative min-h-screen overflow-hidden bg-background pt-20 text-foreground">
 			<div className="pointer-events-none absolute inset-0">
@@ -284,7 +290,17 @@ function NotificationsPage() {
 									animate={{ opacity: 1, y: 0 }}
 									exit={{ opacity: 0, scale: 0.95 }}
 									transition={{ duration: 0.3, delay: index * 0.05 }}
-									className={`group relative rounded-2xl p-5 shadow-sm transition-all hover:shadow-md border ${
+									role="button"
+									tabIndex={0}
+									onClick={() => openNotification(item)}
+									onKeyDown={(event) => {
+										if (event.target !== event.currentTarget) return;
+										if (event.key === "Enter" || event.key === " ") {
+											event.preventDefault();
+											openNotification(item);
+										}
+									}}
+									className={`group relative cursor-pointer rounded-2xl focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring p-5 shadow-sm transition-all hover:shadow-md border ${
 										item.is_read
 											? "bg-card border-transparent hover:border-border"
 											: "border-primary/25 bg-primary/10"
@@ -337,7 +353,10 @@ function NotificationsPage() {
 											{!item.is_read && (
 												<button
 													type="button"
-													onClick={() => markReadMutation.mutate(item.id)}
+													onClick={(event) => {
+														event.stopPropagation();
+														markReadMutation.mutate(item.id);
+													}}
 													disabled={markReadMutation.isPending}
 													className="rounded-lg border border-border bg-card p-2 text-xs font-medium text-muted-foreground shadow-sm transition-colors hover:border-primary/30 hover:bg-primary/10 hover:text-primary focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring disabled:cursor-not-allowed disabled:opacity-60 sm:px-3 sm:py-1.5"
 													title="Mark as read"
@@ -348,7 +367,10 @@ function NotificationsPage() {
 											)}
 											<button
 												type="button"
-												onClick={() => removeMutation.mutate(item.id)}
+												onClick={(event) => {
+													event.stopPropagation();
+													removeMutation.mutate(item.id);
+												}}
 												disabled={removeMutation.isPending}
 												className="rounded-lg border border-border bg-card p-2 text-xs font-medium text-muted-foreground shadow-sm transition-colors hover:border-destructive/30 hover:bg-destructive/10 hover:text-destructive focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring disabled:cursor-not-allowed disabled:opacity-60 sm:px-3 sm:py-1.5"
 												title="Remove notification"
