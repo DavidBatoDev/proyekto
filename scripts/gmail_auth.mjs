@@ -132,7 +132,11 @@ function loadCredentials() {
 function openBrowser(url) {
   const cmd =
     process.platform === 'win32'
-      ? ['cmd', ['/c', 'start', '', url]]
+      ? // Not `cmd /c start`: cmd treats every `&` in the URL as a command
+        // separator, so Google got a URL cut after the first parameter
+        // ("Required parameter is missing: response_type"). rundll32 hands
+        // the URL to the default browser without any shell parsing.
+        ['rundll32', ['url.dll,FileProtocolHandler', url]]
       : process.platform === 'darwin'
         ? ['open', [url]]
         : ['xdg-open', [url]];
