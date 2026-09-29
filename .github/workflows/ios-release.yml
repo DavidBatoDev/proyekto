@@ -1,0 +1,153 @@
+name: iOS Release — Build + Upload to TestFlight
+
+# Push a semver tag (v1.2.3) -> build the iOS app on a macOS runner, sign it,
+# and upload it to App Store Connect (TestFlight). Mirrors android-release.yml:
+# same tag, same version numbering, so one tag ships both platforms.
+#
+# Signing is Xcode's automatic *cloud* signing, driven by an App Store Connect
+# API key: no .p12 certificate or provisioning profile is kept anywhere, and
+# none has to be created on a Mac. The key needs the Admin role (cloud-managed
+# distribution certificates require it).
+#
+# Ships DARK: the job only runs when the IOS_RELEASE_ENABLED repo variable is
+# set, because until the Apple Developer account, the app record in App Store
+# Connect and these secrets exist, every tag would fail here.
+#
+#   vars.APPLE_TEAM_ID                 10-char team id (developer.apple.com → Membership)
+#   secrets.ASC_KEY_ID                 App Store Connect API key id
+#   secrets.ASC_ISSUER_ID              App Store Connect issuer id
+#   secrets.ASC_KEY_P8_BASE64          the .p8 key file, base64-encoded
+#   vars.IOS_RELEASE_ENABLED           any non-empty value turns the job on
+#
+# The web bundle is built in production mode (web/.env.production), exactly as
+# for Android. Web-only changes after release still reach devices over OTA.
+
+on:
+  push:
+    tags: ['v*.*.*']
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Release version (semver, no leading v), e.g. 1.2.3'
+        required: true
+
+concurrency:
+  group: ios-release-${{ github.ref }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  release:
+    if: ${{ vars.IOS_RELEASE_ENABLED != '' }}
+    runs-on: macos-latest
+    environment: production
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Resolve version + build number
+        id: ver
+        run: |
+          set -euo pipefail
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            VER="${{ github.event.inputs.version }}"
+          else
+            VER="${GITHUB_REF_NAME#v}"
+          fi
+          if ! echo "$VER" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+$'; then
+            echo "::error::Version '$VER' is not MAJOR.MINOR.PATCH"; exit 1
+          fi
+          MAJOR="${VER%%.*}"; REST="${VER#*.}"; MINOR="${REST%%.*}"; PATCH="${REST#*.}"
+          # Same number as Android's versionCode, so native_build_min in
+          # mobile-ota-deploy.yml means the same thing on both platforms.
+          BUILD=$(( MAJOR * 1000000 + MINOR * 1000 + PATCH ))
+          echo "version=$VER" >> "$GITHUB_OUTPUT"
+          echo "build=$BUILD" >> "$GITHUB_OUTPUT"
+          echo "Resolved version=$VER  build=$BUILD"
+
+      # Apple requires uploads built with Xcode 26+ and the iOS 26 SDK.
+      - name: Select Xcode
+        uses: maxim-lobanov/setup-xcode@v1
+        with:
+          xcode-version: latest-stable
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+
+      - name: Build web (production) + sync iOS
+        working-directory: web
+        run: |
+          npm ci
+          npm run build
+          npx cap sync ios
+
+      - name: Write App Store Connect API key
+        env:
+          KEY_B64: ${{ secrets.ASC_KEY_P8_BASE64 }}
+          KEY_ID: ${{ secrets.ASC_KEY_ID }}
+        run: |
+          set -euo pipefail
+          if [ -z "$KEY_B64" ] || [ -z "$KEY_ID" ] || [ -z "${{ secrets.ASC_ISSUER_ID }}" ] || [ -z "${{ vars.APPLE_TEAM_ID }}" ]; then
+            echo "::error::Missing ASC_KEY_P8_BASE64 / ASC_KEY_ID / ASC_ISSUER_ID secret or APPLE_TEAM_ID variable"; exit 1
+          fi
+          echo "$KEY_B64" | base64 --decode > "$RUNNER_TEMP/AuthKey_$KEY_ID.p8"
+
+      - name: Archive
+        working-directory: web/ios/App
+        run: |
+          set -euo pipefail
+          xcodebuild archive \
+            -workspace App.xcworkspace \
+            -scheme App \
+            -configuration Release \
+            -destination 'generic/platform=iOS' \
+            -archivePath "$RUNNER_TEMP/Proyekto.xcarchive" \
+            -allowProvisioningUpdates \
+            -authenticationKeyPath "$RUNNER_TEMP/AuthKey_${{ secrets.ASC_KEY_ID }}.p8" \
+            -authenticationKeyID "${{ secrets.ASC_KEY_ID }}" \
+            -authenticationKeyIssuerID "${{ secrets.ASC_ISSUER_ID }}" \
+            DEVELOPMENT_TEAM="${{ vars.APPLE_TEAM_ID }}" \
+            CODE_SIGN_STYLE=Automatic \
+            MARKETING_VERSION="${{ steps.ver.outputs.version }}" \
+            CURRENT_PROJECT_VERSION="${{ steps.ver.outputs.build }}"
+
+      # destination=upload sends the build straight to App Store Connect; it
+      # appears in TestFlight after Apple's processing (usually 5-30 minutes).
+      - name: Export + upload to App Store Connect
+        run: |
+          set -euo pipefail
+          cat > "$RUNNER_TEMP/ExportOptions.plist" <<EOF
+          <?xml version="1.0" encoding="UTF-8"?>
+          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+          <plist version="1.0">
+          <dict>
+            <key>method</key><string>app-store-connect</string>
+            <key>destination</key><string>upload</string>
+            <key>signingStyle</key><string>automatic</string>
+            <key>teamID</key><string>${{ vars.APPLE_TEAM_ID }}</string>
+            <key>uploadSymbols</key><true/>
+            <key>manageAppVersionAndBuildNumber</key><false/>
+          </dict>
+          </plist>
+          EOF
+          xcodebuild -exportArchive \
+            -archivePath "$RUNNER_TEMP/Proyekto.xcarchive" \
+            -exportOptionsPlist "$RUNNER_TEMP/ExportOptions.plist" \
+            -exportPath "$RUNNER_TEMP/export" \
+            -allowProvisioningUpdates \
+            -authenticationKeyPath "$RUNNER_TEMP/AuthKey_${{ secrets.ASC_KEY_ID }}.p8" \
+            -authenticationKeyID "${{ secrets.ASC_KEY_ID }}" \
+            -authenticationKeyIssuerID "${{ secrets.ASC_ISSUER_ID }}"
+
+      - name: Summary
+        run: |
+          {
+            echo "### iOS ${{ steps.ver.outputs.version }} (build ${{ steps.ver.outputs.build }}) uploaded"
+            echo "It shows up in App Store Connect → TestFlight once Apple finishes processing."
+          } >> "$GITHUB_STEP_SUMMARY"
