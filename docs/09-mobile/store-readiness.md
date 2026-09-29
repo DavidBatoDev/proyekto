@@ -1,6 +1,6 @@
 # Store readiness — Google Play & App Store
 
-> **Last updated:** 2026-09-28 · **Status:** partly built — items 1-3 are done, 4-7 are open
+> **Last updated:** 2026-09-29 · **Status:** partly built — items 1-3 are done, 4-7 are open
 
 What the two stores will want before Proyekto can ship, checked against the repo on
 2026-09-28. Four things are now **done**: the commerce/marketplace gate (see
@@ -32,9 +32,17 @@ Both are real routes now, classified `app` so they render inside the installed a
 wants a privacy policy in-app; signup links to both from every platform). They are scoped to
 the SaaS and say plainly that the marketplace is not launched.
 
+**Operator named 2026-09-29:** both pages, the site footers, the contact page and every
+email footer now name **Proyekto Business Services, Level 4, 80 Ann Street, Brisbane QLD
+4000, Australia**, read from one constant (`web/src/lib/company.ts`, mirrored in
+`backend/src/common/company.ts`). Governing law is Queensland, Australia; the privacy page
+cites the Australian Privacy Principles and the OAIC. No ABN yet — add it to both constants
+when there is one. The Play developer account name and address should match.
+
 **Still needs a human:** these are drafts written from the code, not reviewed by a lawyer.
-Before submission, confirm the operating entity name, the governing-law clause (currently the
-Philippines), and that the subprocessor list is complete. The privacy page's "no analytics or
+Before submission, have the Queensland governing-law clause and the Australian Consumer Law
+carve-out reviewed, and confirm the subprocessor list is complete (possibly missing: the
+public `meet.jit.si` used for auto-created video rooms). The privacy page's "no analytics or
 tracking SDKs" claim is true today — adding one means changing that page in the same commit.
 
 ### 2. ~~In-app account deletion~~ — **DONE 2026-09-23**
@@ -58,9 +66,10 @@ resurrect it.
 
 **Still needs a human before submission:**
 - The **Data safety form** deletion questions, using the URL above.
-- The retention period in `/privacy` is currently **ten years** for contracts, invoices and
-  payout records, chosen to match Philippine tax retention. Confirm it with whoever owns the
-  legal pages — Play requires the disclosure to be accurate, not merely present.
+- The retention period in `/privacy` is currently **five years** for contracts, invoices and
+  payout records, chosen to match the ATO's record-keeping rule now that the operator is an
+  Australian business (it was ten years under the earlier Philippine assumption). Confirm it
+  with an accountant — Play requires the disclosure to be accurate, not merely present.
 
 **Residual, accepted:** a deleted user's access token stays cryptographically valid until it
 expires (`jwt_expiry = 3600`), because `SupabaseAuthGuard` verifies JWTs locally with no

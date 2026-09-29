@@ -1,6 +1,7 @@
 import { Link } from "@tanstack/react-router";
 import { BrandMark } from "@/components/brand/BrandMark";
 import { useMarketplaceCategoryNavigationQuery } from "@/hooks/useMarketplaceTaxonomy";
+import { COMPANY } from "@/lib/company";
 
 /**
  * The marketplace's link directory.
@@ -200,8 +201,8 @@ export function MarketplaceFooter() {
 						<BrandMark className="h-7 text-primary" />
 					</Link>
 					<p className="text-[12px] text-muted-foreground">
-						© {new Date().getFullYear()} Proyekto. Managed delivery for digital
-						projects.
+						© {new Date().getFullYear()} {COMPANY.legalName}. Managed delivery
+						for digital projects.
 					</p>
 				</div>
 			</div>

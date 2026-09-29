@@ -3,6 +3,7 @@ import { motion } from "framer-motion";
 import { Sparkles } from "lucide-react";
 import { BrandMark } from "@/components/brand/BrandMark";
 import { usePresentationContext } from "@/contexts/PresentationContext";
+import { COMPANY, COMPANY_ADDRESS } from "@/lib/company";
 import { Button } from "@/ui/button";
 
 const EASE_OUT: [number, number, number, number] = [0.22, 1, 0.36, 1];
@@ -240,8 +241,10 @@ export function CTAFooterSection({ isActive = false }: { isActive?: boolean }) {
 						animate={animate}
 					>
 						<p className="text-sm text-slate-500">
-							© 2026 Proyekto. All rights reserved.
+							© {new Date().getFullYear()} {COMPANY.legalName}. All rights
+							reserved.
 						</p>
+						<p className="mt-1 text-xs text-slate-500">{COMPANY_ADDRESS}</p>
 					</motion.div>
 				</div>
 			</div>

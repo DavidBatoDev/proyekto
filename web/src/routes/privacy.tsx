@@ -1,6 +1,7 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { LegalPage, type LegalSection } from "@/components/legal/LegalPage";
 import { useDocumentTitle } from "@/hooks/useDocumentTitle";
+import { COMPANY, COMPANY_ADDRESS } from "@/lib/company";
 
 /**
  * The privacy policy.
@@ -33,6 +34,12 @@ const SECTIONS: LegalSection[] = [
 					proyekto.tech and the Proyekto apps for Android and iOS. They are the
 					same product — the apps are the same software in a native shell, using
 					the same account and the same data.
+				</p>
+				<p>
+					Proyekto is operated by <strong>{COMPANY.legalName}</strong>,{" "}
+					{COMPANY_ADDRESS} ("we", "us"). We are responsible for the personal
+					information described here, and we handle it in line with the
+					Australian Privacy Principles in the <em>Privacy Act 1988</em> (Cth).
 				</p>
 				<p>
 					Proyekto also contains a <strong>marketplace</strong> for finding
@@ -258,9 +265,10 @@ const SECTIONS: LegalSection[] = [
 				<p>
 					Separately, we are required to keep records of business we have
 					transacted. Contracts, invoices and payout records that name you are
-					retained for <strong>ten years</strong> from the end of the tax year
-					they belong to, because Philippine tax and accounting rules require
-					it, and then deleted. They are not used for anything else.
+					retained for <strong>five years</strong> from when the record was made
+					or the transaction completed, because Australian tax record-keeping
+					rules require it, and then deleted. They are not used for anything
+					else.
 				</p>
 				<p>
 					When we delete your data we also delete it from the services listed
@@ -314,8 +322,8 @@ const SECTIONS: LegalSection[] = [
 		heading: "Where your data is processed",
 		body: (
 			<p>
-				Proyekto is operated from the Philippines, and the services above run in
-				data centres in several regions — primarily Singapore, with parts of the
+				Proyekto is operated from Australia, and the services above run in data
+				centres in several regions — primarily Singapore, with parts of the
 				delivery network distributed globally. Using Proyekto means your data
 				may be processed in a country other than your own.
 			</p>
@@ -337,12 +345,19 @@ const SECTIONS: LegalSection[] = [
 		id: "contact",
 		heading: "Contact",
 		body: (
-			<p>
-				Email <a href="mailto:support@proyekto.tech">support@proyekto.tech</a>{" "}
-				or use the <Link to="/contact">contact form</Link>. If you are writing
-				about a privacy request, say so in the subject so it reaches the right
-				person quickly.
-			</p>
+			<>
+				<p>
+					Email <a href={`mailto:${COMPANY.email}`}>{COMPANY.email}</a> or use
+					the <Link to="/contact">contact form</Link>. If you are writing about
+					a privacy request, say so in the subject so it reaches the right
+					person quickly. By post: {COMPANY.legalName}, {COMPANY_ADDRESS}.
+				</p>
+				<p>
+					If you are not satisfied with how we handle a privacy complaint, you
+					can complain to the Office of the Australian Information Commissioner
+					at oaic.gov.au.
+				</p>
+			</>
 		),
 	},
 ];
@@ -353,7 +368,7 @@ function PrivacyPage() {
 		<LegalPage
 			title="Privacy Policy"
 			intro="What Proyekto collects, why, who it goes to, and how to get rid of it. Written to be read rather than to be survived."
-			updated="23 September 2026"
+			updated="29 September 2026"
 			sections={SECTIONS}
 		/>
 	);

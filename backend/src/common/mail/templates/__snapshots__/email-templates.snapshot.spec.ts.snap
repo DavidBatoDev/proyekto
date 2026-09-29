@@ -47,6 +47,7 @@ exports[`branded email templates buildInviteEmail escapes markup in every caller
             <tr>
               <td style="padding:20px 0 0;border-top:1px solid #e2e8f0;">
                 <p style="margin:0;color:#64748b;font-size:13px;line-height:1.6;">You received this email because someone invited you to a project on Proyekto.</p>
+                <p style="margin:12px 0 0;color:#64748b;font-size:12px;line-height:1.6;">Proyekto Business Services · Level 4, 80 Ann Street, Brisbane QLD 4000, Australia</p>
               </td>
             </tr>
           </table>
@@ -104,6 +105,7 @@ exports[`branded email templates buildInviteEmail renders a full invitation: htm
             <tr>
               <td style="padding:20px 0 0;border-top:1px solid #e2e8f0;">
                 <p style="margin:0;color:#64748b;font-size:13px;line-height:1.6;">You received this email because someone invited you to a project on Proyekto.</p>
+                <p style="margin:12px 0 0;color:#64748b;font-size:12px;line-height:1.6;">Proyekto Business Services · Level 4, 80 Ann Street, Brisbane QLD 4000, Australia</p>
               </td>
             </tr>
           </table>
@@ -173,6 +175,7 @@ exports[`branded email templates buildInviteEmail renders a minimal invitation (
             <tr>
               <td style="padding:20px 0 0;border-top:1px solid #e2e8f0;">
                 <p style="margin:0;color:#64748b;font-size:13px;line-height:1.6;">You received this email because someone invited you to a project on Proyekto.</p>
+                <p style="margin:12px 0 0;color:#64748b;font-size:12px;line-height:1.6;">Proyekto Business Services · Level 4, 80 Ann Street, Brisbane QLD 4000, Australia</p>
               </td>
             </tr>
           </table>
@@ -244,6 +247,7 @@ exports[`branded email templates buildInvoiceEmailHtml escapes markup in the pro
             <tr>
               <td style="padding:20px 0 0;border-top:1px solid #e2e8f0;">
                 <p style="margin:0;color:#64748b;font-size:13px;line-height:1.6;">You received this email because an invoice was issued to you on Proyekto.</p>
+                <p style="margin:12px 0 0;color:#64748b;font-size:12px;line-height:1.6;">Proyekto Business Services · Level 4, 80 Ann Street, Brisbane QLD 4000, Australia</p>
               </td>
             </tr>
           </table>
@@ -301,6 +305,7 @@ exports[`branded email templates buildInvoiceEmailHtml renders with an attachmen
             <tr>
               <td style="padding:20px 0 0;border-top:1px solid #e2e8f0;">
                 <p style="margin:0;color:#64748b;font-size:13px;line-height:1.6;">You received this email because an invoice was issued to you on Proyekto.</p>
+                <p style="margin:12px 0 0;color:#64748b;font-size:12px;line-height:1.6;">Proyekto Business Services · Level 4, 80 Ann Street, Brisbane QLD 4000, Australia</p>
               </td>
             </tr>
           </table>
@@ -350,6 +355,7 @@ exports[`branded email templates buildInvoiceEmailHtml renders with no due date 
             <tr>
               <td style="padding:20px 0 0;border-top:1px solid #e2e8f0;">
                 <p style="margin:0;color:#64748b;font-size:13px;line-height:1.6;">You received this email because an invoice was issued to you on Proyekto.</p>
+                <p style="margin:12px 0 0;color:#64748b;font-size:12px;line-height:1.6;">Proyekto Business Services · Level 4, 80 Ann Street, Brisbane QLD 4000, Australia</p>
               </td>
             </tr>
           </table>
@@ -407,6 +413,7 @@ exports[`branded email templates buildInvoiceEmailHtml renders without an attach
             <tr>
               <td style="padding:20px 0 0;border-top:1px solid #e2e8f0;">
                 <p style="margin:0;color:#64748b;font-size:13px;line-height:1.6;">You received this email because an invoice was issued to you on Proyekto.</p>
+                <p style="margin:12px 0 0;color:#64748b;font-size:12px;line-height:1.6;">Proyekto Business Services · Level 4, 80 Ann Street, Brisbane QLD 4000, Australia</p>
               </td>
             </tr>
           </table>
