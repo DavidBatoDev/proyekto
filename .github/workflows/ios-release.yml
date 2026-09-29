@@ -17,6 +17,7 @@ name: iOS Release — Build + Upload to TestFlight
 #   secrets.ASC_ISSUER_ID              App Store Connect issuer id
 #   secrets.ASC_KEY_P8_BASE64          the .p8 key file, base64-encoded
 #   secrets.IOS_CERTIFICATE_PRIVATE_KEY  RSA key (PEM) behind the distribution certificate
+#   secrets.GOOGLE_SERVICE_INFO_PLIST  Firebase iOS config, base64 (gitignored)
 #   vars.IOS_RELEASE_ENABLED           any non-empty value turns the job on
 #
 # The web bundle is built in production mode (web/.env.production), exactly as
@@ -79,6 +80,17 @@ jobs:
           node-version: 22
           cache: npm
           cache-dependency-path: web/package-lock.json
+
+      # Gitignored, like Android's google-services.json: written from a secret.
+      - name: Write Firebase config
+        env:
+          PLIST_B64: ${{ secrets.GOOGLE_SERVICE_INFO_PLIST }}
+        run: |
+          set -euo pipefail
+          if [ -z "$PLIST_B64" ]; then
+            echo "::error::Missing GOOGLE_SERVICE_INFO_PLIST secret"; exit 1
+          fi
+          echo "$PLIST_B64" | base64 --decode > web/ios/App/App/GoogleService-Info.plist
 
       - name: Build web (production) + sync iOS
         working-directory: web
