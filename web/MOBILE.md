@@ -205,6 +205,34 @@ These can't be done on Windows; do them on a Mac:
      `link_url` (defaults to `/notifications`).
 4. Log out → the `device_tokens` row is removed.
 
+## 8a. Google sign-in and signing keys (Android)
+
+Native Google sign-in (Credential Manager, via `@capgo/capacitor-social-login`) only
+works if the **SHA-1 of the certificate the installed app is signed with** is registered
+as an **Android OAuth client** in the Google Cloud project that owns the web client ID
+(`VITE_GOOGLE_WEB_CLIENT_ID`, `177334028893-…`, project `proyektotech` /
+`planar-rarity-494104-n4` — *not* the Firebase project `tech-proyekto-app`). The app
+keeps using the web client ID; the Android clients are matched by package + SHA-1.
+
+Play App Signing re-signs every Play-delivered build with **Google's** key, so a build
+that signs in fine from a GitHub APK fails from Play with
+`[16] Account reauth failed` until Google's fingerprints are registered too.
+
+| OAuth client (package `tech.proyekto.app`) | Certificate | SHA-1 |
+| --- | --- | --- |
+| Proyekto Android (release) | Upload key (GitHub release builds) | `A0:59:8D:31:67:4C:23:97:14:3F:36:F3:21:0C:1F:D3:5C:BD:36:D2` |
+| Proyekto Android (Play signing) | Play app signing key, classical | `28:42:39:EB:E0:07:C4:EE:C9:24:46:4B:16:8F:23:63:CB:10:53:11` |
+| Proyekto Android (Play signing, previous) | Play's previous app signing key | `E7:09:7C:AC:96:D3:65:B7:2D:9F:5C:CD:71:75:88:DB:A7:22:19:21` |
+| Proyekto Android (debug) | Local debug keystore | — |
+
+Play fingerprints: Play Console → Protected with Play → Play Store protection →
+**Manage Play app signing** (use the *Classical* column; the post-quantum key is not what
+sign-in checks). Upload key: `apksigner verify --print-certs <release>.apk`.
+
+Re-do this whenever the signing key changes: a Play key upgrade, a new upload key, or
+moving the app to another developer account. iOS needs its own client
+(`VITE_GOOGLE_IOS_CLIENT_ID`) — see §6.
+
 ## 9. Updating the app on users' devices
 
 A Capacitor app has **two** update layers:
