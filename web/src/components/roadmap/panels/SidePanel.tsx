@@ -31,6 +31,7 @@ import {
 	useCommentSummaryUpdaters,
 } from "@/hooks/useRoadmapCommentSummary";
 import { useToast } from "@/hooks/useToast";
+import { useBackHandler } from "@/lib/backStack";
 import { buildRoadmapPreviewUrl } from "@/lib/roadmapPreviewLink";
 import { type ProjectMember, projectService } from "@/services/project.service";
 import type { AddTaskAttachmentDto } from "@/services/roadmap.service";
@@ -1013,6 +1014,14 @@ export const SidePanel = ({
 		}
 		onClose();
 	};
+
+	// Android back: a confirm dialog on top closes first, then the panel
+	// itself (through the same autosaving close as the X button).
+	useBackHandler(isOpen, () => {
+		if (isDeleteConfirmOpen) setIsDeleteConfirmOpen(false);
+		else if (isDuplicateConfirmOpen) setIsDuplicateConfirmOpen(false);
+		else handleRequestClose();
+	});
 
 	const handleCopyTaskLink = () => {
 		if (!task) return;

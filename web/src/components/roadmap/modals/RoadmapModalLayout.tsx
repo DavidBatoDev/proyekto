@@ -10,6 +10,7 @@ import {
 	useState,
 } from "react";
 import { createPortal } from "react-dom";
+import { useBackHandler } from "@/lib/backStack";
 
 interface RoadmapModalLayoutProps {
 	isOpen: boolean;
@@ -117,6 +118,9 @@ export const RoadmapModalLayout = ({
 			return () => container.removeEventListener("scroll", handleScroll);
 		}
 	}, []);
+
+	// Android back closes this modal, not the page underneath it.
+	useBackHandler(isOpen, onClose);
 
 	return createPortal(
 		<AnimatePresence>

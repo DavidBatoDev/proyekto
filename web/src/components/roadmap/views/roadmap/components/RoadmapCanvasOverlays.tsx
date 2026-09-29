@@ -254,6 +254,20 @@ export function RoadmapCanvasOverlays({
 				}
 				titleText="Edit Epic"
 				submitLabel="Save Changes"
+				onDelete={
+					editingEpicId
+						? () => {
+								const epic = epics.find((e) => e.id === editingEpicId);
+								setIsEditEpicModalOpen(false);
+								setEditingEpicId(null);
+								setDeleteConfirm({
+									type: "epic",
+									id: editingEpicId,
+									label: epic?.title ? `"${epic.title}"` : "this epic",
+								});
+							}
+						: undefined
+				}
 				isLoading={isEpicLoading}
 				isPendingCreate={isEditingEpicPending}
 			/>
@@ -289,6 +303,23 @@ export function RoadmapCanvasOverlays({
 				}
 				titleText="Edit Feature"
 				submitLabel="Save Changes"
+				onDelete={
+					editingFeatureId
+						? () => {
+								const feature = epics
+									.find((epic) => epic.id === editingFeatureEpicId)
+									?.features?.find((f) => f.id === editingFeatureId);
+								setIsEditFeatureModalOpen(false);
+								setEditingFeatureId(null);
+								setEditingFeatureEpicId(null);
+								setDeleteConfirm({
+									type: "feature",
+									id: editingFeatureId,
+									label: feature?.title ? `"${feature.title}"` : "this feature",
+								});
+							}
+						: undefined
+				}
 				onClose={() => {
 					setIsEditFeatureModalOpen(false);
 					setEditingFeatureId(null);

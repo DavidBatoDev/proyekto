@@ -8,6 +8,7 @@ import {
 	useRef,
 } from "react";
 import { ModalPortal } from "@/components/common/ModalPortal";
+import { useBackHandler } from "@/lib/backStack";
 
 /**
  * The repo's dialog primitive.
@@ -103,6 +104,11 @@ export function AppDialog({
 	const panelRef = useRef<HTMLDivElement | null>(null);
 	const titleId = useId();
 	const descId = useId();
+
+	// Android back closes the dialog (not the page), with the same busy guard.
+	useBackHandler(open, () => {
+		if (!busy) onClose();
+	});
 
 	// Escape to close, unless a mutation is mid-flight.
 	useEffect(() => {

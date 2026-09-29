@@ -1,4 +1,12 @@
-import { Calendar, ChevronDown, ChevronUp, Edit2, Plus, X } from "lucide-react";
+import {
+	Calendar,
+	ChevronDown,
+	ChevronUp,
+	Edit2,
+	Plus,
+	Trash2,
+	X,
+} from "lucide-react";
 import { type FormEvent, useEffect, useMemo, useRef, useState } from "react";
 import { useUser } from "@/auth";
 import { LabelSelector } from "@/components/common/LabelSelector";
@@ -16,6 +24,7 @@ import type {
 	RoadmapFeature,
 	RoadmapTask,
 } from "@/types/roadmap";
+import { Button } from "@/ui/button";
 import { CommentsSection } from "../shared/CommentsSection";
 import { TaskListItem } from "../widgets/TaskListItem";
 import { RoadmapModalLayout } from "./RoadmapModalLayout";
@@ -37,6 +46,11 @@ interface EpicModalProps {
 	onAddTask?: (featureId: string) => void | Promise<void>;
 	onUpdateTask?: (task: RoadmapTask) => void | Promise<void>;
 	onDeleteTask?: (taskId: string) => void | Promise<void>;
+	/**
+	 * Delete this epic. Only shown when editing an existing epic; the
+	 * caller owns the confirmation (the canvas's delete-confirm dialog).
+	 */
+	onDelete?: () => void;
 	onSelectTask?: (task: RoadmapTask) => void;
 	initialData?: {
 		id?: string;
@@ -79,6 +93,7 @@ export const EpicModal = ({
 	onAddTask,
 	onUpdateTask,
 	onDeleteTask,
+	onDelete,
 	onSelectTask,
 	initialData,
 	titleText: _titleText = "Add Epic",
@@ -728,6 +743,22 @@ export const EpicModal = ({
 			actionButtons={dateActionButton}
 			showDefaultDatesAction={false}
 			body={body}
+			footer={
+				onDelete && epicId && !isReadOnlyPending ? (
+					<div className="flex justify-end">
+						<Button
+							type="button"
+							variant="outlined"
+							colorScheme="destructive"
+							size="md"
+							onClick={onDelete}
+						>
+							<Trash2 className="h-4 w-4" />
+							Delete epic
+						</Button>
+					</div>
+				) : undefined
+			}
 			canComment={Boolean(user) && !isReadOnlyPending}
 			rightPanelTabs={rightPanelTabs}
 			defaultRightPanelTabId="comments"

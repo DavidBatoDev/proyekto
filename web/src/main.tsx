@@ -23,6 +23,14 @@ if (Capacitor.getPlatform() === "android") {
 		.catch(() => {});
 }
 
+// Android hardware back closes the open modal/panel before navigating away
+// (lib/backStack.ts). Native only; the browser keeps its own back behaviour.
+if (Capacitor.isNativePlatform()) {
+	void import("./lib/backStack")
+		.then(({ installBackButtonHandler }) => installBackButtonHandler())
+		.catch(() => {});
+}
+
 // Import the generated route tree
 import { routeTree } from "./routeTree.gen";
 

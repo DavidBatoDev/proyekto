@@ -1082,6 +1082,15 @@ export const EpicTab = ({
 				submitLabel="Update Feature"
 				onClose={handleCloseFeatureModal}
 				onSubmit={handleUpdateFeatureFromModal}
+				onDelete={
+					editingFeature?.id
+						? () => {
+								const id = editingFeature.id as string;
+								handleCloseFeatureModal();
+								void onDeleteFeature(id);
+							}
+						: undefined
+				}
 				onAddTask={onAddTask}
 				onUpdateTask={onUpdateTask}
 				onDeleteTask={onDeleteTask}

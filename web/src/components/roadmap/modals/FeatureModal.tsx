@@ -6,6 +6,7 @@ import {
 	Edit2,
 	Plus,
 	Search,
+	Trash2,
 	X,
 } from "lucide-react";
 import {
@@ -32,6 +33,7 @@ import type {
 	RoadmapFeature,
 	RoadmapTask,
 } from "@/types/roadmap";
+import { Button } from "@/ui/button";
 import { CommentsSection } from "../shared/CommentsSection";
 import {
 	calculateFeatureProgressFromTasks,
@@ -58,6 +60,11 @@ interface FeatureModalProps {
 	onAddTask?: (featureId: string) => void | Promise<void>;
 	onUpdateTask?: (task: RoadmapTask) => void | Promise<void>;
 	onDeleteTask?: (taskId: string) => void | Promise<void>;
+	/**
+	 * Delete this feature. Only shown when editing an existing feature; the
+	 * caller owns the confirmation (the canvas's delete-confirm dialog).
+	 */
+	onDelete?: () => void;
 	onSelectTask?: (task: RoadmapTask) => void;
 	onSubmit: (data: {
 		title: string;
@@ -84,6 +91,7 @@ export const FeatureModal = ({
 	onAddTask,
 	onUpdateTask,
 	onDeleteTask,
+	onDelete,
 	onSelectTask,
 	onSubmit,
 	isLoading = false,
@@ -1041,6 +1049,22 @@ export const FeatureModal = ({
 			actionButtons={dateActionButton}
 			showDefaultDatesAction={false}
 			body={body}
+			footer={
+				onDelete && featureId && !isReadOnlyPending ? (
+					<div className="flex justify-end">
+						<Button
+							type="button"
+							variant="outlined"
+							colorScheme="destructive"
+							size="md"
+							onClick={onDelete}
+						>
+							<Trash2 className="h-4 w-4" />
+							Delete feature
+						</Button>
+					</div>
+				) : undefined
+			}
 			canComment={Boolean(user) && !isReadOnlyPending}
 			rightPanelTabs={rightPanelTabs}
 			defaultRightPanelTabId="comments"
