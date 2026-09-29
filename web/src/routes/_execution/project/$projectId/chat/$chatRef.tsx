@@ -1362,6 +1362,7 @@ function ChatPage() {
 								setShowPeoplePicker((value) => !value)
 							}
 							onSelectMember={(userId, roomId) => {
+								setShowPeoplePicker(false);
 								void navigate({
 									to: "/project/$projectId/chat/$chatRef",
 									params: {
