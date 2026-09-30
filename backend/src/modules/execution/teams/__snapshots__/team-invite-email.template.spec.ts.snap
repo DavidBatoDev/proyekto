@@ -51,6 +51,7 @@ exports[`buildTeamInviteEmail escapes markup in every caller-supplied field: htm
             <tr>
               <td style="padding:20px 0 0;border-top:1px solid #e2e8f0;">
                 <p style="margin:0;color:#64748b;font-size:13px;line-height:1.6;">You received this email because someone invited you to a team on Proyekto.</p>
+                <p style="margin:12px 0 0;color:#64748b;font-size:12px;line-height:1.6;">Proyekto Business Services · Level 4, 80 Ann Street, Brisbane QLD 4000, Australia</p>
               </td>
             </tr>
           </table>
@@ -112,6 +113,7 @@ exports[`buildTeamInviteEmail renders a full invitation: html 1`] = `
             <tr>
               <td style="padding:20px 0 0;border-top:1px solid #e2e8f0;">
                 <p style="margin:0;color:#64748b;font-size:13px;line-height:1.6;">You received this email because someone invited you to a team on Proyekto.</p>
+                <p style="margin:12px 0 0;color:#64748b;font-size:12px;line-height:1.6;">Proyekto Business Services · Level 4, 80 Ann Street, Brisbane QLD 4000, Australia</p>
               </td>
             </tr>
           </table>
@@ -182,6 +184,7 @@ exports[`buildTeamInviteEmail renders a minimal invitation (no role, position or
             <tr>
               <td style="padding:20px 0 0;border-top:1px solid #e2e8f0;">
                 <p style="margin:0;color:#64748b;font-size:13px;line-height:1.6;">You received this email because someone invited you to a team on Proyekto.</p>
+                <p style="margin:12px 0 0;color:#64748b;font-size:12px;line-height:1.6;">Proyekto Business Services · Level 4, 80 Ann Street, Brisbane QLD 4000, Australia</p>
               </td>
             </tr>
           </table>
