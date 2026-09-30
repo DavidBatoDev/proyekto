@@ -33,6 +33,7 @@ import {
 	validateContractStep,
 } from "@/components/finance/portfolio/financeSearch";
 import { useFinanceProjectOptions } from "@/components/finance/portfolio/useFinanceProjectOptions";
+import { canSeeTeamMoneyIn } from "@/components/finance/team/TeamFinanceChrome";
 import { useToast } from "@/hooks/useToast";
 import { isActiveConsultant } from "@/lib/auth-utils";
 import {
@@ -45,7 +46,6 @@ import {
 	type FinanceContractSummary,
 	financeService,
 } from "@/services/finance.service";
-import { canSeeTeamMoneyIn } from "@/components/finance/team/TeamFinanceChrome";
 import { teamFinanceService } from "@/services/teamFinance.service";
 import { useProfile } from "@/stores/authStore";
 

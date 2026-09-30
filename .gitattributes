@@ -1,0 +1,9 @@
+# Normalize to LF everywhere: the index is already all-LF, and Biome/Prettier
+# expect LF. Without this, core.autocrlf=true Windows checkouts get CRLF
+# working files and Biome reports every one as a format error.
+* text=auto eol=lf
+
+# Windows-only scripts keep CRLF.
+*.bat text eol=crlf
+*.cmd text eol=crlf
+*.ps1 text eol=crlf
