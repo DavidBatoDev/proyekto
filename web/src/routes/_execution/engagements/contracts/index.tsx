@@ -45,6 +45,7 @@ import {
 	type FinanceContractSummary,
 	financeService,
 } from "@/services/finance.service";
+import { canSeeTeamMoneyIn } from "@/components/finance/team/TeamFinanceChrome";
 import { teamFinanceService } from "@/services/teamFinance.service";
 import { useProfile } from "@/stores/authStore";
 
@@ -113,9 +114,9 @@ function ContractsPage() {
 	const profile = useProfile();
 	const isConsultant = isActiveConsultant(profile);
 	const hubQuery = useFinanceHub();
-	const adminTeams = (hubQuery.data?.teams ?? []).filter(
-		(team) => team.my_team_role === "owner" || team.my_team_role === "admin",
-	);
+	// Teams whose contracts the caller may list: team owner/admin, or an
+	// owner/manager/accountant on the team's finance book.
+	const adminTeams = (hubQuery.data?.teams ?? []).filter(canSeeTeamMoneyIn);
 
 	// A `?projectId&step` deep link (notifications) targets a drafted contract.
 	const view: ContractsView =

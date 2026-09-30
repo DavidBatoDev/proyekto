@@ -170,7 +170,11 @@ describe('TeamFinanceAccessService', () => {
           ],
           accessRows: [
             { project_id: PROJECT_ID, role: 'admin', capabilities: null },
-            { project_id: 'viewer-project', role: 'viewer', capabilities: null },
+            {
+              project_id: 'viewer-project',
+              role: 'viewer',
+              capabilities: null,
+            },
           ],
         }),
         { assertPermission: jest.fn() } as never,
@@ -238,6 +242,122 @@ describe('TeamFinanceAccessService', () => {
           'finance.view_contracts',
         ),
       ).resolves.toEqual([]);
+    });
+  });
+
+  describe('listTeamProjects via a team finance-book role', () => {
+    const bookAccessFor = (permissions: Record<string, boolean> | null) => ({
+      resolveAccess: jest
+        .fn()
+        .mockResolvedValue(
+          permissions ? { role: 'accountant', permissions } : null,
+        ),
+    });
+
+    it('lets a book accountant who is not a team admin see every attached project', async () => {
+      const bookAccess = bookAccessFor({ view: true, view_contracts: true });
+      const service = new TeamFinanceAccessService(
+        fakeSupabase({
+          ownerCount: 0,
+          adminCount: 0,
+          projectTeams: [{ team_id: TEAM_ID, project_id: PROJECT_ID }],
+          // No project_access rows at all: finance roles never grant execution.
+          accessRows: [],
+        }),
+        { assertPermission: jest.fn() } as never,
+        consultantAccessDenied as never,
+        bookAccess as never,
+      );
+
+      await expect(
+        service.listTeamProjects('accountant-1', TEAM_ID),
+      ).resolves.toEqual([projectRow]);
+      await expect(
+        service.listTeamProjects(
+          'accountant-1',
+          TEAM_ID,
+          {},
+          'finance.view_contracts',
+        ),
+      ).resolves.toEqual([projectRow]);
+      expect(bookAccess.resolveAccess).toHaveBeenCalledWith(
+        'accountant-1',
+        PROJECT_ID, // the fake returns this id for the team-book lookup
+      );
+    });
+
+    it('refuses a book role without view_contracts', async () => {
+      const service = new TeamFinanceAccessService(
+        fakeSupabase({
+          projectTeams: [{ team_id: TEAM_ID, project_id: PROJECT_ID }],
+        }),
+        { assertPermission: jest.fn() } as never,
+        consultantAccessDenied as never,
+        bookAccessFor({ view: true, view_contracts: false }) as never,
+      );
+
+      await expect(
+        service.listTeamProjects(
+          'viewer-1',
+          TEAM_ID,
+          {},
+          'finance.view_contracts',
+        ),
+      ).rejects.toThrow('Team finance not found');
+    });
+
+    it('refuses a caller with no role on the team book', async () => {
+      const service = new TeamFinanceAccessService(
+        fakeSupabase({}),
+        { assertPermission: jest.fn() } as never,
+        consultantAccessDenied as never,
+        bookAccessFor(null) as never,
+      );
+
+      await expect(
+        service.listTeamProjects('stranger', TEAM_ID),
+      ).rejects.toThrow('Team finance not found');
+    });
+
+    it('maps finance.manage_invoices to the manage_money book capability', async () => {
+      const service = new TeamFinanceAccessService(
+        fakeSupabase({
+          projectTeams: [{ team_id: TEAM_ID, project_id: PROJECT_ID }],
+        }),
+        { assertPermission: jest.fn() } as never,
+        consultantAccessDenied as never,
+        bookAccessFor({ view_contracts: true, manage_money: false }) as never,
+      );
+
+      await expect(
+        service.listTeamProjects(
+          'accountant-1',
+          TEAM_ID,
+          {},
+          'finance.manage_invoices',
+        ),
+      ).rejects.toThrow('Team finance not found');
+    });
+
+    it('does not consult the book for a team administrator', async () => {
+      const bookAccess = bookAccessFor({ view_contracts: true });
+      const service = new TeamFinanceAccessService(
+        fakeSupabase({
+          adminCount: 1,
+          projectTeams: [{ team_id: TEAM_ID, project_id: PROJECT_ID }],
+          accessRows: [
+            { project_id: PROJECT_ID, role: 'admin', capabilities: null },
+          ],
+        }),
+        { assertPermission: jest.fn() } as never,
+        consultantAccessDenied as never,
+        bookAccess as never,
+      );
+
+      await expect(
+        service.listTeamProjects('admin-1', TEAM_ID),
+      ).resolves.toEqual([projectRow]);
+      expect(bookAccess.resolveAccess).not.toHaveBeenCalled();
     });
   });
 });

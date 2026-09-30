@@ -240,7 +240,7 @@ describe('FinanceBooksService.getBookOverview', () => {
     expect(overview.invoices).toEqual([]);
   });
 
-  it('accountant sees time but never amounts, contracts, or invoices', async () => {
+  it('accountant sees time, contracts, and invoices but never cost amounts', async () => {
     const service = new FinanceBooksService(
       stubSupabase({
         teams: [{ data: { id: 't1', name: 'Team One' } }],
@@ -270,7 +270,8 @@ describe('FinanceBooksService.getBookOverview', () => {
     expect(member?.seconds).toBe(3600);
     expect(member).not.toHaveProperty('amount');
     expect(member).not.toHaveProperty('currency');
-    expect(overview.contracts).toBeUndefined();
-    expect(overview.invoices).toBeUndefined();
+    // Accountants read money in (contracts + invoices) since 2026-09-30.
+    expect(overview.contracts).toEqual([]);
+    expect(overview.invoices).toEqual([]);
   });
 });

@@ -9,7 +9,7 @@ exports[`resolveBookPermissions matches the role-default matrix 1`] = `
     "manage_members": false,
     "manage_money": false,
     "view": true,
-    "view_contracts": false,
+    "view_contracts": true,
     "view_costs": false,
     "view_time": true,
   },
