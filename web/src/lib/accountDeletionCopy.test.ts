@@ -38,7 +38,7 @@ function allStrings(surface: "web" | "app"): string[] {
 	const billing = deletionCopy.billingNote("Acme Studio", surface);
 
 	return [
-		...Object.values(deletionCopy).filter(
+		...(Object.values(deletionCopy) as unknown[]).filter(
 			(value): value is string => typeof value === "string",
 		),
 		...deletionCopy.deletedBullets(counts),

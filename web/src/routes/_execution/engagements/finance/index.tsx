@@ -4,8 +4,10 @@ import {
 	ArrowRight,
 	ChevronRight,
 	CircleDollarSign,
+	Download,
 	FileSignature,
 } from "lucide-react";
+import { useState } from "react";
 import {
 	AppEmptyState,
 	AppSurfaceCard,
@@ -27,6 +29,8 @@ import { formatCurrency } from "@/lib/currency";
 import { engagementService } from "@/services/engagement.service";
 import { financeService } from "@/services/finance.service";
 import {
+	type FinanceExportFormat,
+	type FinanceExportKind,
 	financeBooksService,
 	type MyFinanceSummary,
 	type MyFinanceTeam,
@@ -99,8 +103,96 @@ function MyFinancePage() {
 				) : (
 					<SummaryBody summary={summaryQuery.data} />
 				)}
+
+				<MyRecordsExport />
 			</div>
 		</div>
+	);
+}
+
+/**
+ * Your own time logs and payouts as CSV/Excel/PDF. Exports are scoped by a
+ * finance book, so the first export quietly creates your private (personal)
+ * book; nothing else about My finance depends on it.
+ */
+function MyRecordsExport() {
+	const [format, setFormat] = useState<FinanceExportFormat>("csv");
+	const [busy, setBusy] = useState<FinanceExportKind | null>(null);
+	const [error, setError] = useState<string | null>(null);
+
+	const personalBookId = async (): Promise<string> => {
+		const books = await financeBooksService.listMine();
+		const existing = books.find((book) => book.kind === "personal");
+		if (existing) return existing.id;
+		try {
+			return (await financeBooksService.createPersonal()).id;
+		} catch (err) {
+			// A concurrent create (double click) 409s; the book exists now.
+			const again = await financeBooksService.listMine();
+			const created = again.find((book) => book.kind === "personal");
+			if (created) return created.id;
+			throw err;
+		}
+	};
+
+	const run = async (kind: FinanceExportKind) => {
+		setError(null);
+		setBusy(kind);
+		try {
+			await financeBooksService.downloadExport(
+				await personalBookId(),
+				kind,
+				format,
+			);
+		} catch (err) {
+			setError((err as Error).message);
+		} finally {
+			setBusy(null);
+		}
+	};
+
+	return (
+		<section className="mt-8">
+			<h2 className="text-sm font-semibold text-foreground">
+				Export my records
+			</h2>
+			<p className="mt-0.5 text-xs text-muted-foreground">
+				Your own time logs and the payouts made to you, across every team.
+			</p>
+			<div className="mt-3 flex flex-col gap-3 rounded-xl border border-border bg-card p-4 sm:flex-row sm:items-center">
+				<select
+					aria-label="Export format"
+					value={format}
+					onChange={(event) =>
+						setFormat(event.target.value as FinanceExportFormat)
+					}
+					className="w-full rounded-lg border border-input bg-card px-3 py-2 text-sm text-card-foreground sm:w-32"
+				>
+					<option value="csv">CSV</option>
+					<option value="xlsx">Excel</option>
+					<option value="pdf">PDF</option>
+				</select>
+				{(["time_logs", "payouts"] as const).map((kind) => (
+					<button
+						key={kind}
+						type="button"
+						disabled={busy !== null}
+						onClick={() => void run(kind)}
+						className="inline-flex shrink-0 items-center gap-2 rounded-lg border border-border px-4 py-2 text-sm font-semibold text-foreground transition-colors hover:bg-muted disabled:opacity-60"
+					>
+						<Download className="h-4 w-4" />
+						{busy === kind
+							? "Exporting…"
+							: kind === "time_logs"
+								? "Export time logs"
+								: "Export payouts"}
+					</button>
+				))}
+			</div>
+			{error ? (
+				<p className="mt-2 text-sm font-medium text-destructive">{error}</p>
+			) : null}
+		</section>
 	);
 }
 

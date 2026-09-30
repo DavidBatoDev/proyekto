@@ -248,9 +248,11 @@ export interface TeamInviteRow {
   invitee_email: string | null;
   role: TeamMemberRole;
   position: string | null;
-  status: 'pending' | 'accepted' | 'declined' | 'cancelled';
+  status: 'pending' | 'accepted' | 'declined' | 'cancelled' | 'expired';
   message: string | null;
   responded_at: string | null;
+  /** When a pending invite lapses (14 days after it was sent or resent). */
+  expires_at: string;
   created_at: string;
   updated_at: string;
   team?: {
@@ -271,6 +273,15 @@ export interface TeamInviteRow {
     avatar_url: string | null;
     email: string | null;
   } | null;
+}
+
+/** Team invites lapse after this long, matching finance invites. */
+export const TEAM_INVITE_EXPIRY_DAYS = 14;
+
+function teamInviteExpiresAt(): string {
+  return new Date(
+    Date.now() + TEAM_INVITE_EXPIRY_DAYS * 24 * 60 * 60 * 1000,
+  ).toISOString();
 }
 
 const TEAM_INVITE_SELECT = `
@@ -1256,6 +1267,7 @@ export class TeamsService {
           message,
           status: 'pending',
           responded_at: null,
+          expires_at: teamInviteExpiresAt(),
           updated_at: new Date().toISOString(),
         })
         .eq('id', (existing as { id: string }).id)
@@ -1277,6 +1289,7 @@ export class TeamsService {
           position,
           message,
           status: 'pending',
+          expires_at: teamInviteExpiresAt(),
         })
         .select(TEAM_INVITE_SELECT)
         .single<Record<string, unknown>>();
@@ -1426,7 +1439,7 @@ export class TeamsService {
       .eq('team_id', teamId)
       .order('created_at', { ascending: false });
     if (error) throw new Error(error.message);
-    return (data ?? []) as unknown as TeamInviteRow[];
+    return this.expireLapsedInvites((data ?? []) as unknown as TeamInviteRow[]);
   }
 
   async listInvitesForMe(userId: string): Promise<TeamInviteRow[]> {
@@ -1436,7 +1449,43 @@ export class TeamsService {
       .eq('invitee_id', userId)
       .order('created_at', { ascending: false });
     if (error) throw new Error(error.message);
-    return (data ?? []) as unknown as TeamInviteRow[];
+    return this.expireLapsedInvites((data ?? []) as unknown as TeamInviteRow[]);
+  }
+
+  /**
+   * A pending invite past `expires_at` is persisted as `expired` when listed —
+   * the same rule as `FinanceInvitesService.expireLapsed` — so an invite nobody
+   * answered never reads "Pending" forever. There is no cron.
+   */
+  private async expireLapsedInvites(
+    invites: TeamInviteRow[],
+  ): Promise<TeamInviteRow[]> {
+    const now = Date.now();
+    const lapsedIds = invites
+      .filter(
+        (invite) =>
+          invite.status === 'pending' &&
+          Boolean(invite.expires_at) &&
+          new Date(invite.expires_at).getTime() < now,
+      )
+      .map((invite) => invite.id);
+    if (lapsedIds.length === 0) return invites;
+
+    const { error } = await this.supabase
+      .from('team_invites')
+      .update({ status: 'expired', updated_at: new Date().toISOString() })
+      .in('id', lapsedIds)
+      .eq('status', 'pending');
+    if (error) {
+      // Reads still report the truth even if the write-back fails.
+      this.logger.warn(
+        `Failed to expire lapsed team invites: ${error.message}`,
+      );
+    }
+    const lapsed = new Set(lapsedIds);
+    return invites.map((invite) =>
+      lapsed.has(invite.id) ? { ...invite, status: 'expired' } : invite,
+    );
   }
 
   async cancelInvite(
@@ -1485,6 +1534,15 @@ export class TeamsService {
     if (invite.status !== 'pending') {
       throw new BadRequestException(
         `Invite is already ${invite.status}; cannot respond again.`,
+      );
+    }
+    if (
+      invite.expires_at &&
+      new Date(invite.expires_at).getTime() < Date.now()
+    ) {
+      await this.expireLapsedInvites([invite]);
+      throw new BadRequestException(
+        'This invite has expired. Ask the team to send a new one.',
       );
     }
 

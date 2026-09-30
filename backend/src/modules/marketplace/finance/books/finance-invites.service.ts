@@ -244,7 +244,12 @@ export class FinanceInvitesService {
   async accept(
     callerId: string,
     token: string,
-  ): Promise<{ book_id: string; finance_role: FinanceBookRole }> {
+  ): Promise<{
+    book_id: string;
+    finance_role: FinanceBookRole;
+    /** Where the new access lives, so the client lands there directly. */
+    path: string;
+  }> {
     const invite = await this.fetchByToken(token);
     const status = await this.effectiveStatus(invite);
     if (status !== 'pending') {
@@ -281,7 +286,30 @@ export class FinanceInvitesService {
     if (error) throw new Error(error.message);
     if (!data) throw new BadRequestException('Invite was already settled');
 
-    return { book_id: invite.book_id, finance_role: invite.finance_role };
+    return {
+      book_id: invite.book_id,
+      finance_role: invite.finance_role,
+      path: await this.bookPath(invite.book_id),
+    };
+  }
+
+  /**
+   * The web path of a book's page: a team book IS its team page, a project
+   * book nests under its team. Anything unresolvable falls back to My finance.
+   */
+  private async bookPath(bookId: string): Promise<string> {
+    const { data, error } = await this.supabase
+      .from('finance_books')
+      .select('id, kind, owner_team_id')
+      .eq('id', bookId)
+      .maybeSingle<{
+        id: string;
+        kind: string;
+        owner_team_id: string | null;
+      }>();
+    if (error || !data?.owner_team_id) return '/engagements/finance';
+    const team = `/engagements/finance/team/${data.owner_team_id}`;
+    return data.kind === 'project' ? `${team}/project/${data.id}` : team;
   }
 
   async decline(token: string): Promise<{ declined: true }> {

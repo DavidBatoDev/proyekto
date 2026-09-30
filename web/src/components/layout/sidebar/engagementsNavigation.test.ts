@@ -53,5 +53,15 @@ describe("engagements navigation", () => {
 				`/engagements/finance/team/${TEAM}/project/${BOOK}`,
 			),
 		).toMatchObject({ nav: "my-teams", teamId: TEAM, bookId: BOOK });
+		// Team finance setup sits under My teams.
+		expect(
+			resolveEngagementsLocation("/engagements/finance/setup/team"),
+		).toEqual({ nav: "my-teams" });
+		// An imported document sits under its project, not under My finance.
+		expect(
+			resolveEngagementsLocation(
+				`/engagements/finance/team/${TEAM}/project/${BOOK}/imports/doc-1`,
+			),
+		).toMatchObject({ nav: "my-teams", teamId: TEAM, bookId: BOOK });
 	});
 });

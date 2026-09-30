@@ -1,4 +1,9 @@
-import { Inject, Injectable, NotFoundException } from '@nestjs/common';
+import {
+  Inject,
+  Injectable,
+  NotFoundException,
+  Optional,
+} from '@nestjs/common';
 import { SupabaseClient } from '@supabase/supabase-js';
 import { SUPABASE_ADMIN } from '../../../config/supabase.module';
 import { ProjectAuthorizationService } from '../../execution/projects/authorization/project-authorization.service';
@@ -8,6 +13,8 @@ import {
   type ProjectRole,
   resolvePermissions,
 } from '../../execution/projects/permissions/project-permissions';
+import { FinanceBookAccessService } from './books/finance-book-access.service';
+import type { FinanceBookPermissions } from './books/finance-book-permissions';
 import {
   ConsultantFinanceAccessService,
   ConsultantFinanceProject,
@@ -54,6 +61,8 @@ export class TeamFinanceAccessService {
     @Inject(SUPABASE_ADMIN) private readonly supabase: SupabaseClient,
     private readonly projectAuth: ProjectAuthorizationService,
     private readonly consultantAccess: ConsultantFinanceAccessService,
+    @Optional()
+    private readonly bookAccess?: FinanceBookAccessService,
   ) {}
 
   /** Teams where the caller is the owner or a team admin, for the sidebar. */
@@ -104,7 +113,18 @@ export class TeamFinanceAccessService {
     } = {},
     permission: FinanceProjectPermission = 'finance.view',
   ): Promise<ConsultantFinanceProject[]> {
-    await this.assertTeamAdministrator(callerId, teamId);
+    // Two ways in: execution-team administration (owner/admin, then filtered
+    // per project by `project_access`), or a finance role on the team's book
+    // (owner/manager/accountant added through finance invites). A book grant
+    // covers every project attached to the team, because the team book is the
+    // scope that role was granted on; it never needs execution access.
+    const isAdministrator = await this.isTeamAdministrator(callerId, teamId);
+    const bookGranted = isAdministrator
+      ? false
+      : await this.hasTeamBookCapability(callerId, teamId, permission);
+    if (!isAdministrator && !bookGranted) {
+      throw new NotFoundException('Team finance not found');
+    }
 
     const { data: links, error: linksError } = await this.supabase
       .from('project_teams')
@@ -116,11 +136,9 @@ export class TeamFinanceAccessService {
     );
     if (attachedIds.length === 0) return [];
 
-    const visible = await this.financeVisibleProjectIds(
-      callerId,
-      attachedIds,
-      permission,
-    );
+    const visible = bookGranted
+      ? new Set(attachedIds)
+      : await this.financeVisibleProjectIds(callerId, attachedIds, permission);
     if (visible.size === 0) return [];
 
     let query = this.supabase
@@ -177,10 +195,46 @@ export class TeamFinanceAccessService {
     return project as ConsultantFinanceProject;
   }
 
-  private async assertTeamAdministrator(
+  /**
+   * Whether the caller's role on the team's finance book (kind `team`) grants
+   * the book capability equivalent to `permission`. Money-in figures and
+   * contracts both sit behind `view_contracts`; invoice management behind
+   * `manage_money`.
+   */
+  private async hasTeamBookCapability(
     callerId: string,
     teamId: string,
-  ): Promise<void> {
+    permission: FinanceProjectPermission,
+  ): Promise<boolean> {
+    if (!this.bookAccess) return false;
+    const { data, error } = await this.supabase
+      .from('finance_books')
+      .select('id')
+      .eq('kind', 'team')
+      .eq('owner_team_id', teamId)
+      .eq('status', 'active')
+      .maybeSingle();
+    if (error) throw new Error(error.message);
+    const bookId = (data as { id: string } | null)?.id;
+    if (!bookId) return false;
+
+    const access = await this.bookAccess.resolveAccess(callerId, bookId);
+    // Only the team-running roles. A client viewer seated on the team book
+    // holds `view_contracts` for their own engagement, never the whole team's.
+    if (!access || !['owner', 'manager', 'accountant'].includes(access.role)) {
+      return false;
+    }
+    const capability: keyof FinanceBookPermissions =
+      permission === 'finance.manage_invoices'
+        ? 'manage_money'
+        : 'view_contracts';
+    return access.permissions[capability] === true;
+  }
+
+  private async isTeamAdministrator(
+    callerId: string,
+    teamId: string,
+  ): Promise<boolean> {
     const [ownerResult, memberResult] = await Promise.all([
       this.supabase
         .from('teams')
@@ -196,9 +250,7 @@ export class TeamFinanceAccessService {
     ]);
     if (ownerResult.error) throw new Error(ownerResult.error.message);
     if (memberResult.error) throw new Error(memberResult.error.message);
-    if (!ownerResult.count && !memberResult.count) {
-      throw new NotFoundException('Team finance not found');
-    }
+    return Boolean(ownerResult.count || memberResult.count);
   }
 
   private async fetchAdministeredTeams(
@@ -218,7 +270,10 @@ export class TeamFinanceAccessService {
     if (ownedResult.error) throw new Error(ownedResult.error.message);
     if (adminResult.error) throw new Error(adminResult.error.message);
 
-    const byId = new Map<string, { id: string; name: string; owner_id: string }>();
+    const byId = new Map<
+      string,
+      { id: string; name: string; owner_id: string }
+    >();
     for (const team of (ownedResult.data ?? []) as Array<{
       id: string;
       name: string;

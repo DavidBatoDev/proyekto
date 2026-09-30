@@ -105,7 +105,7 @@ describe("attachMarketplaceEnrollmentFields", () => {
 			id: "user-1",
 			consultant_profile: { status: "verified" },
 			talent_profile: { status: "active" },
-		}) as Record<string, unknown>;
+		}) as unknown as Record<string, unknown>;
 
 		expect(result.consultant_profile).toBeUndefined();
 		expect(result.talent_profile).toBeUndefined();

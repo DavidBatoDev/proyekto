@@ -117,6 +117,10 @@ export function resolveEngagementsLocation(
 		};
 	}
 	if (path.startsWith("/engagements/finance/teams")) return { nav: "my-teams" };
+	// Team finance setup lives under My teams.
+	if (path.startsWith("/engagements/finance/setup/team")) {
+		return { nav: "my-teams" };
+	}
 	if (path.startsWith("/engagements/finance/shared")) return { nav: "shared" };
 	if (path.startsWith("/engagements/contracts")) return { nav: "contracts" };
 	// Legacy contract editor URL (redirects, but may render for a frame).
@@ -124,7 +128,7 @@ export function resolveEngagementsLocation(
 		return { nav: "contracts" };
 	}
 	if (path.startsWith("/engagements/finance")) {
-		// Setup wizards, invites, the invoice builder, and imports documents are
+		// Invites, the invoice builder, and imports documents are
 		// all reached from My finance or a team; with no team in the URL they
 		// belong to My finance.
 		return { nav: "my-finance" };

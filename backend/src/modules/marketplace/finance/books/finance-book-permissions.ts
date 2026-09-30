@@ -78,12 +78,13 @@ const ROLE_DEFAULTS: Record<FinanceBookRole, FinanceBookPermissions> = {
     manage_book: false,
     manage_expenses: true,
   },
-  // View + export of time logs and payouts only — never creates or edits.
+  // Reads the books: time, payouts, contracts, and invoices (money in), and
+  // exports them. Never creates or edits billing, never sees internal rates.
   accountant: {
     view: true,
     view_time: true,
     view_costs: false,
-    view_contracts: false,
+    view_contracts: true,
     export: true,
     manage_money: false,
     manage_members: false,

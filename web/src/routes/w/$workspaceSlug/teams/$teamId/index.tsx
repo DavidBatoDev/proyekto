@@ -7,6 +7,7 @@ import {
 	Mail,
 	Pencil,
 	Plus,
+	RotateCw,
 	Trash2,
 	Users,
 	X,
@@ -32,7 +33,9 @@ import {
 	listTeamInvites,
 	listTeamMembers,
 	listTeamProjects,
+	openTeamInvites,
 	removeTeamMember,
+	resendTeamInvite,
 	type TeamInvite,
 	type TeamMember,
 	type TeamRole,
@@ -293,9 +296,8 @@ function TeamDetailPage() {
 		queryFn: () => listTeamInvites(teamId),
 		enabled: Boolean(isOwner),
 	});
-	const pendingInvites = (invitesQuery.data ?? []).filter(
-		(i) => i.status === "pending",
-	);
+	// Pending plus expired (resendable) invites.
+	const pendingInvites = openTeamInvites(invitesQuery.data ?? []);
 	const membersIsEmpty =
 		!membersQuery.isLoading &&
 		members.length === 0 &&
@@ -860,6 +862,21 @@ function PendingInviteRow({
 		},
 		onError: (err) => toast.error((err as Error).message),
 	});
+	const resendMutation = useMutation({
+		mutationFn: () => resendTeamInvite(teamId, invite),
+		onSuccess: (created) => {
+			void queryClient.invalidateQueries({
+				queryKey: ["teams", "invites", teamId],
+			});
+			if (created.email_delivery && !created.email_delivery.sent) {
+				toast.info("New invite created, but the email could not be sent.");
+			} else {
+				toast.success("Invite resent");
+			}
+		},
+		onError: (err) => toast.error((err as Error).message),
+	});
+	const expired = invite.status === "expired";
 
 	const displayEmail =
 		invite.invitee?.email || invite.invitee_email || "unknown";
@@ -899,15 +916,36 @@ function PendingInviteRow({
 				<span className="block max-w-[260px] truncate">{displayEmail}</span>
 			</td>
 			<td className="px-2 py-2.5">
-				<span className="inline-flex items-center rounded-md bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-700">
-					Pending · {invite.role}
-				</span>
+				{expired ? (
+					<span className="inline-flex items-center rounded-md bg-rose-100 px-2 py-0.5 text-xs font-medium text-rose-700">
+						Expired · {invite.role}
+					</span>
+				) : (
+					<span className="inline-flex items-center rounded-md bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-700">
+						Pending · {invite.role}
+					</span>
+				)}
 			</td>
 			<td className="px-2 py-2.5 text-sm whitespace-nowrap text-muted-foreground">
 				Invited {invitedLabel}
 			</td>
 			<td className="rounded-r-lg px-2 py-2.5 text-right">
-				{isOwnerView && (
+				{isOwnerView && expired && (
+					<button
+						type="button"
+						onClick={() => resendMutation.mutate()}
+						disabled={resendMutation.isPending}
+						className="inline-flex items-center gap-1.5 rounded-lg border border-border px-2.5 py-1.5 text-xs font-medium text-foreground transition hover:bg-muted disabled:opacity-50"
+					>
+						{resendMutation.isPending ? (
+							<Loader2 className="h-3.5 w-3.5 animate-spin" />
+						) : (
+							<RotateCw className="h-3.5 w-3.5" />
+						)}
+						Resend
+					</button>
+				)}
+				{isOwnerView && !expired && (
 					<button
 						type="button"
 						onClick={() => cancelMutation.mutate()}

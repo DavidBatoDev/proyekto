@@ -10,6 +10,7 @@ import {
 } from "lucide-react";
 import type { ReactNode } from "react";
 import { AppTabs } from "@/components/common/AppTabs";
+import { FINANCE_ROLE_LABELS } from "@/components/finance/FinanceShareDialog";
 import { InitialsTile } from "@/components/finance/InitialsTile";
 import { FinanceTrail } from "@/components/finance/nav/FinanceTrail";
 import { useHubTeam } from "@/components/finance/nav/useManagedTeams";
@@ -79,6 +80,35 @@ export function visibleTeamTabs(team: FinanceHubTeam | undefined) {
 }
 
 /**
+ * The viewer's standing on a team, for the badge beside its name: the team
+ * role for owners and admins, otherwise their finance-book role ("Accountant").
+ */
+export function teamRoleLabel(
+	team: FinanceHubTeam | undefined,
+): string | undefined {
+	if (!team) return undefined;
+	if (team.my_team_role === "owner") return "Owner";
+	if (team.my_team_role === "admin") return "Admin";
+	return FINANCE_ROLE_LABELS[team.book_role ?? ""] ?? undefined;
+}
+
+/**
+ * Whether the viewer may read the team's money in and contracts: a team
+ * owner/admin, or an owner/manager/accountant on the team's finance book
+ * (mirrors `TeamFinanceAccessService.listTeamProjects`).
+ */
+export function canSeeTeamMoneyIn(team: FinanceHubTeam | undefined): boolean {
+	if (!team) return false;
+	return (
+		team.my_team_role === "owner" ||
+		team.my_team_role === "admin" ||
+		team.book_role === "owner" ||
+		team.book_role === "manager" ||
+		team.book_role === "accountant"
+	);
+}
+
+/**
  * Header, tab bar, and (for list tabs) the filter toolbar for one team's
  * finance. Every tab is a real route under `/engagements/finance/team/$teamId`,
  * so the Engagements sidebar and breadcrumb stay put whichever tab is open —
@@ -101,7 +131,10 @@ export function TeamFinanceChrome({
 	search?: FinanceSearchState;
 	projects?: Array<{ id: string; title: string }>;
 	onChange?: (patch: Partial<FinanceSearchState>) => void;
-	/** The viewer's standing on this team ("Owner"), shown beside its name. */
+	/**
+	 * The viewer's standing on this team ("Owner"), shown beside its name.
+	 * Defaults to `teamRoleLabel`, so every tab carries it.
+	 */
 	roleLabel?: string;
 	/** Header actions — who is on the book, Share, the page's primary action. */
 	actions?: ReactNode;
@@ -112,6 +145,7 @@ export function TeamFinanceChrome({
 }) {
 	const { team } = useHubTeam(teamId);
 	const teamName = team?.team_name ?? "Team";
+	const badge = roleLabel ?? teamRoleLabel(team);
 	const tabs = visibleTeamTabs(team);
 	const currentTab = TEAM_FINANCE_TABS.find((tab) => tab.id === section);
 
@@ -152,9 +186,9 @@ export function TeamFinanceChrome({
 									<h1 className="truncate text-2xl font-bold tracking-tight text-foreground">
 										{teamName}
 									</h1>
-									{roleLabel ? (
+									{badge ? (
 										<span className="shrink-0 rounded-full bg-muted px-2 py-0.5 text-[11px] font-semibold text-muted-foreground">
-											{roleLabel}
+											{badge}
 										</span>
 									) : null}
 								</div>

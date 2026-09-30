@@ -10,10 +10,7 @@ import {
 	ExportSection,
 	ProjectBooksSection,
 } from "@/components/finance/book/ProjectBookWorkspace";
-import {
-	FINANCE_ROLE_LABELS,
-	FinanceShareDialog,
-} from "@/components/finance/FinanceShareDialog";
+import { FinanceShareDialog } from "@/components/finance/FinanceShareDialog";
 import { InitialsStack } from "@/components/finance/InitialsTile";
 import {
 	findProjectHome,
@@ -26,6 +23,7 @@ import {
 } from "@/components/finance/portfolio/financeSearch";
 import { PortfolioOverview } from "@/components/finance/portfolio/PortfolioOverview";
 import {
+	canSeeTeamMoneyIn,
 	TeamFinanceChrome,
 	visibleTeamTabs,
 } from "@/components/finance/team/TeamFinanceChrome";
@@ -56,10 +54,6 @@ export const Route = createFileRoute(
 	component: TeamFinanceOverviewPage,
 });
 
-function capitalize(value: string): string {
-	return value ? value[0].toUpperCase() + value.slice(1) : value;
-}
-
 function memberName(member: FinanceBookMember): string {
 	return (
 		member.user?.display_name ??
@@ -80,8 +74,7 @@ function TeamFinanceOverviewPage() {
 	const [shareOpen, setShareOpen] = useState(false);
 	const { team, hubQuery } = useHubTeam(teamId);
 	const tabs = visibleTeamTabs(team).map((tab) => tab.id);
-	const isAdmin =
-		team?.my_team_role === "owner" || team?.my_team_role === "admin";
+	const canSeeMoneyIn = canSeeTeamMoneyIn(team);
 
 	const filters = {
 		q: search.q,
@@ -91,12 +84,12 @@ function TeamFinanceOverviewPage() {
 		from: search.from,
 		to: search.to,
 	};
-	// Team-finance endpoints are team-admin gated; a finance-role holder who
-	// is not a team admin sees the book-backed parts of this page instead.
+	// Team-finance endpoints admit team admins and the team book's owner,
+	// manager, and accountant; anyone else sees only the book-backed parts.
 	const portfolioQuery = useQuery({
 		queryKey: ["team-finance", "portfolio", teamId, filters],
 		queryFn: () => teamFinanceService.portfolio(teamId, filters),
-		enabled: isAdmin,
+		enabled: canSeeMoneyIn,
 	});
 	const projectOptionsQuery = useTeamFinanceProjectOptions(teamId, search);
 
@@ -127,13 +120,6 @@ function TeamFinanceOverviewPage() {
 			projects={projectOptionsQuery.data?.projects ?? []}
 			onChange={updateSearch}
 			showFilters={false}
-			roleLabel={
-				team
-					? team.my_team_role === "owner" || team.my_team_role === "admin"
-						? capitalize(team.my_team_role)
-						: (FINANCE_ROLE_LABELS[team.book_role ?? ""] ?? undefined)
-					: undefined
-			}
 			actions={
 				team ? (
 					<>
