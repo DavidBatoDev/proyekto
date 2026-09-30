@@ -82,6 +82,11 @@ export interface AppDialogProps {
 	zIndex?: number;
 	initialFocusRef?: RefObject<HTMLElement | null>;
 	hideCloseButton?: boolean;
+	/**
+	 * Render children without the padded scroll wrapper, for layouts that pin
+	 * their own header and footer and choose what scrolls (the report sheet).
+	 */
+	bare?: boolean;
 	className?: string;
 	children: ReactNode;
 }
@@ -98,6 +103,7 @@ export function AppDialog({
 	zIndex = 1200,
 	initialFocusRef,
 	hideCloseButton = false,
+	bare = false,
 	className,
 	children,
 }: AppDialogProps) {
@@ -287,9 +293,13 @@ export function AppDialog({
 							</div>
 						)}
 
-						<div className="min-h-0 flex-1 overflow-y-auto px-5 py-4">
-							{children}
-						</div>
+						{bare ? (
+							<div className="flex min-h-0 flex-1 flex-col">{children}</div>
+						) : (
+							<div className="min-h-0 flex-1 overflow-y-auto px-5 py-4">
+								{children}
+							</div>
+						)}
 
 						{footer && (
 							<div className="flex justify-end gap-2 border-t border-border px-5 py-3">

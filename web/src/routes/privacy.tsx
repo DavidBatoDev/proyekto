@@ -82,6 +82,11 @@ const SECTIONS: LegalSection[] = [
 						and audio you attach.
 					</li>
 					<li>
+						<strong>Safety data</strong>, such as the reports you submit about
+						content or people (including a copy of the reported content, kept so
+						we can review it) and the people you block.
+					</li>
+					<li>
 						<strong>Other information you choose to provide</strong>, such as
 						what you include when you contact us.
 					</li>

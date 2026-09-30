@@ -32,6 +32,9 @@ import {
 	type ThreadSender,
 	type ThreadUiMessage,
 } from "@/components/project/chat/thread";
+import { BlockedComposerBanner } from "@/components/safety/BlockedComposerBanner";
+import { PersonSafetyMenu } from "@/components/safety/PersonSafetyActions";
+import { useSafety } from "@/components/safety/SafetyProvider";
 import {
 	readChatDraftText,
 	useChatDraft,
@@ -1140,6 +1143,21 @@ function InboxThread({
 
 	const title = getRoomTitle(room, currentUserId);
 
+	// The other person in a DM, for Report / Block (App Store guideline 1.2).
+	const safety = useSafety();
+	const dmCounterpart =
+		room.type === "dm"
+			? room.participants.find((p) => p.user_id !== currentUserId)
+			: undefined;
+	const dmPerson = dmCounterpart?.user_id
+		? {
+				id: dmCounterpart.user_id,
+				name: title,
+				avatarUrl: dmCounterpart.user?.avatar_url ?? null,
+			}
+		: null;
+	const dmBlocked = Boolean(dmPerson && safety.isBlocked(dmPerson.id));
+
 	return (
 		<>
 			<div className="flex h-full min-h-0 flex-1 min-w-0 flex-col">
@@ -1169,29 +1187,40 @@ function InboxThread({
 							</p>
 						</div>
 					</div>
-					<button
-						type="button"
-						onClick={() => {
-							setIsProfilePanelOpen((v) => {
-								const next = !v;
-								if (next && room.type === "dm" && !selectedProfileUserId) {
-									const counterpart = room.participants.find(
-										(p) => p.user_id !== currentUserId,
-									);
-									if (counterpart?.user_id) {
-										setSelectedProfileUserId(counterpart.user_id);
+					<div className="flex shrink-0 items-center gap-2">
+						{dmPerson && (
+							<PersonSafetyMenu
+								person={dmPerson}
+								label={`More actions for ${dmPerson.name}`}
+								triggerClassName="inline-flex h-8 w-8 items-center justify-center rounded-md border border-slate-200 text-slate-600 transition-colors hover:bg-slate-100"
+							/>
+						)}
+						<button
+							type="button"
+							onClick={() => {
+								setIsProfilePanelOpen((v) => {
+									const next = !v;
+									if (next && room.type === "dm" && !selectedProfileUserId) {
+										const counterpart = room.participants.find(
+											(p) => p.user_id !== currentUserId,
+										);
+										if (counterpart?.user_id) {
+											setSelectedProfileUserId(counterpart.user_id);
+										}
 									}
-								}
-								return next;
-							});
-						}}
-						className="hidden xl:inline-flex h-8 w-8 items-center justify-center rounded-md border border-slate-200 text-slate-600 hover:bg-slate-100"
-						aria-label={
-							isProfilePanelOpen ? "Close profile panel" : "Open profile panel"
-						}
-					>
-						<PanelRight className="h-4 w-4" />
-					</button>
+									return next;
+								});
+							}}
+							className="hidden xl:inline-flex h-8 w-8 items-center justify-center rounded-md border border-slate-200 text-slate-600 hover:bg-slate-100"
+							aria-label={
+								isProfilePanelOpen
+									? "Close profile panel"
+									: "Open profile panel"
+							}
+						>
+							<PanelRight className="h-4 w-4" />
+						</button>
+					</div>
 				</header>
 
 				<div ref={viewportRef} className="flex-1 overflow-y-auto px-6 py-4">
@@ -1218,30 +1247,34 @@ function InboxThread({
 					</div>
 				)}
 
-				<ChatComposer
-					value={input}
-					placeholder={`Message ${title}`}
-					isSending={isSendingMessage}
-					isUploading={isUploadingAttachments}
-					attachments={pendingAttachments}
-					mentionables={mentionables}
-					canMention={mentionables.length > 0}
-					highlightRanges={composerHighlightRanges}
-					onAddMention={addMention}
-					onAddFiles={addFiles}
-					onRemoveAttachment={removeAttachment}
-					onChange={(next) => {
-						draft.setText(next);
-						if (next.trim()) void startTyping();
-						else void stopTyping();
-					}}
-					onBlur={() => {
-						void stopTyping();
-					}}
-					onSend={() => {
-						void handleSend();
-					}}
-				/>
+				{dmBlocked && dmPerson ? (
+					<BlockedComposerBanner person={dmPerson} />
+				) : (
+					<ChatComposer
+						value={input}
+						placeholder={`Message ${title}`}
+						isSending={isSendingMessage}
+						isUploading={isUploadingAttachments}
+						attachments={pendingAttachments}
+						mentionables={mentionables}
+						canMention={mentionables.length > 0}
+						highlightRanges={composerHighlightRanges}
+						onAddMention={addMention}
+						onAddFiles={addFiles}
+						onRemoveAttachment={removeAttachment}
+						onChange={(next) => {
+							draft.setText(next);
+							if (next.trim()) void startTyping();
+							else void stopTyping();
+						}}
+						onBlur={() => {
+							void stopTyping();
+						}}
+						onSend={() => {
+							void handleSend();
+						}}
+					/>
+				)}
 			</div>
 
 			{isProfilePanelOpen && (

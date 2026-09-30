@@ -71,6 +71,7 @@ export const STATIC_ROUTES = [
   { path: "/settings/appearance", group: "settings", auth: true },
   { path: "/settings/notifications", group: "settings", auth: true },
   { path: "/settings/mcp-tokens", group: "settings", auth: true },
+  { path: "/settings/blocked", group: "settings", auth: true },
   { path: "/settings/delete-account", group: "settings", auth: true },
   { path: "/project/roadmap", group: "roadmap", auth: false },
 

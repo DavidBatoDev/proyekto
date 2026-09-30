@@ -819,6 +819,7 @@ export const EpicTab = ({
 					{showComments && (
 						<div className="mt-4">
 							<CommentsSection
+								reportTargetType="epic_comment"
 								mentionUsers={mentionUsers}
 								canInviteByEmail={canInviteByEmail}
 								comments={comments}
@@ -1044,6 +1045,7 @@ export const EpicTab = ({
 									{showFeatureComments.has(feature.id) && (
 										<div className="mt-3">
 											<CommentsSection
+												reportTargetType="feature_comment"
 												mentionUsers={mentionUsers}
 												canInviteByEmail={canInviteByEmail}
 												comments={featureComments[feature.id] || []}

@@ -1,5 +1,6 @@
 import { Link } from "@tanstack/react-router";
 import { ExternalLink } from "lucide-react";
+import { PersonSafetyRows } from "@/components/safety/PersonSafetyActions";
 import { ChatAvatar } from "./Avatar";
 
 export type ChatMemberProfilePreview = {
@@ -72,6 +73,15 @@ export function ChatMemberProfileCard({
 					View Full Profile
 					<ExternalLink className="w-4 h-4" />
 				</Link>
+				<div className="mt-2 space-y-1.5">
+					<PersonSafetyRows
+						person={{
+							id: member.userId,
+							name: member.name,
+							avatarUrl: member.avatarUrl ?? null,
+						}}
+					/>
+				</div>
 			</div>
 		</div>
 	);

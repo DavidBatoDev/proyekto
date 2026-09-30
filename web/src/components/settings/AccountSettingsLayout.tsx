@@ -1,5 +1,13 @@
 import { Link, useRouterState } from "@tanstack/react-router";
-import { Bell, KeyRound, Palette, Trash2, User, UserCog } from "lucide-react";
+import {
+	Bell,
+	KeyRound,
+	Palette,
+	Trash2,
+	User,
+	UserCog,
+	UserX,
+} from "lucide-react";
 import type { ReactNode } from "react";
 import { AppNavPill, AppSurfaceCard } from "@/components/common/AppPrimitives";
 import { featureFlags } from "@/config/featureFlags";
@@ -60,6 +68,12 @@ export function AccountSettingsLayout({
 			to: "/settings/mcp-tokens",
 			icon: KeyRound,
 			active: currentPath.startsWith("/settings/mcp-tokens"),
+		},
+		{
+			label: "Blocked people",
+			to: "/settings/blocked",
+			icon: UserX,
+			active: currentPath.startsWith("/settings/blocked"),
 		},
 	];
 

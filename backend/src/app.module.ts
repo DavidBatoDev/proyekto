@@ -35,6 +35,7 @@ import { RoadmapSharesModule } from './modules/execution/roadmap-shares/roadmap-
 import { MarketplaceModule } from './modules/marketplace/marketplace/marketplace.module';
 import { NotificationsModule } from './modules/shared/notifications/notifications.module';
 import { ContactModule } from './modules/shared/contact/contact.module';
+import { SafetyModule } from './modules/shared/safety/safety.module';
 import { PushModule } from './modules/shared/push/push.module';
 import { MobileUpdatesModule } from './modules/shared/mobile-updates/mobile-updates.module';
 import { ChatModule } from './modules/execution/chat/chat.module';
@@ -108,6 +109,7 @@ import { AppController } from './app.controller';
     MarketplaceModule,
     NotificationsModule,
     ContactModule,
+    SafetyModule,
     PushModule,
     MobileUpdatesModule,
     ChatModule,

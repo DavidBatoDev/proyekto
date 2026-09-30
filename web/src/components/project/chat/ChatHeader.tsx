@@ -1,4 +1,6 @@
 import { ArrowLeft, Hash, UserRoundSearch } from "lucide-react";
+import { PersonSafetyMenu } from "@/components/safety/PersonSafetyActions";
+import type { PersonRef } from "@/queries/safety";
 import { ChatAvatar } from "./Avatar";
 import { RoomNotificationMenu } from "./RoomNotificationMenu";
 
@@ -11,6 +13,7 @@ export function ChatHeader({
 	onToggleProfilePanel,
 	onBack,
 	roomId,
+	dmPerson,
 }: {
 	title: string;
 	subtitle: string;
@@ -22,6 +25,8 @@ export function ChatHeader({
 	onBack?: () => void;
 	/** Present once a real room is open; enables the per-room mute control. */
 	roomId?: string | null;
+	/** The other person in a DM: adds Report / Block to the header. */
+	dmPerson?: PersonRef | null;
 }) {
 	return (
 		<header className="sticky top-0 z-10 border-b border-slate-200 bg-white/90 px-4 py-3 backdrop-blur md:px-6 md:py-4">
@@ -56,6 +61,13 @@ export function ChatHeader({
 
 				<div className="flex shrink-0 items-center gap-2">
 					{roomId && <RoomNotificationMenu roomId={roomId} />}
+					{!isChannel && dmPerson && (
+						<PersonSafetyMenu
+							person={dmPerson}
+							label={`More actions for ${dmPerson.name}`}
+							triggerClassName="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-slate-200 text-slate-600 transition-colors hover:bg-slate-100"
+						/>
+					)}
 					<button
 						type="button"
 						onClick={onToggleProfilePanel}

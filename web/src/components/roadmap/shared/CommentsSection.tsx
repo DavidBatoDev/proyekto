@@ -4,6 +4,8 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { RichTextEditor } from "@/components/common/RichTextEditor";
 import type { MentionUser } from "@/components/common/RichTextEditor/types";
 import { cleanHTML } from "@/components/common/RichTextEditor/utils/formatting";
+import { BlockedContent } from "@/components/safety/BlockedPlaceholder";
+import { useSafety } from "@/components/safety/SafetyProvider";
 import type { Comment } from "@/types/roadmap";
 
 interface CommentsSectionProps {
@@ -20,6 +22,25 @@ interface CommentsSectionProps {
 	canInviteByEmail?: boolean;
 	highlightCommentId?: string;
 	onHighlightConsumed?: () => void;
+	/**
+	 * Which comment table these rows live in. Set it to offer "Report" on other
+	 * people's comments (App Store guideline 1.2); omit it for read-only lists.
+	 */
+	reportTargetType?: "task_comment" | "epic_comment" | "feature_comment";
+}
+
+/** The comment's text for the report preview: tags stripped, entities decoded. */
+function commentPlainText(html: string): string {
+	if (typeof DOMParser === "undefined") return html.replace(/<[^>]+>/g, " ");
+	return (
+		new DOMParser().parseFromString(html, "text/html").body.textContent ?? ""
+	)
+		.replace(/\s+/g, " ")
+		.trim();
+}
+
+function authorIdOf(comment: Comment): string | null {
+	return comment.user_id || comment.author_id || comment.user?.id || null;
 }
 
 const sanitizeCommentHtml = (rawHtml: string) => {
@@ -61,7 +82,9 @@ export const CommentsSection = ({
 	canInviteByEmail,
 	highlightCommentId,
 	onHighlightConsumed,
+	reportTargetType,
 }: CommentsSectionProps) => {
+	const safety = useSafety();
 	const [commentInput, setCommentInput] = useState("");
 	const [isSubmitting, setIsSubmitting] = useState(false);
 	const [isComposerOpen, setIsComposerOpen] = useState(false);
@@ -321,9 +344,41 @@ export const CommentsSection = ({
 										</div>
 									) : (
 										<>
-											<div className="border border-gray-300 rounded-xl bg-white px-4 py-3">
-												<CommentBody content={comment.content} />
-											</div>
+											<BlockedContent
+												blocked={safety.isBlocked(authorIdOf(comment))}
+												kind="comment"
+											>
+												<div className="border border-gray-300 rounded-xl bg-white px-4 py-3">
+													<CommentBody content={comment.content} />
+												</div>
+											</BlockedContent>
+
+											{reportTargetType &&
+												!canManageComment(comment) &&
+												safety.canActOn(authorIdOf(comment)) && (
+													<div className="mt-2 flex items-center gap-2 text-xs">
+														<span className="text-gray-400">•</span>
+														<button
+															type="button"
+															onClick={() =>
+																safety.report({
+																	type: reportTargetType,
+																	id: comment.id,
+																	author: {
+																		id: authorIdOf(comment) as string,
+																		name: displayName,
+																		avatarUrl: comment.user?.avatar_url ?? null,
+																	},
+																	preview: commentPlainText(comment.content),
+																	previewMeta: timeAgo,
+																})
+															}
+															className="text-muted-foreground underline underline-offset-2 hover:text-destructive"
+														>
+															Report
+														</button>
+													</div>
+												)}
 
 											{canManageComment(comment) &&
 												(onUpdateComment || onDeleteComment) && (

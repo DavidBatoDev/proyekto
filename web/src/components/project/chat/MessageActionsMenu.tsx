@@ -1,4 +1,11 @@
-import { Copy, MoreHorizontal, Pencil, Reply, Trash2 } from "lucide-react";
+import {
+	Copy,
+	Flag,
+	MoreHorizontal,
+	Pencil,
+	Reply,
+	Trash2,
+} from "lucide-react";
 import {
 	type ReactNode,
 	useCallback,
@@ -31,6 +38,7 @@ export function MessageActionsMenu({
 	onCopy,
 	onEdit,
 	onDelete,
+	onReport,
 }: {
 	isMine: boolean;
 	canModify: boolean;
@@ -40,6 +48,8 @@ export function MessageActionsMenu({
 	onEdit?: () => void;
 	/** `bypassConfirm` is true on Shift-click (skip the confirm modal). */
 	onDelete?: (bypassConfirm: boolean) => void;
+	/** Someone else's message: report it (App Store guideline 1.2). */
+	onReport?: () => void;
 }) {
 	const [open, setOpen] = useState(false);
 	const [coords, setCoords] = useState<{ top: number; left: number } | null>(
@@ -52,17 +62,19 @@ export function MessageActionsMenu({
 	const showCopy = hasText && !!onCopy;
 	const showEdit = canModify && !!onEdit;
 	const showDelete = canModify && !!onDelete;
+	const showReport = !isMine && !!onReport;
 	const itemCount =
 		Number(showReply) +
 		Number(showCopy) +
 		Number(showEdit) +
-		Number(showDelete);
+		Number(showDelete) +
+		Number(showReport);
 
 	const place = useCallback(() => {
 		const rect = btnRef.current?.getBoundingClientRect();
 		if (!rect) return;
 		const gap = 4;
-		const estHeight = itemCount * ITEM_HEIGHT + 8;
+		const estHeight = itemCount * ITEM_HEIGHT + (showReport ? 17 : 8);
 		// Horizontally anchor the menu near the button, clamped to the viewport.
 		let left = isMine ? rect.right - MENU_WIDTH : rect.left;
 		left = Math.max(
@@ -75,7 +87,7 @@ export function MessageActionsMenu({
 			top = Math.max(VIEWPORT_PAD, rect.top - estHeight - gap);
 		}
 		setCoords({ top, left });
-	}, [isMine, itemCount]);
+	}, [isMine, itemCount, showReport]);
 
 	useLayoutEffect(() => {
 		if (!open) return;
@@ -112,6 +124,9 @@ export function MessageActionsMenu({
 		fn?.();
 	};
 
+	// Nothing to offer (e.g. a surface that wires no actions): no empty menu.
+	if (itemCount === 0) return null;
+
 	return (
 		<div className={`absolute -top-1 z-20 ${isMine ? "-left-7" : "-right-7"}`}>
 			<button
@@ -119,7 +134,10 @@ export function MessageActionsMenu({
 				type="button"
 				onClick={() => setOpen((value) => !value)}
 				className={`inline-flex h-6 w-6 items-center justify-center rounded-md text-muted-foreground transition-opacity hover:bg-muted hover:text-foreground ${
-					open ? "opacity-100" : "opacity-0 group-hover/line:opacity-100"
+					open
+						? "opacity-100"
+						: // Touch screens can't hover: keep it faintly visible there.
+							"opacity-0 group-hover/line:opacity-100 [@media(hover:none)]:opacity-50"
 				}`}
 				aria-label="Message actions"
 				aria-haspopup="menu"
@@ -174,6 +192,22 @@ export function MessageActionsMenu({
 								</span>
 								Delete
 							</button>
+						)}
+						{showReport && (
+							<>
+								{itemCount > 1 && (
+									<div className="my-1 border-t border-border" role="none" />
+								)}
+								<button
+									type="button"
+									role="menuitem"
+									onClick={() => run(onReport)}
+									className="flex w-full items-center gap-2.5 px-3 py-1.5 text-left text-sm text-destructive hover:bg-destructive/10"
+								>
+									<Flag className="h-4 w-4" />
+									Report message
+								</button>
+							</>
 						)}
 					</div>,
 					document.body,

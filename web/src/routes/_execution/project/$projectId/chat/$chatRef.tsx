@@ -41,6 +41,8 @@ import {
 	mergeThreadMessages,
 	type ThreadUiMessage,
 } from "@/components/project/chat/thread";
+import { BlockedComposerBanner } from "@/components/safety/BlockedComposerBanner";
+import { useSafety } from "@/components/safety/SafetyProvider";
 import { useChatDraft } from "@/hooks/useChatDraft";
 import {
 	findMemberCandidate,
@@ -544,6 +546,18 @@ function ChatPage() {
 		activeTarget.kind === "dm"
 			? findMemberCandidate(members, activeTarget.userId)
 			: null;
+
+	// The other person in a DM, for Report / Block (App Store guideline 1.2).
+	const safety = useSafety();
+	const dmPerson =
+		activeTarget.kind === "dm"
+			? {
+					id: activeTarget.userId,
+					name: getDisplayName(activeDmMember),
+					avatarUrl: activeDmMember?.user?.avatar_url ?? null,
+				}
+			: null;
+	const dmBlocked = Boolean(dmPerson && safety.isBlocked(dmPerson.id));
 
 	// People mentionable in the active conversation: every project member in a
 	// channel (the composer adds @everyone), or just the counterpart in a DM.
@@ -1382,6 +1396,7 @@ function ChatPage() {
 						roomId={activeRoomId}
 						isChannel={activeTarget.kind === "channel"}
 						avatarUrl={activeAvatarUrl}
+						dmPerson={dmPerson}
 						isProfilePanelOpen={isProfilePanelOpen}
 						onToggleProfilePanel={() => {
 							setIsProfilePanelOpen((value) => {
@@ -1524,37 +1539,41 @@ function ChatPage() {
 								</button>
 							</div>
 						)}
-						<ChatComposer
-							value={messageInput}
-							attachments={pendingAttachments}
-							mentionables={mentionables}
-							canMention={canMentionMembers}
-							highlightRanges={composerHighlightRanges}
-							onAddMention={addMention}
-							onAddFiles={addFiles}
-							onRemoveAttachment={removeAttachment}
-							isUploading={isUploadingAttachments}
-							onChange={(nextValue) => {
-								draft.setText(nextValue);
-								if (nextValue.trim()) {
-									void startTyping();
-								} else {
+						{dmBlocked && dmPerson ? (
+							<BlockedComposerBanner person={dmPerson} />
+						) : (
+							<ChatComposer
+								value={messageInput}
+								attachments={pendingAttachments}
+								mentionables={mentionables}
+								canMention={canMentionMembers}
+								highlightRanges={composerHighlightRanges}
+								onAddMention={addMention}
+								onAddFiles={addFiles}
+								onRemoveAttachment={removeAttachment}
+								isUploading={isUploadingAttachments}
+								onChange={(nextValue) => {
+									draft.setText(nextValue);
+									if (nextValue.trim()) {
+										void startTyping();
+									} else {
+										void stopTyping();
+									}
+								}}
+								onBlur={() => {
 									void stopTyping();
+								}}
+								onSend={() => {
+									void sendMessage();
+								}}
+								isSending={isSending}
+								placeholder={
+									activeTarget.kind === "channel"
+										? `Message ${channelTitle(activeRoom)}`
+										: `Message ${getDisplayName(activeDmMember)}`
 								}
-							}}
-							onBlur={() => {
-								void stopTyping();
-							}}
-							onSend={() => {
-								void sendMessage();
-							}}
-							isSending={isSending}
-							placeholder={
-								activeTarget.kind === "channel"
-									? `Message ${channelTitle(activeRoom)}`
-									: `Message ${getDisplayName(activeDmMember)}`
-							}
-						/>
+							/>
+						)}
 					</>
 				}
 			/>

@@ -1,12 +1,33 @@
 # Store readiness — Google Play & App Store
 
-> **Last updated:** 2026-09-29 · **Status:** partly built — items 1-3 are done, 4-7 are open
+> **Last updated:** 2026-09-30 · **Status:** partly built — items 1-3 are done, 4-7 are open
 
 What the two stores will want before Proyekto can ship, checked against the repo on
 2026-09-28. Four things are now **done**: the commerce/marketplace gate (see
 [Routing & Access → What the installed app carries](../04-web/routing-and-access.md#what-the-installed-app-carries)),
 the legal pages (item 1), in-app account deletion (item 2), and the Android API 36 target
 (item 3). Items 4-7 are open, and item 4 (iOS) is the long pole.
+
+## User-generated content (App Store guideline 1.2) — done 2026-09-30
+
+App Review asked (2.1 Information Needed, 2026-09-30) for "the required content reporting and
+blocking mechanisms". Chat, DMs and roadmap comments are user-generated content, so the app
+now has both:
+
+- **Report** a chat message (press-and-hold sheet on touch, the "⋯" menu on desktop), a
+  comment (`CommentsSection`, `reportTargetType`), or a person (DM header / profile "⋯").
+  `POST /api/safety/reports` (`backend/src/modules/shared/safety/`) checks the reporter can
+  see the target, stores it in `content_reports` with a snapshot, and emails the support
+  mailbox — which is the review queue (24-hour response, per the Terms).
+- **Block** (`user_blocks`): DMs are refused both ways (`ChatService.assertNotBlocked`), the
+  blocker gets no push/bell/email about the blocked person (channel sends and comment
+  mentions), and the web collapses their messages and comments. Settings → Blocked people
+  unblocks.
+- **Terms** "Acceptable use" states zero tolerance for objectionable content and abusive users.
+- Found on the way: in-app account deletion called `/account/deletion/*` without the `/api`
+  prefix and had 404ed in production since it shipped (2026-09-24); fixed in the same change.
+
+Open: an admin reports queue (today the support inbox is the queue).
 
 ## The business model, and why it is allowed
 

@@ -1,5 +1,6 @@
 import {
   BadRequestException,
+  ForbiddenException,
   Inject,
   Injectable,
   NotFoundException,
@@ -35,6 +36,7 @@ import { KnowledgeOutboxService } from '../../shared/knowledge/knowledge-outbox.
 import { NotificationsService } from '../../shared/notifications/notifications.service';
 import { runNotifyWork } from '../../shared/notifications/notify-work';
 import { ChatPushService } from './chat-push.service';
+import { BlocksService } from '../../shared/safety/blocks.service';
 import { CHAT_REPOSITORY, EVERYONE_MENTION_ID } from './chat.tokens';
 import { DEFAULT_CHAT_NOTIFICATION_LEVEL } from './repositories/chat.repository.interface';
 import type {
@@ -88,6 +90,7 @@ export class ChatService {
     private readonly notifications: NotificationsService,
     private readonly knowledgeOutbox: KnowledgeOutboxService,
     private readonly chatPush: ChatPushService,
+    private readonly blocks: BlocksService,
   ) {}
 
   /**
@@ -129,6 +132,8 @@ export class ChatService {
     senderId: string,
     mentions: ChatMention[],
     actorName: string | null,
+    /** People who blocked the sender: never pinged about them. */
+    excluded: ReadonlySet<string> = new Set(),
   ): Promise<void> {
     if (!mentions.length) return;
 
@@ -157,6 +162,7 @@ export class ChatService {
         if (memberSet.has(id)) targets.add(id);
       }
       targets.delete(senderId);
+      for (const id of excluded) targets.delete(id);
       if (targets.size === 0) return;
 
       const roomLabel =
@@ -378,6 +384,26 @@ export class ChatService {
     return [userA, userB].sort((a, b) => a.localeCompare(b)).join('_');
   }
 
+  /** The other person in a DM, read from its `<uuid>_<uuid>` slug. */
+  private dmCounterpartId(room: ChatRoom, userId: string): string | null {
+    if (room.type !== 'dm') return null;
+    return room.slug.split('_').find((id) => id && id !== userId) ?? null;
+  }
+
+  /**
+   * A block in either direction closes the DM both ways. The message is
+   * deliberately the same for both sides so it never reveals who blocked whom.
+   */
+  private async assertNotBlocked(userId: string, otherId: string | null) {
+    if (!otherId) return;
+    if (await this.blocks.isBlockedEitherWay(userId, otherId)) {
+      throw new ForbiddenException({
+        code: 'chat_blocked',
+        message: "You can't message this person.",
+      });
+    }
+  }
+
   private async assertProjectAccess(
     projectId: string,
     userId: string,
@@ -546,6 +572,9 @@ export class ChatService {
   /** Global DM list for the current user. */
   async listDmRooms(userId: string) {
     const rooms = await this.chatRepo.listDmRoomsForUser(userId);
+    // A DM with someone you blocked stays listed: opening it shows the
+    // "you blocked them" banner in place of the composer (web), and sending is
+    // refused here in assertNotBlocked. Hiding it made an open thread vanish.
     const filtered = rooms.filter((room) => !!room.last_message);
     return this.decorateRooms(filtered, userId);
   }
@@ -641,6 +670,29 @@ export class ChatService {
     } catch {
       return false;
     }
+  }
+
+  /**
+   * A message someone wants to report, behind the same access check as reading
+   * it: you can only report what you can see. Used by the safety module.
+   */
+  async getMessageForReport(
+    messageId: string,
+    userId: string,
+  ): Promise<{ message: ChatMessage; room: ChatRoom }> {
+    const message = await this.chatRepo.findMessageById(messageId);
+    if (!message) throw new NotFoundException('Message not found.');
+    const room = await this.assertRoomAccess(message.room_id, userId);
+    return { message, room };
+  }
+
+  /** Whether `userId` could DM `otherId`: the same gate the DM paths use. */
+  async canReachUser(userId: string, otherId: string): Promise<boolean> {
+    if (userId === otherId) return false;
+    return (
+      (await this.chatRepo.usersShareAnyProject(userId, otherId)) ||
+      (await this.chatRepo.recipientIsActiveSeller(otherId))
+    );
   }
 
   async listRoomMessages(
@@ -853,12 +905,16 @@ export class ChatService {
     this.fanoutChat(room.id, projectId, 'message');
     await runNotifyWork(
       (async () => {
-        const [actorName, recipientIds] = await Promise.all([
+        const [actorName, rosterIds] = await Promise.all([
           this.notifications.resolveActorName(senderId),
           // Channels span the project roster, not chat_room_participants —
           // joining a channel is lazy, so that table is not authoritative.
           this.chatRepo.listProjectParticipantUserIds(projectId),
         ]);
+        // Someone who blocked the sender still shares the project, so the
+        // message stays in the channel, but they get no push or ping for it.
+        const blockers = await this.blocks.blockersOf(senderId, rosterIds);
+        const recipientIds = rosterIds.filter((id) => !blockers.has(id));
         await Promise.all([
           this.fireMentionNotifications(
             room,
@@ -866,6 +922,7 @@ export class ChatService {
             senderId,
             mentions,
             actorName,
+            blockers,
           ),
           this.chatPush.sendForMessage({
             room,
@@ -917,6 +974,10 @@ export class ChatService {
           message: 'You are not a participant in this DM.',
         });
       }
+      await this.assertNotBlocked(
+        senderId,
+        this.dmCounterpartId(existing, senderId),
+      );
       room = existing;
     } else {
       if (!dto.recipient_id) {
@@ -942,6 +1003,7 @@ export class ChatService {
           message: 'You can only DM people you share a project with.',
         });
       }
+      await this.assertNotBlocked(senderId, dto.recipient_id);
 
       const slug = this.sortDmSlug(senderId, dto.recipient_id);
       room = await this.chatRepo.upsertDm({ slug });
@@ -1032,6 +1094,7 @@ export class ChatService {
         message: 'You can only DM people you share a project with.',
       });
     }
+    await this.assertNotBlocked(senderId, recipientId);
 
     const slug = this.sortDmSlug(senderId, recipientId);
     const room = await this.chatRepo.upsertDm({ slug });

@@ -229,7 +229,9 @@ describe('TaskExtrasService mention scoping', () => {
     );
     await flush();
 
-    expect(filter).toHaveBeenCalledWith(roadmapId, ['outsider-1']);
+    expect(filter).toHaveBeenCalledWith(roadmapId, ['outsider-1'], {
+      excludeBlockersOf: 'author-1',
+    });
     expect(notifications.createNotification).not.toHaveBeenCalled();
   });
 

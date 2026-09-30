@@ -53,6 +53,7 @@ import {
 } from "@/components/profile/ProfileUi";
 import { SpecializationModal } from "@/components/profile/SpecializationModal";
 import { UploadModal } from "@/components/profile/UploadModal";
+import { PersonSafetyMenu } from "@/components/safety/PersonSafetyActions";
 import { useToast } from "@/hooks/useToast";
 import { isNativeApp } from "@/lib/platform";
 import { canHandleSensitiveData } from "@/lib/sensitiveData";
@@ -668,6 +669,20 @@ function ProfilePage() {
 											<Edit2 className="h-3.5 w-3.5" />
 											Edit profile
 										</PillButton>
+									</div>
+								)}
+								{/* Someone else's profile: Report / Block (App Store guideline 1.2) */}
+								{!isOwner && (
+									<div className="flex items-center gap-2 pb-1 sm:justify-end">
+										<PersonSafetyMenu
+											person={{
+												id: profileId,
+												name: fullName,
+												avatarUrl: profile.avatar_url ?? null,
+											}}
+											label={`More actions for ${fullName}`}
+											triggerClassName="inline-flex h-9 w-9 items-center justify-center rounded-full border border-border bg-card text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+										/>
 									</div>
 								)}
 							</div>

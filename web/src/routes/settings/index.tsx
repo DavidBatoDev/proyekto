@@ -6,6 +6,7 @@ import {
 	type LucideIcon,
 	Palette,
 	Trash2,
+	UserX,
 } from "lucide-react";
 import { featureFlags } from "@/config/featureFlags";
 import { useProfileQuery } from "@/hooks/useProfileQuery";
@@ -90,6 +91,13 @@ function SettingsOverviewPage() {
 				"Connect MCP hosts like Claude to your Proyekto data with scoped, revocable access.",
 			to: "/settings/mcp-tokens",
 			icon: KeyRound,
+		},
+		{
+			label: "Blocked people",
+			description:
+				"See who you've blocked and unblock them. Blocked people can't message you.",
+			to: "/settings/blocked",
+			icon: UserX,
 		},
 	];
 

@@ -197,10 +197,21 @@ const SECTIONS: LegalSection[] = [
 						harass or abuse other people, or send unsolicited bulk messages;
 					</li>
 					<li>
+						post content that is hateful, sexually explicit, violent, or
+						otherwise objectionable;
+					</li>
+					<li>
 						resell or redistribute Proyekto as your own product, or scrape it at
 						scale.
 					</li>
 				</ul>
+				<p>
+					We have zero tolerance for objectionable content and abusive users.
+					You can report a message, a comment or a person, and block anyone,
+					from inside the app. We review reports within 24 hours, remove content
+					that breaks these terms, and suspend or close the accounts
+					responsible.
+				</p>
 			</>
 		),
 	},

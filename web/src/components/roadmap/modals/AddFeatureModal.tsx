@@ -574,6 +574,7 @@ export const FeatureModal = ({
 			label: "Comments",
 			content: featureId ? (
 				<CommentsSection
+					reportTargetType="feature_comment"
 					comments={comments}
 					onAddComment={handleAddComment}
 					onUpdateComment={handleUpdateComment}
