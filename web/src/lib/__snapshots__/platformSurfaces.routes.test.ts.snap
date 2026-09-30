@@ -61,6 +61,7 @@ exports[`every generated route has a platform decision > matches the recorded su
   "/engagements/finance/team/$teamId/rates": "marketplace",
   "/engagements/finance/team/$teamId/time-logs": "marketplace",
   "/engagements/finance/teams": "marketplace",
+  "/engagements/intake": "marketplace",
   "/freelancer/invites": "marketplace",
   "/get-started": "app",
   "/goodbye": "app",

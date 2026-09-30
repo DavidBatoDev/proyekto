@@ -105,8 +105,8 @@ ALTER TABLE public.intake_relationships ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.intake_documents ENABLE ROW LEVEL SECURITY;
 
 -- ── Plan keys ────────────────────────────────────────────────────────────────
--- TODO(billing): open on every plan until billing exists. The proposal's
--- estimates: document_intake_pages_monthly 30 / 500 / 3,000 / negotiated and
+-- Seeded open here; 20261001090000_plan_estimates_authoring_intake sets the
+-- estimates: document_intake_pages_monthly 30 / 500 / 3,000 / unlimited and
 -- document_intake_onboarding_pages 200 on every plan (once per workspace).
 INSERT INTO public.plan_limit_keys (key, kind, label, description, unit, group_key, sort_order) VALUES
   ('document_intake_pages_monthly', 'quota', 'Document intake pages',

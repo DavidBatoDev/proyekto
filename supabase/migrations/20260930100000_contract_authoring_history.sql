@@ -180,10 +180,9 @@ COMMENT ON TABLE public.contract_change_summaries IS
 ALTER TABLE public.contract_change_summaries ENABLE ROW LEVEL SECURITY;
 
 -- ── Plan keys ────────────────────────────────────────────────────────────────
--- TODO(billing): no subscription billing exists yet, so both keys start open on
--- every plan. The proposal's estimates are counterparty authoring off/on/on/on
--- and active_contracts 3/25/250/unlimited (Free/Pro/Business/Enterprise); set
--- them in the admin plan-limits editor once billing ships.
+-- Seeded open here; 20261001090000_plan_estimates_authoring_intake sets the
+-- estimates: counterparty authoring off/on/on/on and active_contracts
+-- 3/25/250/unlimited (Free/Pro/Business/Enterprise).
 INSERT INTO public.plan_limit_keys (key, kind, label, description, unit, group_key, sort_order) VALUES
   ('contract_counterparty_authoring', 'feature', 'Client and talent contract authoring',
    'Clients and talent may create, edit and amend their own contracts.', NULL, 'governance', 115),

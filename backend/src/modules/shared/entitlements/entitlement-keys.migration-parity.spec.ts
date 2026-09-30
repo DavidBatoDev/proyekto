@@ -117,6 +117,7 @@ function parseInserts(
   let match: RegExpExecArray | null;
   while ((match = pattern.exec(sql)) !== null) {
     const columns = match[1].split(',').map((c) => c.trim());
+    const statementStart = rows.length;
     let i = skipTrivia(sql, match.index + match[0].length);
     while (sql[i] === '(') {
       i++;
@@ -150,9 +151,22 @@ function parseInserts(
       if (sql[i] !== ',') break;
       i = skipTrivia(sql, i + 1);
     }
+    // `ON CONFLICT ... DO UPDATE` overwrites cells an earlier migration seeded;
+    // `DO NOTHING` (or no clause) keeps the first seed.
+    const end = sql.indexOf(';', i);
+    if (
+      /ON\s+CONFLICT[^;]*DO\s+UPDATE/i.test(
+        sql.slice(i, end === -1 ? undefined : end),
+      )
+    ) {
+      for (let n = statementStart; n < rows.length; n++) upserts.add(rows[n]);
+    }
   }
   return rows;
 }
+
+/** Rows parsed from an `ON CONFLICT ... DO UPDATE` insert. */
+const upserts = new WeakSet<Record<string, SqlValue>>();
 
 /** A parsed value as text, for building map keys. */
 function text(value: SqlValue): string {
@@ -183,7 +197,9 @@ function seededRegistry() {
     }
     for (const row of parseInserts(sql, 'plan_limits')) {
       const id = `${text(row.plan)}:${text(row.limit_key)}`;
-      if (!cells.has(id)) cells.set(id, row);
+      if (!cells.has(id) || upserts.has(row)) {
+        cells.set(id, { ...cells.get(id), ...row });
+      }
     }
   }
   return { keys, cells };

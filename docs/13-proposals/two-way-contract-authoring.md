@@ -362,8 +362,8 @@ Differences from the text above:
 - **Frozen PDFs live in the private R2 bucket** (`UploadsService.putPrivateObject`), where every
   other rendered document lives, not Supabase Storage. `GET /contracts/:id/signed-pdf` streams the
   file and re-hashes it on every read (`X-Content-SHA256`, `X-Snapshot-Verified`).
-- **Plan values are open on every plan** (feature on, count unlimited), with a TODO in the
-  migration, because no billing exists. The estimates above are recorded in that TODO.
+- **Plan values are set** by `20261001090000_plan_estimates_authoring_intake` (DEV only):
+  counterparty authoring off / on / on / on, active contracts 3 / 25 / 250 / unlimited.
 - **`active_contracts` counts contract families**, so an amendment never counts twice.
 - **Rule 4 is enforced by the server** as well as the UI: signing over unseen changes by the other
   party is a 409 until the seat records a review (`POST /contracts/:id/viewed`).

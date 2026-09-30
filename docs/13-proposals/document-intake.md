@@ -304,9 +304,9 @@ Differences from the text above:
   the client; it does not change who the invoice says issued it.
 - **Split intake documents share one stored file.** Each confirmed document becomes its own
   `finance_documents` row pointing at the same private object.
-- **Plan values are open on every plan** (no billing yet), with the proposal's estimates in the
-  migration's TODO. The quota logic is built: onboarding pages are spent first, then the monthly
-  quota.
+- **Plan values are set** by `20261001090000_plan_estimates_authoring_intake` (DEV only):
+  monthly pages 30 / 500 / 3,000 / unlimited, onboarding pages 200 on every plan. Onboarding
+  pages are spent first, then the monthly quota.
 - **Metrics:** `GET /intake/metrics` (platform admins) reports imports started, relationships
   replicated, invites sent and attestations. Accounts created from attestation links are not
   tracked yet: that needs a referral marker on the token path.

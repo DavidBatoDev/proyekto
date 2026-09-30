@@ -73,6 +73,10 @@ export const LIMIT_KEYS = [
 	"activity_export",
 	"mcp_server",
 	"saml_scim",
+	"contract_counterparty_authoring",
+	"active_contracts",
+	"document_intake_pages_monthly",
+	"document_intake_onboarding_pages",
 ] as const;
 
 export type LimitKey = (typeof LIMIT_KEYS)[number];
@@ -85,7 +89,10 @@ export type NumericLimitKey =
 	| CountKey
 	| "roadmap_nodes_per_roadmap"
 	| "ai_messages_monthly"
-	| "activity_retention_days";
+	| "activity_retention_days"
+	| "active_contracts"
+	| "document_intake_pages_monthly"
+	| "document_intake_onboarding_pages";
 
 export type FeatureKey = Exclude<LimitKey, NumericLimitKey>;
 
@@ -284,6 +291,41 @@ export const LIMIT_DEFINITIONS: readonly LimitDefinition[] = [
 		enforced: false,
 		unit: null,
 	},
+	{
+		key: "contract_counterparty_authoring",
+		label: "Client and talent contract authoring",
+		group: "governance",
+		kind: "feature",
+		enforced: true,
+		unit: null,
+	},
+	{
+		key: "active_contracts",
+		label: "Active contracts",
+		group: "usage",
+		kind: "count",
+		enforced: true,
+		unit: unit("contract", "contracts"),
+		min: 0,
+	},
+	{
+		key: "document_intake_pages_monthly",
+		label: "Document intake pages",
+		group: "ai",
+		kind: "quota",
+		enforced: true,
+		unit: unit("page", "pages"),
+		min: 0,
+	},
+	{
+		key: "document_intake_onboarding_pages",
+		label: "Onboarding intake pages",
+		group: "ai",
+		kind: "quota",
+		enforced: true,
+		unit: unit("page", "pages"),
+		min: 0,
+	},
 ];
 
 const DEFINITION_BY_KEY = new Map<string, LimitDefinition>(
@@ -365,6 +407,10 @@ export const DEFAULT_PLAN_LIMITS: Record<PlanId, PlanLimits> = deepFreeze({
 		activity_export: feature(false),
 		mcp_server: feature(false),
 		saml_scim: feature(false),
+		contract_counterparty_authoring: feature(false),
+		active_contracts: count(3),
+		document_intake_pages_monthly: quota(30, false),
+		document_intake_onboarding_pages: quota(200, false),
 	},
 	pro: {
 		members: count(null),
@@ -385,6 +431,10 @@ export const DEFAULT_PLAN_LIMITS: Record<PlanId, PlanLimits> = deepFreeze({
 		activity_export: feature(false),
 		mcp_server: feature(true),
 		saml_scim: feature(false),
+		contract_counterparty_authoring: feature(true),
+		active_contracts: count(25),
+		document_intake_pages_monthly: quota(500, false),
+		document_intake_onboarding_pages: quota(200, false),
 	},
 	business: {
 		members: count(null),
@@ -405,6 +455,10 @@ export const DEFAULT_PLAN_LIMITS: Record<PlanId, PlanLimits> = deepFreeze({
 		activity_export: feature(false),
 		mcp_server: feature(true),
 		saml_scim: feature(false),
+		contract_counterparty_authoring: feature(true),
+		active_contracts: count(250),
+		document_intake_pages_monthly: quota(3000, false),
+		document_intake_onboarding_pages: quota(200, false),
 	},
 	enterprise: {
 		members: count(null),
@@ -425,6 +479,10 @@ export const DEFAULT_PLAN_LIMITS: Record<PlanId, PlanLimits> = deepFreeze({
 		activity_export: feature(true),
 		mcp_server: feature(true, "Higher limits"),
 		saml_scim: feature(true),
+		contract_counterparty_authoring: feature(true),
+		active_contracts: count(null),
+		document_intake_pages_monthly: quota(null, false),
+		document_intake_onboarding_pages: quota(200, false),
 	},
 });
 

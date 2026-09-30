@@ -38,7 +38,7 @@ describe("plan limit catalogue", () => {
 		const defined = LIMIT_DEFINITIONS.map((definition) => definition.key);
 		expect(new Set(defined).size).toBe(defined.length);
 		expect([...defined].sort()).toEqual([...LIMIT_KEYS].sort());
-		expect(LIMIT_KEYS).toHaveLength(18);
+		expect(LIMIT_KEYS).toHaveLength(22);
 		for (const plan of PLAN_ORDER) {
 			expect(Object.keys(DEFAULT_PLAN_LIMITS[plan]).sort()).toEqual(
 				[...LIMIT_KEYS].sort(),
@@ -71,6 +71,10 @@ describe("plan limit catalogue", () => {
 			"time_tracking",
 			"activity_retention_days",
 			"mcp_server",
+			"contract_counterparty_authoring",
+			"active_contracts",
+			"document_intake_pages_monthly",
+			"document_intake_onboarding_pages",
 		]);
 	});
 
@@ -159,6 +163,26 @@ describe("DEFAULT_PLAN_LIMITS matches the seed", () => {
 		activity_export: row(f(false), f(false), f(false), f(true)),
 		mcp_server: row(f(false), f(true), f(true), f(true, "Higher limits")),
 		saml_scim: row(f(false), f(false), f(false), f(true)),
+		// 20261001090000_plan_estimates_authoring_intake
+		contract_counterparty_authoring: row(f(false), f(true), f(true), f(true)),
+		active_contracts: row(
+			n("count", 3),
+			n("count", 25),
+			n("count", 250),
+			n("count", null),
+		),
+		document_intake_pages_monthly: row(
+			n("quota", 30),
+			n("quota", 500),
+			n("quota", 3000),
+			n("quota", null),
+		),
+		document_intake_onboarding_pages: row(
+			n("quota", 200),
+			n("quota", 200),
+			n("quota", 200),
+			n("quota", 200),
+		),
 	};
 
 	it("cell for cell", () => {

@@ -194,15 +194,15 @@ export const SEED_KEYS: SeedKey[] = [
     group: 'platform',
     values: [false, false, false, true],
   },
-  // 20260930100000_contract_authoring_history: open on every plan until
-  // billing exists (see the TODO there).
+  // 20260930100000_contract_authoring_history, values set by
+  // 20261001090000_plan_estimates_authoring_intake.
   {
     key: 'contract_counterparty_authoring',
     kind: 'feature',
     label: 'Client and talent contract authoring',
     unit: null,
     group: 'governance',
-    values: [true, true, true, true],
+    values: [false, true, true, true],
   },
   {
     key: 'active_contracts',
@@ -210,16 +210,16 @@ export const SEED_KEYS: SeedKey[] = [
     label: 'Active contracts',
     unit: 'contracts',
     group: 'usage',
-    values: [null, null, null, null],
+    values: [3, 25, 250, null],
   },
-  // 20260930120000_document_intake: open until billing exists.
+  // 20260930120000_document_intake, values set by 20261001090000.
   {
     key: 'document_intake_pages_monthly',
     kind: 'quota',
     label: 'Document intake pages',
     unit: 'pages',
     group: 'ai',
-    values: [null, null, null, null],
+    values: [30, 500, 3000, null],
   },
   {
     key: 'document_intake_onboarding_pages',
@@ -227,7 +227,7 @@ export const SEED_KEYS: SeedKey[] = [
     label: 'Onboarding intake pages',
     unit: 'pages',
     group: 'ai',
-    values: [null, null, null, null],
+    values: [200, 200, 200, 200],
   },
 ];
 
