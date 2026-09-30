@@ -7,11 +7,7 @@ import {
 	AppSectionHeader,
 	AppSurfaceCard,
 } from "@/components/common/AppPrimitives";
-import {
-	FINANCE_CRUMB_LINK_CLASS,
-	FinanceBreadcrumbs,
-	FinanceCurrentCrumb,
-} from "@/components/finance/portfolio/FinanceBreadcrumbs";
+import { FinanceTrail } from "@/components/finance/nav/FinanceTrail";
 import { financeBooksService } from "@/services/financeBooks.service";
 import { listMyTeams, listTeamProjects } from "@/services/teams.service";
 
@@ -77,27 +73,7 @@ function TeamFinanceSetupPage() {
 	return (
 		<div className="app-shell-bg min-h-full px-5 py-4 md:px-8 md:py-5">
 			<div className="mx-auto w-full max-w-3xl">
-				<FinanceBreadcrumbs
-					items={[
-						<Link
-							key="engagements"
-							to="/engagements"
-							className={FINANCE_CRUMB_LINK_CLASS}
-						>
-							Engagements
-						</Link>,
-						<Link
-							key="finance"
-							to="/engagements/finance"
-							className={FINANCE_CRUMB_LINK_CLASS}
-						>
-							Finance
-						</Link>,
-						<FinanceCurrentCrumb key="setup">
-							Set up team finance
-						</FinanceCurrentCrumb>,
-					]}
-				/>
+				<FinanceTrail teams current="Set up team finance" />
 
 				<AppSectionHeader
 					title="Set up team finance"

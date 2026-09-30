@@ -22,6 +22,7 @@ export function FinanceTrail({
 	team,
 	project,
 	shared,
+	teams,
 	section,
 	current,
 }: {
@@ -29,6 +30,8 @@ export function FinanceTrail({
 	project?: { bookId: string; title: string };
 	/** The page sits under "Shared with me" instead of "My teams". */
 	shared?: boolean;
+	/** The page sits under "My teams" without a specific team (team setup). */
+	teams?: boolean;
 	/** A project tab the page sits under ("Imports"), linking to that tab. */
 	section?: { label: string; tab: ProjectBookTab };
 	/** The page's own label, when it is deeper than the last node above. */
@@ -44,7 +47,7 @@ export function FinanceTrail({
 		</Link>,
 	];
 
-	const atRoot = !team && !project && !shared;
+	const atRoot = !team && !project && !shared && !teams;
 	items.push(
 		atRoot && !current ? (
 			<FinanceCurrentCrumb key="finance">My finance</FinanceCurrentCrumb>
@@ -73,7 +76,7 @@ export function FinanceTrail({
 				</Link>
 			),
 		);
-	} else if (team) {
+	} else if (team || teams) {
 		items.push(
 			<Link
 				key="teams"

@@ -33,26 +33,6 @@ export interface MyFinanceBook extends FinanceBook {
 	inherited: boolean;
 }
 
-export interface EngagedProject {
-	project_id: string;
-	project_title: string;
-	contract_id: string;
-	contract_status: string;
-	relationship_kind: string;
-	currency: string;
-}
-
-export interface PersonalDashboard {
-	book: FinanceBook;
-	engaged_projects: EngagedProject[];
-	hours: {
-		total_seconds: number;
-		month_seconds: number;
-		pending_seconds: number;
-	};
-	payouts_in: Array<{ currency: string; total: number; count: number }>;
-}
-
 export interface FinanceBookMember {
 	id: string | null;
 	book_id: string;
@@ -320,12 +300,12 @@ export const financeBooksService = {
 			"get",
 			`/api/finance-books/${bookId}/overview`,
 		),
-	engagedProjects: () =>
-		request<EngagedProject[]>("get", "/api/finance-books/engaged-projects"),
 	mySummary: () =>
 		request<MyFinanceSummary>("get", "/api/finance-books/me/summary"),
-	personalDashboard: () =>
-		request<PersonalDashboard>("get", "/api/finance-books/personal/dashboard"),
+	/**
+	 * The caller's private export container (an F1 book). My finance needs no
+	 * book to render; this exists only so "Export my records" has a scope.
+	 */
 	createPersonal: (currency?: string) =>
 		request<FinanceBook>("post", "/api/finance-books/personal", { currency }),
 	createTeam: (input: {

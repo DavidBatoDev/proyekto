@@ -174,7 +174,6 @@ import { Route as ExecutionProjectProjectIdDecisionsDecisionIdRouteImport } from
 import { Route as ExecutionProjectProjectIdChatChatRefRouteImport } from './routes/_execution/project/$projectId/chat/$chatRef'
 import { Route as ExecutionProjectProjectIdChangeRequestsChangeRequestIdRouteImport } from './routes/_execution/project/$projectId/change-requests/$changeRequestId'
 import { Route as ExecutionEngagementsFinanceSetupTeamRouteImport } from './routes/_execution/engagements/finance/setup/team'
-import { Route as ExecutionEngagementsFinanceSetupPersonalRouteImport } from './routes/_execution/engagements/finance/setup/personal'
 import { Route as ExecutionEngagementsFinanceInvoicesNewRouteImport } from './routes/_execution/engagements/finance/invoices/new'
 import { Route as ExecutionEngagementsFinanceInviteTokenRouteImport } from './routes/_execution/engagements/finance/invite/$token'
 import { Route as ExecutionEngagementsFinanceImportsDocumentIdRouteImport } from './routes/_execution/engagements/finance/imports/$documentId'
@@ -1126,12 +1125,6 @@ const ExecutionEngagementsFinanceSetupTeamRoute =
     path: '/finance/setup/team',
     getParentRoute: () => ExecutionEngagementsRouteRoute,
   } as any)
-const ExecutionEngagementsFinanceSetupPersonalRoute =
-  ExecutionEngagementsFinanceSetupPersonalRouteImport.update({
-    id: '/finance/setup/personal',
-    path: '/finance/setup/personal',
-    getParentRoute: () => ExecutionEngagementsRouteRoute,
-  } as any)
 const ExecutionEngagementsFinanceInvoicesNewRoute =
   ExecutionEngagementsFinanceInvoicesNewRouteImport.update({
     id: '/finance/invoices/new',
@@ -1464,7 +1457,6 @@ export interface FileRoutesByFullPath {
   '/engagements/finance/imports/$documentId': typeof ExecutionEngagementsFinanceImportsDocumentIdRoute
   '/engagements/finance/invite/$token': typeof ExecutionEngagementsFinanceInviteTokenRoute
   '/engagements/finance/invoices/new': typeof ExecutionEngagementsFinanceInvoicesNewRoute
-  '/engagements/finance/setup/personal': typeof ExecutionEngagementsFinanceSetupPersonalRoute
   '/engagements/finance/setup/team': typeof ExecutionEngagementsFinanceSetupTeamRoute
   '/project/$projectId/change-requests/$changeRequestId': typeof ExecutionProjectProjectIdChangeRequestsChangeRequestIdRoute
   '/project/$projectId/chat/$chatRef': typeof ExecutionProjectProjectIdChatChatRefRoute
@@ -1652,7 +1644,6 @@ export interface FileRoutesByTo {
   '/engagements/finance/imports/$documentId': typeof ExecutionEngagementsFinanceImportsDocumentIdRoute
   '/engagements/finance/invite/$token': typeof ExecutionEngagementsFinanceInviteTokenRoute
   '/engagements/finance/invoices/new': typeof ExecutionEngagementsFinanceInvoicesNewRoute
-  '/engagements/finance/setup/personal': typeof ExecutionEngagementsFinanceSetupPersonalRoute
   '/engagements/finance/setup/team': typeof ExecutionEngagementsFinanceSetupTeamRoute
   '/project/$projectId/change-requests/$changeRequestId': typeof ExecutionProjectProjectIdChangeRequestsChangeRequestIdRoute
   '/project/$projectId/chat/$chatRef': typeof ExecutionProjectProjectIdChatChatRefRoute
@@ -1854,7 +1845,6 @@ export interface FileRoutesById {
   '/_execution/engagements/finance/imports/$documentId': typeof ExecutionEngagementsFinanceImportsDocumentIdRoute
   '/_execution/engagements/finance/invite/$token': typeof ExecutionEngagementsFinanceInviteTokenRoute
   '/_execution/engagements/finance/invoices/new': typeof ExecutionEngagementsFinanceInvoicesNewRoute
-  '/_execution/engagements/finance/setup/personal': typeof ExecutionEngagementsFinanceSetupPersonalRoute
   '/_execution/engagements/finance/setup/team': typeof ExecutionEngagementsFinanceSetupTeamRoute
   '/_execution/project/$projectId/change-requests/$changeRequestId': typeof ExecutionProjectProjectIdChangeRequestsChangeRequestIdRoute
   '/_execution/project/$projectId/chat/$chatRef': typeof ExecutionProjectProjectIdChatChatRefRoute
@@ -2055,7 +2045,6 @@ export interface FileRouteTypes {
     | '/engagements/finance/imports/$documentId'
     | '/engagements/finance/invite/$token'
     | '/engagements/finance/invoices/new'
-    | '/engagements/finance/setup/personal'
     | '/engagements/finance/setup/team'
     | '/project/$projectId/change-requests/$changeRequestId'
     | '/project/$projectId/chat/$chatRef'
@@ -2243,7 +2232,6 @@ export interface FileRouteTypes {
     | '/engagements/finance/imports/$documentId'
     | '/engagements/finance/invite/$token'
     | '/engagements/finance/invoices/new'
-    | '/engagements/finance/setup/personal'
     | '/engagements/finance/setup/team'
     | '/project/$projectId/change-requests/$changeRequestId'
     | '/project/$projectId/chat/$chatRef'
@@ -2444,7 +2432,6 @@ export interface FileRouteTypes {
     | '/_execution/engagements/finance/imports/$documentId'
     | '/_execution/engagements/finance/invite/$token'
     | '/_execution/engagements/finance/invoices/new'
-    | '/_execution/engagements/finance/setup/personal'
     | '/_execution/engagements/finance/setup/team'
     | '/_execution/project/$projectId/change-requests/$changeRequestId'
     | '/_execution/project/$projectId/chat/$chatRef'
@@ -3707,13 +3694,6 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ExecutionEngagementsFinanceSetupTeamRouteImport
       parentRoute: typeof ExecutionEngagementsRouteRoute
     }
-    '/_execution/engagements/finance/setup/personal': {
-      id: '/_execution/engagements/finance/setup/personal'
-      path: '/finance/setup/personal'
-      fullPath: '/engagements/finance/setup/personal'
-      preLoaderRoute: typeof ExecutionEngagementsFinanceSetupPersonalRouteImport
-      parentRoute: typeof ExecutionEngagementsRouteRoute
-    }
     '/_execution/engagements/finance/invoices/new': {
       id: '/_execution/engagements/finance/invoices/new'
       path: '/finance/invoices/new'
@@ -4137,7 +4117,6 @@ interface ExecutionEngagementsRouteRouteChildren {
   ExecutionEngagementsFinanceImportsDocumentIdRoute: typeof ExecutionEngagementsFinanceImportsDocumentIdRoute
   ExecutionEngagementsFinanceInviteTokenRoute: typeof ExecutionEngagementsFinanceInviteTokenRoute
   ExecutionEngagementsFinanceInvoicesNewRoute: typeof ExecutionEngagementsFinanceInvoicesNewRoute
-  ExecutionEngagementsFinanceSetupPersonalRoute: typeof ExecutionEngagementsFinanceSetupPersonalRoute
   ExecutionEngagementsFinanceSetupTeamRoute: typeof ExecutionEngagementsFinanceSetupTeamRoute
   ExecutionEngagementsFinanceImportsIndexRoute: typeof ExecutionEngagementsFinanceImportsIndexRoute
   ExecutionEngagementsFinanceInvoicesIndexRoute: typeof ExecutionEngagementsFinanceInvoicesIndexRoute
@@ -4185,8 +4164,6 @@ const ExecutionEngagementsRouteRouteChildren: ExecutionEngagementsRouteRouteChil
       ExecutionEngagementsFinanceInviteTokenRoute,
     ExecutionEngagementsFinanceInvoicesNewRoute:
       ExecutionEngagementsFinanceInvoicesNewRoute,
-    ExecutionEngagementsFinanceSetupPersonalRoute:
-      ExecutionEngagementsFinanceSetupPersonalRoute,
     ExecutionEngagementsFinanceSetupTeamRoute:
       ExecutionEngagementsFinanceSetupTeamRoute,
     ExecutionEngagementsFinanceImportsIndexRoute:
