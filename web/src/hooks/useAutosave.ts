@@ -87,3 +87,129 @@ export function useAutosave<T>(
 
 	return status;
 }
+
+/**
+ * Debounced auto-save for an editor that stays open across saves (the roadmap
+ * epic/feature/task editors). Differs from useAutosave in three ways:
+ *
+ * - `baseline` is what the entity looked like when the editor opened, built
+ *   with the same normaliser as `draft`. It is adopted only when `resetKey`
+ *   changes (open / switch entity), never from later store updates, so an
+ *   optimistic write or a rollback can't make the hook chase its own tail.
+ * - Saves are serialised: an edit made while a save is in flight waits for it,
+ *   then saves the latest draft. The roadmap store drops an update for a node
+ *   that already has one pending, so overlapping saves would lose edits.
+ * - `flush()` is exposed so closing the editor can push the last edit out
+ *   immediately instead of waiting for the debounce.
+ */
+export function useDraftAutosave<T>({
+	draft,
+	baseline,
+	resetKey,
+	save,
+	enabled = true,
+	delay = 800,
+}: {
+	draft: T;
+	baseline: T;
+	resetKey: string;
+	save: (value: T) => Promise<unknown>;
+	/** Gates the debounce only; flush() always saves a pending change. */
+	enabled?: boolean;
+	delay?: number;
+}): { status: AutosaveStatus; flush: () => void } {
+	const [status, setStatus] = useState<AutosaveStatus>("idle");
+	const draftKey = JSON.stringify(draft);
+	const baselineKey = JSON.stringify(baseline);
+
+	const savedRef = useRef(baselineKey);
+	const draftRef = useRef(draft);
+	const saveRef = useRef(save);
+	const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+	const inFlightRef = useRef(false);
+	const queuedRef = useRef(false);
+	const mountedRef = useRef(true);
+	const generationRef = useRef(0);
+	const enabledRef = useRef(enabled);
+	const baselineKeyRef = useRef(baselineKey);
+
+	draftRef.current = draft;
+	saveRef.current = save;
+	baselineKeyRef.current = baselineKey;
+	enabledRef.current = enabled;
+
+	const runRef = useRef<() => void>(() => {});
+	runRef.current = () => {
+		if (timerRef.current) {
+			clearTimeout(timerRef.current);
+			timerRef.current = null;
+		}
+		if (inFlightRef.current) {
+			queuedRef.current = true;
+			return;
+		}
+		const snapshot = draftRef.current;
+		const key = JSON.stringify(snapshot);
+		if (key === savedRef.current) return;
+		inFlightRef.current = true;
+		const generation = generationRef.current;
+		const isCurrent = () =>
+			mountedRef.current && generation === generationRef.current;
+		if (mountedRef.current) setStatus("saving");
+		Promise.resolve(saveRef.current(snapshot))
+			.then(() => {
+				if (generation !== generationRef.current) return;
+				savedRef.current = key;
+				if (isCurrent()) setStatus("saved");
+			})
+			.catch(() => {
+				// savedRef is left alone, so the next edit (or the close flush)
+				// retries this change. The caller already toasts the failure.
+				if (isCurrent()) setStatus("error");
+			})
+			.finally(() => {
+				inFlightRef.current = false;
+				if (queuedRef.current) {
+					queuedRef.current = false;
+					runRef.current();
+				}
+			});
+	};
+
+	// Declared before the scheduling effect so a reset lands first when both
+	// change in the same commit (the render that opens the editor).
+	useEffect(() => {
+		if (timerRef.current) {
+			clearTimeout(timerRef.current);
+			timerRef.current = null;
+		}
+		// A save still in flight from before the reset finishes on its own;
+		// the generation bump keeps its result from touching the new baseline.
+		generationRef.current += 1;
+		savedRef.current = baselineKeyRef.current;
+		setStatus("idle");
+	}, [resetKey]);
+
+	useEffect(() => {
+		if (!enabled) return;
+		if (draftKey === savedRef.current) return;
+		timerRef.current = setTimeout(() => runRef.current(), delay);
+		return () => {
+			if (timerRef.current) {
+				clearTimeout(timerRef.current);
+				timerRef.current = null;
+			}
+		};
+	}, [draftKey, enabled, delay]);
+
+	useEffect(() => {
+		mountedRef.current = true;
+		return () => {
+			mountedRef.current = false;
+			if (enabledRef.current) runRef.current();
+		};
+	}, []);
+
+	const flushRef = useRef(() => runRef.current());
+	return { status, flush: flushRef.current };
+}

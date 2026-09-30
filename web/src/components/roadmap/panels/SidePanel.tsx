@@ -25,6 +25,7 @@ import {
 import { createPortal } from "react-dom";
 import { RichTextEditor } from "@/components/common/RichTextEditor";
 import { TaskTimerInline } from "@/components/team-time/TaskTimerInline";
+import { useDraftAutosave } from "@/hooks/useAutosave";
 import { useMentionUsers } from "@/hooks/useMentionUsers";
 import {
 	htmlToPlainExcerpt,
@@ -50,6 +51,7 @@ import type {
 } from "@/types/roadmap";
 import { Button } from "@/ui/button";
 import { CommentsSection } from "../shared/CommentsSection";
+import { SaveStatus } from "../shared/SaveStatus";
 import { DueDatePicker } from "./DueDatePicker";
 
 interface SidePanelProps {
@@ -59,6 +61,12 @@ interface SidePanelProps {
 	isPendingCreate?: boolean;
 	onClose: () => void;
 	onUpdateTask: (task: RoadmapTask) => void;
+	/**
+	 * Save an existing task while the panel stays open. When provided, edits
+	 * autosave as you go and the header shows Saving… / Saved; without it the
+	 * panel saves through onUpdateTask on close.
+	 */
+	onAutosaveTask?: (task: RoadmapTask) => Promise<void>;
 	onDeleteTask: (taskId: string) => void;
 	onDuplicateTask?: (taskId: string) => void;
 	onCreateTask?: (taskData: Partial<RoadmapTask>) => void;
@@ -140,13 +148,33 @@ const isSameTaskDraftSnapshot = (
 	left.dueDate === right.dueDate &&
 	left.description === right.description;
 
-const toDateInputValue = (value?: string) => {
+const normalizeTaskForDraft = (task: RoadmapTask): RoadmapTask => ({
+	...task,
+	work_type: task.work_type ?? "real_work",
+	due_date: toDateInputValue(task.due_date) || undefined,
+});
+
+const checklistKeyOf = (items: ChecklistItem[]) =>
+	items.map((i) => `${i.id ?? ""}:${i.title}:${i.completed}`);
+
+// Everything the autosave compares: the draft fields plus the checklist.
+const buildTaskAutosaveDraft = (
+	taskData: Partial<RoadmapTask>,
+	description: string,
+	checklist: ChecklistItem[],
+) => ({
+	...buildTaskDraftSnapshot(taskData),
+	description,
+	checklist: checklistKeyOf(checklist),
+});
+
+function toDateInputValue(value?: string) {
 	if (!value) return "";
 	if (/^\d{4}-\d{2}-\d{2}$/.test(value)) return value;
 	const parsed = new Date(value);
 	if (Number.isNaN(parsed.getTime())) return "";
 	return parsed.toISOString().slice(0, 10);
-};
+}
 
 const formatFileSize = (bytes?: number) => {
 	if (!bytes) return "";
@@ -273,6 +301,7 @@ export const SidePanel = ({
 	isPendingCreate = false,
 	onClose,
 	onUpdateTask,
+	onAutosaveTask,
 	onDeleteTask,
 	onDuplicateTask,
 	onCreateTask,
@@ -367,6 +396,17 @@ export const SidePanel = ({
 	// for a not-yet-created task — viewing/navigation stays unaffected.
 	const isInteractionDisabled =
 		isLoading || isReadOnlyPending || presentationMode;
+	const autosaveActive = Boolean(
+		onAutosaveTask &&
+			!isCreateMode &&
+			task?.id &&
+			!isReadOnlyPending &&
+			!presentationMode,
+	);
+	// The task the draft was last seeded from. While autosaving, the panel's
+	// own saves bump task.updated_at; re-seeding on that would reset what the
+	// user is typing, so an open panel only re-seeds when the task changes.
+	const seededTaskIdRef = useRef<string | null>(null);
 
 	useEffect(() => {
 		// Re-seed the draft only while the panel is actually open. Some hosts (e.g.
@@ -374,8 +414,12 @@ export const SidePanel = ({
 		// true, so isCreateMode never toggles — keying the reset on isOpen too
 		// guarantees a blank draft on every reopen instead of carrying over the
 		// previously created task's title/description.
-		if (!isOpen) return;
+		if (!isOpen) {
+			seededTaskIdRef.current = null;
+			return;
+		}
 		if (isCreateMode) {
+			seededTaskIdRef.current = null;
 			createSnapshotRef.current = { ...TASK_CREATE_DEFAULTS };
 			setNewTaskData({
 				title: "",
@@ -388,11 +432,9 @@ export const SidePanel = ({
 			setChecklistItems([]);
 			initialChecklistRef.current = [];
 		} else if (task) {
-			const normalizedTask = {
-				...task,
-				work_type: task.work_type ?? "real_work",
-				due_date: toDateInputValue(task.due_date) || undefined,
-			};
+			if (autosaveActive && seededTaskIdRef.current === task.id) return;
+			seededTaskIdRef.current = task.id;
+			const normalizedTask = normalizeTaskForDraft(task);
 			editSnapshotRef.current = buildTaskDraftSnapshot(normalizedTask);
 			setEditedTask(normalizedTask);
 			setDescriptionDraft(normalizedTask.description ?? "");
@@ -572,6 +614,30 @@ export const SidePanel = ({
 			checklistStr(initialChecklistRef.current);
 		return fieldsDiffer || checklistDiffers;
 	}, [editedTask, isCreateMode, newTaskData, descriptionDraft, checklistItems]);
+
+	const autosaveBaseline = task
+		? buildTaskAutosaveDraft(
+				normalizeTaskForDraft(task),
+				task.description ?? "",
+				task.checklist ?? [],
+			)
+		: null;
+	const { status: saveStatus, flush: flushAutosave } = useDraftAutosave({
+		draft: editedTask
+			? buildTaskAutosaveDraft(editedTask, descriptionDraft, checklistItems)
+			: autosaveBaseline,
+		baseline: autosaveBaseline,
+		resetKey: `${isOpen}:${isCreateMode ? "create" : (task?.id ?? "")}`,
+		save: () =>
+			editedTask && onAutosaveTask
+				? onAutosaveTask({
+						...editedTask,
+						description: descriptionDraft || null,
+						checklist: checklistItems,
+					})
+				: Promise.resolve(),
+		enabled: isOpen && autosaveActive && Boolean(editedTask?.title?.trim()),
+	});
 
 	// Reset the panel destination when a task is opened from a dedicated action,
 	// such as the canvas row's comments bubble.
@@ -973,6 +1039,21 @@ export const SidePanel = ({
 	// toast.error, it just won't block the close.
 	const handleRequestClose = () => {
 		if (isLoading) return;
+		if (autosaveActive && editedTask) {
+			// Edits already saved as they were made; push out the last one.
+			if (editedTask.title?.trim()) {
+				flushAutosave();
+				if (onSaved && (hasUnsavedChanges || saveStatus !== "idle")) {
+					const savedTask = editedTask;
+					// Fire pulse after the panel's 300ms exit animation finishes
+					setTimeout(() => onSaved(savedTask), 350);
+				}
+			} else if (hasUnsavedChanges) {
+				toast.error("Title is required — your last change wasn't saved");
+			}
+			onClose();
+			return;
+		}
 		if (hasUnsavedChanges) {
 			if (isCreateMode) {
 				if (newTaskData.title?.trim() && onCreateTask) {
@@ -1102,9 +1183,12 @@ export const SidePanel = ({
 		>
 			{/* Header */}
 			<div className="flex items-center justify-between px-6 py-4 border-b border-gray-200 shrink-0">
-				<h2 className="text-lg font-semibold text-gray-900">
-					{isCreateMode ? "Create Task" : "Edit Task"}
-				</h2>
+				<div className="flex min-w-0 items-center gap-3">
+					<h2 className="text-lg font-semibold text-gray-900">
+						{isCreateMode ? "Create Task" : "Edit Task"}
+					</h2>
+					{autosaveActive && <SaveStatus status={saveStatus} />}
+				</div>
 				<button
 					onClick={handleRequestClose}
 					disabled={isLoading}
@@ -1919,6 +2003,7 @@ export const SidePanel = ({
 
 				{!isCreateMode && activeTab === "comments" && (
 					<CommentsSection
+						reportTargetType="task_comment"
 						comments={comments}
 						onAddComment={handleAddComment}
 						onUpdateComment={

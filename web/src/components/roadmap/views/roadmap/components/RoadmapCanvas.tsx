@@ -216,8 +216,10 @@ const RoadmapCanvas = ({
 		handleDuplicateTask,
 		handleCreateEpic,
 		handleUpdateEpicFromModal,
+		handleAutosaveEpicFromModal,
 		handleCreateFeature,
 		handleUpdateFeatureFromModal,
+		handleAutosaveFeatureFromModal,
 		handleOpenEditFeatureModal,
 		handleOpenAddFeatureModal,
 		handleAddEpicBelow,
@@ -225,6 +227,7 @@ const RoadmapCanvas = ({
 		handleConfirmDuplicate,
 		handleTaskCreate,
 		handleTaskUpdate,
+		handleTaskAutosave,
 		handleTaskDelete,
 	} = controller;
 
@@ -565,6 +568,7 @@ const RoadmapCanvas = ({
 					setIsEditEpicModalOpen={setIsEditEpicModalOpen}
 					setEditingEpicId={setEditingEpicId}
 					handleTaskUpdate={handleTaskUpdate}
+					handleTaskAutosave={handleTaskAutosave}
 					handleTaskDelete={handleTaskDelete}
 					handleTaskDuplicate={handleDuplicateTask}
 					handleTaskCreate={handleTaskCreate}
@@ -572,8 +576,10 @@ const RoadmapCanvas = ({
 					handleCreateTaskFromFeature={handleCreateTaskFromFeature}
 					handleCreateEpic={handleCreateEpic}
 					handleUpdateEpicFromModal={handleUpdateEpicFromModal}
+					handleAutosaveEpicFromModal={handleAutosaveEpicFromModal}
 					handleCreateFeature={handleCreateFeature}
 					handleUpdateFeatureFromModal={handleUpdateFeatureFromModal}
+					handleAutosaveFeatureFromModal={handleAutosaveFeatureFromModal}
 					handleOpenEditFeatureModal={handleOpenEditFeatureModal}
 					handleConfirmDelete={handleConfirmDelete}
 					handleConfirmDuplicate={handleConfirmDuplicate}

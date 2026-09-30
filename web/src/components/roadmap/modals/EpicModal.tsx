@@ -11,6 +11,7 @@ import { type FormEvent, useEffect, useMemo, useRef, useState } from "react";
 import { useUser } from "@/auth";
 import { LabelSelector } from "@/components/common/LabelSelector";
 import { RichTextEditor } from "@/components/common/RichTextEditor";
+import { useDraftAutosave } from "@/hooks/useAutosave";
 import { useMentionUsers } from "@/hooks/useMentionUsers";
 import { useCommentSummaryUpdaters } from "@/hooks/useRoadmapCommentSummary";
 import { useToast } from "@/hooks/useToast";
@@ -26,21 +27,30 @@ import type {
 } from "@/types/roadmap";
 import { Button } from "@/ui/button";
 import { CommentsSection } from "../shared/CommentsSection";
+import { SaveStatus } from "../shared/SaveStatus";
 import { TaskListItem } from "../widgets/TaskListItem";
 import { RoadmapModalLayout } from "./RoadmapModalLayout";
+
+type EpicSubmitData = {
+	title: string;
+	description: string;
+	priority: EpicPriority;
+	tags: string[];
+	labels?: Label[]; // Add labels field
+	start_date?: string;
+	end_date?: string;
+};
 
 interface EpicModalProps {
 	isOpen: boolean;
 	onClose: () => void;
-	onSubmit: (data: {
-		title: string;
-		description: string;
-		priority: EpicPriority;
-		tags: string[];
-		labels?: Label[]; // Add labels field
-		start_date?: string;
-		end_date?: string;
-	}) => void;
+	onSubmit: (data: EpicSubmitData) => void;
+	/**
+	 * Save an existing epic while the modal stays open. When provided, edits
+	 * autosave as you go and the header shows Saving… / Saved; without it the
+	 * modal falls back to saving through onSubmit on close.
+	 */
+	onAutosave?: (data: EpicSubmitData) => Promise<void>;
 	onAddFeature?: () => void;
 	onSelectFeature?: (feature: RoadmapFeature) => void;
 	onAddTask?: (featureId: string) => void | Promise<void>;
@@ -81,6 +91,37 @@ const resolveInitialLabels = (initialData?: EpicModalProps["initialData"]) => {
 	return [];
 };
 
+type EpicDraft = {
+	title: string;
+	description: string;
+	priority: EpicPriority;
+	labels: Label[];
+	startDate: string;
+	endDate: string;
+};
+
+const buildEpicDraft = (
+	initialData?: EpicModalProps["initialData"],
+): EpicDraft => ({
+	title: initialData?.title ?? "",
+	description: initialData?.description ?? "",
+	priority: initialData?.priority ?? "medium",
+	labels: resolveInitialLabels(initialData),
+	startDate: initialData?.start_date?.slice(0, 10) ?? "",
+	endDate: initialData?.end_date?.slice(0, 10) ?? "",
+});
+
+const toEpicSubmitData = (draft: EpicDraft): EpicSubmitData => ({
+	title: draft.title,
+	description: draft.description,
+	priority: draft.priority,
+	// Submit both labels and tags for backward compatibility
+	tags: draft.labels.map((label) => label.name),
+	labels: draft.labels, // Include full label objects with colors
+	start_date: draft.startDate || undefined,
+	end_date: draft.endDate || undefined,
+});
+
 const labelsSignature = (items: Label[]) =>
 	items.map((item) => `${item.name}|${item.color ?? ""}`).join("||");
 
@@ -88,6 +129,7 @@ export const EpicModal = ({
 	isOpen,
 	onClose,
 	onSubmit,
+	onAutosave,
 	onAddFeature,
 	onSelectFeature,
 	onAddTask,
@@ -129,14 +171,7 @@ export const EpicModal = ({
 	const [comments, setComments] = useState<Comment[]>([]);
 	const [loadingComments, setLoadingComments] = useState(false);
 	const descriptionRef = useRef<HTMLDivElement>(null);
-	const initialSnapshotRef = useRef<{
-		title: string;
-		description: string;
-		priority: EpicPriority;
-		labels: Label[];
-		startDate: string;
-		endDate: string;
-	} | null>(null);
+	const initialSnapshotRef = useRef<EpicDraft | null>(null);
 
 	const epicId = initialData?.id;
 	// Presentation mode folds in here too: every gate below that already exists
@@ -146,14 +181,7 @@ export const EpicModal = ({
 
 	useEffect(() => {
 		if (isOpen) {
-			const nextInitialValues = {
-				title: initialData?.title ?? "",
-				description: initialData?.description ?? "",
-				priority: initialData?.priority ?? "medium",
-				labels: resolveInitialLabels(initialData),
-				startDate: initialData?.start_date?.slice(0, 10) ?? "",
-				endDate: initialData?.end_date?.slice(0, 10) ?? "",
-			};
+			const nextInitialValues = buildEpicDraft(initialData);
 			initialSnapshotRef.current = nextInitialValues;
 
 			setTitle(nextInitialValues.title);
@@ -247,19 +275,27 @@ export const EpicModal = ({
 		applyCommentAuthoritative(epicId, "epic", next);
 	};
 
-	const submitCurrentValues = () => {
-		// Submit both labels and tags for backward compatibility
-		const tags = labels.map((label) => label.name);
+	const draft: EpicDraft = {
+		title,
+		description,
+		priority,
+		labels,
+		startDate,
+		endDate,
+	};
 
-		onSubmit({
-			title,
-			description,
-			priority,
-			tags,
-			labels, // Include full label objects with colors
-			start_date: startDate || undefined,
-			end_date: endDate || undefined,
-		});
+	const autosaveActive = Boolean(onAutosave && epicId && !isReadOnlyPending);
+	const { status: saveStatus, flush: flushAutosave } = useDraftAutosave({
+		draft,
+		baseline: buildEpicDraft(initialData),
+		resetKey: `${isOpen}:${epicId ?? ""}`,
+		save: (value) =>
+			onAutosave ? onAutosave(toEpicSubmitData(value)) : Promise.resolve(),
+		enabled: isOpen && autosaveActive && title.trim().length > 0,
+	});
+
+	const submitCurrentValues = () => {
+		onSubmit(toEpicSubmitData(draft));
 	};
 
 	const handleSubmit = (e: FormEvent) => {
@@ -286,6 +322,14 @@ export const EpicModal = ({
 	// submitted, so that case is discarded with a heads-up toast instead.
 	const handleRequestClose = () => {
 		if (isLoading) return;
+		if (autosaveActive) {
+			// Edits already saved as they were made; push out the last one.
+			if (title.trim()) flushAutosave();
+			else if (hasUnsavedChanges)
+				toast.error("Title is required — your last change wasn't saved");
+			onClose();
+			return;
+		}
 		if (hasUnsavedChanges) {
 			if (title.trim()) {
 				submitCurrentValues();
@@ -689,6 +733,7 @@ export const EpicModal = ({
 			label: "Comments",
 			content: epicId ? (
 				<CommentsSection
+					reportTargetType="epic_comment"
 					mentionUsers={mentionUsers}
 					canInviteByEmail={canInviteByEmail}
 					comments={comments}
@@ -741,6 +786,7 @@ export const EpicModal = ({
 			titlePlaceholder="Title"
 			onSubmit={handleSubmit}
 			actionButtons={dateActionButton}
+			saveStatus={autosaveActive ? <SaveStatus status={saveStatus} /> : null}
 			showDefaultDatesAction={false}
 			body={body}
 			footer={

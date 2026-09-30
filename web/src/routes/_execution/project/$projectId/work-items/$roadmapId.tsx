@@ -155,13 +155,18 @@ function WorkItemsBoardPage() {
 				setIsEditEpicModalOpen={controller.setIsEditEpicModalOpen}
 				setEditingEpicId={controller.setEditingEpicId}
 				handleTaskUpdate={controller.handleTaskUpdate}
+				handleTaskAutosave={controller.handleTaskAutosave}
 				handleTaskDelete={controller.handleTaskDelete}
 				handleTaskDuplicate={controller.handleDuplicateTask}
 				handleTaskCreate={controller.handleTaskCreate}
 				handleCreateEpic={controller.handleCreateEpic}
 				handleUpdateEpicFromModal={controller.handleUpdateEpicFromModal}
+				handleAutosaveEpicFromModal={controller.handleAutosaveEpicFromModal}
 				handleCreateFeature={controller.handleCreateFeature}
 				handleUpdateFeatureFromModal={controller.handleUpdateFeatureFromModal}
+				handleAutosaveFeatureFromModal={
+					controller.handleAutosaveFeatureFromModal
+				}
 				handleOpenEditFeatureModal={controller.handleOpenEditFeatureModal}
 				handleConfirmDelete={controller.handleConfirmDelete}
 				handleConfirmDuplicate={controller.handleConfirmDuplicate}

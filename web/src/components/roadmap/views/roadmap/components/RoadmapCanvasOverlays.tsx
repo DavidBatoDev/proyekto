@@ -51,6 +51,18 @@ interface RoadmapCanvasOverlaysProps {
 	setIsEditEpicModalOpen: Dispatch<SetStateAction<boolean>>;
 	setEditingEpicId: Dispatch<SetStateAction<string | null>>;
 	handleTaskUpdate: (task: RoadmapTask) => Promise<void>;
+	/** Saves from an open editor (no loading lock); enables Saving… / Saved. */
+	handleTaskAutosave?: (task: RoadmapTask) => Promise<void>;
+	handleAutosaveEpicFromModal?: (
+		data: Parameters<
+			RoadmapCanvasOverlaysProps["handleUpdateEpicFromModal"]
+		>[0],
+	) => Promise<void>;
+	handleAutosaveFeatureFromModal?: (
+		data: Parameters<
+			RoadmapCanvasOverlaysProps["handleUpdateFeatureFromModal"]
+		>[0],
+	) => Promise<void>;
 	handleTaskDelete: (taskId: string) => Promise<void>;
 	handleTaskDuplicate?: (taskId: string) => Promise<void>;
 	handleTaskCreate: (taskData: Partial<RoadmapTask>) => Promise<void>;
@@ -136,6 +148,9 @@ export function RoadmapCanvasOverlays({
 	setIsEditEpicModalOpen,
 	setEditingEpicId,
 	handleTaskUpdate,
+	handleTaskAutosave,
+	handleAutosaveEpicFromModal,
+	handleAutosaveFeatureFromModal,
 	handleTaskDelete,
 	handleTaskDuplicate,
 	handleTaskCreate,
@@ -186,6 +201,7 @@ export function RoadmapCanvasOverlays({
 					}
 				}}
 				onUpdateTask={handleTaskUpdate}
+				onAutosaveTask={handleTaskAutosave}
 				onDeleteTask={handleTaskDelete}
 				onDuplicateTask={handleTaskDuplicate}
 				onCreateTask={handleTaskCreate}
@@ -207,6 +223,7 @@ export function RoadmapCanvasOverlays({
 					setEditingEpicId(null);
 				}}
 				onSubmit={handleUpdateEpicFromModal}
+				onAutosave={handleAutosaveEpicFromModal}
 				onAddFeature={
 					editingEpicId
 						? () => {
@@ -330,6 +347,7 @@ export function RoadmapCanvasOverlays({
 				onDeleteTask={handleTaskDelete}
 				onSelectTask={selectTask}
 				onSubmit={handleUpdateFeatureFromModal}
+				onAutosave={handleAutosaveFeatureFromModal}
 				isLoading={isFeatureLoading}
 				isPendingCreate={isEditingFeaturePending}
 			/>

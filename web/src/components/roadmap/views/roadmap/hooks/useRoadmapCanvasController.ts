@@ -629,6 +629,35 @@ export function useRoadmapCanvasController({
 		[editingEpicId, epicById, onUpdateEpic],
 	);
 
+	// Autosave from an open epic modal: same payload as the close-save above,
+	// but it leaves the modal open and hands the promise back so the modal can
+	// show Saving… / Saved. No loading flag either — that would lock the form.
+	const handleAutosaveEpicFromModal = useCallback(
+		async (data: {
+			title: string;
+			description: string;
+			priority: EpicPriority;
+			tags: string[];
+			start_date?: string;
+			end_date?: string;
+		}) => {
+			if (!editingEpicId) return;
+			const epic = epicById.get(editingEpicId);
+			if (!epic) return;
+			await onUpdateEpic({
+				...epic,
+				title: data.title,
+				description: data.description,
+				priority: data.priority,
+				tags: data.tags,
+				start_date: data.start_date,
+				end_date: data.end_date,
+				updated_at: new Date().toISOString(),
+			});
+		},
+		[editingEpicId, epicById, onUpdateEpic],
+	);
+
 	const handleCreateFeature = useCallback(
 		async (data: {
 			title: string;
@@ -899,6 +928,35 @@ export function useRoadmapCanvasController({
 		[editingFeatureEpicId, editingFeatureId, featureById, onUpdateFeature],
 	);
 
+	const handleAutosaveFeatureFromModal = useCallback(
+		async (data: {
+			title: string;
+			description: string;
+			is_deliverable: boolean;
+			start_date?: string;
+			end_date?: string;
+			status?: FeatureStatus;
+			assignee_ids?: string[];
+		}) => {
+			if (!editingFeatureId || !editingFeatureEpicId) return;
+			const featureMeta = featureById.get(editingFeatureId);
+			const feature = featureMeta?.feature;
+			if (!feature || featureMeta.epicId !== editingFeatureEpicId) return;
+			await onUpdateFeature({
+				...feature,
+				title: data.title,
+				description: data.description,
+				is_deliverable: data.is_deliverable,
+				start_date: data.start_date,
+				end_date: data.end_date,
+				status: data.status ?? feature.status,
+				assignee_ids: data.assignee_ids,
+				updated_at: new Date().toISOString(),
+			});
+		},
+		[editingFeatureEpicId, editingFeatureId, featureById, onUpdateFeature],
+	);
+
 	const handleDeleteEpic = useCallback(
 		(id: string) => {
 			const epic = epicById.get(id);
@@ -1161,8 +1219,10 @@ export function useRoadmapCanvasController({
 		handleDuplicateTask,
 		handleCreateEpic,
 		handleUpdateEpicFromModal,
+		handleAutosaveEpicFromModal,
 		handleCreateFeature,
 		handleUpdateFeatureFromModal,
+		handleAutosaveFeatureFromModal,
 		handleOpenEditFeatureModal,
 		handleOpenEditEpicModal,
 		handleOpenAddFeatureModal,
@@ -1171,6 +1231,7 @@ export function useRoadmapCanvasController({
 		handleConfirmDuplicate,
 		handleTaskCreate,
 		handleTaskUpdate,
+		handleTaskAutosave: onUpdateTask,
 		handleTaskDelete,
 	};
 }
