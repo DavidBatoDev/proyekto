@@ -30,7 +30,7 @@ interface ProjectFinanceSearch {
  * their role may not see is never fetched into the page.
  */
 export const Route = createFileRoute(
-	"/_execution/engagements/finance/team/$teamId/project/$bookId",
+	"/_execution/engagements/finance/team/$teamId/project/$bookId/",
 )({
 	validateSearch: (search: Record<string, unknown>): ProjectFinanceSearch => ({
 		tab: PROJECT_BOOK_TABS.includes(search.tab as ProjectBookTab)
@@ -163,8 +163,8 @@ function ProjectFinancePage() {
 							}
 							onOpenImport={(documentId) =>
 								void navigate({
-									to: "/engagements/finance/imports/$documentId",
-									params: { documentId },
+									to: "/engagements/finance/team/$teamId/project/$bookId/imports/$documentId",
+									params: { teamId, bookId, documentId },
 								})
 							}
 						/>

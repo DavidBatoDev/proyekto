@@ -1,5 +1,6 @@
 import { Link } from "@tanstack/react-router";
 import type { ReactNode } from "react";
+import type { ProjectBookTab } from "@/components/finance/book/ProjectBookWorkspace";
 import {
 	FINANCE_CRUMB_LINK_CLASS,
 	FinanceBreadcrumbs,
@@ -10,7 +11,7 @@ import {
  * The one breadcrumb for every finance page, built from the same tree the
  * sidebar draws (see `engagementsNavigation.ts`):
  *
- *   Engagements › My finance › My teams › <team> › <project> › <page>
+ *   Engagements › My finance › My teams › <team> › <project> › <tab> › <page>
  *
  * Pass as much of the chain as the page sits under; the deepest level given
  * without a `current` label is rendered as the current page. A team always
@@ -21,12 +22,15 @@ export function FinanceTrail({
 	team,
 	project,
 	shared,
+	section,
 	current,
 }: {
 	team?: { id: string; name: string };
 	project?: { bookId: string; title: string };
 	/** The page sits under "Shared with me" instead of "My teams". */
 	shared?: boolean;
+	/** A project tab the page sits under ("Imports"), linking to that tab. */
+	section?: { label: string; tab: ProjectBookTab };
 	/** The page's own label, when it is deeper than the last node above. */
 	current?: ReactNode;
 }) {
@@ -100,7 +104,7 @@ export function FinanceTrail({
 
 	if (project && team) {
 		items.push(
-			!current ? (
+			!current && !section ? (
 				<FinanceCurrentCrumb key="project">{project.title}</FinanceCurrentCrumb>
 			) : (
 				<Link
@@ -110,6 +114,24 @@ export function FinanceTrail({
 					className={FINANCE_CRUMB_LINK_CLASS}
 				>
 					{project.title}
+				</Link>
+			),
+		);
+	}
+
+	if (project && team && section) {
+		items.push(
+			!current ? (
+				<FinanceCurrentCrumb key="section">{section.label}</FinanceCurrentCrumb>
+			) : (
+				<Link
+					key="section"
+					to="/engagements/finance/team/$teamId/project/$bookId"
+					params={{ teamId: team.id, bookId: project.bookId }}
+					search={{ tab: section.tab }}
+					className={FINANCE_CRUMB_LINK_CLASS}
+				>
+					{section.label}
 				</Link>
 			),
 		);

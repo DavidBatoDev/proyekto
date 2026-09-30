@@ -2,6 +2,10 @@ import { useQuery } from "@tanstack/react-query";
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { SelectField } from "@/components/common/FormFields";
 import { ProjectImportsPanel } from "@/components/finance/imports/ProjectImportsPanel";
+import {
+	findProjectHome,
+	useFinanceHub,
+} from "@/components/finance/nav/useManagedTeams";
 import { TeamFinanceChrome } from "@/components/finance/team/TeamFinanceChrome";
 import { listTeamProjects } from "@/services/teams.service";
 
@@ -30,6 +34,7 @@ function TeamImportsPage() {
 	const { teamId } = Route.useParams();
 	const { projectId } = Route.useSearch();
 	const navigate = useNavigate();
+	const hubQuery = useFinanceHub();
 
 	const projectsQuery = useQuery({
 		queryKey: ["teams", teamId, "projects"],
@@ -70,12 +75,20 @@ function TeamImportsPage() {
 				</div>
 				<ProjectImportsPanel
 					projectId={selected}
-					onOpenDocument={(documentId) =>
-						void navigate({
-							to: "/engagements/finance/imports/$documentId",
-							params: { documentId },
-						})
-					}
+					onOpenDocument={(documentId) => {
+						const home = findProjectHome(hubQuery.data, selected);
+						if (home) {
+							void navigate({
+								to: "/engagements/finance/team/$teamId/project/$bookId/imports/$documentId",
+								params: { ...home, documentId },
+							});
+						} else {
+							void navigate({
+								to: "/engagements/finance/imports/$documentId",
+								params: { documentId },
+							});
+						}
+					}}
 				/>
 			</div>
 		</TeamFinanceChrome>
