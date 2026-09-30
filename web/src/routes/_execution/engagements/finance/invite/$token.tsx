@@ -5,7 +5,10 @@ import {
 	AppEmptyState,
 	AppSurfaceCard,
 } from "@/components/common/AppPrimitives";
-import { FinanceLoading } from "@/components/finance/portfolio/FinancePrimitives";
+import {
+	FinanceLoading,
+	formatFinanceDate,
+} from "@/components/finance/portfolio/FinancePrimitives";
 import { useToast } from "@/hooks/useToast";
 import { financeBooksService } from "@/services/financeBooks.service";
 
@@ -163,7 +166,7 @@ function FinanceInvitePage() {
 					)}
 
 					<p className="mt-6 text-xs text-slate-500">
-						Expires {new Date(invite.expires_at).toLocaleDateString()}.{" "}
+						Expires {formatFinanceDate(invite.expires_at.slice(0, 10))}.{" "}
 						<Link
 							to="/engagements/finance"
 							className="font-medium text-slate-700 underline-offset-2 hover:underline"

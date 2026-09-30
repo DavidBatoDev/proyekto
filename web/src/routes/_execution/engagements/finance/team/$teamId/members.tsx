@@ -15,6 +15,7 @@ import {
 } from "@/components/finance/FinanceShareDialog";
 import { InitialsTile } from "@/components/finance/InitialsTile";
 import { useHubTeam } from "@/components/finance/nav/useManagedTeams";
+import { formatFinanceDate } from "@/components/finance/portfolio/FinancePrimitives";
 import { TeamFinanceChrome } from "@/components/finance/team/TeamFinanceChrome";
 import { useConfirm } from "@/hooks/useConfirm";
 import { useToast } from "@/hooks/useToast";
@@ -267,7 +268,7 @@ function FinanceAccessSection({
 							<PersonRow
 								key={invite.id}
 								name={invite.email}
-								detail={`Invited ${new Date(invite.created_at).toLocaleDateString()} · expires ${new Date(invite.expires_at).toLocaleDateString()}`}
+								detail={`Invited ${formatFinanceDate(invite.created_at.slice(0, 10))} · expires ${formatFinanceDate(invite.expires_at.slice(0, 10))}`}
 								badge={
 									FINANCE_ROLE_LABELS[invite.finance_role] ??
 									invite.finance_role
@@ -375,10 +376,10 @@ function PendingInviteRow({
 		: "";
 	const expired = invite.status === "expired";
 	const detail = expired
-		? `Expired ${new Date(invite.expires_at ?? invite.updated_at).toLocaleDateString()} · invited${by}`
-		: `Invited ${new Date(invite.created_at).toLocaleDateString()}${by}${
+		? `Expired ${formatFinanceDate((invite.expires_at ?? invite.updated_at).slice(0, 10))} · invited${by}`
+		: `Invited ${formatFinanceDate(invite.created_at.slice(0, 10))}${by}${
 				invite.expires_at
-					? ` · expires ${new Date(invite.expires_at).toLocaleDateString()}`
+					? ` · expires ${formatFinanceDate(invite.expires_at.slice(0, 10))}`
 					: ""
 			}`;
 	return (

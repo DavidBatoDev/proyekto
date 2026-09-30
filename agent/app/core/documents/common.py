@@ -7,7 +7,11 @@ to a JSON schema, not the v2 tool-calling loop.
 from __future__ import annotations
 
 import json
+import logging
+import time
 from typing import Any
+
+logger = logging.getLogger(__name__)
 
 
 def output_text(response: Any) -> str:
@@ -47,6 +51,7 @@ def json_call(
         if schema
         else {'type': 'json_object'}
     )
+    started = time.perf_counter()
     response = client.responses.create(
         model=model,
         input=[
@@ -56,6 +61,15 @@ def json_call(
         max_output_tokens=max_output_tokens,
         store=False,
         text={'format': text_format},
+    )
+    usage = getattr(response, 'usage', None)
+    logger.info(
+        'documents.json_call schema=%s model=%s input_tokens=%s output_tokens=%s ms=%d',
+        schema_name,
+        model,
+        getattr(usage, 'input_tokens', None),
+        getattr(usage, 'output_tokens', None),
+        (time.perf_counter() - started) * 1000,
     )
     raw = output_text(response)
     if not raw.strip():

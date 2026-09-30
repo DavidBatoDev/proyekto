@@ -255,9 +255,18 @@ export class IntakeReplicateService {
       creation_mode:
         batch.importer_capacity === 'consultant' ? 'consultant' : 'client',
       workspace_id: batch.workspace_id ?? undefined,
-      status: 'active',
+      // Consultant-mode creation only accepts drafts; the imported work is
+      // already running, so the project is activated right after.
+      status: batch.importer_capacity === 'consultant' ? 'draft' : 'active',
     });
     const projectId = created.project.id;
+    if (batch.importer_capacity === 'consultant') {
+      const { error } = await this.supabase
+        .from('projects')
+        .update({ status: 'active' })
+        .eq('id', projectId);
+      if (error) throw new BadRequestException(error.message);
+    }
     await this.supabase
       .from('intake_relationships')
       .update({ project_id: projectId })
@@ -364,7 +373,10 @@ export class IntakeReplicateService {
   ): Promise<string> {
     const v = (doc: IntakeDocumentRow, key: string) =>
       doc.fields[key]?.value ?? null;
-    const number = v(invoice, 'number');
+    // "#BS2026-DM-054" on the paper is invoice BS2026-DM-054 in the ledger.
+    const number = v(invoice, 'number')
+      ?.replace(/^\s*#\s*/, '')
+      .trim();
     const total = amount(v(invoice, 'total'));
     const issueDate = isoDate(v(invoice, 'issue_date'));
     const currency = v(invoice, 'currency')?.toUpperCase();
