@@ -306,6 +306,9 @@ export const CONTRACT_AUTHOR_CAPACITIES = [
 export type ContractAuthorCapacity =
   (typeof CONTRACT_AUTHOR_CAPACITIES)[number];
 
+export const CONTRACT_TEMPLATES = ['standard', 'team_owner'] as const;
+export type ContractTemplateChoice = (typeof CONTRACT_TEMPLATES)[number];
+
 export class CreateContractDto extends ContractTermsDto {
   @IsOptional()
   @IsUUID()
@@ -333,6 +336,21 @@ export class CreateContractDto extends ContractTermsDto {
   @IsOptional()
   @IsIn(CONTRACT_AUTHOR_CAPACITIES)
   author_capacity?: ContractAuthorCapacity;
+
+  /**
+   * Which clause template to issue under. `team_owner` is the Team Owner
+   * Agreement (the author signs for a team they own); omitted or `standard`
+   * uses the per-kind default. Explicit `clauses` always win.
+   */
+  @IsOptional()
+  @IsIn(CONTRACT_TEMPLATES)
+  template?: ContractTemplateChoice;
+}
+
+/** Re-template a draft (author only). */
+export class ApplyContractTemplateDto {
+  @IsIn(CONTRACT_TEMPLATES)
+  template!: ContractTemplateChoice;
 }
 
 /** Rule 4: the revision the caller's seat has now reviewed. */

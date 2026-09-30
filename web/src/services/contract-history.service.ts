@@ -138,6 +138,26 @@ export const contractHistoryService = {
 		}
 	},
 
+	/**
+	 * Re-issue a draft under a template. `team_owner` is the Team Owner
+	 * Agreement: the author signs for a team they own, and the variant is named
+	 * by the counterparty (talent, consultant or client).
+	 */
+	async applyTemplate(
+		contractId: string,
+		template: "standard" | "team_owner",
+	): Promise<Contract> {
+		try {
+			const { data } = await apiClient.post<{ data: Contract }>(
+				`/api/contracts/${contractId}/template`,
+				{ template },
+			);
+			return data.data;
+		} catch (err) {
+			fail(err, "Failed to apply the template");
+		}
+	},
+
 	async withdraw(contractId: string): Promise<Contract> {
 		try {
 			const { data } = await apiClient.post<{ data: Contract }>(

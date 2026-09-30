@@ -36,6 +36,12 @@ import {
 } from './contract-clause-template';
 import { computeContractTerm } from './contract-term';
 import {
+  TEAM_OWNER_TEMPLATE,
+  teamOwnerAgreementClauses,
+  teamOwnerAgreementTitle,
+  teamOwnerVariant,
+} from './team-owner-agreement';
+import {
   type ContractDiff,
   contractTermsSnapshot,
   type ContractTermsSnapshot,
@@ -726,6 +732,7 @@ export class ContractsService {
       counterparty_user_id,
       team_id: requestedTeamId,
       author_capacity: _authorCapacity,
+      template: templateChoice,
       ...rawTerms
     } = dto;
     void _authorCapacity;
@@ -775,6 +782,27 @@ export class ContractsService {
       (projectId
         ? await this.projectWorkspaceId(projectId)
         : await this.defaultWorkspaceId(callerId));
+    // The Team Owner Agreement: the author is the team owner, on whichever
+    // seat they hold; the variant is named by the counterparty's capacity.
+    const template =
+      templateChoice === TEAM_OWNER_TEMPLATE
+        ? this.teamOwnerTemplate({
+            ownerSeat: author
+              ? relationshipKind === 'client_services'
+                ? 'hirer'
+                : 'provider'
+              : relationshipKind === 'client_services'
+                ? 'provider'
+                : 'hirer',
+            counterpartyCapacity: author
+              ? 'consultant'
+              : relationshipKind === 'client_services'
+                ? 'client'
+                : 'talent',
+            ownerTeam: author ? counterpartyTeam : consultantTeam,
+          })
+        : null;
+
     const insert: Record<string, unknown> = {
       project_id: projectId,
       consultant_user_id: author ? author.consultantId : callerId,
@@ -785,9 +813,12 @@ export class ContractsService {
       status: 'draft',
       created_by: callerId,
       workspace_id: workspaceId,
-      document_title: agreementTitle(relationshipKind),
+      template_key: template?.template_key ?? null,
+      document_title:
+        template?.document_title ?? agreementTitle(relationshipKind),
       clauses:
         (terms.clauses as unknown as ContractClause[]) ??
+        template?.clauses ??
         defaultContractClauses(relationshipKind),
       // Services start empty — the consultant defines them on the Contract tab.
       services: (terms.services as unknown as ContractService[]) ?? [],
@@ -1584,6 +1615,75 @@ export class ContractsService {
       );
     }
     return this.withSchedule(data as ContractRow);
+  }
+
+  /**
+   * The Team Owner Agreement's clauses and title for one contract. The owner
+   * must sign on behalf of a team they own: the agreement is the TEAM's.
+   */
+  private teamOwnerTemplate(input: {
+    ownerSeat: 'hirer' | 'provider';
+    counterpartyCapacity: 'client' | 'consultant' | 'talent';
+    ownerTeam: { id: string } | null;
+  }): {
+    template_key: string;
+    document_title: string;
+    clauses: ContractClause[];
+  } {
+    if (!input.ownerTeam) {
+      throw new BadRequestException(
+        'The Team Owner Agreement is signed on behalf of a team. Choose one of your teams first.',
+      );
+    }
+    const variant = teamOwnerVariant(input.counterpartyCapacity);
+    return {
+      template_key: `${TEAM_OWNER_TEMPLATE}:${variant}`,
+      document_title: teamOwnerAgreementTitle(variant),
+      clauses: teamOwnerAgreementClauses(variant, input.ownerSeat),
+    };
+  }
+
+  /**
+   * Replace a draft's clauses and title with a template. Author only, while
+   * it is a draft: once sent, the clauses are negotiated, not re-templated.
+   * `standard` restores the per-kind default agreement.
+   */
+  async applyTemplate(
+    callerId: string,
+    contractId: string,
+    template: 'standard' | typeof TEAM_OWNER_TEMPLATE,
+  ): Promise<ContractWithSchedule> {
+    const contract = await this.getContractRow(contractId);
+    const seat = await this.assertPartyControl(callerId, contract);
+    if (contract.status !== 'draft' || callerId !== this.authorOf(contract)) {
+      throw new BadRequestException(
+        'Only the author can change the template, and only while it is a draft.',
+      );
+    }
+    const patch =
+      template === TEAM_OWNER_TEMPLATE
+        ? await (async () => {
+            const positions = await this.getPositions(contract.id);
+            const other = positions.find((entry) => entry.user_id !== callerId);
+            if (!seat || !other) {
+              throw new BadRequestException(
+                'This contract needs both parties before the Team Owner Agreement applies.',
+              );
+            }
+            return this.teamOwnerTemplate({
+              ownerSeat: seat.position,
+              counterpartyCapacity: other.capacity,
+              ownerTeam: seat.team_id ? { id: seat.team_id } : null,
+            });
+          })()
+        : {
+            template_key: null,
+            document_title: agreementTitle(contract.relationship_kind),
+            clauses: defaultContractClauses(contract.relationship_kind),
+          };
+    return this.withSchedule(
+      await this.commitTermsChange(contract, patch, callerId),
+    );
   }
 
   /**

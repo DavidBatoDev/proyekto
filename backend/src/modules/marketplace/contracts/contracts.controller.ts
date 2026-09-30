@@ -22,6 +22,7 @@ import { ContractsService } from './contracts.service';
 import { SaveContractInitialsDto } from './dto/contract-page-initials.dto';
 import {
   AmendContractDto,
+  ApplyContractTemplateDto,
   CreateContractDto,
   MarkContractViewedDto,
   ResolveContractCounterpartyDto,
@@ -102,6 +103,16 @@ export class ContractsController {
     @Param('id', ParseUUIDPipe) id: string,
   ) {
     return this.contracts.sendContract(user.id, id);
+  }
+
+  /** Re-issue a draft under a template (author only, drafts only). */
+  @Post(':id/template')
+  applyTemplate(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: ApplyContractTemplateDto,
+  ) {
+    return this.contracts.applyTemplate(user.id, id, dto.template);
   }
 
   /** Either party withdraws a sent contract (-> cancelled). */

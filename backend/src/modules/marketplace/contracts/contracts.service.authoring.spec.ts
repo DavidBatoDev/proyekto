@@ -651,3 +651,106 @@ describe('ContractsService: freeze on signing', () => {
     expect(result.signed_pdf_path).toBe('contract_snapshots/x.pdf');
   });
 });
+
+describe('ContractsService: the Team Owner Agreement template', () => {
+  const profileReply = (call: Call): Reply | undefined => {
+    if (call.table !== 'profiles') return undefined;
+    const id = (call.filters.find((f) => f[1] === 'id')?.[2] as string) ?? 'x';
+    return {
+      data: {
+        id,
+        display_name: id,
+        first_name: null,
+        last_name: null,
+        email: `${id}@example.com`,
+      },
+      error: null,
+    };
+  };
+
+  it('issues a consultant-authored client contract as the Team Services Agreement', async () => {
+    let inserted: Record<string, unknown> | null = null;
+    const { service } = build({
+      reply: (call) => {
+        const profile = profileReply(call);
+        if (profile) return profile;
+        if (call.table === 'teams') {
+          return {
+            data: {
+              id: 'team-1',
+              name: 'Team One',
+              owner_id: 'consultant-1',
+              legal_name: null,
+              billing_address: null,
+              tax_id: null,
+              billing_email: null,
+            },
+            error: null,
+          };
+        }
+        if (call.table === 'workspace_members')
+          return { data: [], error: null };
+        if (call.table === 'contracts' && call.op === 'insert') {
+          inserted = call.payload as Record<string, unknown>;
+          return { data: { ...contractFixture(), ...inserted }, error: null };
+        }
+        return undefined;
+      },
+    });
+
+    await service.createContractInternal('consultant-1', {
+      counterparty_user_id: 'client-1',
+      scope_mode: 'flexible',
+      team_id: '00000000-0000-0000-0000-0000000000aa',
+      template: 'team_owner',
+    });
+
+    expect(inserted).toEqual(
+      expect.objectContaining({
+        template_key: 'team_owner:client',
+        document_title: 'Team Services Agreement',
+      }),
+    );
+  });
+
+  it('refuses the template when the owner signs for no team', async () => {
+    const { service } = build({
+      reply: (call) => profileReply(call),
+    });
+
+    await expect(
+      service.createContractInternal('consultant-1', {
+        counterparty_user_id: 'client-1',
+        scope_mode: 'flexible',
+        provider_kind: 'individual',
+        template: 'team_owner',
+      }),
+    ).rejects.toThrow(/on behalf of a team/);
+  });
+
+  it('re-templates a draft for its author', async () => {
+    const contract = contractFixture({
+      status: 'draft',
+      created_by: 'client-1',
+    });
+    const { service, calls } = build({
+      contract,
+      positions: [
+        seat('hirer', 'client-1', 'client', { team_id: 'team-9' }),
+        seat('provider', 'consultant-1', 'consultant'),
+      ],
+    });
+
+    await service.applyTemplate('client-1', contract.id, 'team_owner');
+
+    const update = calls.find(
+      (call) => call.table === 'contracts' && call.op === 'update',
+    );
+    expect(update?.payload).toEqual(
+      expect.objectContaining({
+        template_key: 'team_owner:consultant',
+        document_title: 'Team Consulting Agreement',
+      }),
+    );
+  });
+});

@@ -52,6 +52,7 @@ import {
 	ContractHistoryPanel,
 	FrozenBadge,
 } from "@/components/finance/ContractHistoryPanel";
+import { ContractTemplatePicker } from "@/components/finance/ContractTemplatePicker";
 import { ClientSigningLinkModal } from "@/components/project/ClientSigningLinkModal";
 import type {
 	PreviewParties,
@@ -664,6 +665,11 @@ export function ProjectContract({
 								editable={sectionsEditable}
 							/>
 						)}
+						{activeStep === "agreement" &&
+							isAuthor &&
+							contract.status === "draft" && (
+								<ContractTemplatePicker contract={contract} />
+							)}
 						{activeStep === "agreement" && (
 							<AgreementSection
 								contract={contract}
