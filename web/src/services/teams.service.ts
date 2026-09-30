@@ -202,7 +202,8 @@ export type TeamInviteStatus =
 	| "pending"
 	| "accepted"
 	| "declined"
-	| "cancelled";
+	| "cancelled"
+	| "expired";
 
 export interface TeamInvite {
 	id: string;
@@ -215,6 +216,8 @@ export interface TeamInvite {
 	status: TeamInviteStatus;
 	message: string | null;
 	responded_at: string | null;
+	/** When a pending invite lapses (14 days after it was sent or resent). */
+	expires_at?: string | null;
 	created_at: string;
 	updated_at: string;
 	team?: {
@@ -818,6 +821,47 @@ export async function inviteTeamMemberByEmail(
 			),
 		);
 	}
+}
+
+/**
+ * The invites a team's member list shows: pending ones, plus expired ones
+ * (so they can be resent) unless the same person already has a newer
+ * pending invite. The server marks lapsed invites expired when listing.
+ */
+export function openTeamInvites(invites: TeamInvite[]): TeamInvite[] {
+	const key = (invite: TeamInvite) =>
+		(invite.invitee_email ?? invite.invitee_id ?? invite.id).toLowerCase();
+	const pendingKeys = new Set(
+		invites.filter((invite) => invite.status === "pending").map(key),
+	);
+	const seenExpired = new Set<string>();
+	return invites.filter((invite) => {
+		if (invite.status === "pending") return true;
+		if (invite.status !== "expired") return false;
+		const k = key(invite);
+		if (pendingKeys.has(k) || seenExpired.has(k)) return false;
+		seenExpired.add(k);
+		return true;
+	});
+}
+
+/**
+ * Resend an invite: a fresh invite (new 14-day expiry, new email) to the same
+ * person with the same role and position. An expired row is left as history.
+ */
+export function resendTeamInvite(
+	teamId: string,
+	invite: TeamInvite,
+): Promise<TeamInvite> {
+	const email = invite.invitee_email ?? invite.invitee?.email;
+	if (!email) {
+		return Promise.reject(new Error("This invite has no email to resend to"));
+	}
+	return inviteTeamMemberByEmail(teamId, {
+		email,
+		role: invite.role === "owner" ? "member" : invite.role,
+		position: invite.position ?? undefined,
+	});
 }
 
 export async function listTeamInvites(teamId: string): Promise<TeamInvite[]> {

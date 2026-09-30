@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { createFileRoute } from "@tanstack/react-router";
-import { Mail, Plus, Share2, X } from "lucide-react";
+import { Mail, Plus, RotateCw, Share2, X } from "lucide-react";
 import { type ReactNode, useState } from "react";
 import {
 	AppPrimaryButton,
@@ -28,7 +28,9 @@ import {
 	inviteTeamMemberByEmail,
 	listTeamInvites,
 	listTeamMembers,
+	openTeamInvites,
 	type ProfileSummary,
+	resendTeamInvite,
 	type TeamInvite,
 } from "@/services/teams.service";
 
@@ -115,15 +117,25 @@ function TeamMembersSection({
 		queryFn: () => listTeamInvites(teamId),
 		enabled: canInvite,
 	});
-	const pending = (invitesQuery.data ?? []).filter(
-		(invite) => invite.status === "pending",
-	);
+	const pending = openTeamInvites(invitesQuery.data ?? []);
 
 	const cancelMutation = useMutation({
 		mutationFn: (inviteId: string) => cancelTeamInvite(teamId, inviteId),
 		onSuccess: () => {
 			void qc.invalidateQueries({ queryKey: ["team", teamId, "invites"] });
 			toast.success("Invite cancelled");
+		},
+		onError: (error: Error) => toast.error(error.message),
+	});
+	const resendMutation = useMutation({
+		mutationFn: (invite: TeamInvite) => resendTeamInvite(teamId, invite),
+		onSuccess: (invite) => {
+			void qc.invalidateQueries({ queryKey: ["team", teamId, "invites"] });
+			if (invite.email_delivery && !invite.email_delivery.sent) {
+				toast.info("New invite created, but the email could not be sent.");
+			} else {
+				toast.success("Invite resent");
+			}
 		},
 		onError: (error: Error) => toast.error(error.message),
 	});
@@ -151,12 +163,17 @@ function TeamMembersSection({
 				{pending.length > 0 ? (
 					<>
 						<p className="border-t border-border/60 bg-muted/30 px-5 py-2 text-[11px] font-semibold uppercase tracking-[0.1em] text-muted-foreground">
-							Pending invites · {pending.length}
+							Invites · {pending.length}
 						</p>
 						{pending.map((invite) => (
 							<PendingInviteRow
 								key={invite.id}
 								invite={invite}
+								resending={
+									resendMutation.isPending &&
+									resendMutation.variables?.id === invite.id
+								}
+								onResend={() => resendMutation.mutate(invite)}
 								onCancel={async () => {
 									const ok = await confirm({
 										title: "Cancel this invite?",
@@ -289,12 +306,15 @@ function PersonRow({
 	detail,
 	badge,
 	pending,
+	expired,
 	action,
 }: {
 	name: string;
 	detail: string;
 	badge: string;
 	pending?: boolean;
+	/** A lapsed invite: shown as "Expired" with a Resend action. */
+	expired?: boolean;
 	action?: ReactNode;
 }) {
 	return (
@@ -319,12 +339,18 @@ function PersonRow({
 			<span className="flex shrink-0 items-center gap-2">
 				<span
 					className={`rounded-full px-2.5 py-0.5 text-[11px] font-semibold capitalize ${
-						pending
-							? "bg-warning/10 text-warning-foreground"
-							: "bg-muted text-muted-foreground"
+						expired
+							? "bg-destructive/10 text-destructive"
+							: pending
+								? "bg-warning/10 text-warning-foreground"
+								: "bg-muted text-muted-foreground"
 					}`}
 				>
-					{pending ? `${badge} · pending` : badge}
+					{expired
+						? `${badge} · expired`
+						: pending
+							? `${badge} · pending`
+							: badge}
 				</span>
 				{action}
 			</span>
@@ -334,30 +360,57 @@ function PersonRow({
 
 function PendingInviteRow({
 	invite,
+	resending,
+	onResend,
 	onCancel,
 }: {
 	invite: TeamInvite;
+	resending: boolean;
+	onResend: () => void;
 	onCancel: () => void;
 }) {
 	const who = invite.invitee_email ?? profileName(invite.invitee);
 	const by = invite.invited_by_profile
 		? ` by ${profileName(invite.invited_by_profile)}`
 		: "";
+	const expired = invite.status === "expired";
+	const detail = expired
+		? `Expired ${new Date(invite.expires_at ?? invite.updated_at).toLocaleDateString()} · invited${by}`
+		: `Invited ${new Date(invite.created_at).toLocaleDateString()}${by}${
+				invite.expires_at
+					? ` · expires ${new Date(invite.expires_at).toLocaleDateString()}`
+					: ""
+			}`;
 	return (
 		<PersonRow
 			name={who}
-			detail={`Invited ${new Date(invite.created_at).toLocaleDateString()}${by}`}
+			detail={detail}
 			badge={invite.role}
 			pending
+			expired={expired}
 			action={
-				<button
-					type="button"
-					onClick={onCancel}
-					aria-label={`Cancel invite for ${who}`}
-					className="rounded-md p-1.5 text-muted-foreground transition-colors hover:bg-destructive/10 hover:text-destructive"
-				>
-					<X className="h-4 w-4" />
-				</button>
+				expired ? (
+					<button
+						type="button"
+						onClick={onResend}
+						disabled={resending}
+						className="inline-flex items-center gap-1.5 rounded-lg border border-border px-2.5 py-1 text-xs font-semibold text-foreground transition-colors hover:bg-muted disabled:opacity-60"
+					>
+						<RotateCw
+							className={`h-3.5 w-3.5 ${resending ? "animate-spin" : ""}`}
+						/>
+						Resend
+					</button>
+				) : (
+					<button
+						type="button"
+						onClick={onCancel}
+						aria-label={`Cancel invite for ${who}`}
+						className="rounded-md p-1.5 text-muted-foreground transition-colors hover:bg-destructive/10 hover:text-destructive"
+					>
+						<X className="h-4 w-4" />
+					</button>
+				)
 			}
 		/>
 	);
