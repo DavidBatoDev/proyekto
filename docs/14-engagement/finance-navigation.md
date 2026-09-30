@@ -1,6 +1,6 @@
 # Finance Navigation
 
-> **Last updated:** 2026-09-25 · **Status:** draft
+> **Last updated:** 2026-09-30 · **Status:** draft
 
 The Engagements shell used to have five overlapping places for money: Home,
 Personal, a team page, a team *book* page, and project book pages. The team page
@@ -70,32 +70,57 @@ Every old URL redirects:
 
 ## Known issues and follow-ups
 
-Logged 2026-09-25, not yet addressed:
+Logged 2026-09-25. Items 2–9 were resolved on 2026-09-30 (branch
+`feat/contract-signature-integrity`).
 
 1. **Production is missing the expenses table.** The migration is applied to dev only.
    Until it reaches prod, My finance and the Expenses tab fail for team owners there.
-2. **The role badge appears only on the team Overview tab.** The other tabs omit
-   "Owner"/"Accountant".
-3. **Team contracts are limited to team owners and admins.** A manager or accountant who
-   is not a team admin cannot see the team's contracts, because the `team-finance` API
-   gates on team admin.
-4. **Money in on the team overview is also admin-only.** It comes from the team-admin-gated
-   portfolio endpoint, so accountants see "—".
-5. **The imports document page is not nested under its team.**
-   `/engagements/finance/imports/$documentId` breadcrumbs as My finance → Imports rather
-   than team → project.
-6. **Setup wizards still use the old breadcrumbs.** `setup/team` and `setup/personal` show
-   a "Finance" crumb. The personal-book setup is orphaned, since My finance no longer needs
-   a personal book, and the personal-book CSV export is no longer reachable from the UI.
-7. **Accepting a finance invite takes an extra hop.** It lands on `/finance/book/$id` and
-   redirects from there.
-8. **Team invites never expire.** `team_invites` has no expiry concept. Finance invites now
-   expire correctly when listed.
-9. **Pre-existing lint and type errors, untouched here:**
-   - 6 prettier errors in `backend/src/modules/marketplace/contracts/contracts.service.ts`
-     (lines 1726–2079).
-   - 41 Biome errors in `web`, which are CRLF formatting on this Windows checkout.
-   - TS2352 in `web/src/lib/marketplace-enrollment.test.ts`.
+   *Still open.* Prod also lacks `20260930090000_team_invite_expiry` (see 8).
+2. ~~The role badge appears only on the team Overview tab.~~ **Resolved.**
+   `TeamFinanceChrome` derives the badge (`teamRoleLabel`) on every tab.
+3. ~~Team contracts are limited to team owners and admins.~~ **Resolved.**
+   `TeamFinanceAccessService.listTeamProjects` admits team owners/admins *or* an
+   owner/manager/accountant on the team's finance book holding the matching book
+   capability (`view_contracts`; `manage_money` for invoice management). A book grant
+   covers every project attached to the team. Accountants now hold `view_contracts`.
+   Client viewers on a team book are excluded.
+4. ~~Money in on the team overview is admin-only.~~ **Resolved** by the same gate; the
+   overview fetches the portfolio when `canSeeTeamMoneyIn(team)`.
+5. ~~The imports document page is not nested under its team.~~ **Resolved.** Documents
+   live at `/engagements/finance/team/$teamId/project/$bookId/imports/$documentId`
+   (breadcrumb: team › project › Imports › file). The old
+   `/engagements/finance/imports/$documentId` redirects there, or renders in place when
+   the project has no project finance.
+6. ~~Setup wizards still use the old breadcrumbs.~~ **Resolved.** `setup/personal` is
+   deleted. My finance has an "Export my records" section (time logs and payouts, CSV/
+   Excel/PDF), which creates the private personal book on first use. `setup/team` uses
+   `FinanceTrail` under My teams, and the sidebar resolves it to My teams.
+7. ~~Accepting a finance invite takes an extra hop.~~ **Resolved.** The accept endpoint
+   returns `path` (team page or nested project page); the web goes straight there and
+   toasts "You now have access as <Role>".
+8. ~~Team invites never expire.~~ **Resolved.** Migration
+   `20260930090000_team_invite_expiry` adds `team_invites.expires_at` (14 days) and the
+   `expired` status (**applied to dev only**). Listing marks lapsed invites expired,
+   accepting a lapsed one is refused, and the Members tab and workspace team page show
+   "Expired" with a Resend button.
+9. ~~Pre-existing lint and type errors.~~ **Resolved.** `.gitattributes` pins LF (the
+   index was already LF, so no churn); the Prettier and Biome errors were CRLF working
+   copies. The TS2352 (and TS2322/TS2677 in `accountDeletionCopy.test.ts`) are fixed.
 10. **Local env.** Base `.env` files point at prod, and the app runs on
     `.env.development.local` (dev). Scripts that read `backend/.env` directly hit prod.
 11. **Test data in dev.** JC Studio has a test expense, "Figma team plan (e2e)", PHP 2,500.
+    `node scripts/seed_dev_project_finance.mjs` (idempotent, dev-only) adds the project
+    "Harbor Coffee — Rebrand (seed)" with a signed contract, a project book, invoices,
+    two imported documents, time logs, and expenses.
+
+Found while testing the seeded project on 2026-09-30, not yet fixed:
+
+12. The project Overview tab shows hours and a contract chip but no money in (billed,
+    collected, outstanding), although the book overview API returns invoices.
+13. An imported document that already backs a recorded invoice still reads "Open one to
+    snip its figures and record it" and opens an editable workspace; recording it again
+    would fail on the duplicate invoice number.
+14. The import workspace defaults "Billed in" to AUD rather than the project's currency.
+15. Imported invoices have no "Imported" badge in the Invoices list (scheduled ones show
+    "Auto"), and imported/manual invoices still say "Hours summarised".
+16. Expense rows format dates as `9/18/2026` while the rest of finance uses `Sep 18, 2026`.
