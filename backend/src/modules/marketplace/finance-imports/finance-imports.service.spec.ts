@@ -39,6 +39,7 @@ interface Writes {
 function fakeSupabase(
   writes: Writes,
   document: Record<string, unknown> | null = documentRow,
+  recordedInvoices: Array<Record<string, unknown>> = [],
 ): SupabaseClient {
   return {
     from(table: string) {
@@ -66,6 +67,9 @@ function fakeSupabase(
         eq() {
           return builder;
         },
+        in() {
+          return builder;
+        },
         maybeSingle() {
           return Promise.resolve({ data: document, error: null });
         },
@@ -82,7 +86,8 @@ function fakeSupabase(
           });
         },
         then(resolve: (value: unknown) => unknown) {
-          return Promise.resolve({ data: [], error: null }).then(resolve);
+          const data = table === 'invoices' ? recordedInvoices : [];
+          return Promise.resolve({ data, error: null }).then(resolve);
         },
       };
       return builder;
@@ -94,9 +99,14 @@ function buildService(
   writes: Writes,
   document = documentRow as unknown,
   reader: Record<string, jest.Mock> = { read: jest.fn() },
+  recordedInvoices: Array<Record<string, unknown>> = [],
 ) {
   return new FinanceImportsService(
-    fakeSupabase(writes, document as Record<string, unknown> | null),
+    fakeSupabase(
+      writes,
+      document as Record<string, unknown> | null,
+      recordedInvoices,
+    ),
     {
       uploadFile: jest.fn(),
       getPrivateSignedUrl: jest.fn(),
@@ -130,6 +140,37 @@ const baseInvoice = {
 };
 
 describe('FinanceImportsService import', () => {
+  it('refuses to record a document that already backs an invoice', async () => {
+    const writes = emptyWrites();
+    const service = buildService(writes, documentRow, undefined, [
+      {
+        id: INVOICE_ID,
+        number: 'BS2026-DM-054',
+        source_document_id: DOCUMENT_ID,
+      },
+    ]);
+    await expect(
+      service.importInvoice('user-1', { ...baseInvoice }),
+    ).rejects.toThrow('already recorded as invoice BS2026-DM-054');
+    expect(writes.invoices).toHaveLength(0);
+  });
+
+  it('stamps documents with the invoice recorded from them', async () => {
+    const writes = emptyWrites();
+    const service = buildService(writes, documentRow, undefined, [
+      {
+        id: INVOICE_ID,
+        number: 'BS2026-DM-054',
+        source_document_id: DOCUMENT_ID,
+      },
+    ]);
+    const doc = await service.getDocument('user-1', DOCUMENT_ID);
+    expect(doc.recorded_invoice).toEqual({
+      id: INVOICE_ID,
+      number: 'BS2026-DM-054',
+    });
+  });
+
   it('books the invoice as issued and imported, against its document', async () => {
     const writes = emptyWrites();
     await buildService(writes).importInvoice('user-1', { ...baseInvoice });

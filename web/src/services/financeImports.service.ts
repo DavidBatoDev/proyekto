@@ -66,6 +66,8 @@ export interface FinanceDocument {
 	extraction_status: "pending" | "ready" | "failed" | "skipped";
 	extraction_error: string | null;
 	created_at: string;
+	/** The invoice already booked from this document; it is then read-only evidence. */
+	recorded_invoice?: { id: string; number: string } | null;
 }
 
 /** A document plus a short-lived signed URL for rendering it. */

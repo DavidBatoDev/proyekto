@@ -60,7 +60,7 @@ export interface InvoiceDocument {
 	created_at: string;
 }
 
-export type InvoiceOrigin = "manual" | "scheduled";
+export type InvoiceOrigin = "manual" | "scheduled" | "imported";
 /** How much time detail the CLIENT is shown. Never reveals member identity or cost. */
 export type HoursDetailLevel = "none" | "summary" | "detailed";
 

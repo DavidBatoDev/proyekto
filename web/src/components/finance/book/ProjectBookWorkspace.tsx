@@ -28,6 +28,7 @@ import {
 	FinanceStatusBadge,
 	formatFinanceDate,
 } from "@/components/finance/portfolio/FinancePrimitives";
+import { formatMoney } from "@/lib/contract-term";
 import {
 	type FinanceBookOverview,
 	type FinanceExportFormat,
@@ -35,6 +36,7 @@ import {
 	financeBooksService,
 } from "@/services/financeBooks.service";
 import { listTeamProjects } from "@/services/teams.service";
+import { summariseProjectMoneyIn } from "./projectMoneyIn";
 
 /**
  * The pieces of a finance book that pages compose: the per-project workspace
@@ -133,6 +135,7 @@ export function ProjectBookWorkspace({
 			{active === "overview" ? (
 				<>
 					<ContractLinks overview={overview} />
+					<MoneyInSection overview={overview} />
 					<BookTimeSection overview={overview} />
 					{permissions.export ? (
 						<ExportSection
@@ -206,6 +209,40 @@ function ContractLinks({ overview }: { overview: FinanceBookOverview }) {
 					</span>
 					<span className="text-primary">View in Engagements →</span>
 				</Link>
+			))}
+		</div>
+	);
+}
+
+/**
+ * Money in for this project: what was billed, what has been collected and
+ * what is still owed, per currency. Only drawn when the caller's role
+ * receives the invoice slice at all.
+ */
+function MoneyInSection({ overview }: { overview: FinanceBookOverview }) {
+	if (!overview.invoices) return null;
+	const rows = summariseProjectMoneyIn(overview.invoices);
+	if (rows.length === 0) return null;
+	return (
+		<div className="mt-6 space-y-4">
+			{rows.map((row) => (
+				<div key={row.currency} className="grid gap-4 sm:grid-cols-3">
+					<AppStatCard
+						label={`Billed · ${row.count} invoice${row.count === 1 ? "" : "s"}`}
+						value={formatMoney(row.currency, row.billed)}
+						icon={ReceiptText}
+					/>
+					<AppStatCard
+						label="Collected"
+						value={formatMoney(row.currency, row.collected)}
+						icon={HandCoins}
+					/>
+					<AppStatCard
+						label="Outstanding"
+						value={formatMoney(row.currency, row.outstanding)}
+						icon={Hourglass}
+					/>
+				</div>
 			))}
 		</div>
 	);

@@ -8,6 +8,7 @@ import {
 } from "lucide-react";
 import { useRef, useState } from "react";
 import { AppEmptyState } from "@/components/common/AppPrimitives";
+import { formatFinanceDate } from "@/components/finance/portfolio/FinancePrimitives";
 import { useToast } from "@/hooks/useToast";
 import {
 	type FinanceDocument,
@@ -156,7 +157,7 @@ export function ProjectImportsPanel({
 				<>
 					<DocumentList
 						title="Invoices"
-						subtitle="Open one to snip its figures and record it."
+						subtitle="Open an unrecorded one to snip its figures and record it. Recorded ones open read-only."
 						documents={invoices}
 						onOpen={onOpenDocument}
 					/>
@@ -200,11 +201,16 @@ function DocumentList({
 									{document.file_name}
 								</span>
 								<span className="block text-[11px] text-muted-foreground">
-									{new Date(document.created_at).toLocaleDateString()} ·{" "}
+									{formatFinanceDate(document.created_at.slice(0, 10))} ·{" "}
 									{Math.round(document.size_bytes / 1024)} KB
 									{document.extraction_status === "ready" && " · read"}
 								</span>
 							</span>
+							{document.recorded_invoice ? (
+								<span className="ml-auto shrink-0 rounded-full border border-success/30 bg-success/10 px-2 py-0.5 text-[11px] font-semibold text-success-foreground">
+									Recorded · {document.recorded_invoice.number}
+								</span>
+							) : null}
 						</span>
 					);
 

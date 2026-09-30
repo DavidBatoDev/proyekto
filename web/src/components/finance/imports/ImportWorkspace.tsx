@@ -23,6 +23,21 @@ import {
 	financeImportsService,
 	type PaymentReadFields,
 } from "@/services/financeImports.service";
+import { projectService } from "@/services/project.service";
+
+/** Used only when the project has no currency of its own. */
+const FALLBACK_CURRENCY = "AUD";
+
+/**
+ * "Billed in" starts at the project's currency. An explicit choice (typed, or
+ * read off the document) always wins over the default.
+ */
+export function defaultBilledCurrency(
+	chosen: string | null,
+	projectCurrency: string | null | undefined,
+): string {
+	return chosen ?? projectCurrency?.trim().toUpperCase() ?? FALLBACK_CURRENCY;
+}
 
 /**
  * The import workspace: the source document on the left, the record on the right.
@@ -82,8 +97,11 @@ export function ImportWorkspace({
 	documentId,
 	trail,
 	onRecorded,
+	onOpenInvoice,
 }: {
 	documentId: string;
+	/** Opens the invoice a document was already recorded as. */
+	onOpenInvoice?: (invoiceId: string, projectId: string) => void;
 	/** Breadcrumb for the page; receives the document's file name once loaded. */
 	trail: (fileName: string | undefined) => ReactNode;
 	/** Called after the invoice is recorded, with the document's project. */
@@ -96,7 +114,7 @@ export function ImportWorkspace({
 	const [pageCount, setPageCount] = useState(1);
 	const [activeField, setActiveField] = useState<string | null>(null);
 	const [fields, setFields] = useState<Record<string, FieldState>>({});
-	const [currency, setCurrency] = useState("AUD");
+	const [chosenCurrency, setCurrency] = useState<string | null>(null);
 	const [settledCurrency, setSettledCurrency] = useState("PHP");
 	const [recordPayment, setRecordPayment] = useState(true);
 	const [proofDocumentId, setProofDocumentId] = useState("");
@@ -112,6 +130,17 @@ export function ImportWorkspace({
 		staleTime: 5 * 60_000,
 	});
 	const document = documentQuery.data;
+	const projectQuery = useQuery({
+		queryKey: ["project", document?.project_id],
+		queryFn: () => projectService.get(document?.project_id ?? ""),
+		enabled: Boolean(document?.project_id),
+		staleTime: 5 * 60_000,
+	});
+	const currency = defaultBilledCurrency(
+		chosenCurrency,
+		projectQuery.data?.currency,
+	);
+	const recordedInvoice = document?.recorded_invoice ?? null;
 
 	const proofsQuery = useQuery({
 		queryKey: ["finance-import", "proofs", document?.project_id],
@@ -387,42 +416,71 @@ export function ImportWorkspace({
 						{trail(document.file_name)}
 					</div>
 
-					<div className="flex items-center gap-2">
-						<button
-							type="button"
-							onClick={() => readMutation.mutate()}
-							disabled={readMutation.isPending}
-							className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-card px-3 py-1.5 text-xs font-medium text-foreground transition-colors hover:bg-muted disabled:opacity-60"
-						>
-							{readMutation.isPending ? (
-								<Loader2 className="h-3.5 w-3.5 animate-spin" />
+					{recordedInvoice ? (
+						<div className="flex items-center gap-2 text-xs text-muted-foreground">
+							<span className="rounded-full border border-success/30 bg-success/10 px-2 py-0.5 font-semibold text-success-foreground">
+								Recorded
+							</span>
+							{onOpenInvoice ? (
+								<button
+									type="button"
+									onClick={() =>
+										onOpenInvoice(recordedInvoice.id, document.project_id)
+									}
+									className="font-semibold text-primary hover:underline"
+								>
+									View invoice {recordedInvoice.number} →
+								</button>
 							) : (
-								<Sparkles className="h-3.5 w-3.5" />
+								<span>Invoice {recordedInvoice.number}</span>
 							)}
-							Read the document
-						</button>
-						<button
-							type="button"
-							onClick={() => importMutation.mutate()}
-							disabled={!ready || importMutation.isPending}
-							className="app-cta inline-flex items-center gap-1.5 rounded-lg px-4 py-2 text-sm font-semibold text-white disabled:opacity-60"
-						>
-							{importMutation.isPending && (
-								<Loader2 className="h-4 w-4 animate-spin" />
-							)}
-							Record invoice
-						</button>
-					</div>
+						</div>
+					) : (
+						<div className="flex items-center gap-2">
+							<button
+								type="button"
+								onClick={() => readMutation.mutate()}
+								disabled={readMutation.isPending}
+								className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-card px-3 py-1.5 text-xs font-medium text-foreground transition-colors hover:bg-muted disabled:opacity-60"
+							>
+								{readMutation.isPending ? (
+									<Loader2 className="h-3.5 w-3.5 animate-spin" />
+								) : (
+									<Sparkles className="h-3.5 w-3.5" />
+								)}
+								Read the document
+							</button>
+							<button
+								type="button"
+								onClick={() => importMutation.mutate()}
+								disabled={!ready || importMutation.isPending}
+								className="app-cta inline-flex items-center gap-1.5 rounded-lg px-4 py-2 text-sm font-semibold text-white disabled:opacity-60"
+							>
+								{importMutation.isPending && (
+									<Loader2 className="h-4 w-4 animate-spin" />
+								)}
+								Record invoice
+							</button>
+						</div>
+					)}
 				</header>
+				{recordedInvoice ? (
+					<p className="mb-4 rounded-xl border border-border bg-muted/40 px-4 py-3 text-sm text-muted-foreground">
+						This document is the evidence for invoice {recordedInvoice.number}.
+						It is read-only here; change the record from the invoice itself.
+					</p>
+				) : null}
 
-				<div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_380px]">
+				<div
+					className={`grid gap-5 ${recordedInvoice ? "" : "lg:grid-cols-[minmax(0,1fr)_380px]"}`}
+				>
 					<section>
 						<DocumentCanvas
 							bytes={bytesQuery.data ?? null}
 							mimeType={document.mime_type}
 							page={page}
 							snips={canvasSnips}
-							activeField={activeField}
+							activeField={recordedInvoice ? null : activeField}
 							onPageCount={setPageCount}
 							onSnip={onSnip}
 						/>
@@ -453,7 +511,7 @@ export function ImportWorkspace({
 						)}
 					</section>
 
-					<aside className="space-y-5">
+					<aside className="space-y-5" hidden={Boolean(recordedInvoice)}>
 						<div className="rounded-xl border border-border bg-card p-4">
 							<h2 className="text-sm font-semibold text-foreground">Invoice</h2>
 							<p className="mb-3 mt-0.5 text-xs text-muted-foreground">

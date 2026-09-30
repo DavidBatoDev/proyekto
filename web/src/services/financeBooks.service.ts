@@ -194,6 +194,8 @@ export interface FinanceBookOverview {
 		total: number;
 		currency: string;
 		issued_at: string | null;
+		/** Net of reversals. Absent on responses from older API builds. */
+		amount_paid?: number;
 	}>;
 }
 

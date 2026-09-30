@@ -536,6 +536,14 @@ function InvoiceRow({
 							Auto
 						</span>
 					)}
+					{invoice.origin === "imported" && (
+						<span
+							title="Recorded from a document issued outside Proyekto"
+							className="rounded-full border border-border bg-muted px-2 py-0.5 text-[11px] font-semibold text-muted-foreground"
+						>
+							Imported
+						</span>
+					)}
 					{invoice.sent_at && (
 						<span
 							className="inline-flex items-center gap-1 text-[11px] font-medium text-success-foreground"
@@ -559,8 +567,10 @@ function InvoiceRow({
 					·{" "}
 					{invoice.due_date
 						? `Due ${formatFinanceDate(invoice.due_date)}`
-						: "No due date"}{" "}
-					· {hoursDetailLabel(invoice.hours_detail_level)}
+						: "No due date"}
+					{invoiceHoursLabel(invoice)
+						? ` · ${invoiceHoursLabel(invoice)}`
+						: null}
 				</p>
 				<p className="mt-1.5 text-base font-bold tabular-nums text-foreground">
 					{formatMoney(invoice.currency, Number(invoice.total ?? 0))}
@@ -1006,6 +1016,22 @@ function ReversePaymentModal({
 			</form>
 		</div>
 	);
+}
+
+/**
+ * What the client is told about time on this invoice. Only invoices built from
+ * logged time carry hours: an imported or hand-written invoice has none, so it
+ * says nothing rather than "Hours summarised".
+ */
+export function invoiceHoursLabel(
+	invoice: Pick<Invoice, "origin" | "hours_detail_level" | "line_items">,
+): string | null {
+	if (invoice.origin === "imported") return null;
+	const fromTime = (invoice.line_items ?? []).some(
+		(line) => line.source_type !== "manual",
+	);
+	if (invoice.origin === "manual" && !fromTime) return null;
+	return hoursDetailLabel(invoice.hours_detail_level);
 }
 
 /** What the client will see about time on this invoice. */

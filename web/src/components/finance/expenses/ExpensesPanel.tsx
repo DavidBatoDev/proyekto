@@ -15,7 +15,10 @@ import { CurrencySelect } from "@/components/common/CurrencySelect";
 import { DateField } from "@/components/common/DateField";
 import { SelectField, TextField } from "@/components/common/FormFields";
 import { useHubTeam } from "@/components/finance/nav/useManagedTeams";
-import { FinanceLoading } from "@/components/finance/portfolio/FinancePrimitives";
+import {
+	FinanceLoading,
+	formatFinanceDate,
+} from "@/components/finance/portfolio/FinancePrimitives";
 import { useConfirm } from "@/hooks/useConfirm";
 import { useToast } from "@/hooks/useToast";
 import { DEFAULT_CURRENCY, formatCurrency } from "@/lib/currency";
@@ -190,11 +193,9 @@ export function ExpensesPanel({
 										<p className="mt-0.5 truncate text-xs text-muted-foreground">
 											{EXPENSE_CATEGORY_LABELS[expense.category]}
 											{expense.vendor ? ` · ${expense.vendor}` : ""} ·{" "}
-											{new Date(
-												`${expense.incurred_on}T12:00:00Z`,
-											).toLocaleDateString()}
+											{formatFinanceDate(expense.incurred_on)}
 											{expense.recurrence_ends_on
-												? ` → ${new Date(`${expense.recurrence_ends_on}T12:00:00Z`).toLocaleDateString()}`
+												? ` → ${formatFinanceDate(expense.recurrence_ends_on)}`
 												: ""}
 										</p>
 									</div>

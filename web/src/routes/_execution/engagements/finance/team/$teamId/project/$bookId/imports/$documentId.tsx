@@ -39,6 +39,13 @@ function ProjectImportDocumentPage() {
 					current={fileName ?? "Document"}
 				/>
 			)}
+			onOpenInvoice={() =>
+				void navigate({
+					to: "/engagements/finance/team/$teamId/project/$bookId",
+					params: { teamId, bookId },
+					search: { tab: "invoices" },
+				})
+			}
 			onRecorded={() =>
 				void navigate({
 					to: "/engagements/finance/team/$teamId/project/$bookId",

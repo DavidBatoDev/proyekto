@@ -169,20 +169,62 @@ export class FinanceImportsService {
 
     const { data, error } = await query;
     if (error) throw new Error(error.message);
-    return (data ?? []) as FinanceDocumentRow[];
+    return this.withRecordedInvoices((data ?? []) as FinanceDocumentRow[]);
+  }
+
+  /**
+   * Stamp each document with the invoice already booked from it, if any. A
+   * document that backs a recorded invoice is evidence, not a draft: the web
+   * shows it read-only and links to the invoice instead of the snip workspace.
+   */
+  private async withRecordedInvoices<T extends { id: string }>(
+    rows: T[],
+  ): Promise<
+    Array<T & { recorded_invoice: { id: string; number: string } | null }>
+  > {
+    if (rows.length === 0) return [];
+    const { data, error } = await this.supabase
+      .from('invoices')
+      .select('id, number, source_document_id')
+      .in(
+        'source_document_id',
+        rows.map((row) => row.id),
+      );
+    if (error) throw new Error(error.message);
+    const byDocument = new Map<string, { id: string; number: string }>();
+    for (const invoice of (data ?? []) as Array<{
+      id: string;
+      number: string;
+      source_document_id: string;
+    }>) {
+      byDocument.set(invoice.source_document_id, {
+        id: invoice.id,
+        number: invoice.number,
+      });
+    }
+    return rows.map((row) => ({
+      ...row,
+      recorded_invoice: byDocument.get(row.id) ?? null,
+    }));
   }
 
   async getDocument(
     callerId: string,
     documentId: string,
-  ): Promise<FinanceDocumentRow & { preview_url: string }> {
+  ): Promise<
+    FinanceDocumentRow & {
+      preview_url: string;
+      recorded_invoice: { id: string; number: string } | null;
+    }
+  > {
     const row = await this.requireDocument(documentId);
     await this.financeAccess.assertProjectFinanceActor(
       callerId,
       row.project_id,
       'read',
     );
-    return { ...row, preview_url: await this.previewUrl(row.file_path) };
+    const [stamped] = await this.withRecordedInvoices([row]);
+    return { ...stamped, preview_url: await this.previewUrl(row.file_path) };
   }
 
   /**
@@ -351,6 +393,14 @@ export class FinanceImportsService {
     if (document.project_id !== dto.project_id) {
       throw new BadRequestException(
         'That document belongs to a different project.',
+      );
+    }
+    const [{ recorded_invoice: already }] = await this.withRecordedInvoices([
+      document,
+    ]);
+    if (already) {
+      throw new BadRequestException(
+        `This document is already recorded as invoice ${already.number}.`,
       );
     }
 

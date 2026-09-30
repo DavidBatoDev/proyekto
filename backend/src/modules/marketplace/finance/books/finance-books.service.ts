@@ -119,6 +119,8 @@ export interface BookOverview {
     total: number;
     currency: string | null;
     issued_at: string | null;
+    /** Net of reversals, so the Overview can show collected and outstanding. */
+    amount_paid: number;
   }>;
 }
 
@@ -712,12 +714,17 @@ export class FinanceBooksService {
       if (error) throw new Error(error.message);
       rows = (data ?? []) as InvoiceSlice[];
     }
+    const paidByInvoice = await collectedByInvoice(
+      this.supabase,
+      rows.map((row) => ({ ...row, total: row.total ?? 0 })),
+    );
     return rows.map((invoice) => ({
       id: invoice.id,
       status: invoice.status,
       total: Number(invoice.total ?? 0),
       currency: invoice.currency,
       issued_at: invoice.issued_at,
+      amount_paid: paidByInvoice.get(invoice.id) ?? 0,
     }));
   }
 

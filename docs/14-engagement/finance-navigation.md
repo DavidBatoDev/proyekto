@@ -113,14 +113,21 @@ Logged 2026-09-25. Items 2–9 were resolved on 2026-09-30 (branch
     "Harbor Coffee — Rebrand (seed)" with a signed contract, a project book, invoices,
     two imported documents, time logs, and expenses.
 
-Found while testing the seeded project on 2026-09-30, not yet fixed:
+Found while testing the seeded project on 2026-09-30; items 12–16 resolved the same day
+(branch `feat/contract-authoring-intake`):
 
-12. The project Overview tab shows hours and a contract chip but no money in (billed,
-    collected, outstanding), although the book overview API returns invoices.
-13. An imported document that already backs a recorded invoice still reads "Open one to
-    snip its figures and record it" and opens an editable workspace; recording it again
-    would fail on the duplicate invoice number.
-14. The import workspace defaults "Billed in" to AUD rather than the project's currency.
-15. Imported invoices have no "Imported" badge in the Invoices list (scheduled ones show
-    "Auto"), and imported/manual invoices still say "Hours summarised".
-16. Expense rows format dates as `9/18/2026` while the rest of finance uses `Sep 18, 2026`.
+12. ~~The project Overview shows no money in.~~ **Resolved.** The book overview's invoice
+    slice carries `amount_paid` (net of reversals, via `collectedByInvoice`), and the
+    Overview draws Billed / Collected / Outstanding per currency
+    (`summariseProjectMoneyIn`; drafts and voids excluded).
+13. ~~A recorded document still opens an editable workspace.~~ **Resolved.** Documents
+    carry `recorded_invoice`; the Imports list shows "Recorded · <number>", the workspace
+    opens read-only with "View invoice →" (Invoices tab), and `importInvoice` refuses a
+    document that already backs an invoice.
+14. ~~"Billed in" defaults to AUD.~~ **Resolved.** It defaults to the project's currency
+    (`defaultBilledCurrency`); a value read off the document or picked by hand still wins.
+15. ~~No "Imported" badge; "Hours summarised" on imported/manual invoices.~~ **Resolved.**
+    Imported invoices show an "Imported" badge; the hours label (`invoiceHoursLabel`) is
+    omitted for imported invoices and for manual ones with no time-based lines.
+16. ~~Expense dates render as `9/18/2026`.~~ **Resolved.** Expenses and import rows use
+    `formatFinanceDate` (`Sep 18, 2026`).
