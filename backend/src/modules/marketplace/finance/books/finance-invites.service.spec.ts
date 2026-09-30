@@ -91,10 +91,35 @@ describe('FinanceInvitesService accept flow', () => {
           { data: { ...pendingInvite, status: 'accepted' } }, // update
         ],
         finance_book_members: [{ data: null }], // insert
+        finance_books: [
+          { data: { id: 'f2', kind: 'team', owner_team_id: 'team-1' } },
+        ],
       }),
     );
     const result = await service.accept('u-hr', 'tok');
-    expect(result).toEqual({ book_id: 'f2', finance_role: 'accountant' });
+    expect(result).toEqual({
+      book_id: 'f2',
+      finance_role: 'accountant',
+      path: '/engagements/finance/team/team-1',
+    });
+  });
+
+  it('returns the nested project path for a project-book invite', async () => {
+    const service = makeService(
+      stubSupabase({
+        finance_invites: [
+          { data: { ...pendingInvite, book_id: 'f3' } },
+          { data: { ...pendingInvite, status: 'accepted' } },
+        ],
+        finance_book_members: [{ data: null }],
+        finance_books: [
+          { data: { id: 'f3', kind: 'project', owner_team_id: 'team-1' } },
+        ],
+      }),
+    );
+    await expect(service.accept('u-hr', 'tok')).resolves.toMatchObject({
+      path: '/engagements/finance/team/team-1/project/f3',
+    });
   });
 
   it('tolerates an existing membership (unique-index 23505) on accept', async () => {
@@ -112,6 +137,8 @@ describe('FinanceInvitesService accept flow', () => {
     await expect(service.accept('u-hr', 'tok')).resolves.toEqual({
       book_id: 'f2',
       finance_role: 'accountant',
+      // No book row in the stub: falls back to My finance.
+      path: '/engagements/finance',
     });
   });
 

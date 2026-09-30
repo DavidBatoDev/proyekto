@@ -1,4 +1,4 @@
-import { useMutation, useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { CircleDollarSign, MailQuestion } from "lucide-react";
 import {
@@ -6,6 +6,7 @@ import {
 	AppSurfaceCard,
 } from "@/components/common/AppPrimitives";
 import { FinanceLoading } from "@/components/finance/portfolio/FinancePrimitives";
+import { useToast } from "@/hooks/useToast";
 import { financeBooksService } from "@/services/financeBooks.service";
 
 /**
@@ -30,7 +31,7 @@ const ROLE_DESCRIPTIONS: Record<string, string> = {
 	manager:
 		"You will see costs and manage member rates and payouts on this book.",
 	accountant:
-		"You will view and export time logs and payouts. Nothing is editable.",
+		"You will view and export time logs, payouts, contracts, and invoices, and record expenses.",
 	viewer_client:
 		"You will see your contracts and invoices. Internal costs stay hidden.",
 	viewer: "You will have a read-only view of time logs.",
@@ -39,6 +40,8 @@ const ROLE_DESCRIPTIONS: Record<string, string> = {
 function FinanceInvitePage() {
 	const { token } = Route.useParams();
 	const navigate = useNavigate();
+	const queryClient = useQueryClient();
+	const toast = useToast();
 
 	const previewQuery = useQuery({
 		queryKey: ["finance-invites", token],
@@ -47,11 +50,16 @@ function FinanceInvitePage() {
 
 	const acceptMutation = useMutation({
 		mutationFn: () => financeBooksService.acceptInvite(token),
-		onSuccess: ({ book_id }) => {
-			void navigate({
-				to: "/engagements/finance/book/$bookId",
-				params: { bookId: book_id },
-			});
+		onSuccess: async ({ finance_role, path }) => {
+			// The hub drives the sidebar and the team page's role lookup; refresh
+			// it first so the destination knows about the new access.
+			await queryClient.invalidateQueries({ queryKey: ["finance-books"] });
+			toast.success(
+				`You now have access as ${ROLE_LABELS[finance_role] ?? finance_role}`,
+			);
+			// The server names the team or project page directly — no hop via
+			// the legacy /finance/book redirect.
+			void navigate({ href: path || "/engagements/finance", replace: true });
 		},
 	});
 

@@ -386,7 +386,7 @@ export const financeBooksService = {
 	getInvite: (token: string) =>
 		request<FinanceInvitePreview>("get", `/api/finance-invites/${token}`),
 	acceptInvite: (token: string) =>
-		request<{ book_id: string; finance_role: FinanceBookRole }>(
+		request<{ book_id: string; finance_role: FinanceBookRole; path: string }>(
 			"post",
 			`/api/finance-invites/${token}/accept`,
 			{},
