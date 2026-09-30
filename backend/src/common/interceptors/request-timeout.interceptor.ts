@@ -11,6 +11,13 @@ import { catchError, timeout } from 'rxjs/operators';
 import type { Request } from 'express';
 import { redactUrl } from './request-logging.interceptor';
 
+/** Routes that wait on a model reading a document. */
+export const LONG_RUNNING_PATHS: readonly RegExp[] = [
+  /^\/api\/intake\/documents\/[^/]+\/(classify|extract|reread)$/,
+  /^\/api\/contracts\/[^/]+\/compare\/[^/]+\/summary$/,
+];
+export const LONG_RUNNING_TIMEOUT_MS = 120_000;
+
 @Injectable()
 export class RequestTimeoutInterceptor implements NestInterceptor {
   private readonly logger = new Logger(RequestTimeoutInterceptor.name);
@@ -28,17 +35,26 @@ export class RequestTimeoutInterceptor implements NestInterceptor {
       return next.handle();
     }
 
+    // Document AI (intake classify/extract, contract change summaries) waits on
+    // a vision model reading a whole file; those routes get a longer budget
+    // rather than failing at the default.
+    const budget = LONG_RUNNING_PATHS.some((pattern) =>
+      pattern.test(request.path),
+    )
+      ? Math.max(this.timeoutMs, LONG_RUNNING_TIMEOUT_MS)
+      : this.timeoutMs;
+
     return next.handle().pipe(
-      timeout(this.timeoutMs),
+      timeout(budget),
       catchError((error: unknown) => {
         if (error instanceof TimeoutError) {
           this.logger.error(
-            `Request timed out after ${this.timeoutMs}ms: ${request.method} ${redactUrl(request.originalUrl ?? request.url)}`,
+            `Request timed out after ${budget}ms: ${request.method} ${redactUrl(request.originalUrl ?? request.url)}`,
           );
           return throwError(
             () =>
               new RequestTimeoutException(
-                `Request timed out after ${this.timeoutMs}ms`,
+                `Request timed out after ${budget}ms`,
               ),
           );
         }

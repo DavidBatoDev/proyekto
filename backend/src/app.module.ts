@@ -45,6 +45,7 @@ import { EntitlementsModule } from './modules/shared/entitlements/entitlements.m
 import { TeamTimeModule } from './modules/execution/team-time/team-time.module';
 import { MeetingsModule } from './modules/execution/meetings/meetings.module';
 import { FinanceImportsModule } from './modules/marketplace/finance-imports/finance-imports.module';
+import { DocumentIntakeModule } from './modules/marketplace/document-intake/document-intake.module';
 import { InvoicesModule } from './modules/marketplace/invoices/invoices.module';
 import { ContractsModule } from './modules/marketplace/contracts/contracts.module';
 import { EngagementsModule } from './modules/marketplace/engagements/engagements.module';
@@ -119,6 +120,7 @@ import { AppController } from './app.controller';
     TeamTimeModule,
     MeetingsModule,
     FinanceImportsModule,
+    DocumentIntakeModule,
     InvoicesModule,
     ContractsModule,
     EngagementsModule,

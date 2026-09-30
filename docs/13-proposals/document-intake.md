@@ -1,8 +1,9 @@
 # Document Intake
 
-> **⚠️ Proposed — not built.**
+> **Built** on `feat/contract-authoring-intake` (2026-09-30), on top of the finance-imports work.
+> Not merged, not in production. See [Implementation notes](#implementation-notes-2026-09-30).
 
-> **Last updated:** 2026-09-28 · **Status:** draft
+> **Last updated:** 2026-09-30 · **Status:** built
 
 A single place in Engagements where someone uploads the paper behind work that started outside
 Proyekto: signed contracts, amendments, invoices, receipts and proofs of payment. The AI
@@ -250,3 +251,64 @@ Pages, not files, because cost is per page. Replicated contracts count toward
 1. **Plan values and costs** above are estimates for review. The per-page token count is an
    assumption until measured.
 2. **Handwriting accuracy** of `gpt-5.6-luna` needs a real-document test before launch.
+
+## Implementation notes (2026-09-30)
+
+| Piece | Where |
+| --- | --- |
+| Schema: `intake_batches`, `intake_documents`, `intake_relationships` (deny-all RLS), plan keys `document_intake_pages_monthly` and `document_intake_onboarding_pages` | `supabase/migrations/20260930120000_document_intake.sql` (DEV only) |
+| Upload, detect, classify, extract, re-read a drawn box, review, confirm, group | `backend/src/modules/marketplace/document-intake/document-intake.service.ts`, rules in `intake-review.ts` |
+| Replicate | `intake-replicate.service.ts` |
+| Agent routes `POST /intake/classify`, `POST /intake/extract`, `POST /documents/read-json` | `agent/app/core/documents/intake.py`, `agent/app/api/routes/documents.py` |
+| The invoice reader moved onto the agent | `finance-imports/invoice-reader.service.ts` now calls `/documents/read-json`; the backend's `OPENAI_API_KEY` is no longer used by it |
+| Web | `/engagements/intake` (`components/intake/IntakePage.tsx`, `IntakeReviewPanel.tsx`), reached from Engagements -> Contracts, "Import documents" |
+
+How the stages map to the pipeline:
+
+- **Upload** hashes each file; a file already imported by the same person or in the same
+  workspace is kept as a `skipped` row pointing at the original and is never read again.
+  Pages are counted at upload (a PDF's page count, 1 for a photo) against the quotas.
+- **Detect and classify** is one agent call per file. The whole file goes to the model (a PDF as
+  `input_file`, a photo as `input_image`), which returns page ranges and types; ranges are
+  normalized so they cover the file once. The person can retype, re-range, split and merge.
+- **Extract** returns each field with value, confidence, page and box. Values at or above 0.85
+  confidence are Read; below are Unsure; missing values are Needs input. A document the model
+  identifies as another language is flagged and not extracted.
+- **Review** follows the four states. Typing sets `typed`; drawing a box fills the field from the
+  PDF's own text layer when it has one, otherwise the region is cropped in the browser and
+  re-read by the model (`snip`). "It's correct" accepts an Unsure value; "Not in document" marks a
+  field absent. **Confirm is refused while any field is Unsure or Needs input.**
+- **Totals** are checked for invoices (lines vs subtotal, subtotal plus tax vs total) and shown
+  as flags.
+- **Group** is deterministic over the confirmed readings: documents are grouped by the party that
+  is not the importer (names normalized, legal suffixes ignored); payments are matched to
+  invoices by an invoice number they mention, else by a unique equal amount. The person confirms
+  each group and names the counterparty's account and the project.
+
+Differences from the text above:
+
+- **A recorded agreement needs the counterparty to have an account.** Contract seats are
+  accounts (`contract_positions.user_id`), so replicate cannot record an agreement against an
+  email. The invoices and payments in the group are still imported; the contract waits, with a
+  message, until the counterparty signs up and the group is imported again. The attestation
+  itself can then be given by account or by token link, as in the adoption proposal.
+- **Amendments are folded into the recorded agreement** rather than recorded as version 2+.
+  Signed amendments are prospective-only in the signing RPC, so a past paper amendment could
+  never be attested as its own version. Replicate records one agreement whose terms are the latest
+  amendment's, with its service start at that amendment's effective date, and keeps every
+  amendment's paper as a finance document on the project.
+- **Payments in a different currency from their invoice are not auto-recorded**: the rate is not
+  reliably on the paper. They are listed for the finance imports workspace, which takes the rate.
+- **An imported invoice's issuer is the importer** (`invoices.issuer_user_id`), because
+  `importInvoice` records the caller. For a client importing their provider's invoices this is
+  the client; it does not change who the invoice says issued it.
+- **Split intake documents share one stored file.** Each confirmed document becomes its own
+  `finance_documents` row pointing at the same private object.
+- **Plan values are open on every plan** (no billing yet), with the proposal's estimates in the
+  migration's TODO. The quota logic is built: onboarding pages are spent first, then the monthly
+  quota.
+- **Metrics:** `GET /intake/metrics` (platform admins) reports imports started, relationships
+  replicated, invites sent and attestations. Accounts created from attestation links are not
+  tracked yet: that needs a referral marker on the token path.
+- **Model-dependent routes** (`classify`, `extract`, `reread`, the change summary) get a 120 s
+  request budget instead of the default 25 s.

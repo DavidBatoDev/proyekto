@@ -1791,6 +1791,7 @@ export class ContractsService {
     });
     await this.assertNoDuplicateEngagement(created);
 
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
     const { data, error } = await this.supabase
       .from('contracts')
       .update({
@@ -1963,6 +1964,7 @@ export class ContractsService {
       throw new BadRequestException('Only a draft can be sent.');
     }
     await this.assertActiveContractCapacity(existing);
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
     const { data, error } = await this.supabase
       .from('contracts')
       .update({ status: 'sent', updated_at: new Date().toISOString() })
@@ -2000,6 +2002,7 @@ export class ContractsService {
           : `A ${existing.status} contract cannot be withdrawn.`,
       );
     }
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
     const { data, error } = await this.supabase
       .from('contracts')
       .update({ status: 'cancelled', updated_at: new Date().toISOString() })

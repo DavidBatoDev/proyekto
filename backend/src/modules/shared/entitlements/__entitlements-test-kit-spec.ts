@@ -212,6 +212,23 @@ export const SEED_KEYS: SeedKey[] = [
     group: 'usage',
     values: [null, null, null, null],
   },
+  // 20260930120000_document_intake: open until billing exists.
+  {
+    key: 'document_intake_pages_monthly',
+    kind: 'quota',
+    label: 'Document intake pages',
+    unit: 'pages',
+    group: 'ai',
+    values: [null, null, null, null],
+  },
+  {
+    key: 'document_intake_onboarding_pages',
+    kind: 'quota',
+    label: 'Onboarding intake pages',
+    unit: 'pages',
+    group: 'ai',
+    values: [null, null, null, null],
+  },
 ];
 
 export const SEED_UPDATED_AT = '2026-09-22T12:00:00.000000+00:00';

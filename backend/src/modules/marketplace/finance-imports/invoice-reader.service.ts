@@ -1,8 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
-import { ConfigService } from '@nestjs/config';
+import { AgentInternalClient } from '../../../common/agent/agent-internal.client';
 
-const OPENAI_URL = 'https://api.openai.com/v1/chat/completions';
-const MODEL = 'gpt-4o-mini';
 /** The global request timeout is 25s; leave room for the PDF work around it. */
 const TIMEOUT_MS = 18_000;
 const MAX_INPUT_CHARS = 12_000;
@@ -120,11 +118,11 @@ function emptyFields(note: string | null): ReadInvoiceFields {
 /**
  * A first pass at the fields on an uploaded invoice.
  *
- * Follows CvExtractorService exactly: call OpenAI, sanitise everything it
+ * Follows CvExtractorService: call the model (on the agent service), sanitise everything it
  * returns, and NEVER throw. Every value it produces is a SUGGESTION — the
  * record is only ever committed from the snipping workspace, where a human
  * either accepts a suggestion or draws the region it should have read. With no
- * OPENAI_API_KEY (every dev machine without one) the import still works; the
+ * agent configured the import still works; the
  * fields simply arrive blank and are snipped by hand.
  *
  * That degradation is the whole design: money must never be booked from a
@@ -135,7 +133,7 @@ function emptyFields(note: string | null): ReadInvoiceFields {
 export class InvoiceReaderService {
   private readonly logger = new Logger(InvoiceReaderService.name);
 
-  constructor(private readonly config: ConfigService) {}
+  constructor(private readonly agent: AgentInternalClient) {}
 
   /** The text-layer path: a PDF invoice the server already extracted. */
   async read(plainText: string): Promise<ReadInvoiceFields> {
@@ -197,9 +195,7 @@ export class InvoiceReaderService {
       [
         {
           type: 'text',
-          text: isPayment
-            ? 'Read this bank record.'
-            : 'Read this invoice.',
+          text: isPayment ? 'Read this bank record.' : 'Read this invoice.',
         },
         {
           type: 'image_url',
@@ -228,63 +224,59 @@ export class InvoiceReaderService {
   ): Promise<
     { raw: Record<string, unknown>; note: null } | { raw: null; note: string }
   > {
-    const apiKey = this.config.get<string>('OPENAI_API_KEY');
-    if (!apiKey) {
-      this.logger.warn('OPENAI_API_KEY absent; returning an empty draft.');
+    // The reader runs on the agent service (its OpenAI key and model), not on
+    // the backend's OPENAI_API_KEY, which returns 401. docs/13-proposals/
+    // document-intake.md, "Where the AI runs".
+    if (!this.agent.isConfigured) {
+      this.logger.warn(
+        'Agent service not configured; returning an empty draft.',
+      );
       return {
         raw: null,
         note: 'Automatic reading is unavailable, so nothing was pre-filled. Snip the fields from the document.',
       };
     }
+    const text =
+      typeof content === 'string'
+        ? content
+        : content
+            .filter(
+              (part): part is { type: 'text'; text: string } =>
+                part.type === 'text',
+            )
+            .map((part) => part.text)
+            .join('\n') || undefined;
+    const image =
+      typeof content === 'string'
+        ? undefined
+        : content.find(
+            (
+              part,
+            ): part is {
+              type: 'image_url';
+              image_url: { url: string; detail: 'high' };
+            } => part.type === 'image_url',
+          )?.image_url.url;
 
-    const unreadable = {
-      raw: null,
-      note: 'The document could not be read automatically. Snip the fields from it.',
-    } as const;
-    const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), TIMEOUT_MS);
     try {
-      const response = await fetch(OPENAI_URL, {
-        method: 'POST',
-        signal: controller.signal,
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${apiKey}`,
-        },
-        body: JSON.stringify({
-          model: MODEL,
-          temperature: 0,
-          response_format: { type: 'json_object' },
-          messages: [
-            { role: 'system', content: system },
-            { role: 'user', content },
-          ],
-        }),
-      });
-
-      if (!response.ok) {
-        this.logger.warn(`Document read failed: HTTP ${response.status}`);
-        return unreadable;
-      }
-
-      const payload = (await response.json()) as {
-        choices?: Array<{ message?: { content?: string } }>;
-      };
-      const reply = payload.choices?.[0]?.message?.content;
-      if (!reply) {
+      const reply = await this.agent.post<{ data?: unknown }>(
+        '/documents/read-json',
+        { system, text, image_data_url: image },
+        { timeoutMs: TIMEOUT_MS },
+      );
+      const data = reply?.data;
+      if (!data || typeof data !== 'object' || Array.isArray(data)) {
         return { raw: null, note: 'The reader returned nothing to pre-fill.' };
       }
-      return {
-        raw: JSON.parse(reply) as Record<string, unknown>,
-        note: null,
-      };
+      return { raw: data as Record<string, unknown>, note: null };
     } catch (error) {
       this.logger.warn(
         `Document read failed: ${error instanceof Error ? error.message : 'unknown error'}`,
       );
-      return unreadable;
-    } finally {
-      clearTimeout(timer);
+      return {
+        raw: null,
+        note: 'The document could not be read automatically. Snip the fields from it.',
+      };
     }
   }
 

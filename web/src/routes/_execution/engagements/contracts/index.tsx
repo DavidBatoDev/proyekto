@@ -2,6 +2,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import {
 	FileSignature,
+	FileUp,
 	type LucideIcon,
 	PenLine,
 	Plus,
@@ -260,7 +261,13 @@ function DraftAsCounterparty({
 	const [open, setOpen] = useState(false);
 	if (isActiveConsultant(profile)) return null;
 	return (
-		<div className="mb-4 flex justify-end">
+		<div className="mb-4 flex justify-end gap-2">
+			<Link
+				to="/engagements/intake"
+				className="inline-flex items-center gap-1.5 rounded-lg border border-border px-4 py-2 text-sm font-semibold text-foreground hover:bg-muted"
+			>
+				<FileUp className="h-4 w-4" /> Import documents
+			</Link>
 			<button
 				type="button"
 				onClick={() => setOpen(true)}
@@ -432,6 +439,12 @@ function AuthoredContracts({
 				setSearch={setSearch}
 				action={
 					<div className="flex flex-wrap gap-2">
+						<Link
+							to="/engagements/intake"
+							className="inline-flex items-center gap-1.5 rounded-lg border border-border px-4 py-2 text-sm font-semibold text-foreground hover:bg-muted"
+						>
+							<FileUp className="h-4 w-4" /> Import documents
+						</Link>
 						<button
 							type="button"
 							onClick={() => setRecordOpen(true)}

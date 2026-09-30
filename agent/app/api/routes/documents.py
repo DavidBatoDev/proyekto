@@ -1,4 +1,5 @@
-"""Document AI endpoints: contract change summaries (and, below, intake).
+"""Document AI endpoints: contract change summaries, document intake, and the
+invoice reader.
 
 Same trust model as briefs.py: never called from the browser. NestJS validates
 the caller's session and authorization, computes everything that touches data,
@@ -14,10 +15,17 @@ from fastapi import APIRouter, Header, HTTPException, Request
 from app.api.routes.briefs import _authorize
 from app.core.config import get_settings
 from app.core.contracts.documents import (
+    ClassifyPagesRequest,
+    ClassifyPagesResponse,
+    ExtractDocumentRequest,
+    ExtractDocumentResponse,
+    ReadJsonRequest,
+    ReadJsonResponse,
     SummarizeChangesRequest,
     SummarizeChangesResponse,
 )
 from app.core.documents.change_summary import summarize_changes
+from app.core.documents.intake import classify_pages, extract_document, read_json
 
 logger = logging.getLogger(__name__)
 
@@ -65,4 +73,70 @@ async def contracts_summarize_changes(
         )
     except ValueError as exc:
         logger.warning('change summary unusable: %s', exc)
+        raise HTTPException(status_code=502, detail=str(exc)) from exc
+
+
+@router.post('/intake/classify', response_model=ClassifyPagesResponse)
+async def intake_classify(
+    payload: ClassifyPagesRequest,
+    request: Request,
+    x_internal_token: str | None = Header(default=None, alias='X-Internal-Token'),
+) -> ClassifyPagesResponse:
+    settings = get_settings()
+    _authorize(settings, x_internal_token)
+    client = _openai_client(request, settings)
+    try:
+        return classify_pages(
+            payload,
+            client=client,
+            model=_document_model(settings),
+            max_output_tokens=settings.agent_document_max_output_tokens,
+        )
+    except ValueError as exc:
+        logger.warning('intake classification unusable: %s', exc)
+        raise HTTPException(status_code=502, detail=str(exc)) from exc
+
+
+@router.post('/intake/extract', response_model=ExtractDocumentResponse)
+async def intake_extract(
+    payload: ExtractDocumentRequest,
+    request: Request,
+    x_internal_token: str | None = Header(default=None, alias='X-Internal-Token'),
+) -> ExtractDocumentResponse:
+    settings = get_settings()
+    _authorize(settings, x_internal_token)
+    client = _openai_client(request, settings)
+    try:
+        return extract_document(
+            payload,
+            client=client,
+            # Extraction alone may move to a larger model (AGENT_VISION_MODEL)
+            # if handwriting accuracy on the default is not good enough.
+            model=_vision_model(settings),
+            max_output_tokens=settings.agent_document_max_output_tokens,
+        )
+    except ValueError as exc:
+        logger.warning('intake extraction unusable: %s', exc)
+        raise HTTPException(status_code=502, detail=str(exc)) from exc
+
+
+@router.post('/documents/read-json', response_model=ReadJsonResponse)
+async def documents_read_json(
+    payload: ReadJsonRequest,
+    request: Request,
+    x_internal_token: str | None = Header(default=None, alias='X-Internal-Token'),
+) -> ReadJsonResponse:
+    """The finance-imports invoice reader, on the agent's key and model."""
+    settings = get_settings()
+    _authorize(settings, x_internal_token)
+    client = _openai_client(request, settings)
+    try:
+        return read_json(
+            payload,
+            client=client,
+            model=_vision_model(settings),
+            max_output_tokens=settings.agent_document_max_output_tokens,
+        )
+    except ValueError as exc:
+        logger.warning('document read unusable: %s', exc)
         raise HTTPException(status_code=502, detail=str(exc)) from exc

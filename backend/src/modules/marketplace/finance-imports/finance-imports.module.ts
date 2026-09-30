@@ -1,4 +1,5 @@
 import { Module } from '@nestjs/common';
+import { AgentInternalClient } from '../../../common/agent/agent-internal.client';
 import { FinanceModule } from '../finance/finance.module';
 import { InvoicesModule } from '../invoices/invoices.module';
 import { ProfileImportModule } from '../profile-import/profile-import.module';
@@ -15,7 +16,7 @@ import { InvoiceReaderService } from './invoice-reader.service';
 @Module({
   imports: [FinanceModule, InvoicesModule, ProfileImportModule, UploadsModule],
   controllers: [FinanceImportsController],
-  providers: [FinanceImportsService, InvoiceReaderService],
+  providers: [FinanceImportsService, InvoiceReaderService, AgentInternalClient],
   exports: [FinanceImportsService],
 })
 export class FinanceImportsModule {}

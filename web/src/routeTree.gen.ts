@@ -96,6 +96,7 @@ import { Route as ExecutionTeamsTeamIdRouteImport } from './routes/_execution/te
 import { Route as ExecutionRoadmapSharedWithMeRouteImport } from './routes/_execution/roadmap/shared-with-me'
 import { Route as ExecutionProjectNewRouteImport } from './routes/_execution/project/new'
 import { Route as ExecutionProjectProjectIdRouteImport } from './routes/_execution/project/$projectId'
+import { Route as ExecutionEngagementsIntakeRouteImport } from './routes/_execution/engagements/intake'
 import { Route as ExecutionEngagementsEngagementIdRouteImport } from './routes/_execution/engagements/$engagementId'
 import { Route as ExecutionBriefNewRouteImport } from './routes/_execution/brief/new'
 import { Route as WWorkspaceSlugSettingsRouteRouteImport } from './routes/w/$workspaceSlug/settings/route'
@@ -658,6 +659,12 @@ const ExecutionProjectProjectIdRoute =
     id: '/project/$projectId',
     path: '/project/$projectId',
     getParentRoute: () => ExecutionRoute,
+  } as any)
+const ExecutionEngagementsIntakeRoute =
+  ExecutionEngagementsIntakeRouteImport.update({
+    id: '/intake',
+    path: '/intake',
+    getParentRoute: () => ExecutionEngagementsRouteRoute,
   } as any)
 const ExecutionEngagementsEngagementIdRoute =
   ExecutionEngagementsEngagementIdRouteImport.update({
@@ -1386,6 +1393,7 @@ export interface FileRoutesByFullPath {
   '/w/$workspaceSlug/settings': typeof WWorkspaceSlugSettingsRouteRouteWithChildren
   '/brief/new': typeof ExecutionBriefNewRoute
   '/engagements/$engagementId': typeof ExecutionEngagementsEngagementIdRoute
+  '/engagements/intake': typeof ExecutionEngagementsIntakeRoute
   '/project/$projectId': typeof ExecutionProjectProjectIdRouteWithChildren
   '/project/new': typeof ExecutionProjectNewRoute
   '/roadmap/shared-with-me': typeof ExecutionRoadmapSharedWithMeRoute
@@ -1577,6 +1585,7 @@ export interface FileRoutesByTo {
   '/settings': typeof SettingsIndexRoute
   '/brief/new': typeof ExecutionBriefNewRoute
   '/engagements/$engagementId': typeof ExecutionEngagementsEngagementIdRoute
+  '/engagements/intake': typeof ExecutionEngagementsIntakeRoute
   '/project/$projectId': typeof ExecutionProjectProjectIdRouteWithChildren
   '/project/new': typeof ExecutionProjectNewRoute
   '/roadmap/shared-with-me': typeof ExecutionRoadmapSharedWithMeRoute
@@ -1773,6 +1782,7 @@ export interface FileRoutesById {
   '/w/$workspaceSlug/settings': typeof WWorkspaceSlugSettingsRouteRouteWithChildren
   '/_execution/brief/new': typeof ExecutionBriefNewRoute
   '/_execution/engagements/$engagementId': typeof ExecutionEngagementsEngagementIdRoute
+  '/_execution/engagements/intake': typeof ExecutionEngagementsIntakeRoute
   '/_execution/project/$projectId': typeof ExecutionProjectProjectIdRouteWithChildren
   '/_execution/project/new': typeof ExecutionProjectNewRoute
   '/_execution/roadmap/shared-with-me': typeof ExecutionRoadmapSharedWithMeRoute
@@ -1974,6 +1984,7 @@ export interface FileRouteTypes {
     | '/w/$workspaceSlug/settings'
     | '/brief/new'
     | '/engagements/$engagementId'
+    | '/engagements/intake'
     | '/project/$projectId'
     | '/project/new'
     | '/roadmap/shared-with-me'
@@ -2165,6 +2176,7 @@ export interface FileRouteTypes {
     | '/settings'
     | '/brief/new'
     | '/engagements/$engagementId'
+    | '/engagements/intake'
     | '/project/$projectId'
     | '/project/new'
     | '/roadmap/shared-with-me'
@@ -2360,6 +2372,7 @@ export interface FileRouteTypes {
     | '/w/$workspaceSlug/settings'
     | '/_execution/brief/new'
     | '/_execution/engagements/$engagementId'
+    | '/_execution/engagements/intake'
     | '/_execution/project/$projectId'
     | '/_execution/project/new'
     | '/_execution/roadmap/shared-with-me'
@@ -3145,6 +3158,13 @@ declare module '@tanstack/react-router' {
       fullPath: '/project/$projectId'
       preLoaderRoute: typeof ExecutionProjectProjectIdRouteImport
       parentRoute: typeof ExecutionRoute
+    }
+    '/_execution/engagements/intake': {
+      id: '/_execution/engagements/intake'
+      path: '/intake'
+      fullPath: '/engagements/intake'
+      preLoaderRoute: typeof ExecutionEngagementsIntakeRouteImport
+      parentRoute: typeof ExecutionEngagementsRouteRoute
     }
     '/_execution/engagements/$engagementId': {
       id: '/_execution/engagements/$engagementId'
@@ -4103,6 +4123,7 @@ const WorkspaceRouteRouteWithChildren = WorkspaceRouteRoute._addFileChildren(
 
 interface ExecutionEngagementsRouteRouteChildren {
   ExecutionEngagementsEngagementIdRoute: typeof ExecutionEngagementsEngagementIdRoute
+  ExecutionEngagementsIntakeRoute: typeof ExecutionEngagementsIntakeRoute
   ExecutionEngagementsIndexRoute: typeof ExecutionEngagementsIndexRoute
   ExecutionEngagementsContractsContractIdRoute: typeof ExecutionEngagementsContractsContractIdRoute
   ExecutionEngagementsFinanceContractIdRoute: typeof ExecutionEngagementsFinanceContractIdRoute
@@ -4139,6 +4160,7 @@ const ExecutionEngagementsRouteRouteChildren: ExecutionEngagementsRouteRouteChil
   {
     ExecutionEngagementsEngagementIdRoute:
       ExecutionEngagementsEngagementIdRoute,
+    ExecutionEngagementsIntakeRoute: ExecutionEngagementsIntakeRoute,
     ExecutionEngagementsIndexRoute: ExecutionEngagementsIndexRoute,
     ExecutionEngagementsContractsContractIdRoute:
       ExecutionEngagementsContractsContractIdRoute,

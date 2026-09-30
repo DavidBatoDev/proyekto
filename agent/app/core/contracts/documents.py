@@ -46,17 +46,16 @@ class SummarizeChangesResponse(BaseModel):
     model: str
 
 
-class DocumentPage(BaseModel):
-    """One page, as an image (data URL) and/or its text layer."""
-
-    page: int = Field(ge=1)
-    image_data_url: str | None = Field(default=None, max_length=12_000_000)
-    text: str | None = Field(default=None, max_length=60_000)
+MAX_FILE_DATA_URL = 40_000_000  # ~30 MB of file as base64
 
 
 class ClassifyPagesRequest(BaseModel):
+    """One uploaded file: a PDF (sent as input_file) or a photo (input_image)."""
+
     file_name: str = Field(default='', max_length=300)
-    pages: list[DocumentPage] = Field(min_length=1, max_length=60)
+    mime_type: str = Field(max_length=100)
+    file_data_url: str = Field(min_length=10, max_length=MAX_FILE_DATA_URL)
+    page_count: int = Field(default=1, ge=1, le=500)
 
 
 class ClassifiedDocument(BaseModel):
@@ -78,9 +77,13 @@ class ExtractDocumentRequest(BaseModel):
     doc_type: Literal[
         'contract', 'amendment', 'invoice', 'receipt', 'proof_of_payment', 'other'
     ]
-    pages: list[DocumentPage] = Field(min_length=1, max_length=40)
+    file_name: str = Field(default='', max_length=300)
+    mime_type: str = Field(max_length=100)
+    file_data_url: str = Field(min_length=10, max_length=MAX_FILE_DATA_URL)
+    page_start: int = Field(default=1, ge=1)
+    page_end: int = Field(default=1, ge=1)
     # A single region re-read ("assign a field by drawing a box"): the crop is
-    # sent as the only page and `field` names what it should contain.
+    # sent as the file (an image) and `field` names what it should contain.
     field: str | None = Field(default=None, max_length=80)
 
 

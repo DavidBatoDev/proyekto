@@ -164,6 +164,7 @@ export class ContractSnapshotService {
       const key = `contract_snapshots/${contract.id}/v${contract.version}-r${contract.revision}-${sha256.slice(0, 12)}.pdf`;
       await this.uploads.putPrivateObject(key, body, 'application/pdf');
       const now = new Date().toISOString();
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
       const { data, error } = await this.supabase
         .from('contracts')
         .update({

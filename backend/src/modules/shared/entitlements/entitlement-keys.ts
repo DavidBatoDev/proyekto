@@ -87,6 +87,17 @@ export const ENTITLEMENT_KEYS = {
   // Two-way contract authoring (docs/13-proposals/two-way-contract-authoring.md).
   contract_counterparty_authoring: { kind: 'feature', enforced: true },
   active_contracts: { kind: 'count', scope: 'workspace', enforced: true },
+  // Document intake (docs/13-proposals/document-intake.md). Pages, not files.
+  document_intake_pages_monthly: {
+    kind: 'quota',
+    scope: 'workspace',
+    enforced: true,
+  },
+  document_intake_onboarding_pages: {
+    kind: 'quota',
+    scope: 'workspace',
+    enforced: true,
+  },
 } as const satisfies Record<string, EntitlementKeyDef>;
 
 export type EntitlementKey = keyof typeof ENTITLEMENT_KEYS;
@@ -120,7 +131,10 @@ export type NumericLimitKey =
  * Workspace counts that workspace_usage_counts does not answer: the caller
  * counts them and passes `used` (see EntitlementsService.assertCountedLimit).
  */
-export type CallerCountedKey = 'active_contracts';
+export type CallerCountedKey =
+  | 'active_contracts'
+  | 'document_intake_pages_monthly'
+  | 'document_intake_onboarding_pages';
 
 // Compile-time guards: the hand-written unions above must match the registry.
 // A key added to one and not the other fails the build here, not at runtime.

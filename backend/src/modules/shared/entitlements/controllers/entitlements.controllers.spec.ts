@@ -54,7 +54,7 @@ describe('PlansController', () => {
     const plans = await new PlansController(entitlements).list(response);
 
     expect(plans.plans).toEqual(['free', 'pro', 'business', 'enterprise']);
-    expect(plans.keys).toHaveLength(20);
+    expect(plans.keys).toHaveLength(22);
     expect(plans.keys[0]).not.toHaveProperty('enforced');
     expect(plans).not.toHaveProperty('drift');
     expect(plans.limits.free.projects).toEqual({
