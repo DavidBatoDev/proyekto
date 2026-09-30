@@ -6,6 +6,7 @@ import {
   Injectable,
   Logger,
   NotFoundException,
+  Optional,
 } from '@nestjs/common';
 import { SupabaseClient } from '@supabase/supabase-js';
 import { isActiveConsultantEnrollment } from '../../../common/auth/consultant-capability';
@@ -34,6 +35,20 @@ import {
   defaultContractClauses,
 } from './contract-clause-template';
 import { computeContractTerm } from './contract-term';
+import {
+  type ContractDiff,
+  contractTermsSnapshot,
+  type ContractTermsSnapshot,
+  type DiffSeat,
+  diffContractTerms,
+  visibleRevisionChanges,
+} from './contract-diff';
+import {
+  type ContractChangeSummary,
+  ContractChangeSummaryService,
+} from './contract-change-summary.service';
+import { ContractSnapshotService } from './contract-snapshot.service';
+import { EntitlementsService } from '../../shared/entitlements/entitlements.service';
 import {
   AmendContractDto,
   BillingMode,
@@ -68,6 +83,10 @@ export interface ContractPosition {
   /** The team this seat signs on behalf of (identity, not party-ship). */
   team_id: string | null;
   team_name_snapshot: string | null;
+  /** The revision this seat's signature was made on. */
+  signed_revision?: number | null;
+  /** The revision this seat last reviewed (rule 4). */
+  last_viewed_revision?: number | null;
 }
 
 /** A team's billing identity, as copied onto a contract's party block. */
@@ -176,7 +195,51 @@ export interface ContractRow {
   created_at: string;
   updated_at: string;
   positions?: ContractPosition[];
+
+  /** Who made the latest term change; read by the revision trigger. */
+  last_edited_by?: string | null;
+  /** Whose plan this contract counts against (project's, else the author's). */
+  workspace_id?: string | null;
+  /** The clause template the contract was issued from. */
+  template_key?: string | null;
+  /** The frozen copy of what was signed (see ContractSnapshotService). */
+  signed_pdf_path?: string | null;
+  signed_pdf_sha256?: string | null;
+  signed_terms?: ContractTermsSnapshot | null;
+  signed_snapshot_taken_at?: string | null;
+  signed_snapshot_kind?: 'at_signing' | 'backfill' | null;
 }
+
+/** One term change during negotiation, from contract_revisions. */
+export interface ContractRevisionRow {
+  id: string;
+  contract_id: string;
+  revision: number;
+  author_user_id: string | null;
+  author_position: 'hirer' | 'provider' | null;
+  changes: Record<string, { before: unknown; after: unknown }>;
+  created_at: string;
+}
+
+/** The party blocks each seat owns (rule 5). Commercial terms are shared. */
+const PROVIDER_BLOCK_FIELDS = [
+  'provider_kind',
+  'provider_name',
+  'provider_address',
+  'provider_tin',
+  'provider_email',
+] as const;
+const HIRER_BLOCK_FIELDS = [
+  'client_kind',
+  'client_name',
+  'client_contact_name',
+  'client_address',
+  'client_tin',
+  'client_email',
+] as const;
+
+/** Statuses that count toward the active_contracts plan limit. */
+const ACTIVE_CONTRACT_STATUSES: ContractStatus[] = ['sent', 'signed'];
 
 /** A contract plus the billing schedule derived from its terms. */
 export interface ContractWithSchedule extends ContractRow {
@@ -404,6 +467,11 @@ export class ContractsService {
     private readonly notifications: NotificationsService,
     private readonly projectAuth: ProjectAuthorizationService,
     private readonly pageInitials: ContractPageInitialsService,
+    // Optional so the unit harnesses that construct this service positionally
+    // keep working; in the app all three are always provided.
+    @Optional() private readonly entitlements?: EntitlementsService,
+    @Optional() private readonly snapshots?: ContractSnapshotService,
+    @Optional() private readonly summaries?: ContractChangeSummaryService,
   ) {}
 
   /**
@@ -457,7 +525,13 @@ export class ContractsService {
       .eq('project_id', projectId)
       .order('version', { ascending: false });
     if (error) throw new Error(error.message);
-    const rows = (data ?? []) as ContractRow[];
+    // A counterparty's draft is private to its author until sent.
+    const rows = ((data ?? []) as ContractRow[]).filter(
+      (row) =>
+        row.status !== 'draft' ||
+        this.authorOf(row) === callerId ||
+        this.authorOf(row) === row.consultant_user_id,
+    );
     return Promise.all(rows.map((row) => this.withSchedule(row)));
   }
 
@@ -503,6 +577,17 @@ export class ContractsService {
     callerId: string,
     dto: CreateContractDto,
   ): Promise<ContractWithSchedule> {
+    const authorCapacity =
+      dto.author_capacity ??
+      ((await isActiveConsultantEnrollment(this.supabase, callerId))
+        ? 'consultant'
+        : dto.relationship_kind === 'talent_services'
+          ? 'talent'
+          : 'client');
+    if (authorCapacity !== 'consultant') {
+      return this.createAsCounterparty(callerId, dto, authorCapacity);
+    }
+
     const relationshipKind = dto.relationship_kind ?? 'client_services';
     const scopeMode = dto.scope_mode ?? 'project_specific';
     if (scopeMode === 'project_specific') {
@@ -529,34 +614,153 @@ export class ContractsService {
   }
 
   /**
-   * Insert path used after the finance authorization check has succeeded.
+   * A client or talent authors the contract (two-way authoring, rule 1).
+   *
+   * The caller takes their own seat and names the consultant by account. The
+   * consultant's verification is not required to DRAFT (the signing RPC
+   * refuses to activate while it is missing), except that a talent may only
+   * name a verified consultant, as the proposal specifies.
+   *
+   * A client naming a project may only name one owned by the consultant they
+   * name, so a draft can never reach a stranger's project. The caller needs no
+   * prior project access: the contract is what gives them their role.
+   */
+  private async createAsCounterparty(
+    callerId: string,
+    dto: CreateContractDto,
+    capacity: 'client' | 'talent',
+  ): Promise<ContractWithSchedule> {
+    const relationshipKind: ContractRelationshipKind =
+      capacity === 'talent' ? 'talent_services' : 'client_services';
+    if (dto.relationship_kind && dto.relationship_kind !== relationshipKind) {
+      throw new BadRequestException(
+        capacity === 'talent'
+          ? 'Talent author talent contracts only.'
+          : 'Clients author client service contracts only.',
+      );
+    }
+    const scopeMode = dto.scope_mode ?? 'flexible';
+    const consultantId = dto.counterparty_user_id;
+    if (!consultantId || consultantId === callerId) {
+      throw new BadRequestException(
+        'Name the consultant this contract is with.',
+      );
+    }
+    if (capacity === 'talent') {
+      if (!(await isActiveConsultantEnrollment(this.supabase, consultantId))) {
+        throw new BadRequestException(
+          'A talent contract must be with a verified consultant.',
+        );
+      }
+    } else if (!(await this.hasConsultantEnrollment(consultantId))) {
+      throw new BadRequestException(
+        'The account you named is not a consultant.',
+      );
+    }
+
+    let workspaceId: string | null;
+    if (scopeMode === 'project_specific') {
+      if (capacity === 'talent') {
+        throw new BadRequestException(
+          'A talent-authored contract is flexible; the consultant scopes the work.',
+        );
+      }
+      if (!dto.project_id) {
+        throw new BadRequestException(
+          'A project-specific contract requires a project.',
+        );
+      }
+      const { data, error } = await this.supabase
+        .from('projects')
+        .select('owner_id, workspace_id')
+        .eq('id', dto.project_id)
+        .maybeSingle();
+      if (error) throw new BadRequestException(error.message);
+      const project = data as {
+        owner_id: string | null;
+        workspace_id: string | null;
+      } | null;
+      if (!project || project.owner_id !== consultantId) {
+        // Same answer whether the project is missing or someone else's.
+        throw new NotFoundException(
+          'That project does not belong to the consultant you named.',
+        );
+      }
+      workspaceId = project.workspace_id;
+    } else {
+      if (dto.project_id) {
+        throw new BadRequestException(
+          'A flexible contract starts without a project scope.',
+        );
+      }
+      workspaceId = await this.defaultWorkspaceId(callerId);
+    }
+
+    await this.entitlements?.assertFeature(
+      { workspaceId, exempt: false },
+      'contract_counterparty_authoring',
+      { context: 'create' },
+    );
+
+    return this.createContractInternal(
+      callerId,
+      { ...dto, relationship_kind: relationshipKind, scope_mode: scopeMode },
+      { consultantId, workspaceId },
+    );
+  }
+
+  /**
+   * Insert path used after authorization has succeeded.
+   *
+   * By default the caller is the consultant and `counterparty_user_id` the
+   * other seat. With `author`, the caller is the COUNTERPARTY (client or
+   * talent) and `author.consultantId` takes the consultant seat.
    */
   async createContractInternal(
     callerId: string,
     dto: CreateContractDto,
+    author?: { consultantId: string; workspaceId: string | null },
   ): Promise<ContractWithSchedule> {
     const {
       project_id: projectId = null,
       counterparty_user_id,
       team_id: requestedTeamId,
+      author_capacity: _authorCapacity,
       ...rawTerms
     } = dto;
+    void _authorCapacity;
     const terms = this.normalizeTerms(rawTerms);
     const relationshipKind = terms.relationship_kind ?? 'client_services';
     const scopeMode = terms.scope_mode ?? 'project_specific';
-    const consultant = await this.resolveProfile(callerId);
-    const counterparty = await this.resolveCounterpartyForCreate(
-      callerId,
-      projectId,
-      relationshipKind,
-      counterparty_user_id,
-    );
-    const consultantTeam = await this.resolveCreatorTeam(
-      callerId,
-      projectId,
-      requestedTeamId,
-      terms.provider_kind,
-    );
+
+    let consultant: ProfileIdentity;
+    let counterparty: ProfileIdentity;
+    let consultantTeam: TeamIdentity | null;
+    let counterpartyTeam: TeamIdentity | null = null;
+    if (author) {
+      consultant = await this.resolveProfile(author.consultantId);
+      counterparty = await this.resolveProfile(callerId);
+      // The consultant picks their own team when they open it (setSeatTeam);
+      // until then their block is their personal profile.
+      consultantTeam = null;
+      counterpartyTeam = requestedTeamId
+        ? await this.ownedTeamIdentity(callerId, requestedTeamId)
+        : null;
+    } else {
+      consultant = await this.resolveProfile(callerId);
+      counterparty = await this.resolveCounterpartyForCreate(
+        callerId,
+        projectId,
+        relationshipKind,
+        counterparty_user_id,
+      );
+      consultantTeam = await this.resolveCreatorTeam(
+        callerId,
+        projectId,
+        requestedTeamId,
+        terms.provider_kind,
+      );
+    }
     const seeded = await this.seedContractParties(
       projectId,
       relationshipKind,
@@ -564,17 +768,23 @@ export class ContractsService {
       consultant,
       counterparty,
       consultantTeam,
+      counterpartyTeam,
     );
-
+    const workspaceId =
+      author?.workspaceId ??
+      (projectId
+        ? await this.projectWorkspaceId(projectId)
+        : await this.defaultWorkspaceId(callerId));
     const insert: Record<string, unknown> = {
       project_id: projectId,
-      consultant_user_id: callerId,
+      consultant_user_id: author ? author.consultantId : callerId,
       relationship_kind: relationshipKind,
       scope_mode: scopeMode,
       contract_family_id: randomUUID(),
       version: 1,
       status: 'draft',
       created_by: callerId,
+      workspace_id: workspaceId,
       document_title: agreementTitle(relationshipKind),
       clauses:
         (terms.clauses as unknown as ContractClause[]) ??
@@ -605,6 +815,7 @@ export class ContractsService {
       consultant,
       counterparty,
       consultantTeam,
+      counterpartyTeam,
     );
     return this.withSchedule(row);
   }
@@ -613,15 +824,26 @@ export class ContractsService {
     callerId: string,
     contractId: string,
     dto: UpdateContractDto,
+    /** From `If-Match`: the revision the editor read. Optional for old clients. */
+    expectedRevision?: number,
   ): Promise<ContractWithSchedule> {
     const existing = await this.getContractRow(contractId);
-    await this.assertConsultantContractControl(callerId, existing);
+    const seat = await this.assertPartyControl(callerId, existing);
 
     if (!EDITABLE_STATUSES.includes(existing.status)) {
       throw new BadRequestException(
         `A ${existing.status} contract cannot be edited. Create a new version instead.`,
       );
     }
+    if (
+      expectedRevision !== undefined &&
+      expectedRevision !== existing.revision
+    ) {
+      throw new ConflictException(
+        'This contract changed while you were editing it. Reload to see the latest terms.',
+      );
+    }
+    if (seat) this.assertSeatOwnsFields(seat, dto, existing);
 
     const terms = this.normalizeTerms(dto);
     this.assertBillingTimingAllowed(
@@ -645,7 +867,53 @@ export class ContractsService {
       return this.withSchedule(existing);
     }
 
-    return this.withSchedule(await this.commitTermsChange(existing, patch));
+    const updated = await this.commitTermsChange(existing, patch, callerId);
+    if (updated.revision !== existing.revision && updated.status === 'sent') {
+      await this.notifyParties(callerId, updated, 'contract_changed');
+    }
+    return this.withSchedule(updated);
+  }
+
+  /**
+   * Rule 5: each seat owns its own identity block. The provider block is
+   * written only by the provider seat, the hirer billing identity only by the
+   * hirer seat; commercial terms are shared. Who a seat IS is fixed by the
+   * seat itself, so client_user_id is never patchable on a seated contract.
+   */
+  private assertSeatOwnsFields(
+    seat: ContractPosition,
+    dto: UpdateContractDto,
+    existing: ContractRow,
+  ): void {
+    const record = dto as unknown as Record<string, unknown>;
+    const stored = existing as unknown as Record<string, unknown>;
+    // Resending a foreign field unchanged is harmless (editors autosave whole
+    // forms); only an actual change to the other seat's block is refused.
+    const touched = (fields: readonly string[]) =>
+      fields.filter(
+        (field) =>
+          record[field] !== undefined &&
+          !sameStoredValue(stored[field], record[field]),
+      );
+    const foreign =
+      seat.position === 'provider'
+        ? touched(HIRER_BLOCK_FIELDS)
+        : touched(PROVIDER_BLOCK_FIELDS);
+    if (foreign.length > 0) {
+      throw new BadRequestException(
+        seat.position === 'provider'
+          ? "The other party's billing identity is set by them."
+          : "The provider's identity block is set by the provider.",
+      );
+    }
+    if (
+      record.client_user_id !== undefined &&
+      !sameStoredValue(stored.client_user_id, record.client_user_id)
+    ) {
+      throw new BadRequestException(
+        'The parties to a contract are fixed by its seats.',
+      );
+    }
   }
 
   /**
@@ -664,6 +932,7 @@ export class ContractsService {
   private async commitTermsChange(
     existing: ContractRow,
     requested: Record<string, unknown>,
+    actorId: string | null = null,
   ): Promise<ContractRow> {
     // Editors autosave, and some resend values they did not change (the clause
     // editor does on load). A save that changes nothing must not void anyone's
@@ -685,6 +954,9 @@ export class ContractsService {
         ...patch,
         ...CLEARED_LEGACY_SIGNATURES,
         revision: nextRevision,
+        // Read by trg_contracts_record_revision, which writes the
+        // contract_revisions row in this same statement.
+        last_edited_by: actorId,
         updated_at: new Date().toISOString(),
       })
       .eq('id', existing.id)
@@ -736,10 +1008,13 @@ export class ContractsService {
     }
   }
 
-  /** Drafts have no legal force yet and may be discarded by the consultant. */
+  /** Drafts have no legal force yet and may be discarded by their author. */
   async deleteContract(callerId: string, contractId: string): Promise<void> {
     const existing = await this.getContractRow(contractId);
-    await this.assertConsultantContractControl(callerId, existing);
+    await this.assertPartyControl(callerId, existing);
+    if (callerId !== this.authorOf(existing)) {
+      throw new BadRequestException('Only the author may delete a draft.');
+    }
     if (existing.status !== 'draft') {
       throw new BadRequestException('Only draft contracts can be deleted.');
     }
@@ -766,7 +1041,14 @@ export class ContractsService {
     dto: AmendContractDto,
   ): Promise<ContractWithSchedule> {
     const existing = await this.getContractRow(contractId);
-    await this.assertConsultantContractControl(callerId, existing);
+    const seat = await this.assertPartyControl(callerId, existing);
+    if (existing.status !== 'signed') {
+      throw new BadRequestException(
+        'Only a signed contract is amended. Edit a draft or sent contract directly.',
+      );
+    }
+    if (seat) this.assertSeatOwnsFields(seat, dto, existing);
+    await this.assertNoOpenAmendment(existing);
 
     if (
       dto.scope === 'this' ||
@@ -953,10 +1235,26 @@ export class ContractsService {
         signed_by_client_at: null,
         signed_by_client_name: null,
         signed_by_client_signature_url: null,
+        // The predecessor's frozen copy belongs to the predecessor.
+        signed_pdf_path: null,
+        signed_pdf_sha256: null,
+        signed_terms: null,
+        signed_snapshot_taken_at: null,
+        signed_snapshot_kind: null,
+        last_edited_by: null,
+        // Records which party proposed the amendment.
         created_by: callerId,
       })
       .select('*')
       .single();
+    if (
+      error?.message &&
+      /uq_contracts_one_open_amendment/.test(error.message)
+    ) {
+      throw new ConflictException(
+        'An amendment to this contract is already open. Edit that amendment instead of starting another.',
+      );
+    }
     if (error || !data) {
       throw new BadRequestException(
         error?.message ?? 'Failed to create the amended contract.',
@@ -979,7 +1277,30 @@ export class ContractsService {
     const existing = await this.getContractRow(contractId);
     const position = await this.resolveSignaturePosition(existing, dto);
     await this.assertCanSign(callerId, existing, position);
+    await this.assertChangesReviewed(callerId, existing);
     return this.stampSignature(existing, { ...dto, position }, callerId);
+  }
+
+  /**
+   * Rule 4: a seat that has reviewed this contract before must open what the
+   * other party changed since, before signing. A seat that never viewed it has
+   * nothing to compare against: the whole document is new to them.
+   */
+  private async assertChangesReviewed(
+    callerId: string,
+    contract: ContractRow,
+  ): Promise<void> {
+    const seat = (await this.getPositions(contract.id)).find(
+      (entry) => entry.user_id === callerId,
+    );
+    const lastViewed = seat?.last_viewed_revision ?? null;
+    if (!seat || lastViewed === null || lastViewed >= contract.revision) return;
+    const unseen = await this.revisionsSince(contract.id, lastViewed);
+    if (unseen.some((row) => row.author_user_id !== callerId)) {
+      throw new ConflictException(
+        'The other party changed this contract since you last reviewed it. Review the changes before signing.',
+      );
+    }
   }
 
   /**
@@ -1035,6 +1356,11 @@ export class ContractsService {
     }
     this.assertCommercialTerms(existing);
     this.timePolicyPatch(existing.relationship_kind, existing);
+    // A first signature on a draft sends it (the RPC flips draft -> sent), so
+    // it is held to the same plan limit as an explicit Send.
+    if (existing.status === 'draft') {
+      await this.assertActiveContractCapacity(existing);
+    }
 
     const now = new Date().toISOString();
     const signatureUrl = dto.signature_url?.trim() || null;
@@ -1086,6 +1412,14 @@ export class ContractsService {
     // from the notification — everyone on the project should hear about it.
     if (updated.status === 'signed') {
       await this.notifyCounterparty(actorId ?? '', updated);
+      // Freeze the executed agreement once. Never throws: a failed freeze is
+      // retried as a backfill the next time the history is opened.
+      const frozen = await this.snapshots?.freeze(
+        updated,
+        await this.getPositions(updated.id),
+        'at_signing',
+      );
+      if (frozen) return this.withSchedule(frozen);
     }
     return this.withSchedule(updated);
   }
@@ -1190,7 +1524,7 @@ export class ContractsService {
     dto: UnsignContractDto,
   ): Promise<ContractWithSchedule> {
     const existing = await this.getContractRow(contractId);
-    await this.assertConsultantSignature(callerId, existing);
+    await this.assertOwnSignature(callerId, existing, dto.party);
 
     if (existing.status === 'ended' || existing.status === 'cancelled') {
       throw new BadRequestException(
@@ -1228,6 +1562,7 @@ export class ContractsService {
           signer_name: null,
           signature_url: null,
           signed_at: null,
+          signed_revision: null,
         })
         .eq('contract_id', contractId)
         .eq('position', position);
@@ -1249,6 +1584,380 @@ export class ContractsService {
       );
     }
     return this.withSchedule(data as ContractRow);
+  }
+
+  /**
+   * Send a draft: it becomes visible to the counterparty, who is notified.
+   * Only the author sends, and sending is where active_contracts is checked.
+   */
+  async sendContract(
+    callerId: string,
+    contractId: string,
+  ): Promise<ContractWithSchedule> {
+    const existing = await this.getContractRow(contractId);
+    await this.assertPartyControl(callerId, existing);
+    if (existing.status !== 'draft') {
+      throw new BadRequestException('Only a draft can be sent.');
+    }
+    await this.assertActiveContractCapacity(existing);
+    const { data, error } = await this.supabase
+      .from('contracts')
+      .update({ status: 'sent', updated_at: new Date().toISOString() })
+      .eq('id', contractId)
+      .eq('status', 'draft')
+      .select('*')
+      .maybeSingle();
+    if (error) throw new BadRequestException(error.message);
+    if (!data) {
+      throw new ConflictException('This contract was already sent.');
+    }
+    const sent = data as ContractRow;
+    await this.markViewed(callerId, contractId, sent.revision);
+    await this.notifyParties(callerId, sent, 'contract_sent');
+    return this.withSchedule(sent);
+  }
+
+  /** Either party withdraws a sent contract; it becomes `cancelled`. */
+  async withdrawContract(
+    callerId: string,
+    contractId: string,
+  ): Promise<ContractWithSchedule> {
+    const existing = await this.getContractRow(contractId);
+    await this.assertPartyControl(callerId, existing);
+    if (existing.status !== 'sent') {
+      throw new BadRequestException(
+        existing.status === 'draft'
+          ? 'A draft is deleted, not withdrawn.'
+          : `A ${existing.status} contract cannot be withdrawn.`,
+      );
+    }
+    const { data, error } = await this.supabase
+      .from('contracts')
+      .update({ status: 'cancelled', updated_at: new Date().toISOString() })
+      .eq('id', contractId)
+      .eq('status', 'sent')
+      .select('*')
+      .maybeSingle();
+    if (error) throw new BadRequestException(error.message);
+    if (!data) {
+      throw new ConflictException(
+        'This contract changed status. Reload to see it.',
+      );
+    }
+    const withdrawn = data as ContractRow;
+    await this.notifyParties(callerId, withdrawn, 'contract_withdrawn');
+    return this.withSchedule(withdrawn);
+  }
+
+  /**
+   * Record that the caller's seat reviewed the contract at `revision` (rule
+   * 4). Only ever moves forward, and never past the current revision.
+   */
+  async markViewed(
+    callerId: string,
+    contractId: string,
+    revision: number,
+  ): Promise<{ last_viewed_revision: number }> {
+    const contract = await this.getContractRow(contractId);
+    await this.assertContractRead(callerId, contract);
+    const seat = (await this.getPositions(contractId)).find(
+      (entry) => entry.user_id === callerId,
+    );
+    if (!seat) throw new NotFoundException('Contract not found');
+    const next = Math.min(Math.max(1, revision), contract.revision);
+    const current = seat.last_viewed_revision ?? 0;
+    if (next <= current) return { last_viewed_revision: current };
+    const { error } = await this.supabase
+      .from('contract_positions')
+      .update({ last_viewed_revision: next })
+      .eq('contract_id', contractId)
+      .eq('position', seat.position);
+    if (error) throw new BadRequestException(error.message);
+    return { last_viewed_revision: next };
+  }
+
+  /**
+   * The negotiation revisions of one version, for seat holders only, each
+   * filtered to what the caller's seat may see. `unseen` marks what the other
+   * party changed since the caller last reviewed (rule 4).
+   */
+  async listRevisions(callerId: string, contractId: string) {
+    const contract = await this.getContractRow(contractId);
+    await this.assertContractRead(callerId, contract);
+    const positions = await this.getPositions(contractId);
+    const seat = positions.find((entry) => entry.user_id === callerId);
+    if (!seat) throw new NotFoundException('Contract not found');
+    const consultantSeat =
+      positions.find((entry) => entry.capacity === 'consultant')?.position ??
+      null;
+    const names = new Map(
+      positions.map((entry) => [entry.user_id, entry.display_name_snapshot]),
+    );
+    const rows = await this.revisionsSince(contractId, 0);
+    const lastViewed = seat.last_viewed_revision ?? null;
+    return {
+      revision: contract.revision,
+      last_viewed_revision: lastViewed,
+      unseen_changes:
+        lastViewed !== null &&
+        rows.some(
+          (row) => row.revision > lastViewed && row.author_user_id !== callerId,
+        ),
+      revisions: rows
+        .map((row) => ({
+          revision: row.revision,
+          author_user_id: row.author_user_id,
+          author_name: row.author_user_id
+            ? (names.get(row.author_user_id) ?? null)
+            : null,
+          author_position: row.author_position,
+          created_at: row.created_at,
+          unseen:
+            lastViewed !== null &&
+            row.revision > lastViewed &&
+            row.author_user_id !== callerId,
+          changes: visibleRevisionChanges(row.changes ?? {}, {
+            seat: seat.position,
+            consultantSeat,
+          }),
+        }))
+        .reverse(),
+    };
+  }
+
+  /**
+   * Every version in the contract's family, newest first, with its signers,
+   * effective date, who proposed it and its frozen snapshot. A signed version
+   * with no snapshot yet is frozen here, as a labelled backfill.
+   */
+  async getHistory(callerId: string, contractId: string) {
+    const contract = await this.getContractRow(contractId);
+    await this.assertContractRead(callerId, contract);
+    const family = await this.familyVersions(contract);
+    const versions: Array<Record<string, unknown>> = [];
+    for (let row of family) {
+      // Another party's private draft amendment stays private.
+      if (row.status === 'draft' && this.authorOf(row) !== callerId) continue;
+      const positions = await this.getPositions(row.id);
+      if (
+        (row.status === 'signed' || row.status === 'ended') &&
+        !row.signed_pdf_path &&
+        this.snapshots
+      ) {
+        row = (await this.snapshots.freeze(row, positions, 'backfill')) ?? row;
+      }
+      const proposer = positions.find(
+        (entry) => entry.user_id === row.created_by,
+      );
+      versions.push({
+        id: row.id,
+        version: row.version,
+        revision: row.revision,
+        status: row.status,
+        document_title: row.document_title,
+        effective_from: row.amendment_effective_date ?? row.service_start_date,
+        created_at: row.created_at,
+        proposed_by: row.created_by,
+        proposed_by_capacity: proposer?.capacity ?? null,
+        proposed_by_name: proposer?.display_name_snapshot ?? null,
+        signatures: positions.map((entry) => ({
+          position: entry.position,
+          capacity: entry.capacity,
+          name: entry.signer_name ?? entry.display_name_snapshot,
+          signed_at: entry.signed_at,
+        })),
+        snapshot: row.signed_pdf_path
+          ? {
+              sha256: row.signed_pdf_sha256 ?? null,
+              taken_at: row.signed_snapshot_taken_at ?? null,
+              kind: row.signed_snapshot_kind ?? null,
+            }
+          : null,
+        supersedes_contract_id: row.supersedes_contract_id,
+      });
+    }
+    return { family_id: contract.contract_family_id, versions };
+  }
+
+  /**
+   * Deterministic comparison of two versions of the same family, as the
+   * caller's seat sees them. Signed versions compare on their frozen
+   * `signed_terms`; unsigned ones on their live row.
+   */
+  async compareVersions(
+    callerId: string,
+    contractId: string,
+    otherId: string,
+  ): Promise<{
+    from: {
+      id: string;
+      version: number;
+      revision: number;
+      status: ContractStatus;
+    };
+    to: {
+      id: string;
+      version: number;
+      revision: number;
+      status: ContractStatus;
+    };
+    seat: DiffSeat;
+    diff: ContractDiff;
+  }> {
+    const { from, to, seat, consultantSeat } = await this.comparisonPair(
+      callerId,
+      contractId,
+      otherId,
+    );
+    const diff = diffContractTerms(this.termsOf(from), this.termsOf(to), {
+      seat,
+      consultantSeat,
+    });
+    const head = (row: ContractRow) => ({
+      id: row.id,
+      version: row.version,
+      revision: row.revision,
+      status: row.status,
+    });
+    return { from: head(from), to: head(to), seat, diff };
+  }
+
+  /** The AI explanation of a comparison, cached per version pair and seat. */
+  async summarizeComparison(
+    callerId: string,
+    contractId: string,
+    otherId: string,
+  ): Promise<ContractChangeSummary & { rows: number }> {
+    if (!this.summaries) {
+      throw new BadRequestException('AI summaries are not available.');
+    }
+    const { from, to, seat, consultantSeat, seatLabel } =
+      await this.comparisonPair(callerId, contractId, otherId);
+    const diff = diffContractTerms(this.termsOf(from), this.termsOf(to), {
+      seat,
+      consultantSeat,
+    });
+    const summary = await this.summaries.summarize({
+      callerId,
+      from: { id: from.id, version: from.version, revision: from.revision },
+      to: {
+        id: to.id,
+        version: to.version,
+        revision: to.revision,
+        amendment_effective_date: to.amendment_effective_date,
+        document_title: to.document_title,
+      },
+      seat,
+      seatLabel,
+      diff,
+    });
+    return {
+      ...summary,
+      rows: diff.fields.length + diff.clauses.length + diff.services.length,
+    };
+  }
+
+  /**
+   * The frozen PDF of a signed version: a short-lived presigned URL plus a
+   * fresh hash of the stored bytes, so the viewer can see it still matches.
+   */
+  async getSignedPdf(callerId: string, contractId: string) {
+    let contract = await this.getContractRow(contractId);
+    await this.assertContractRead(callerId, contract);
+    if (!this.snapshots) {
+      throw new BadRequestException('Frozen agreements are not available.');
+    }
+    if (!contract.signed_pdf_path) {
+      if (contract.status !== 'signed' && contract.status !== 'ended') {
+        throw new BadRequestException(
+          'Only a signed contract has a frozen copy.',
+        );
+      }
+      contract =
+        (await this.snapshots.freeze(
+          contract,
+          await this.getPositions(contract.id),
+          'backfill',
+        )) ?? contract;
+    }
+    const frozen = await this.snapshots.readFrozen(contract);
+    if (!frozen) {
+      throw new BadRequestException('The frozen copy could not be produced.');
+    }
+    return {
+      sha256: contract.signed_pdf_sha256,
+      verified: frozen.verified,
+      kind: contract.signed_snapshot_kind ?? null,
+      taken_at: contract.signed_snapshot_taken_at ?? null,
+      body: frozen.body,
+      file_name: `${(contract.document_title || 'Agreement').replace(/[^\w -]+/g, '')} v${contract.version}.pdf`,
+    };
+  }
+
+  /** Freeze signed contracts that predate freezing. Platform admins only. */
+  async backfillSnapshots(limit = 50): Promise<{ frozen: number }> {
+    if (!this.snapshots) return { frozen: 0 };
+    return {
+      frozen: await this.snapshots.backfill(limit, (id) =>
+        this.getPositions(id),
+      ),
+    };
+  }
+
+  private termsOf(row: ContractRow): ContractTermsSnapshot {
+    return (
+      row.signed_terms ??
+      contractTermsSnapshot(
+        row as unknown as Parameters<typeof contractTermsSnapshot>[0],
+      )
+    );
+  }
+
+  private async familyVersions(contract: ContractRow): Promise<ContractRow[]> {
+    if (!contract.contract_family_id) return [contract];
+    const { data, error } = await this.supabase
+      .from('contracts')
+      .select('*')
+      .eq('contract_family_id', contract.contract_family_id)
+      .order('version', { ascending: false });
+    if (error) throw new BadRequestException(error.message);
+    return (data ?? []) as ContractRow[];
+  }
+
+  /** Both versions readable by the caller, in the same family, oldest first. */
+  private async comparisonPair(
+    callerId: string,
+    contractId: string,
+    otherId: string,
+  ) {
+    const a = await this.getContractRow(contractId);
+    const b = await this.getContractRow(otherId);
+    await this.assertContractRead(callerId, a);
+    await this.assertContractRead(callerId, b);
+    if (
+      a.id !== b.id &&
+      (!a.contract_family_id || a.contract_family_id !== b.contract_family_id)
+    ) {
+      throw new BadRequestException(
+        'Only versions of the same contract can be compared.',
+      );
+    }
+    const [from, to] = a.version <= b.version ? [a, b] : [b, a];
+    const positions = await this.getPositions(to.id);
+    const seatRow = positions.find((entry) => entry.user_id === callerId);
+    const seat: DiffSeat = seatRow?.position ?? 'viewer';
+    const consultantSeat =
+      positions.find((entry) => entry.capacity === 'consultant')?.position ??
+      null;
+    const seatLabel =
+      seatRow?.capacity === 'consultant'
+        ? 'Consultant'
+        : seatRow?.capacity === 'talent'
+          ? 'Talent'
+          : seatRow?.capacity === 'client'
+            ? 'Client'
+            : 'Reader';
+    return { from, to, seat, consultantSeat, seatLabel };
   }
 
   private async assertCanSign(
@@ -1301,8 +2010,24 @@ export class ContractsService {
     contract: ContractRow,
   ): Promise<void> {
     const positions = await this.getPositions(contract.id);
-    if (positions.some((position) => position.user_id === callerId)) return;
     const consultantId = contract.consultant_user_id ?? contract.created_by;
+    if (contract.status === 'draft') {
+      // A draft is private to its author until it is sent. The consultant's
+      // own team (project finance readers) still sees a consultant-authored
+      // draft; a counterparty's draft is visible to nobody else.
+      const author = this.authorOf(contract);
+      if (callerId === author) return;
+      if (author !== consultantId || callerId === contract.client_user_id) {
+        throw new NotFoundException('Contract not found');
+      }
+      const counterpartySeat = positions.find(
+        (position) => position.capacity !== 'consultant',
+      );
+      if (counterpartySeat?.user_id === callerId) {
+        throw new NotFoundException('Contract not found');
+      }
+    }
+    if (positions.some((position) => position.user_id === callerId)) return;
     if (callerId === consultantId || callerId === contract.client_user_id) {
       return;
     }
@@ -1332,6 +2057,165 @@ export class ContractsService {
     } else {
       await this.assertActiveConsultant(callerId);
     }
+  }
+
+  /**
+   * Rule 1: authority follows the seat, not the capacity. Anyone holding the
+   * hirer or provider position may edit, amend and withdraw. Returns the
+   * caller's seat, or null for a position-less legacy contract, which still
+   * falls back to the consultant-only rule it was created under.
+   */
+  private async assertPartyControl(
+    callerId: string,
+    contract: ContractRow,
+  ): Promise<ContractPosition | null> {
+    const positions = await this.getPositions(contract.id);
+    if (positions.length === 0) {
+      await this.assertConsultantContractControl(callerId, contract);
+      return null;
+    }
+    const seat = positions.find((entry) => entry.user_id === callerId);
+    if (!seat) throw new NotFoundException('Contract not found');
+    // A draft stays private to its author: the other seat cannot act on it.
+    if (contract.status === 'draft' && callerId !== this.authorOf(contract)) {
+      throw new NotFoundException('Contract not found');
+    }
+    return seat;
+  }
+
+  /** Each party may pull only their own signature. */
+  private async assertOwnSignature(
+    callerId: string,
+    contract: ContractRow,
+    party: 'consultant' | 'client',
+  ): Promise<void> {
+    const position = await this.positionForLegacyParty(contract, party);
+    if (position) {
+      const seat = (await this.getPositions(contract.id)).find(
+        (entry) => entry.position === position,
+      );
+      if (seat?.user_id === callerId) return;
+      throw new NotFoundException('Contract not found');
+    }
+    const consultantId = contract.consultant_user_id ?? contract.created_by;
+    if (party === 'consultant' && callerId === consultantId) {
+      await this.assertConsultantContractControl(callerId, contract);
+      return;
+    }
+    if (party === 'client' && callerId === contract.client_user_id) return;
+    throw new NotFoundException('Contract not found');
+  }
+
+  /** Who authored this version: `created_by`, else the consultant (legacy). */
+  private authorOf(contract: ContractRow): string | null {
+    return contract.created_by ?? contract.consultant_user_id;
+  }
+
+  /** Any consultant enrollment at all, verified or not. */
+  private async hasConsultantEnrollment(userId: string): Promise<boolean> {
+    const { data, error } = await this.supabase
+      .from('consultant_profiles')
+      .select('user_id')
+      .eq('user_id', userId)
+      .maybeSingle();
+    if (error) throw new BadRequestException(error.message);
+    return Boolean(data);
+  }
+
+  private async projectWorkspaceId(projectId: string): Promise<string | null> {
+    const { data } = await this.supabase
+      .from('projects')
+      .select('workspace_id')
+      .eq('id', projectId)
+      .maybeSingle();
+    return (
+      (data as { workspace_id: string | null } | null)?.workspace_id ?? null
+    );
+  }
+
+  /** The earliest workspace the user owns: the default-workspace rule. */
+  private async defaultWorkspaceId(userId: string): Promise<string | null> {
+    const { data } = await this.supabase
+      .from('workspace_members')
+      .select('workspace_id')
+      .eq('user_id', userId)
+      .eq('role', 'owner')
+      .order('joined_at', { ascending: true })
+      .limit(1);
+    const rows = (data ?? []) as Array<{ workspace_id: string }>;
+    return rows[0]?.workspace_id ?? null;
+  }
+
+  /**
+   * active_contracts is checked when a contract goes out (draft -> sent), never
+   * on create, so drafts are free. It counts contract FAMILIES in sent or
+   * signed status, so an amendment never counts twice: it shares its
+   * predecessor's family. Hitting the limit never touches a live agreement.
+   */
+  private async assertActiveContractCapacity(
+    contract: ContractRow,
+  ): Promise<void> {
+    if (!this.entitlements) return;
+    const workspaceId =
+      contract.workspace_id ??
+      (contract.project_id
+        ? await this.projectWorkspaceId(contract.project_id)
+        : await this.defaultWorkspaceId(
+            this.authorOf(contract) ?? contract.consultant_user_id ?? '',
+          ));
+    const { data, error } = await this.supabase
+      .from('contracts')
+      .select('id, contract_family_id')
+      .eq('workspace_id', workspaceId ?? '00000000-0000-0000-0000-000000000000')
+      .in('status', ACTIVE_CONTRACT_STATUSES);
+    if (error) throw new BadRequestException(error.message);
+    const families = new Set(
+      (
+        (data ?? []) as Array<{ id: string; contract_family_id: string | null }>
+      ).map((row) => row.contract_family_id ?? row.id),
+    );
+    const family = contract.contract_family_id ?? contract.id;
+    await this.entitlements.assertCountedLimit(
+      { workspaceId, exempt: false },
+      'active_contracts',
+      {
+        used: families.size,
+        adding: families.has(family) ? 0 : 1,
+        context: 'write',
+      },
+    );
+  }
+
+  /** Rule 6: one open amendment per contract family. */
+  private async assertNoOpenAmendment(contract: ContractRow): Promise<void> {
+    if (!contract.contract_family_id) return;
+    const { data, error } = await this.supabase
+      .from('contracts')
+      .select('id, created_by')
+      .eq('contract_family_id', contract.contract_family_id)
+      .in('status', ['draft', 'sent'])
+      .not('supersedes_contract_id', 'is', null)
+      .limit(1);
+    if (error) throw new BadRequestException(error.message);
+    if (((data ?? []) as unknown[]).length > 0) {
+      throw new ConflictException(
+        'An amendment to this contract is already open. Edit that amendment instead of starting another.',
+      );
+    }
+  }
+
+  private async revisionsSince(
+    contractId: string,
+    afterRevision: number,
+  ): Promise<ContractRevisionRow[]> {
+    const { data, error } = await this.supabase
+      .from('contract_revisions')
+      .select('*')
+      .eq('contract_id', contractId)
+      .gt('revision', afterRevision)
+      .order('revision', { ascending: true });
+    if (error) throw new BadRequestException(error.message);
+    return (data ?? []) as ContractRevisionRow[];
   }
 
   private async resolveSignaturePosition(
@@ -1747,7 +2631,13 @@ export class ContractsService {
   ): Promise<
     Pick<ProfileIdentity, 'id' | 'display_name' | 'email' | 'avatar_url'>
   > {
-    await this.assertActiveConsultant(callerId);
+    // A consultant may name anyone. A client or talent author (two-way
+    // authoring) may only find consultants, so this never becomes a general
+    // account directory for them.
+    const callerIsConsultant = await isActiveConsultantEnrollment(
+      this.supabase,
+      callerId,
+    );
     const normalized = email.trim().toLowerCase();
     if (!normalized) throw new BadRequestException('Enter an email address.');
     const { data, error } = await this.supabase
@@ -1757,7 +2647,11 @@ export class ContractsService {
       .maybeSingle();
     if (error) throw new BadRequestException(error.message);
     const profile = data as ProfileIdentity | null;
-    if (!profile || profile.id === callerId) {
+    if (
+      !profile ||
+      profile.id === callerId ||
+      (!callerIsConsultant && !(await this.hasConsultantEnrollment(profile.id)))
+    ) {
       throw new NotFoundException('No eligible Proyekto account was found.');
     }
     return {
@@ -1852,6 +2746,7 @@ export class ContractsService {
     consultant: ProfileIdentity,
     counterparty: ProfileIdentity,
     consultantTeam: TeamIdentity | null,
+    counterpartyTeam: TeamIdentity | null = null,
   ): Promise<Record<string, unknown>> {
     const seeded = this.scalarPatch(terms as UpdateContractDto);
     if (projectId) {
@@ -1869,7 +2764,7 @@ export class ContractsService {
     const counterpartySeat =
       consultantSeat === 'provider' ? 'hirer' : 'provider';
     const blocks = {
-      ...this.identityPatch(counterpartySeat, counterparty, null),
+      ...this.identityPatch(counterpartySeat, counterparty, counterpartyTeam),
       ...this.identityPatch(consultantSeat, consultant, consultantTeam),
     };
     for (const [key, value] of Object.entries(blocks)) {
@@ -2017,9 +2912,8 @@ export class ContractsService {
     if (!EDITABLE_STATUSES.includes(contract.status)) {
       throw new BadRequestException('This contract is no longer editable.');
     }
-    if (seat.capacity === 'consultant') {
-      await this.assertConsultantContractControl(callerId, contract);
-    }
+    // Rule 1: holding the seat is the authority. The consultant's enrollment is
+    // checked where it matters, at signing.
 
     const team = teamId ? await this.ownedTeamIdentity(callerId, teamId) : null;
     const { error: seatError } = await this.supabase
@@ -2039,7 +2933,9 @@ export class ContractsService {
     );
     // The seat's identity is printed on the agreement, so the counterparty's
     // signature (if any) covered the old one.
-    return this.withSchedule(await this.commitTermsChange(contract, patch));
+    return this.withSchedule(
+      await this.commitTermsChange(contract, patch, callerId),
+    );
   }
 
   /** The caller's own teams, for the "sign on behalf of" picker. */
@@ -2058,11 +2954,18 @@ export class ContractsService {
     consultant: ProfileIdentity,
     counterparty: ProfileIdentity,
     consultantTeam: TeamIdentity | null = null,
+    counterpartyTeam: TeamIdentity | null = null,
   ): Promise<void> {
     const consultantTeamColumns = {
       team_id: consultantTeam?.id ?? null,
       team_name_snapshot: consultantTeam?.name ?? null,
     };
+    const counterpartyTeamColumns = counterpartyTeam
+      ? {
+          team_id: counterpartyTeam.id,
+          team_name_snapshot: counterpartyTeam.name,
+        }
+      : {};
     const label = (profile: ProfileIdentity) =>
       this.profileLabel(profile) ?? profile.email ?? profile.id;
     const rows =
@@ -2075,6 +2978,7 @@ export class ContractsService {
               capacity: 'client',
               display_name_snapshot: label(counterparty),
               email_snapshot: counterparty.email,
+              ...counterpartyTeamColumns,
             },
             {
               contract_id: contractId,
@@ -2103,6 +3007,7 @@ export class ContractsService {
               capacity: 'talent',
               display_name_snapshot: label(counterparty),
               email_snapshot: counterparty.email,
+              ...counterpartyTeamColumns,
             },
           ];
     const { error } = await this.supabase
@@ -2249,7 +3154,9 @@ export class ContractsService {
       kind,
       teamId,
     );
-    return this.withSchedule(await this.commitTermsChange(existing, patch));
+    return this.withSchedule(
+      await this.commitTermsChange(existing, patch, callerId),
+    );
   }
 
   private profileLabel(profile: unknown): string | null {
@@ -2264,6 +3171,44 @@ export class ContractsService {
       .join(' ')
       .trim();
     return p.display_name || composed || p.email || null;
+  }
+
+  /** Tell the other seat that a contract was sent, changed or withdrawn. */
+  private async notifyParties(
+    actorId: string,
+    contract: ContractRow,
+    typeName: 'contract_sent' | 'contract_changed' | 'contract_withdrawn',
+  ): Promise<void> {
+    const positions = await this.getPositions(contract.id);
+    const actor = positions.find((entry) => entry.user_id === actorId);
+    const title = (
+      contract.document_title || 'Service Agreement'
+    ).toLowerCase();
+    const message =
+      typeName === 'contract_sent'
+        ? `${actor?.display_name_snapshot ?? 'The other party'} sent you a ${title} to review.`
+        : typeName === 'contract_changed'
+          ? `${actor?.display_name_snapshot ?? 'The other party'} changed the ${title}. Review the changes before signing.`
+          : `${actor?.display_name_snapshot ?? 'The other party'} withdrew the ${title}.`;
+    for (const entry of positions) {
+      if (entry.user_id === actorId) continue;
+      try {
+        await this.notifications.createNotification({
+          user_id: entry.user_id,
+          project_id: contract.project_id ?? undefined,
+          actor_id: actorId,
+          type_name: typeName,
+          content: {
+            contract_id: contract.id,
+            project_title: contract.project_title_snapshot ?? null,
+            message,
+          },
+          link_url: `/engagements/contracts/${contract.id}?section=signatures`,
+        });
+      } catch {
+        // A notification failure must not undo the change it reports.
+      }
+    }
   }
 
   private async notifyCounterparty(

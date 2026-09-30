@@ -242,6 +242,7 @@ export class EngagementsService {
         currency: string | null;
         client_hourly_rate: number | null;
         project_id: string | null;
+        created_by: string | null;
         project: { id: string; title: string | null } | null;
       } | null;
     }
@@ -250,13 +251,21 @@ export class EngagementsService {
       .select(
         `contract_id, position, capacity, signed_at, team_name_snapshot,
          contract:contracts(id, contract_number, status, relationship_kind,
-           document_title, currency, client_hourly_rate, project_id,
+           document_title, currency, client_hourly_rate, project_id, created_by,
            project:projects(id, title))`,
       )
       .eq('user_id', callerId);
     if (error) throw new Error(error.message);
     const seats = ((data ?? []) as unknown as SeatRow[]).filter(
-      (seat) => seat.contract !== null,
+      (seat) =>
+        seat.contract !== null &&
+        // A draft is private to its author until it is sent (two-way
+        // contract authoring): the other seat does not see it yet.
+        !(
+          seat.contract.status === 'draft' &&
+          seat.contract.created_by !== null &&
+          seat.contract.created_by !== callerId
+        ),
     );
     if (seats.length === 0) return [];
 

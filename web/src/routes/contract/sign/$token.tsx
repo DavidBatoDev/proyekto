@@ -299,6 +299,30 @@ function PublicSignPage() {
 									</p>
 								)}
 
+								{/*
+								 * Two-way authoring: proposing different terms needs an
+								 * account (a link holder cannot author). Signing by link
+								 * stays available without one.
+								 */}
+								<div className="mt-4 rounded-lg border border-border p-3">
+									<p className="text-xs font-medium text-card-foreground">
+										Want different terms?
+									</p>
+									<p className="mt-1 text-[11px] text-muted-foreground">
+										Sign in or create an account with this email to edit the
+										agreement and send it back with your changes.
+									</p>
+									<Link
+										to="/auth/login"
+										search={{
+											redirect: `/engagements/contracts/${contract.id}?section=terms`,
+										}}
+										className="mt-2 inline-flex text-xs font-semibold text-primary hover:underline"
+									>
+										Request changes
+									</Link>
+								</div>
+
 								<p className="mt-4 text-[11px] text-muted-foreground">
 									This link works once and expires on{" "}
 									{formatContractDate(contract.expires_at.slice(0, 10))}.

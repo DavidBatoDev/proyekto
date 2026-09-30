@@ -203,12 +203,18 @@ describe('ContractsService transactional signing', () => {
       positions,
     });
 
-    await service.unsignContract('consultant-1', 'contract-1', {
+    // Each party pulls only their own signature: the client clears the client
+    // seat, and the consultant may no longer do it for them.
+    await expect(
+      service.unsignContract('consultant-1', 'contract-1', { party: 'client' }),
+    ).rejects.toBeInstanceOf(NotFoundException);
+
+    await service.unsignContract('client-1', 'contract-1', {
       party: 'client',
     });
 
     expect(positionsQuery.update).toHaveBeenCalledWith(
-      expect.objectContaining({ signed_at: null }),
+      expect.objectContaining({ signed_at: null, signed_revision: null }),
     );
   });
 

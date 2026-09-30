@@ -3,6 +3,7 @@ import { CloudflareCachePurgeService } from '../../../common/cache/cloudflare-ca
 import { REDIS_CACHE_KEYS } from '../../../common/cache/redis-cache.keys';
 import { RedisDataCacheService } from '../../../common/cache/redis-data-cache.service';
 import type {
+  CallerCountedKey,
   CountKey,
   EntitlementRef,
   EntitlementScope,
@@ -36,6 +37,7 @@ import {
 } from './repositories/entitlements.repository.interface';
 
 export type {
+  CallerCountedKey,
   CompPlan,
   CountKey,
   EntitlementKey,
@@ -327,6 +329,43 @@ export class EntitlementsService {
             next: used + opts.adding,
             context,
             countsPendingInvites,
+          },
+        );
+      },
+    );
+    if (violation) throw new PlanLimitException(violation);
+  }
+
+  /**
+   * Rejects a write that takes a caller-counted workspace number past its
+   * limit. Same contract as assertWithinLimit, but the caller supplies `used`
+   * because workspace_usage_counts does not know how to count it.
+   */
+  async assertCountedLimit(
+    ref: EntitlementRef,
+    key: CallerCountedKey,
+    opts: { used: number; adding: number; context?: PlanLimitContext },
+  ): Promise<void> {
+    if (!(opts.adding > 0)) return;
+    const violation = await this.failOpen(
+      `assert_counted_limit:${key}`,
+      describeRef(ref),
+      null,
+      async (): Promise<PlanLimitPayload | null> => {
+        const resolved = await this.resolve(ref);
+        if (resolved.exempt) return null;
+        const limit = numericLimit(resolved.matrix.cells[resolved.plan]?.[key]);
+        if (limit === null) return null;
+        if (opts.used + opts.adding <= limit) return null;
+        return buildCountLimitPayload(
+          resolved.matrix,
+          this.subjectOf(resolved),
+          {
+            key,
+            limit,
+            used: opts.used,
+            next: opts.used + opts.adding,
+            context: opts.context ?? 'write',
           },
         );
       },

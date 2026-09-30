@@ -1,8 +1,9 @@
 # Two-Way Contract Authoring
 
-> **⚠️ Proposed — not built.**
+> **Built** on `feat/contract-authoring-intake` (2026-09-30). Not merged, not in production. See
+> [Implementation notes](#implementation-notes-2026-09-30).
 
-> **Last updated:** 2026-09-28 · **Status:** draft
+> **Last updated:** 2026-09-30 · **Status:** built
 
 Today a contract has one author. Only the consultant can create, edit, discard or amend it; the
 client can read it and sign it, and nothing else. The only lever a client holds is refusing to
@@ -337,3 +338,42 @@ rows.
 ## Open questions
 
 1. **Plan values:** the numbers in [Plan limits](#plan-limits) are estimates for review.
+
+## Implementation notes (2026-09-30)
+
+Built on `feat/contract-authoring-intake`, on top of the signature-integrity work (rules 2 and 3
+were already in `20260928090000_contract_signature_revisions`).
+
+| Piece | Where |
+| --- | --- |
+| Schema: `contract_revisions` (+ trigger), `last_viewed_revision`, rule-6 index, frozen-snapshot columns, `contract_change_summaries`, `contracts.workspace_id` / `template_key` / `last_edited_by`, the two plan keys | `supabase/migrations/20260930100000_contract_authoring_history.sql` (DEV only) |
+| Notification types `contract_sent`, `contract_changed`, `contract_withdrawn`, `contract_attestation_requested` | `20260930100500_contract_authoring_notification_types.sql` (DEV only) |
+| Rules 1, 4, 5, 6; send, withdraw, own-seat unsign, client and talent create | `backend/src/modules/marketplace/contracts/contracts.service.ts` |
+| Deterministic diff | `contract-diff.ts` |
+| Freeze on signing, backfill | `contract-snapshot.service.ts`; `POST /contracts/admin/backfill-snapshots` (platform admin) plus a lazy freeze when the history or the PDF is opened |
+| AI summary | `contract-change-summary.service.ts` calls the agent's `POST /contracts/summarize-changes` (`agent/app/core/documents/change_summary.py`) |
+| Web | `ContractHistoryPanel.tsx` (Versions, Changes, Compare, Insights), `CounterpartyContractDialog.tsx`, the seat-neutral `ProjectContract.tsx`, "Request changes" on the token page |
+
+Differences from the text above:
+
+- **Revision rows are written by a trigger**, not by the service. `trg_contracts_record_revision`
+  fires on the same UPDATE that raises `contracts.revision` and reads the author from
+  `contracts.last_edited_by`, so the history can never disagree with the counter.
+- **Frozen PDFs live in the private R2 bucket** (`UploadsService.putPrivateObject`), where every
+  other rendered document lives, not Supabase Storage. `GET /contracts/:id/signed-pdf` streams the
+  file and re-hashes it on every read (`X-Content-SHA256`, `X-Snapshot-Verified`).
+- **Plan values are open on every plan** (feature on, count unlimited), with a TODO in the
+  migration, because no billing exists. The estimates above are recorded in that TODO.
+- **`active_contracts` counts contract families**, so an amendment never counts twice.
+- **Rule 4 is enforced by the server** as well as the UI: signing over unseen changes by the other
+  party is a 409 until the seat records a review (`POST /contracts/:id/viewed`).
+- **A client- or talent-authored contract seeds the consultant block from their profile**; the
+  consultant switches it to a team with the existing "sign on behalf of" picker.
+- **The web entry for clients and talent creates flexible contracts.** The API accepts a
+  project-specific client contract (the project must be owned by the named consultant), but a
+  client cannot list a consultant's projects, so there is no picker for it yet.
+- **Consultant-only diff fields** are just `notes`; every other contract field is printed on the
+  agreement and shared by both parties.
+- **Metering against `ai_messages_monthly`** is a TODO: that quota is display-only everywhere.
+- The page stays in `13-proposals` until the branch is merged; moving it to `11-domains` is the
+  last step.

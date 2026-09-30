@@ -298,6 +298,14 @@ export class ContractTermsDto {
   services?: ContractServiceDto[];
 }
 
+export const CONTRACT_AUTHOR_CAPACITIES = [
+  'consultant',
+  'client',
+  'talent',
+] as const;
+export type ContractAuthorCapacity =
+  (typeof CONTRACT_AUTHOR_CAPACITIES)[number];
+
 export class CreateContractDto extends ContractTermsDto {
   @IsOptional()
   @IsUUID()
@@ -316,6 +324,23 @@ export class CreateContractDto extends ContractTermsDto {
   @IsOptional()
   @IsUUID()
   team_id?: string;
+
+  /**
+   * Which side the caller authors from. Omitted: `consultant` for a verified
+   * consultant, else `talent` for a talent contract and `client` otherwise.
+   * A client or talent names the consultant in `counterparty_user_id`.
+   */
+  @IsOptional()
+  @IsIn(CONTRACT_AUTHOR_CAPACITIES)
+  author_capacity?: ContractAuthorCapacity;
+}
+
+/** Rule 4: the revision the caller's seat has now reviewed. */
+export class MarkContractViewedDto {
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  revision!: number;
 }
 
 /**

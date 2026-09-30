@@ -226,10 +226,9 @@ describe('entitlement keys <-> migration parity', () => {
   it('seeds the values the pricing matrix fixture (and the service specs) assume', () => {
     // The test kit's seed is what every entitlements spec runs against; if the
     // migration drifts from it, those specs are testing a table nobody ships.
-    const sql = existsSync(migrationPath)
-      ? readFileSync(migrationPath, 'utf8')
-      : '';
-    const seeded = parseInserts(sql, 'plan_limits').map((row) => ({
+    // Accumulated across every migration, so a key added by a later
+    // migration is held to the kit too.
+    const seeded = [...cells.values()].map((row) => ({
       plan: row.plan,
       limit_key: row.limit_key,
       kind: row.kind,
@@ -253,7 +252,7 @@ describe('entitlement keys <-> migration parity', () => {
       [...expected].sort((a, b) => byId(a).localeCompare(byId(b))),
     );
 
-    const seededKeys = parseInserts(sql, 'plan_limit_keys').map((row) => ({
+    const seededKeys = [...keys.values()].map((row) => ({
       key: row.key,
       kind: row.kind,
       label: row.label,

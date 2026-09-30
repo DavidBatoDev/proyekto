@@ -194,6 +194,24 @@ export const SEED_KEYS: SeedKey[] = [
     group: 'platform',
     values: [false, false, false, true],
   },
+  // 20260930100000_contract_authoring_history: open on every plan until
+  // billing exists (see the TODO there).
+  {
+    key: 'contract_counterparty_authoring',
+    kind: 'feature',
+    label: 'Client and talent contract authoring',
+    unit: null,
+    group: 'governance',
+    values: [true, true, true, true],
+  },
+  {
+    key: 'active_contracts',
+    kind: 'count',
+    label: 'Active contracts',
+    unit: 'contracts',
+    group: 'usage',
+    values: [null, null, null, null],
+  },
 ];
 
 export const SEED_UPDATED_AT = '2026-09-22T12:00:00.000000+00:00';
@@ -328,6 +346,7 @@ export function allowAllEntitlements(): EntitlementsMock {
     ),
     getLimit: jest.fn(() => Promise.resolve(null)),
     assertWithinLimit: jest.fn(() => Promise.resolve(undefined)),
+    assertCountedLimit: jest.fn(() => Promise.resolve(undefined)),
     assertNodeWrite: jest.fn(() => Promise.resolve(undefined)),
     nodeLimitViolation: jest.fn(() => Promise.resolve(null)),
     countRoadmapNodes: jest.fn(() => Promise.resolve(0)),

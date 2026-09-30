@@ -81,6 +81,18 @@ class Settings(BaseSettings):
         alias='AGENT_BRIEF_MAX_OUTPUT_TOKENS',
     )
 
+    # Document AI (app/core/documents): contract change summaries and document
+    # intake. Same internal-token gate as the brief generator. Both models fall
+    # back to openai_model_v2; AGENT_VISION_MODEL exists so extraction alone can
+    # move to a larger model if handwriting accuracy on the default is not good
+    # enough (docs/13-proposals/document-intake.md).
+    agent_document_model: str | None = Field(default=None, alias='AGENT_DOCUMENT_MODEL')
+    agent_vision_model: str | None = Field(default=None, alias='AGENT_VISION_MODEL')
+    agent_document_max_output_tokens: int = Field(
+        default=4000,
+        alias='AGENT_DOCUMENT_MAX_OUTPUT_TOKENS',
+    )
+
     # 4h working-session window. Expiry is benign: the durable agent-state
     # snapshot (roadmap_ai_sessions.metadata.agent_state) restores pending
     # plans / undo history / recents on rehydration.

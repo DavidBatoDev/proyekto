@@ -4,7 +4,11 @@ import { FinanceModule } from '../finance/finance.module';
 import { NotificationsModule } from '../../shared/notifications/notifications.module';
 import { AuthorizationModule } from '../../execution/projects/authorization/authorization.module';
 import { UploadsModule } from '../../shared/uploads/uploads.module';
+import { AgentInternalClient } from '../../../common/agent/agent-internal.client';
+import { EntitlementsCoreModule } from '../../shared/entitlements/entitlements-core.module';
+import { ContractChangeSummaryService } from './contract-change-summary.service';
 import { ContractPageInitialsService } from './contract-page-initials.service';
+import { ContractSnapshotService } from './contract-snapshot.service';
 import { ContractSignatureLinksController } from './contract-signature-links.controller';
 import { ContractSignatureLinksService } from './contract-signature-links.service';
 import { ContractsController } from './contracts.controller';
@@ -26,6 +30,7 @@ import { QaFixturesModule } from '../../shared/qa-fixtures/qa-fixtures.module';
     UploadsModule,
     MailModule,
     QaFixturesModule,
+    EntitlementsCoreModule,
   ],
   controllers: [
     ContractSignatureLinksController,
@@ -37,6 +42,9 @@ import { QaFixturesModule } from '../../shared/qa-fixtures/qa-fixtures.module';
     ContractPageInitialsService,
     ContractSignatureLinksService,
     ProjectEconomicsService,
+    ContractSnapshotService,
+    ContractChangeSummaryService,
+    AgentInternalClient,
   ],
   exports: [ContractsService],
 })

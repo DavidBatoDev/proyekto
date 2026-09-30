@@ -84,6 +84,9 @@ export const ENTITLEMENT_KEYS = {
   activity_export: { kind: 'feature', enforced: false },
   mcp_server: { kind: 'feature', enforced: true },
   saml_scim: { kind: 'feature', enforced: false, plural: true },
+  // Two-way contract authoring (docs/13-proposals/two-way-contract-authoring.md).
+  contract_counterparty_authoring: { kind: 'feature', enforced: true },
+  active_contracts: { kind: 'count', scope: 'workspace', enforced: true },
 } as const satisfies Record<string, EntitlementKeyDef>;
 
 export type EntitlementKey = keyof typeof ENTITLEMENT_KEYS;
@@ -103,13 +106,21 @@ export type FeatureKey =
   | 'roles_permissions'
   | 'activity_export'
   | 'mcp_server'
-  | 'saml_scim';
+  | 'saml_scim'
+  | 'contract_counterparty_authoring';
 
 /** The numeric keys getLimit answers. */
 export type NumericLimitKey =
   | CountKey
+  | CallerCountedKey
   | 'roadmap_nodes_per_roadmap'
   | 'activity_retention_days';
+
+/**
+ * Workspace counts that workspace_usage_counts does not answer: the caller
+ * counts them and passes `used` (see EntitlementsService.assertCountedLimit).
+ */
+export type CallerCountedKey = 'active_contracts';
 
 // Compile-time guards: the hand-written unions above must match the registry.
 // A key added to one and not the other fails the build here, not at runtime.

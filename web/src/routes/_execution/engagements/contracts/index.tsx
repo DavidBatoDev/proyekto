@@ -16,6 +16,7 @@ import {
 import { AppTabs } from "@/components/common/AppTabs";
 import { Dropdown } from "@/components/common/Dropdown";
 import { AgreementRow } from "@/components/engagements/AgreementRow";
+import { CounterpartyContractDialog } from "@/components/finance/CounterpartyContractDialog";
 import { useFinanceHub } from "@/components/finance/nav/useManagedTeams";
 import type { StepKey } from "@/components/finance/ProjectContract";
 import { ContractPortfolio } from "@/components/finance/portfolio/ContractPortfolio";
@@ -232,7 +233,62 @@ function MyContracts() {
 		queryFn: () => engagementService.agreements(),
 	});
 	if (agreementsQuery.isPending) return <FinanceLoading />;
-	const agreements = agreementsQuery.data ?? [];
+	return (
+		<>
+			<DraftAsCounterparty onCreated={(id) => openContract(id, "terms")} />
+			<MyContractsList
+				agreements={agreementsQuery.data ?? []}
+				openContract={openContract}
+			/>
+		</>
+	);
+}
+
+/**
+ * Two-way authoring: a client or talent drafts a contract with a consultant.
+ * Consultants create from "Drafted by me".
+ */
+function DraftAsCounterparty({
+	onCreated,
+}: {
+	onCreated: (contractId: string) => void;
+}) {
+	const profile = useProfile();
+	const qc = useQueryClient();
+	const [open, setOpen] = useState(false);
+	if (isActiveConsultant(profile)) return null;
+	return (
+		<div className="mb-4 flex justify-end">
+			<button
+				type="button"
+				onClick={() => setOpen(true)}
+				className="app-cta inline-flex items-center gap-1.5 rounded-lg px-4 py-2 text-sm font-semibold text-white"
+			>
+				<Plus className="h-4 w-4" /> New contract
+			</button>
+			<CounterpartyContractDialog
+				open={open}
+				onClose={() => setOpen(false)}
+				onCreated={(created) => {
+					setOpen(false);
+					void qc.invalidateQueries({
+						queryKey: ["engagements", "agreements"],
+					});
+					onCreated(created.id);
+				}}
+			/>
+		</div>
+	);
+}
+
+function MyContractsList({
+	agreements: allAgreements,
+	openContract,
+}: {
+	agreements: Awaited<ReturnType<typeof engagementService.agreements>>;
+	openContract: ReturnType<typeof useOpenContract>;
+}) {
+	const agreements = allAgreements;
 	const waiting = agreements.filter(
 		(agreement) => agreement.status === "sent" && !agreement.signed_at,
 	);

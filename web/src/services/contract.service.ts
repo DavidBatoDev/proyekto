@@ -40,6 +40,10 @@ export interface ContractPosition {
 	/** The team this seat signs on behalf of — identity, not party-ship. */
 	team_id: string | null;
 	team_name_snapshot: string | null;
+	/** The revision this seat's signature was made on. */
+	signed_revision?: number | null;
+	/** The revision this seat last reviewed ("changed since you last viewed"). */
+	last_viewed_revision?: number | null;
 }
 
 /** The client side's counterpart to `provider_kind`. */
@@ -176,6 +180,13 @@ export interface Contract {
 	created_at: string;
 	updated_at: string;
 	positions: ContractPosition[];
+	/** The frozen copy of what was signed; null until signed. */
+	signed_pdf_path?: string | null;
+	signed_pdf_sha256?: string | null;
+	signed_snapshot_taken_at?: string | null;
+	signed_snapshot_kind?: "at_signing" | "backfill" | null;
+	/** The clause template the contract was issued from. */
+	template_key?: string | null;
 	/** Per-page initials, so each rendered page can stamp them. */
 	page_initials: ContractPageInitial[];
 
@@ -405,6 +416,8 @@ export const contractService = {
 			| (ContractTermsPayload & {
 					project_id?: string | null;
 					counterparty_user_id?: string;
+					/** Which side the caller authors from; see two-way authoring. */
+					author_capacity?: "consultant" | "client" | "talent";
 			  }),
 		payload: ContractTermsPayload = {},
 	): Promise<Contract> {
@@ -447,11 +460,16 @@ export const contractService = {
 	async update(
 		contractId: string,
 		payload: ContractTermsPayload,
+		/** The revision the editor read; a stale one is refused with 409. */
+		expectedRevision?: number,
 	): Promise<Contract> {
 		try {
 			const { data } = await apiClient.patch<{ data: Contract }>(
 				`/api/contracts/${contractId}`,
 				payload,
+				expectedRevision
+					? { headers: { "If-Match": String(expectedRevision) } }
+					: undefined,
 			);
 			return normalizeContract(data.data);
 		} catch (err) {

@@ -21,6 +21,7 @@ import {
 	ArrowLeft,
 	FileSignature,
 	GripVertical,
+	History,
 	Link2,
 	ListPlus,
 	Loader2,
@@ -29,6 +30,7 @@ import {
 	Plus,
 	Send,
 	Trash2,
+	Undo2,
 } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { AppSurfaceCard } from "@/components/common/AppPrimitives";
@@ -46,6 +48,10 @@ import {
 	type ContractCanvasStats,
 	ContractEditorCanvas,
 } from "@/components/finance/ContractEditorCanvas";
+import {
+	ContractHistoryPanel,
+	FrozenBadge,
+} from "@/components/finance/ContractHistoryPanel";
 import { ClientSigningLinkModal } from "@/components/project/ClientSigningLinkModal";
 import type {
 	PreviewParties,
@@ -83,6 +89,7 @@ import {
 	contractService,
 	type SignaturePlacement,
 } from "@/services/contract.service";
+import { contractHistoryService } from "@/services/contract-history.service";
 import { projectService } from "@/services/project.service";
 import { useUser } from "@/stores/authStore";
 
@@ -140,6 +147,37 @@ export function ProjectContract({
 		user?.id === consultantPosition?.user_id ||
 		(!consultantPosition && user?.id === contractConsultantId);
 	const canSignAsConsultant = Boolean(user?.id) && isConsultant;
+	// Two-way authoring: whoever holds a seat edits, amends and withdraws.
+	// Position-less legacy contracts stay consultant-only.
+	const viewerSeat = contract?.positions.find(
+		(position) => position.user_id === user?.id,
+	);
+	const isParty = Boolean(viewerSeat) || isConsultant;
+	const isAuthor =
+		Boolean(user?.id) &&
+		user?.id === (contract?.created_by ?? contract?.consultant_user_id);
+	const [historyOpen, setHistoryOpen] = useState<"history" | "changes" | null>(
+		null,
+	);
+	const revisionsQuery = useQuery({
+		queryKey: ["contract", contractId, "revisions"],
+		queryFn: () => contractHistoryService.revisions(contractId),
+		enabled: Boolean(viewerSeat),
+	});
+	const unseenChanges = revisionsQuery.data?.unseen_changes ?? false;
+	// First visit: record where this seat started reviewing, so "changed since
+	// you last viewed" has a baseline.
+	useEffect(() => {
+		if (
+			contract &&
+			viewerSeat &&
+			(viewerSeat.last_viewed_revision ?? null) === null
+		) {
+			void contractHistoryService
+				.markViewed(contract.id, contract.revision)
+				.catch(() => undefined);
+		}
+	}, [contract, viewerSeat]);
 	const [activeStep, setActiveStep] = useState<StepKey>(
 		initialStep ?? "parties",
 	);
@@ -205,7 +243,7 @@ export function ProjectContract({
 		{
 			enabled: Boolean(
 				contract &&
-					isConsultant &&
+					isParty &&
 					isEditableStatus(contract.status) &&
 					// Same lock as the other editors: never autosave over a signature
 					// the viewer has not agreed to remove.
@@ -321,6 +359,33 @@ export function ProjectContract({
 		if (confirmed) deleteMutation.mutate();
 	};
 
+	const sendMutation = useMutation({
+		mutationFn: () => contractHistoryService.send(contractId),
+		onSuccess: () => {
+			toast.success("Sent. The other party can now review it.");
+			invalidateAll();
+		},
+		onError: (error: Error) => toast.error(error.message),
+	});
+	const withdrawMutation = useMutation({
+		mutationFn: () => contractHistoryService.withdraw(contractId),
+		onSuccess: () => {
+			toast.success("Contract withdrawn");
+			invalidateAll();
+		},
+		onError: (error: Error) => toast.error(error.message),
+	});
+	const withdraw = async () => {
+		const confirmed = await confirm({
+			title: "Withdraw this contract?",
+			message:
+				"It is cancelled for both parties and can no longer be signed. Start a new contract to try again.",
+			confirmLabel: "Withdraw",
+			tone: "danger",
+		});
+		if (confirmed) withdrawMutation.mutate();
+	};
+
 	// A flexible contract has no project, so its project query is disabled —
 	// and a disabled query reports `isPending` forever. Waiting on it here hung
 	// every flexible contract on this spinner for every viewer.
@@ -363,13 +428,13 @@ export function ProjectContract({
 	// autosaves, so a signed contract stays read-only until the viewer says
 	// they mean to change it.
 	const signatureLock =
-		isConsultant &&
+		isParty &&
 		isEditableStatus(contract.status) &&
 		signatures.length > 0 &&
 		editDespiteSignatures !== contract.id;
 	const editable =
-		isConsultant && isEditableStatus(contract.status) && !signatureLock;
-	const sectionsEditable = isConsultant && !signatureLock;
+		isParty && isEditableStatus(contract.status) && !signatureLock;
+	const sectionsEditable = isParty && !signatureLock;
 	const unlockSignedContract = async () => {
 		const confirmed = await confirm({
 			title: "Change a signed contract?",
@@ -415,6 +480,7 @@ export function ProjectContract({
 						</p>
 					</div>
 					<ContractStatusChip status={contract.status} />
+					<FrozenBadge contract={contract} />
 				</div>
 				<div className="flex shrink-0 items-center gap-1.5">
 					<Dropdown
@@ -447,7 +513,36 @@ export function ProjectContract({
 							<Send className="h-3.5 w-3.5" /> Send to client
 						</button>
 					)}
-					{isConsultant && contract.status === "draft" && (
+					<button
+						type="button"
+						onClick={() => setHistoryOpen("history")}
+						className="inline-flex items-center gap-1.5 rounded-md border border-border px-2.5 py-1.5 text-xs font-semibold text-foreground hover:bg-muted"
+					>
+						<History className="h-3.5 w-3.5" />
+						<span className="hidden sm:inline">History</span>
+					</button>
+					{isAuthor && contract.status === "draft" && (
+						<button
+							type="button"
+							onClick={() => sendMutation.mutate()}
+							disabled={sendMutation.isPending}
+							className="inline-flex items-center gap-1.5 rounded-md border border-primary/40 px-2.5 py-1.5 text-xs font-semibold text-primary hover:bg-primary/10 disabled:opacity-50"
+						>
+							<Send className="h-3.5 w-3.5" />
+							<span className="hidden sm:inline">Send for review</span>
+						</button>
+					)}
+					{isParty && contract.status === "sent" && (
+						<button
+							type="button"
+							onClick={() => void withdraw()}
+							disabled={withdrawMutation.isPending}
+							className="hidden items-center gap-1.5 rounded-md border border-border px-2.5 py-1.5 text-xs font-semibold text-foreground hover:bg-muted disabled:opacity-50 sm:inline-flex"
+						>
+							<Undo2 className="h-3.5 w-3.5" /> Withdraw
+						</button>
+					)}
+					{isAuthor && contract.status === "draft" && (
 						<button
 							type="button"
 							onClick={() => void deleteDraft()}
@@ -471,6 +566,23 @@ export function ProjectContract({
 					</button>
 				</div>
 			</header>
+			{unseenChanges && (
+				<div className="flex shrink-0 flex-wrap items-center justify-between gap-2 border-b border-amber-300/60 bg-amber-50 px-4 py-2 text-xs text-amber-900 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-200">
+					<span>
+						Changed by{" "}
+						{contract.positions.find((p) => p.user_id !== user?.id)
+							?.display_name_snapshot ?? "the other party"}{" "}
+						since you last viewed it. Review the changes before signing.
+					</span>
+					<button
+						type="button"
+						onClick={() => setHistoryOpen("changes")}
+						className="inline-flex items-center gap-1.5 rounded-md border border-amber-400/70 px-2.5 py-1 font-semibold hover:bg-amber-100 dark:hover:bg-amber-500/20"
+					>
+						<History className="h-3.5 w-3.5" /> Review changes
+					</button>
+				</div>
+			)}
 			{signatureLock && (
 				<div className="flex shrink-0 flex-wrap items-center justify-between gap-2 border-b border-amber-300/60 bg-amber-50 px-4 py-2 text-xs text-amber-900 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-200">
 					<span>
@@ -596,13 +708,15 @@ export function ProjectContract({
 													project?.owner_id !== contractConsultantId))))
 								}
 								onSign={(party, name, signatureUrl, placement) =>
-									signMutation.mutate({
-										revision: contract.revision,
-										party,
-										name,
-										signatureUrl,
-										placement,
-									})
+									unseenChanges
+										? setHistoryOpen("changes")
+										: signMutation.mutate({
+												revision: contract.revision,
+												party,
+												name,
+												signatureUrl,
+												placement,
+											})
 								}
 								onUnsign={(party) => unsignMutation.mutate({ party })}
 								onPlacementChange={(party, placement) =>
@@ -662,6 +776,23 @@ export function ProjectContract({
 					</button>
 				</div>
 			</footer>
+			{historyOpen && (
+				<ContractHistoryPanel
+					contract={contract}
+					viewerId={user?.id}
+					initialTab={historyOpen}
+					onClose={() => {
+						setHistoryOpen(null);
+						void qc.invalidateQueries({
+							queryKey: ["contract", contractId, "revisions"],
+						});
+					}}
+					onOpenVersion={(id) => {
+						setHistoryOpen(null);
+						onOpenContract?.(id);
+					}}
+				/>
+			)}
 			{signingLinkOpen && (
 				<ClientSigningLinkModal
 					contract={contract}
@@ -880,6 +1011,8 @@ function PartiesSection({
 
 	const locked = !editable || !isEditableStatus(contract.status);
 	const mySeatLocked = locked || Boolean(mySeat?.signed_at);
+	// Rule 5: the other seat's identity is theirs to set.
+	const otherLocked = locked || Boolean(mySeat);
 
 	const saveStatus = useAutosave(
 		draft,
@@ -888,10 +1021,18 @@ function PartiesSection({
 			// talent contract the client block is the consultant's side, whose
 			// kind follows the team they sign for and is set by that endpoint.
 			const { client_kind, ...rest } = value;
-			await contractService.update(
-				contract.id,
-				isTalent ? rest : { ...rest, client_kind },
-			);
+			// Rule 5: a seat writes only its own identity block.
+			const own: Record<string, unknown> = mySeat
+				? Object.fromEntries(
+						Object.entries(value).filter(([key]) =>
+							key.startsWith(`${myBlock}_`),
+						),
+					)
+				: isTalent
+					? rest
+					: { ...rest, client_kind };
+			if (mySeat && isTalent) delete own.client_kind;
+			await contractService.update(contract.id, own);
 			void qc.invalidateQueries({
 				queryKey: ["contracts", contract.project_id],
 			});
@@ -1058,11 +1199,16 @@ function PartiesSection({
 						{otherHeading}
 					</p>
 
+					{mySeat && otherSeat && (
+						<p className="text-[11px] text-muted-foreground">
+							Set by {otherSeat.display_name_snapshot}.
+						</p>
+					)}
 					{otherBlock === "client" && (
 						<>
 							<ClientKindToggle
 								value={draft.client_kind}
-								disabled={locked}
+								disabled={otherLocked}
 								onChange={(kind) =>
 									setDraft((d) => ({ ...d, client_kind: kind }))
 								}
@@ -1088,7 +1234,7 @@ function PartiesSection({
 						}
 						value={blockValue(otherBlock, "name")}
 						onChange={(v) => setBlockField(otherBlock, "name", v)}
-						disabled={locked}
+						disabled={otherLocked}
 					/>
 					{otherBlock === "client" && (
 						<>
@@ -1098,13 +1244,13 @@ function PartiesSection({
 								onChange={(v) =>
 									setDraft((d) => ({ ...d, client_contact_name: v }))
 								}
-								disabled={locked}
+								disabled={otherLocked}
 							/>
 							<TextField
 								label="Email"
 								value={draft.client_email}
 								onChange={(v) => setDraft((d) => ({ ...d, client_email: v }))}
-								disabled={locked}
+								disabled={otherLocked}
 							/>
 						</>
 					)}
@@ -1112,13 +1258,13 @@ function PartiesSection({
 						label="Address"
 						value={blockValue(otherBlock, "address")}
 						onChange={(v) => setBlockField(otherBlock, "address", v)}
-						disabled={locked}
+						disabled={otherLocked}
 					/>
 					<TextField
 						label="TIN"
 						value={blockValue(otherBlock, "tin")}
 						onChange={(v) => setBlockField(otherBlock, "tin", v)}
-						disabled={locked}
+						disabled={otherLocked}
 					/>
 				</div>
 			</div>
