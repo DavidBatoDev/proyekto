@@ -43,8 +43,9 @@ expansion additive.
 | [delivery-tree-visualization.md](./delivery-tree-visualization.md) | Feature 2b — a zoomable Workspace → Project → Service → Roadmap tree (its top level now exists) |
 | [identity-and-enrollment.md](./identity-and-enrollment.md) | Feature 3 — deleting `profiles.role`, role-free execution, and three opt-in marketplace enrollment tables; the identity foundation of the marketplace/execution split |
 | [pricing-tiers-and-add-ons.md](./pricing-tiers-and-add-ons.md) | Monetization — 4-tier per-seat pricing for the Execution and Marketplace platforms, Shopify-style add-ons (Time/Finance), entitlement architecture, edge cases E1–E14 |
-| [two-way-contract-authoring.md](./two-way-contract-authoring.md) | Clients and talent create, edit and amend contracts on equal terms with consultants; revision-pinned signatures, frozen signed PDFs, version history and an AI change summary |
-| [document-intake.md](./document-intake.md) | One Engagements section where AI detects, classifies and extracts paper contracts, invoices and receipts and replicates them as projects and recorded agreements; an acquisition path while the marketplace is not ready |
+| [two-way-contract-authoring.md](./two-way-contract-authoring.md) | Clients and talent create, edit and amend contracts on equal terms with consultants; revision-pinned signatures, frozen signed PDFs, version history and an AI change summary **Built on `feat/contract-authoring-intake`, not merged.** |
+| [document-intake.md](./document-intake.md) | One Engagements section where AI detects, classifies and extracts paper contracts, invoices and receipts and replicates them as projects and recorded agreements; an acquisition path while the marketplace is not ready **Built on `feat/contract-authoring-intake`, not merged.** |
+| [off-platform-engagement-adoption.md](./off-platform-engagement-adoption.md) | Record an agreement signed outside Proyekto, attested by both parties, through the unchanged signing RPC. **A1-A3 built on `feat/contract-authoring-intake`, not merged.** |
 
 ## Why these five
 
