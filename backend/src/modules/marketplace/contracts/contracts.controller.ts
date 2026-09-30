@@ -25,6 +25,7 @@ import {
   ApplyContractTemplateDto,
   CreateContractDto,
   MarkContractViewedDto,
+  RecordExternalAgreementDto,
   ResolveContractCounterpartyDto,
   ReseedProviderDto,
   SetSeatTeamDto,
@@ -65,6 +66,35 @@ export class ContractsController {
     @Body() dto: CreateContractDto,
   ) {
     return this.contracts.createContract(user.id, dto);
+  }
+
+  /**
+   * Record an agreement signed outside Proyekto: transcribed terms, the real
+   * agreed date and the signed paper. Goes out for attestation by both
+   * parties; never activates on one side's word.
+   */
+  @Post('external')
+  recordExternal(
+    @CurrentUser() user: AuthenticatedUser,
+    @Body() dto: RecordExternalAgreementDto,
+  ) {
+    return this.contracts.recordExternalAgreement(user.id, dto);
+  }
+
+  /** The signed paper behind a recorded agreement. */
+  @Get(':id/evidence')
+  async evidence(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Res() res: Response,
+  ) {
+    const file = await this.contracts.getEvidenceFile(user.id, id);
+    res.setHeader('Content-Type', file.mimeType);
+    res.setHeader(
+      'Content-Disposition',
+      `inline; filename="${encodeURIComponent(file.fileName)}"`,
+    );
+    res.send(file.body);
   }
 
   @Get(':id')

@@ -187,6 +187,10 @@ export interface Contract {
 	signed_snapshot_kind?: "at_signing" | "backfill" | null;
 	/** The clause template the contract was issued from. */
 	template_key?: string | null;
+	/** 'external': a recorded agreement signed outside Proyekto. */
+	execution_origin?: "proyekto" | "external";
+	external_agreed_at?: string | null;
+	external_document_id?: string | null;
 	/** Per-page initials, so each rendered page can stamp them. */
 	page_initials: ContractPageInitial[];
 
@@ -492,6 +496,8 @@ export const contractService = {
 		signerName: string,
 		signatureUrl?: string | null,
 		placement?: SignaturePlacement,
+		/** Required on a recorded agreement: the signer attests the record. */
+		attest?: boolean,
 	): Promise<Contract> {
 		try {
 			const { data } = await apiClient.post<{ data: Contract }>(
@@ -500,6 +506,7 @@ export const contractService = {
 					party,
 					revision,
 					signer_name: signerName,
+					...(attest ? { attest: true } : {}),
 					...(signatureUrl ? { signature_url: signatureUrl } : {}),
 					...(placement
 						? {

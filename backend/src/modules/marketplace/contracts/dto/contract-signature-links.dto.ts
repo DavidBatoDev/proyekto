@@ -51,6 +51,11 @@ export class PublicSignContractDto {
 
   @IsString() @MaxLength(200) signer_name!: string;
 
+  /** Required (true) on a recorded agreement: see SignContractDto.attest. */
+  @IsOptional()
+  @IsBoolean()
+  attest?: boolean;
+
   /** Optional drawn signature, as a `data:image/png;base64,...` URL. */
   @IsOptional()
   @IsString()

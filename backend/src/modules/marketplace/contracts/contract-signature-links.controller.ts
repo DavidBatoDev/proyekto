@@ -8,9 +8,11 @@ import {
   Param,
   ParseUUIDPipe,
   Post,
+  Res,
   UseGuards,
 } from '@nestjs/common';
 import { Throttle, ThrottlerGuard } from '@nestjs/throttler';
+import type { Response } from 'express';
 import { CACHE_POLICY_PRESETS } from '../../../common/cache/cache-policy';
 import { SetCachePolicy } from '../../../common/decorators/cache-policy.decorator';
 import { CurrentUser } from '../../../common/decorators/current-user.decorator';
@@ -50,6 +52,25 @@ export class ContractSignatureLinksController {
   @Throttle({ default: { limit: 30, ttl: 60_000 } })
   getByToken(@Param('token') token: string) {
     return this.links.getByToken(token);
+  }
+
+  /**
+   * The recorded agreement's signed paper, for the link holder to compare
+   * against before attesting. Same token, same throttle, never cached.
+   */
+  @Get('sign/:token/evidence')
+  @Public()
+  @SetCachePolicy(CACHE_POLICY_PRESETS.NO_STORE)
+  @UseGuards(ThrottlerGuard)
+  @Throttle({ default: { limit: 30, ttl: 60_000 } })
+  async evidence(@Param('token') token: string, @Res() res: Response) {
+    const file = await this.links.evidenceByToken(token);
+    res.setHeader('Content-Type', file.mimeType);
+    res.setHeader(
+      'Content-Disposition',
+      `inline; filename="${encodeURIComponent(file.fileName)}"`,
+    );
+    res.send(file.body);
   }
 
   /**

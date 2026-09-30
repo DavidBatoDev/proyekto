@@ -30,6 +30,11 @@ const publicClient = axios.create({
 export interface ContractDocumentView {
 	/** Sent back on sign, so the signature is pinned to these terms. */
 	revision: number;
+	/** 'external': a recorded agreement, attested rather than signed. */
+	execution_origin?: "proyekto" | "external";
+	external_agreed_at?: string | null;
+	/** Whether the signed paper can be opened from this link. */
+	has_evidence?: boolean;
 	/** The paper's own title — "Service Agreement", "Consulting Agreement". */
 	document_title?: string | null;
 	id: string;
@@ -136,6 +141,8 @@ export const contractSigningService = {
 			signer_name: string;
 			/** `data:image/png;base64,...` — omit for a typed-name-only signature. */
 			signature_png?: string;
+			/** Required on a recorded agreement. */
+			attest?: boolean;
 		},
 	): Promise<ContractDocumentView> {
 		try {
@@ -149,6 +156,11 @@ export const contractSigningService = {
 		}
 	},
 };
+
+/** The recorded agreement's signed paper, opened with the same token. */
+export function signingLinkEvidenceUrl(token: string): string {
+	return `${API_BASE_URL}/api/contracts/sign/${token}/evidence`;
+}
 
 /** Consultant-side link management. Goes through the authenticated client. */
 export interface SignatureLinkSummary {

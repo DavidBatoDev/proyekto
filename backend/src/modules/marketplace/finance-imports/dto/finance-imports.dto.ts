@@ -18,6 +18,8 @@ export enum FinanceDocumentKind {
   Invoice = 'invoice',
   PaymentProof = 'payment_proof',
   Other = 'other',
+  /** A signed agreement: the evidence behind a recorded (external) contract. */
+  Contract = 'contract',
 }
 
 export class UploadFinanceDocumentDto {

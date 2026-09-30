@@ -65,6 +65,7 @@ import {
   ContractScopeMode,
   ContractStatus,
   CreateContractDto,
+  RecordExternalAgreementDto,
   InvoiceCadence,
   ProviderKind,
   SignContractDto,
@@ -214,6 +215,17 @@ export interface ContractRow {
   signed_terms?: ContractTermsSnapshot | null;
   signed_snapshot_taken_at?: string | null;
   signed_snapshot_kind?: 'at_signing' | 'backfill' | null;
+  /** 'external': a recorded agreement signed outside Proyekto (adoption). */
+  execution_origin?: 'proyekto' | 'external';
+  external_agreed_at?: string | null;
+  external_document_id?: string | null;
+}
+
+/** What each party attests on a recorded agreement. */
+export function attestationStatement(contract: {
+  external_agreed_at?: string | null;
+}): string {
+  return `I confirm this record reflects the agreement we signed outside Proyekto on ${contract.external_agreed_at ?? 'the recorded date'}.`;
 }
 
 /** One term change during negotiation, from contract_revisions. */
@@ -357,6 +369,19 @@ const SIGNING_ERRORS: Record<
   AMENDMENT_EFFECTIVE_DATE_NOT_PROSPECTIVE: {
     message:
       'This amendment must take effect after the terms it replaces. Choose a later date.',
+  },
+  EXTERNAL_EVIDENCE_MISSING: {
+    message:
+      'A recorded agreement needs its signed document and agreed date before it can be attested.',
+  },
+  EXTERNAL_EFFECTIVE_BEFORE_AGREEMENT: {
+    message:
+      'A recorded agreement can take effect no earlier than the date it was agreed. Move the service start to that date or later.',
+  },
+  ADOPTION_DUPLICATE_ENGAGEMENT: {
+    conflict: true,
+    message:
+      'These two parties already have an active engagement for this. Amend that agreement instead of recording it again.',
   },
   CONTRACT_CONSULTANT_PARTY_LOCKED: {
     conflict: true,
@@ -686,10 +711,15 @@ export class ContractsService {
         owner_id: string | null;
         workspace_id: string | null;
       } | null;
-      if (!project || project.owner_id !== consultantId) {
-        // Same answer whether the project is missing or someone else's.
+      // The named consultant's project, or the caller's own (a client who
+      // brings their own project, as document intake does). Never a
+      // stranger's: same answer whether it is missing or someone else's.
+      if (
+        !project ||
+        (project.owner_id !== consultantId && project.owner_id !== callerId)
+      ) {
         throw new NotFoundException(
-          'That project does not belong to the consultant you named.',
+          'That project does not belong to you or to the consultant you named.',
         );
       }
       workspaceId = project.workspace_id;
@@ -1266,6 +1296,10 @@ export class ContractsService {
         signed_by_client_at: null,
         signed_by_client_name: null,
         signed_by_client_signature_url: null,
+        // An amendment is signed in Proyekto even when its root was not.
+        execution_origin: 'proyekto',
+        external_agreed_at: null,
+        external_document_id: null,
         // The predecessor's frozen copy belongs to the predecessor.
         signed_pdf_path: null,
         signed_pdf_sha256: null,
@@ -1387,6 +1421,22 @@ export class ContractsService {
     }
     this.assertCommercialTerms(existing);
     this.timePolicyPatch(existing.relationship_kind, existing);
+    // A recorded agreement is attested, not signed: the parties confirm the
+    // record matches what they already signed. The statement is stored with
+    // the seat so the attestation cannot be mistaken for a new signature.
+    if (existing.execution_origin === 'external') {
+      if (dto.attest !== true) {
+        throw new BadRequestException(
+          'This is a recorded agreement. Confirm that it matches the agreement you signed to attest it.',
+        );
+      }
+      const { error: statementError } = await this.supabase
+        .from('contract_positions')
+        .update({ attestation_statement: attestationStatement(existing) })
+        .eq('contract_id', contractId)
+        .eq('position', position);
+      if (statementError) throw new BadRequestException(statementError.message);
+    }
     // A first signature on a draft sends it (the RPC flips draft -> sent), so
     // it is held to the same plan limit as an explicit Send.
     if (existing.status === 'draft') {
@@ -1687,6 +1737,219 @@ export class ContractsService {
   }
 
   /**
+   * Record an agreement signed outside Proyekto (adoption, A2).
+   *
+   * Not backfill: nothing is inferred. The author names the counterparty,
+   * transcribes the terms, gives the real agreed date and attaches the signed
+   * paper; the contract then goes out for attestation by BOTH parties and
+   * only activates through the unchanged signing RPC.
+   */
+  async recordExternalAgreement(
+    callerId: string,
+    dto: RecordExternalAgreementDto,
+  ): Promise<ContractWithSchedule> {
+    const {
+      external_agreed_at: agreedAtRaw,
+      external_document_id: documentId,
+      ...createDto
+    } = dto;
+    const agreedAt = agreedAtRaw.slice(0, 10);
+    if (agreedAt > new Date().toISOString().slice(0, 10)) {
+      throw new BadRequestException('The agreed date cannot be in the future.');
+    }
+    if ((createDto.scope_mode ?? 'project_specific') !== 'project_specific') {
+      throw new BadRequestException(
+        'A recorded agreement belongs to a project: its signed document is kept with that project.',
+      );
+    }
+    if (!createDto.project_id) {
+      throw new BadRequestException(
+        'Choose the project this agreement covers.',
+      );
+    }
+    if (
+      createDto.service_start_date &&
+      createDto.service_start_date.slice(0, 10) < agreedAt
+    ) {
+      throw new BadRequestException(
+        'A recorded agreement can take effect no earlier than the date it was agreed.',
+      );
+    }
+    const document = await this.evidenceDocument(documentId);
+    if (document.project_id !== createDto.project_id) {
+      throw new BadRequestException(
+        'The signed document must be uploaded to the same project.',
+      );
+    }
+    if (document.uploaded_by !== callerId) {
+      await this.financeAccess.assertProject(callerId, createDto.project_id);
+    }
+
+    const created = await this.createContract(callerId, {
+      ...createDto,
+      scope_mode: 'project_specific',
+    });
+    await this.assertNoDuplicateEngagement(created);
+
+    const { data, error } = await this.supabase
+      .from('contracts')
+      .update({
+        execution_origin: 'external',
+        external_agreed_at: agreedAt,
+        external_document_id: documentId,
+        updated_at: new Date().toISOString(),
+      })
+      .eq('id', created.id)
+      .eq('status', 'draft')
+      .select('*')
+      .single();
+    if (error || !data) {
+      await this.supabase.from('contracts').delete().eq('id', created.id);
+      throw new BadRequestException(
+        error?.message ?? 'Failed to record the agreement.',
+      );
+    }
+    if (document.kind === 'other') {
+      await this.supabase
+        .from('finance_documents')
+        .update({ kind: 'contract' })
+        .eq('id', documentId);
+    }
+    return this.withSchedule(data as ContractRow);
+  }
+
+  /**
+   * Adoption never duplicates a relationship already in the model: the same
+   * two people, kind and scope (and project) with an active engagement are
+   * pointed at it instead. The signing RPC repeats this check under its lock.
+   */
+  private async assertNoDuplicateEngagement(
+    contract: ContractRow & { positions?: ContractPosition[] },
+  ): Promise<void> {
+    const positions =
+      contract.positions ?? (await this.getPositions(contract.id));
+    const hirer = positions.find((entry) => entry.position === 'hirer');
+    const provider = positions.find((entry) => entry.position === 'provider');
+    if (!hirer || !provider) return;
+    const { data, error } = await this.supabase
+      .from('engagement_parties')
+      .select(
+        'engagement_id, position, user_id, engagement:engagements!inner(id, status, kind, scope_mode, links:engagement_project_links(project_id))',
+      )
+      .eq('user_id', hirer.user_id)
+      .eq('position', 'hirer');
+    if (error) throw new BadRequestException(error.message);
+    const candidates = (
+      (data ?? []) as unknown as Array<{
+        engagement_id: string;
+        engagement: {
+          id: string;
+          status: string;
+          kind: string;
+          scope_mode: string;
+          links: Array<{ project_id: string }> | null;
+        } | null;
+      }>
+    ).filter(
+      (row) =>
+        row.engagement?.status === 'active' &&
+        row.engagement.kind === contract.relationship_kind &&
+        row.engagement.scope_mode === contract.scope_mode &&
+        (contract.scope_mode !== 'project_specific' ||
+          (row.engagement.links ?? []).some(
+            (link) => link.project_id === contract.project_id,
+          )),
+    );
+    if (candidates.length === 0) return;
+    const { data: providerRows, error: providerError } = await this.supabase
+      .from('engagement_parties')
+      .select('engagement_id')
+      .in(
+        'engagement_id',
+        candidates.map((row) => row.engagement_id),
+      )
+      .eq('position', 'provider')
+      .eq('user_id', provider.user_id);
+    if (providerError) throw new BadRequestException(providerError.message);
+    const duplicate = (
+      (providerRows ?? []) as Array<{ engagement_id: string }>
+    )[0];
+    if (duplicate) {
+      await this.supabase.from('contracts').delete().eq('id', contract.id);
+      throw new ConflictException(
+        `These two parties already have an active engagement for this (${duplicate.engagement_id}). Amend that agreement instead of recording it again.`,
+      );
+    }
+  }
+
+  private async evidenceDocument(documentId: string): Promise<{
+    id: string;
+    project_id: string;
+    kind: string;
+    uploaded_by: string | null;
+    file_path: string;
+    file_name: string;
+    mime_type: string;
+  }> {
+    const { data, error } = await this.supabase
+      .from('finance_documents')
+      .select(
+        'id, project_id, kind, uploaded_by, file_path, file_name, mime_type',
+      )
+      .eq('id', documentId)
+      .maybeSingle();
+    if (error) throw new BadRequestException(error.message);
+    if (!data) throw new NotFoundException('Signed document not found.');
+    return data as {
+      id: string;
+      project_id: string;
+      kind: string;
+      uploaded_by: string | null;
+      file_path: string;
+      file_name: string;
+      mime_type: string;
+    };
+  }
+
+  /**
+   * The signed paper behind a recorded agreement, for anyone who may read the
+   * contract (including a counterparty with no project finance access).
+   */
+  async getEvidence(
+    callerId: string | null,
+    contractId: string,
+    preloaded?: ContractRow,
+  ): Promise<{ file_path: string; file_name: string; mime_type: string }> {
+    const contract = preloaded ?? (await this.getContractRow(contractId));
+    if (callerId) await this.assertContractRead(callerId, contract);
+    if (!contract.external_document_id) {
+      throw new NotFoundException('This contract has no recorded document.');
+    }
+    const document = await this.evidenceDocument(contract.external_document_id);
+    return {
+      file_path: document.file_path,
+      file_name: document.file_name,
+      mime_type: document.mime_type,
+    };
+  }
+
+  /** The evidence bytes, for the authenticated contract view. */
+  async getEvidenceFile(
+    callerId: string,
+    contractId: string,
+  ): Promise<{ body: Buffer; mimeType: string; fileName: string }> {
+    const evidence = await this.getEvidence(callerId, contractId);
+    if (!this.snapshots) {
+      throw new BadRequestException('Stored documents are not available.');
+    }
+    return {
+      body: await this.snapshots.readObject(evidence.file_path),
+      mimeType: evidence.mime_type,
+      fileName: evidence.file_name,
+    };
+  }
+
+  /**
    * Send a draft: it becomes visible to the counterparty, who is notified.
    * Only the author sends, and sending is where active_contracts is checked.
    */
@@ -1713,7 +1976,13 @@ export class ContractsService {
     }
     const sent = data as ContractRow;
     await this.markViewed(callerId, contractId, sent.revision);
-    await this.notifyParties(callerId, sent, 'contract_sent');
+    await this.notifyParties(
+      callerId,
+      sent,
+      sent.execution_origin === 'external'
+        ? 'contract_attestation_requested'
+        : 'contract_sent',
+    );
     return this.withSchedule(sent);
   }
 
@@ -3277,10 +3546,33 @@ export class ContractsService {
   private async notifyParties(
     actorId: string,
     contract: ContractRow,
-    typeName: 'contract_sent' | 'contract_changed' | 'contract_withdrawn',
+    typeName:
+      | 'contract_sent'
+      | 'contract_changed'
+      | 'contract_withdrawn'
+      | 'contract_attestation_requested',
   ): Promise<void> {
     const positions = await this.getPositions(contract.id);
     const actor = positions.find((entry) => entry.user_id === actorId);
+    if (typeName === 'contract_attestation_requested') {
+      const message = `${actor?.display_name_snapshot ?? 'The other party'} has recorded your agreement of ${contract.external_agreed_at ?? 'an earlier date'} in Proyekto. Check that it matches what you signed.`;
+      for (const entry of positions) {
+        if (entry.user_id === actorId) continue;
+        try {
+          await this.notifications.createNotification({
+            user_id: entry.user_id,
+            project_id: contract.project_id ?? undefined,
+            actor_id: actorId,
+            type_name: typeName,
+            content: { contract_id: contract.id, message },
+            link_url: `/engagements/contracts/${contract.id}?section=signatures`,
+          });
+        } catch {
+          // A notification failure must not undo the send.
+        }
+      }
+      return;
+    }
     const title = (
       contract.document_title || 'Service Agreement'
     ).toLowerCase();

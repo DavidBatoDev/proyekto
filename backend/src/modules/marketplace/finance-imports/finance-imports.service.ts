@@ -250,7 +250,8 @@ export class FinanceImportsService {
         const fields = await this.reader.readImage(
           buffer,
           row.mime_type,
-          row.kind,
+          // A signed contract is read by document intake, not this reader.
+          row.kind === 'contract' ? 'other' : row.kind,
         );
         return this.saveExtraction(documentId, {
           extraction_status: 'ready',

@@ -754,3 +754,196 @@ describe('ContractsService: the Team Owner Agreement template', () => {
     );
   });
 });
+
+describe('ContractsService: recorded (external) agreements', () => {
+  const DOC_ID = '00000000-0000-0000-0000-00000000d0c1';
+  const PROJECT_ID = '00000000-0000-0000-0000-0000000000p1'.replace('p', '0');
+  const docReply =
+    (overrides: Record<string, unknown> = {}) =>
+    (call: Call): Reply | undefined =>
+      call.table === 'finance_documents' && call.op === 'select'
+        ? {
+            data: {
+              id: DOC_ID,
+              project_id: PROJECT_ID,
+              kind: 'other',
+              uploaded_by: 'consultant-1',
+              file_path: 'finance_documents/x.pdf',
+              file_name: 'signed.pdf',
+              mime_type: 'application/pdf',
+              ...overrides,
+            },
+            error: null,
+          }
+        : undefined;
+
+  const input = {
+    project_id: PROJECT_ID,
+    counterparty_user_id: 'client-1',
+    external_agreed_at: '2026-03-01',
+    external_document_id: DOC_ID,
+    service_start_date: '2026-03-01',
+  };
+
+  it('records the agreed date and the paper, and files the paper as a contract', async () => {
+    const draft = contractFixture({ status: 'draft', project_id: PROJECT_ID });
+    const { service, calls } = build({
+      contract: draft,
+      reply: (call) =>
+        docReply()(call) ??
+        (call.table === 'engagement_parties'
+          ? { data: [], error: null }
+          : undefined),
+    });
+    jest
+      .spyOn(service, 'createContract')
+      .mockResolvedValue({ ...draft, positions: CLIENT_SEATS } as never);
+
+    await service.recordExternalAgreement('consultant-1', input);
+
+    const update = calls.find(
+      (call) => call.table === 'contracts' && call.op === 'update',
+    );
+    expect(update?.payload).toEqual(
+      expect.objectContaining({
+        execution_origin: 'external',
+        external_agreed_at: '2026-03-01',
+        external_document_id: DOC_ID,
+      }),
+    );
+    expect(
+      calls.find(
+        (call) => call.table === 'finance_documents' && call.op === 'update',
+      )?.payload,
+    ).toEqual({ kind: 'contract' });
+  });
+
+  it('refuses a future agreed date, a start before it, and paper from another project', async () => {
+    const { service } = build({ reply: docReply({ project_id: 'elsewhere' }) });
+    await expect(
+      service.recordExternalAgreement('consultant-1', {
+        ...input,
+        external_agreed_at: '2999-01-01',
+      }),
+    ).rejects.toThrow(/future/);
+    await expect(
+      service.recordExternalAgreement('consultant-1', {
+        ...input,
+        service_start_date: '2026-02-01',
+      }),
+    ).rejects.toThrow(/no earlier than/);
+    await expect(
+      service.recordExternalAgreement('consultant-1', input),
+    ).rejects.toThrow(/same project/);
+  });
+
+  it('refuses to adopt a relationship that already has an active engagement', async () => {
+    const draft = contractFixture({ status: 'draft', project_id: PROJECT_ID });
+    const { service, calls } = build({
+      contract: draft,
+      reply: (call) => {
+        const doc = docReply()(call);
+        if (doc) return doc;
+        if (call.table === 'engagement_parties') {
+          const providerLookup = call.filters.some(
+            (f) => f[0] === 'eq' && f[1] === 'position' && f[2] === 'provider',
+          );
+          return providerLookup
+            ? { data: [{ engagement_id: 'eng-1' }], error: null }
+            : {
+                data: [
+                  {
+                    engagement_id: 'eng-1',
+                    engagement: {
+                      id: 'eng-1',
+                      status: 'active',
+                      kind: 'client_services',
+                      scope_mode: 'project_specific',
+                      links: [{ project_id: PROJECT_ID }],
+                    },
+                  },
+                ],
+                error: null,
+              };
+        }
+        return undefined;
+      },
+    });
+    jest
+      .spyOn(service, 'createContract')
+      .mockResolvedValue({ ...draft, positions: CLIENT_SEATS } as never);
+
+    await expect(
+      service.recordExternalAgreement('consultant-1', input),
+    ).rejects.toBeInstanceOf(ConflictException);
+    // The half-made draft is removed rather than left behind.
+    expect(
+      calls.some((call) => call.table === 'contracts' && call.op === 'delete'),
+    ).toBe(true);
+  });
+
+  it('is attested, not signed: no attestation, no stamp', async () => {
+    const contract = contractFixture({
+      execution_origin: 'external',
+      external_agreed_at: '2026-03-01',
+      external_document_id: DOC_ID,
+    });
+    const { service, client } = build({ contract });
+
+    await expect(
+      service.signContract('client-1', contract.id, {
+        position: 'hirer',
+        revision: 1,
+        signer_name: 'Client One',
+      }),
+    ).rejects.toThrow(/Confirm that it matches/);
+    expect(client.rpc).not.toHaveBeenCalled();
+  });
+
+  it('stores the attestation statement with the seat before stamping', async () => {
+    const contract = contractFixture({
+      execution_origin: 'external',
+      external_agreed_at: '2026-03-01',
+      external_document_id: DOC_ID,
+    });
+    const { service, client, calls } = build({ contract });
+    (client.rpc as jest.Mock).mockResolvedValue({
+      data: contract,
+      error: null,
+    });
+
+    await service.signContract('client-1', contract.id, {
+      position: 'hirer',
+      revision: 1,
+      signer_name: 'Client One',
+      attest: true,
+    });
+
+    const statement = calls.find(
+      (call) => call.table === 'contract_positions' && call.op === 'update',
+    );
+    expect(statement?.payload).toEqual({
+      attestation_statement: expect.stringContaining('2026-03-01'),
+    });
+    expect(client.rpc).toHaveBeenCalled();
+  });
+
+  it('asks the counterparty to attest when a recorded agreement is sent', async () => {
+    const contract = contractFixture({
+      status: 'draft',
+      created_by: 'consultant-1',
+      execution_origin: 'external',
+      external_agreed_at: '2026-03-01',
+    });
+    const { service, notifications } = build({ contract });
+
+    await service.sendContract('consultant-1', contract.id);
+
+    expect(notifications.createNotification).toHaveBeenCalledWith(
+      expect.objectContaining({
+        user_id: 'client-1',
+        type_name: 'contract_attestation_requested',
+      }),
+    );
+  });
+});

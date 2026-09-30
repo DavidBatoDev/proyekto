@@ -5,6 +5,7 @@ import {
 	type LucideIcon,
 	PenLine,
 	Plus,
+	Stamp,
 	UserRound,
 	Users,
 } from "lucide-react";
@@ -34,6 +35,7 @@ import {
 	validateContractStep,
 } from "@/components/finance/portfolio/financeSearch";
 import { useFinanceProjectOptions } from "@/components/finance/portfolio/useFinanceProjectOptions";
+import { RecordAgreementDialog } from "@/components/finance/RecordAgreementDialog";
 import { useToast } from "@/hooks/useToast";
 import { isActiveConsultant } from "@/lib/auth-utils";
 import {
@@ -357,6 +359,7 @@ function AuthoredContracts({
 	const qc = useQueryClient();
 	const toast = useToast();
 	const [createOpen, setCreateOpen] = useState(false);
+	const [recordOpen, setRecordOpen] = useState(false);
 	const page = search.page ?? 1;
 
 	const contractsQuery = useQuery({
@@ -428,14 +431,36 @@ function AuthoredContracts({
 				search={search}
 				setSearch={setSearch}
 				action={
-					<button
-						type="button"
-						onClick={() => setCreateOpen(true)}
-						className="app-cta inline-flex items-center gap-1.5 rounded-lg px-4 py-2 text-sm font-semibold text-white"
-					>
-						<Plus className="h-4 w-4" /> New contract
-					</button>
+					<div className="flex flex-wrap gap-2">
+						<button
+							type="button"
+							onClick={() => setRecordOpen(true)}
+							className="inline-flex items-center gap-1.5 rounded-lg border border-border px-4 py-2 text-sm font-semibold text-foreground hover:bg-muted"
+						>
+							<Stamp className="h-4 w-4" /> Record existing agreement
+						</button>
+						<button
+							type="button"
+							onClick={() => setCreateOpen(true)}
+							className="app-cta inline-flex items-center gap-1.5 rounded-lg px-4 py-2 text-sm font-semibold text-white"
+						>
+							<Plus className="h-4 w-4" /> New contract
+						</button>
+					</div>
 				}
+			/>
+			<RecordAgreementDialog
+				open={recordOpen}
+				projects={projectOptionsQuery.data?.projects ?? []}
+				onClose={() => setRecordOpen(false)}
+				onRecorded={(recorded) => {
+					setRecordOpen(false);
+					void qc.invalidateQueries({ queryKey: ["finance", "contracts"] });
+					toast.success(
+						"Agreement recorded. Review it, then send it for confirmation.",
+					);
+					openContract(recorded.id, "terms");
+				}}
 			/>
 			<ContractPortfolio
 				loading={contractsQuery.isPending}

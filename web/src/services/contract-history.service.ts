@@ -158,6 +158,59 @@ export const contractHistoryService = {
 		}
 	},
 
+	/**
+	 * Record an agreement signed outside Proyekto: transcribed terms, the real
+	 * agreed date and the signed paper (a finance document on the project).
+	 */
+	async recordExternal(payload: {
+		project_id: string;
+		counterparty_user_id: string;
+		relationship_kind?: "client_services" | "talent_services";
+		author_capacity?: "consultant" | "client" | "talent";
+		external_agreed_at: string;
+		external_document_id: string;
+		service_start_date?: string;
+		term_count?: number;
+		term_unit?: "month" | "year";
+		currency?: string;
+		billing_mode?: "retainer" | "time_based" | "hybrid" | "fixed";
+		recurring_fee?: number;
+		client_hourly_rate?: number;
+		fixed_fee?: number;
+		notice_days?: number;
+		due_days?: number;
+		clauses?: Array<{
+			key: string;
+			title: string;
+			body: string;
+			position: number;
+			parent_key?: string | null;
+		}>;
+	}): Promise<Contract> {
+		try {
+			const { data } = await apiClient.post<{ data: Contract }>(
+				"/api/contracts/external",
+				{ scope_mode: "project_specific", ...payload },
+			);
+			return data.data;
+		} catch (err) {
+			fail(err, "Failed to record the agreement");
+		}
+	},
+
+	/** The signed paper behind a recorded agreement, as a blob URL. */
+	async evidenceUrl(contractId: string): Promise<string> {
+		try {
+			const response = await apiClient.get<Blob>(
+				`/api/contracts/${contractId}/evidence`,
+				{ responseType: "blob" },
+			);
+			return URL.createObjectURL(response.data);
+		} catch (err) {
+			fail(err, "Failed to open the signed document");
+		}
+	},
+
 	async withdraw(contractId: string): Promise<Contract> {
 		try {
 			const { data } = await apiClient.post<{ data: Contract }>(

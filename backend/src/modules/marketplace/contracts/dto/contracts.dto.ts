@@ -347,6 +347,18 @@ export class CreateContractDto extends ContractTermsDto {
   template?: ContractTemplateChoice;
 }
 
+/**
+ * Record an agreement signed outside Proyekto (off-platform adoption). The
+ * terms are transcribed as for any contract; the date and the uploaded paper
+ * are the evidence (contracts_external_needs_evidence).
+ */
+export class RecordExternalAgreementDto extends CreateContractDto {
+  @IsDateString() external_agreed_at!: string;
+
+  /** A finance_documents row on the same project: the signed paper. */
+  @IsUUID() external_document_id!: string;
+}
+
 /** Re-template a draft (author only). */
 export class ApplyContractTemplateDto {
   @IsIn(CONTRACT_TEMPLATES)
@@ -465,6 +477,14 @@ export class SignContractDto {
   @Min(-3)
   @Max(3)
   signature_offset_y?: number;
+
+  /**
+   * Required (true) on a recorded agreement: the signer attests that the
+   * record matches the agreement they already signed outside Proyekto.
+   */
+  @IsOptional()
+  @IsBoolean()
+  attest?: boolean;
 }
 
 export class ResolveContractCounterpartyDto {

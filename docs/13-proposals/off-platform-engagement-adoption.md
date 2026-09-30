@@ -1,8 +1,10 @@
 # Off-Platform Engagement Adoption
 
-> **⚠️ Proposed — not built.**
+> **Built (A1–A3)** on `feat/contract-authoring-intake` (2026-09-30). Not merged, not in
+> production. A4 (retiring `grandfathered`) is not done. See
+> [Implementation notes](#implementation-notes-2026-09-30).
 
-> **Last updated:** 2026-08-28 · **Status:** draft
+> **Last updated:** 2026-09-30 · **Status:** built
 
 Today there is exactly one door into the engagement model: draft a contract in Proyekto and
 have both parties sign it. That is correct for new work and wrong for the most common way a
@@ -195,3 +197,34 @@ profile FK, so a migrating *company* cannot hold a seat today either — see
 - [Action surface](../14-engagement/action-surface.md) — adopted engagements use the same rail
 - [Document imports](../11-domains/finance/document-imports.md) — the money side, and the `finance_documents` dependency
 - [Authorization axes](../03-backend/authorization-axes.md) — eligibility, and why `grandfathered` needs an exit
+
+## Implementation notes (2026-09-30)
+
+| Phase | State | Where |
+| --- | --- | --- |
+| A0 | `20260826090000_finance_document_imports` is on DEV; **still not in production** | — |
+| A1 | Built. `execution_origin`, `external_agreed_at`, `external_document_id` (FK to `finance_documents`, `ON DELETE RESTRICT`), `contracts_external_needs_evidence`, `engagements.origin` gains `adopted`, `finance_documents.kind` gains `contract`, `contract_positions.attestation_statement` | `supabase/migrations/20260930110000_contract_external_adoption.sql` (DEV only) |
+| A2 | Built. `POST /contracts/external`; the dating exception, `origin = 'adopted'` and the duplicate refusal in `sign_contract_position_and_activate` | `contracts.service.ts` `recordExternalAgreement` |
+| A3 | Built. In-app attestation (a confirm that says what is being asked) and token attestation with the signed document one click away; the "Recorded agreement — signed outside Proyekto on *date*" label on the editor and the token page | `RecordedAgreementBanner.tsx`, `RecordAgreementDialog.tsx`, `/contract/sign/$token` |
+| A4 | Not built | — |
+
+Differences from the text above:
+
+- **An attestation is stamped through the unchanged signing path** with `attest: true` required;
+  without it the stamp is refused. The exact statement attested is stored on the seat
+  (`attestation_statement`), next to the signature fields that carry it.
+- **Recorded agreements are project-specific.** `finance_documents.project_id` is `NOT NULL`, so the
+  paper always belongs to a project; a flexible recorded agreement has nowhere to keep its evidence.
+- **Who may record one:** anyone who may author a contract under
+  [two-way authoring](./two-way-contract-authoring.md), not only a verified consultant. The
+  consultant seat is still required, and `is_active_consultant` is still checked when the
+  engagement activates, so the open question below is unchanged.
+- **The adopted engagement's `started_at` is `external_agreed_at`**, the date the relationship
+  actually began.
+- **The duplicate check runs twice**: in the service before the draft exists (it is deleted if the
+  check fails), and in the RPC under the row lock (`ADOPTION_DUPLICATE_ENGAGEMENT`).
+- **Amendments of an adopted agreement** are created with `execution_origin = 'proyekto'`: they are
+  Proyekto-signed documents, strictly prospective, in the same family.
+- **The evidence is served through the contract**, `GET /contracts/:id/evidence` for any contract
+  reader and `GET /contracts/sign/:token/evidence` for the link holder, so a counterparty with no
+  project finance access can still compare the record with the paper.

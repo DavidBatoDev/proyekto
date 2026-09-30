@@ -128,6 +128,11 @@ export interface PublicContractView {
   periods: ContractWithSchedule['periods'];
   project_title: string | null;
   expires_at: string;
+  /** 'external': a recorded agreement, attested rather than signed. */
+  execution_origin: 'proyekto' | 'external';
+  external_agreed_at: string | null;
+  /** Whether the signed paper can be opened from this link. */
+  has_evidence: boolean;
   already_signed: boolean;
 }
 
@@ -308,6 +313,26 @@ export class ContractSignatureLinksService {
     return this.publicContractView(contract, link);
   }
 
+  /**
+   * The signed paper behind a recorded agreement, for the link holder, so
+   * they can compare the record with what they signed before attesting.
+   */
+  async evidenceByToken(
+    token: string,
+  ): Promise<{ body: Buffer; mimeType: string; fileName: string }> {
+    const { contract } = await this.resolveToken(token);
+    const evidence = await this.contracts.getEvidence(
+      null,
+      contract.id,
+      contract,
+    );
+    return {
+      body: await this.uploads.getPrivateObject(evidence.file_path),
+      mimeType: evidence.mime_type,
+      fileName: evidence.file_name,
+    };
+  }
+
   /** Stamp the client signature on behalf of the token holder. */
   async signByToken(
     token: string,
@@ -324,6 +349,7 @@ export class ContractSignatureLinksService {
       party: 'client',
       revision: dto.revision,
       signer_name: dto.signer_name,
+      attest: dto.attest,
       signature_url: signatureUrl ?? undefined,
       signature_scale: dto.signature_scale,
       signature_offset_x: dto.signature_offset_x,
@@ -472,6 +498,9 @@ export class ContractSignatureLinksService {
       : { data: null };
 
     return {
+      execution_origin: contract.execution_origin ?? 'proyekto',
+      external_agreed_at: contract.external_agreed_at ?? null,
+      has_evidence: Boolean(contract.external_document_id),
       id: contract.id,
       revision: contract.revision,
       contract_number: contract.contract_number,

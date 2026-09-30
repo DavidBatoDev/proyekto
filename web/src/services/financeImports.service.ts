@@ -8,7 +8,12 @@ import apiClient from "@/api/axios";
  * were read from. See `backend/src/modules/marketplace/finance-imports`.
  */
 
-export type FinanceDocumentKind = "invoice" | "payment_proof" | "other";
+export type FinanceDocumentKind =
+	| "invoice"
+	| "payment_proof"
+	| "other"
+	/** A signed agreement: the evidence behind a recorded contract. */
+	| "contract";
 
 export interface ReadField {
 	value: string | null;

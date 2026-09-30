@@ -53,6 +53,7 @@ import {
 	FrozenBadge,
 } from "@/components/finance/ContractHistoryPanel";
 import { ContractTemplatePicker } from "@/components/finance/ContractTemplatePicker";
+import { RecordedAgreementBanner } from "@/components/finance/RecordedAgreementBanner";
 import { ClientSigningLinkModal } from "@/components/project/ClientSigningLinkModal";
 import type {
 	PreviewParties,
@@ -298,6 +299,8 @@ export function ProjectContract({
 				name,
 				signatureUrl,
 				placement,
+				// A recorded agreement is attested; the confirm asked first.
+				contract?.execution_origin === "external",
 			),
 		onSuccess: () => {
 			toast.success("Signature recorded");
@@ -567,6 +570,7 @@ export function ProjectContract({
 					</button>
 				</div>
 			</header>
+			<RecordedAgreementBanner contract={contract} />
 			{unseenChanges && (
 				<div className="flex shrink-0 flex-wrap items-center justify-between gap-2 border-b border-amber-300/60 bg-amber-50 px-4 py-2 text-xs text-amber-900 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-200">
 					<span>
@@ -713,17 +717,32 @@ export function ProjectContract({
 												(project?.owner_id === user?.id &&
 													project?.owner_id !== contractConsultantId))))
 								}
-								onSign={(party, name, signatureUrl, placement) =>
-									unseenChanges
-										? setHistoryOpen("changes")
-										: signMutation.mutate({
-												revision: contract.revision,
-												party,
-												name,
-												signatureUrl,
-												placement,
-											})
-								}
+								onSign={(party, name, signatureUrl, placement) => {
+									if (unseenChanges) {
+										setHistoryOpen("changes");
+										return;
+									}
+									const stamp = () =>
+										signMutation.mutate({
+											revision: contract.revision,
+											party,
+											name,
+											signatureUrl,
+											placement,
+										});
+									if (contract.execution_origin !== "external") {
+										stamp();
+										return;
+									}
+									// A recorded agreement is attested, not signed anew.
+									void confirm({
+										title: "Attest this recorded agreement?",
+										message: `You are confirming that this record matches the agreement you signed outside Proyekto on ${contract.external_agreed_at ?? "the recorded date"}. You are not signing a new agreement: the signed document stays the legal authority.`,
+										confirmLabel: "Confirm it matches",
+									}).then((ok) => {
+										if (ok) stamp();
+									});
+								}}
 								onUnsign={(party) => unsignMutation.mutate({ party })}
 								onPlacementChange={(party, placement) =>
 									placementMutation.mutate({ party, placement })

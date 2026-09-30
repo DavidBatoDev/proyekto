@@ -189,6 +189,11 @@ export class ContractSnapshotService {
     }
   }
 
+  /** A private object's bytes (a recorded agreement's evidence). */
+  async readObject(key: string): Promise<Buffer> {
+    return this.uploads.getPrivateObject(key);
+  }
+
   /** The frozen bytes, re-hashed so the caller can prove they are unchanged. */
   async readFrozen(
     contract: ContractRow,

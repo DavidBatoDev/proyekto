@@ -16,11 +16,13 @@ import {
 } from "@/components/finance/ContractEditorCanvas";
 import { SignaturePad } from "@/components/project/signature/SignaturePad";
 import { useConfirm } from "@/hooks/useConfirm";
+import { recordedAgreementLabel } from "@/lib/contract-templates";
 import { formatContractDate } from "@/lib/contract-term";
 import {
 	type ContractDocumentView,
 	contractSigningService,
 	SigningLinkError,
+	signingLinkEvidenceUrl,
 } from "@/services/contract-signing.service";
 
 /**
@@ -68,6 +70,9 @@ function PublicSignPage() {
 			contractSigningService.sign(token, {
 				revision,
 				signer_name: name.trim(),
+				...(contractQuery.data?.execution_origin === "external"
+					? { attest: true }
+					: {}),
 				...(signaturePng ? { signature_png: signaturePng } : {}),
 			}),
 		onSuccess: (result) => setSigned(result),
@@ -114,16 +119,23 @@ function PublicSignPage() {
 	const contract = signed ?? contractQuery.data;
 	if (!contract) return null;
 	const done = Boolean(signed);
+	const recorded = contract.execution_origin === "external";
 	const submitSignature = async (signaturePng?: string | null) => {
 		const confirmed = await confirm({
-			title: "Sign this agreement?",
-			message: (
+			title: recorded ? "Confirm this record matches?" : "Sign this agreement?",
+			message: recorded ? (
+				<>
+					You, <strong>{name.trim()}</strong>, confirm that this record matches
+					the agreement you signed outside Proyekto. You are not signing a new
+					agreement. This one-time link will no longer be usable.
+				</>
+			) : (
 				<>
 					You are signing this agreement as <strong>{name.trim()}</strong>. Your
 					signature is recorded and this one-time link will no longer be usable.
 				</>
 			),
-			confirmLabel: "Sign agreement",
+			confirmLabel: recorded ? "Confirm it matches" : "Sign agreement",
 		});
 		if (confirmed) {
 			signMutation.mutate({
@@ -269,8 +281,29 @@ function PublicSignPage() {
 						) : (
 							<>
 								<FileSignature className="mb-3 h-8 w-8 text-primary" />
+								{recorded && (
+									<div className="mb-3 rounded-lg border border-sky-400/50 bg-sky-500/10 px-3 py-2 text-xs text-sky-800 dark:text-sky-200">
+										<p className="font-semibold">
+											{recordedAgreementLabel(contract.external_agreed_at)}
+										</p>
+										<p className="mt-1">
+											This is a record of an agreement you already signed. Check
+											that it matches what you signed before confirming.
+										</p>
+										{contract.has_evidence && (
+											<a
+												href={signingLinkEvidenceUrl(token)}
+												target="_blank"
+												rel="noopener noreferrer"
+												className="mt-1 inline-flex font-semibold underline"
+											>
+												Open the signed document
+											</a>
+										)}
+									</div>
+								)}
 								<h2 className="text-base font-semibold text-card-foreground">
-									Sign this agreement
+									{recorded ? "Confirm it matches" : "Sign this agreement"}
 								</h2>
 								<p className="mt-1.5 text-sm text-muted-foreground">
 									Type your full name to sign. Drawing your signature is

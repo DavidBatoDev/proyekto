@@ -1,3 +1,23 @@
+/**
+ * The label on every surface that shows an adopted (external) agreement.
+ * The date is the one both parties attest they signed on.
+ */
+export function recordedAgreementLabel(
+	agreedAt: string | null | undefined,
+): string {
+	if (!agreedAt) return "Recorded agreement — signed outside Proyekto";
+	const parsed = new Date(`${agreedAt.slice(0, 10)}T00:00:00Z`);
+	const date = Number.isNaN(parsed.getTime())
+		? agreedAt
+		: parsed.toLocaleDateString("en-US", {
+				day: "numeric",
+				month: "long",
+				year: "numeric",
+				timeZone: "UTC",
+			});
+	return `Recorded agreement — signed outside Proyekto on ${date}`;
+}
+
 /** What the Team Owner Agreement is called for each counterparty. */
 export function teamOwnerTemplateLabel(
 	templateKey: string | null | undefined,
