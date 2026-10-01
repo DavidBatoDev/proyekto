@@ -257,9 +257,12 @@ export class EmailOtpService {
       throw new BadRequestException('Invalid or expired verification code.');
     }
 
-    const userId = resetRow.user_id || (await this.resolveUserIdByEmail(email));
-    if (!userId) {
-      throw new BadRequestException('Account not found for this email.');
+    // Re-resolve the owner now and require it to match the row: a reset row is
+    // only ever honoured for the account that owns this address today. This
+    // also voids any row mis-linked by the old lookup fallback.
+    const userId = await this.resolveUserIdByEmail(email);
+    if (!userId || (resetRow.user_id && resetRow.user_id !== userId)) {
+      throw new BadRequestException('Invalid or expired verification code.');
     }
 
     const { error: updatePasswordError } =
@@ -327,47 +330,33 @@ export class EmailOtpService {
     }
   }
 
-  private async resolveUserIdByEmail(email: string): Promise<string | null> {
-    const { data: profileRow, error: profileError } = await this.supabase
-      .from('profiles')
-      .select('id')
-      .ilike('email', email)
-      .maybeSingle();
+  /**
+   * The account that owns `email`, or null — an EXACT, case-insensitive match
+   * on auth.users via the service-role-only `auth_user_id_by_email` RPC.
+   *
+   * SECURITY: password reset sets the password of whatever id this returns, so
+   * it must never return anyone but the address's owner. It used to fall back
+   * to `GET /auth/v1/admin/users?email=`, which GoTrue ignores, so an unknown
+   * address resolved to the first user in the list (account takeover). Fails
+   * closed: a lookup error is treated as "no account".
+   */
+  async resolveUserIdByEmail(email: string): Promise<string | null> {
+    const target = this.normalizeEmail(email);
+    if (!target) return null;
 
-    if (!profileError && profileRow?.id) {
-      return profileRow.id as string;
-    }
-
-    const serviceRoleKey =
-      this.config.get<string>('SUPABASE_SERVICE_ROLE_KEY') ?? '';
-    const supabaseUrl = this.config.get<string>('SUPABASE_URL') ?? '';
-    if (!serviceRoleKey || !supabaseUrl) {
+    const { data, error } = (await this.supabase.rpc('auth_user_id_by_email', {
+      p_email: target,
+    })) as { data: unknown; error: { message: string } | null };
+    if (error) {
+      this.logger.error(`Email lookup failed: ${error.message}`);
       return null;
     }
+    return typeof data === 'string' && data.length > 0 ? data : null;
+  }
 
-    const response = await fetch(
-      `${supabaseUrl}/auth/v1/admin/users?email=${encodeURIComponent(email)}`,
-      {
-        headers: {
-          Authorization: `Bearer ${serviceRoleKey}`,
-          apikey: serviceRoleKey,
-        },
-      },
-    );
-
-    if (!response.ok) return null;
-    const payload = (await response.json().catch(() => null)) as
-      | { users?: Array<{ id?: string }> }
-      | Array<{ id?: string }>
-      | null;
-
-    const users = Array.isArray(payload)
-      ? payload
-      : Array.isArray(payload?.users)
-        ? payload.users
-        : [];
-    const firstId = users[0]?.id;
-    return typeof firstId === 'string' && firstId.length > 0 ? firstId : null;
+  /** Whether an account already uses `email` (sign-up's first step). */
+  async isEmailRegistered(email: string): Promise<boolean> {
+    return (await this.resolveUserIdByEmail(email)) !== null;
   }
 
   /**
