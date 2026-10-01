@@ -5,6 +5,7 @@ import {
 	redirect,
 } from "@tanstack/react-router";
 import { lazy, Suspense } from "react";
+import { DisplayNameGate } from "../components/auth/display-name/DisplayNameGate";
 import { PlanLimitBridge } from "../components/billing/PlanLimitBridge";
 import Header from "../components/layout/Header";
 import { NotFoundRoute } from "../components/layout/NotFoundRoute";
@@ -74,6 +75,9 @@ function RootLayout() {
 				<Outlet />
 				<FloatingActiveTimer />
 				<MigrationHandler />
+				{/* Blocks until a signed-in person has a display name: the name
+				    contracts, seats and invites show instead of an email. */}
+				<DisplayNameGate />
 				{/* Native-only; renders nothing on web and nothing unless the
 				    backend says this shell is out of date. */}
 				<AppUpdateGate />

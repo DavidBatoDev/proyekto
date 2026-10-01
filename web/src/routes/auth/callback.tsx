@@ -68,7 +68,10 @@ function AuthCallbackPage() {
 					.filter(Boolean)
 					.join(" ")
 					.trim();
-				const displayName = fullName ?? (derivedName || email.split("@")[0]);
+				// No email-prefix fallback: an account the provider gave no name
+				// is asked for one by DisplayNameGate, instead of signing
+				// contracts as "jdoe123".
+				const displayName = fullName?.trim() || derivedName || null;
 				const avatarUrl =
 					typeof metadata.avatar_url === "string"
 						? metadata.avatar_url
@@ -82,7 +85,8 @@ function AuthCallbackPage() {
 						email,
 						first_name: firstName,
 						last_name: lastName,
-						display_name: displayName,
+						// Omitted when unknown, so a name set earlier is never wiped.
+						...(displayName ? { display_name: displayName } : {}),
 						avatar_url: avatarUrl,
 						is_email_verified: true,
 					},
