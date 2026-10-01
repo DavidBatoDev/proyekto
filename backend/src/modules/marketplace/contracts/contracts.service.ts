@@ -219,6 +219,20 @@ export interface ContractRow {
   execution_origin?: 'proyekto' | 'external';
   external_agreed_at?: string | null;
   external_document_id?: string | null;
+  /** Recorded amendments still to be created, oldest first. */
+  external_amendment_queue?: ExternalAmendmentEntry[] | null;
+}
+
+/**
+ * One past amendment of a recorded agreement, waiting its turn. It becomes
+ * its own version, back-dated to `effective_from`, once the version before it
+ * has been attested (decision 2026-09-30: never folded into the original).
+ */
+export interface ExternalAmendmentEntry {
+  effective_from: string;
+  agreed_at: string;
+  document_id: string;
+  terms: Partial<UpdateContractDto>;
 }
 
 /** What each party attests on a recorded agreement. */
@@ -378,6 +392,10 @@ const SIGNING_ERRORS: Record<
   },
   AMENDMENT_EFFECTIVE_DATE_PAST: {
     message: 'An amendment must take effect today or later.',
+  },
+  EXTERNAL_AMENDMENT_BEFORE_AGREEMENT: {
+    message:
+      'A recorded amendment can take effect no earlier than the date the original agreement was made.',
   },
   AMENDMENT_EFFECTIVE_DATE_NOT_PROSPECTIVE: {
     message:
@@ -1174,12 +1192,17 @@ export class ContractsService {
       );
     }
 
-    if (
-      existing.engagement_id &&
-      effectiveFrom < new Date().toISOString().slice(0, 10)
-    ) {
+    const today = new Date().toISOString().slice(0, 10);
+    const external = await this.externalAmendmentEvidence(
+      existing,
+      dto,
+      effectiveFrom,
+    );
+    if (existing.engagement_id && effectiveFrom < today && !external) {
       throw new BadRequestException(
-        'Engagement-backed amendments must take effect today or later.',
+        existing.execution_origin === 'external'
+          ? 'To back-date an amendment of a recorded agreement, attach the signed amendment and the date it was agreed.'
+          : 'Engagement-backed amendments must take effect today or later.',
       );
     }
 
@@ -1210,6 +1233,12 @@ export class ContractsService {
       terms,
       effectiveFrom,
       callerId,
+      external
+        ? {
+            ...external,
+            queue: existing.external_amendment_queue ?? [],
+          }
+        : undefined,
     );
 
     // The predecessor's future DRAFT invoices belong to terms that no longer
@@ -1219,6 +1248,113 @@ export class ContractsService {
     await this.dropFutureDrafts(contractId, effectiveFrom);
 
     return this.withSchedule(successor);
+  }
+
+  /**
+   * The evidence for a back-dated amendment of a recorded agreement, or null
+   * for an ordinary one. Narrow on purpose: only an external family, only
+   * with the signed amendment on the same project, and never before the
+   * family's own agreed date (the signing RPC checks that again under lock).
+   */
+  private async externalAmendmentEvidence(
+    existing: ContractRow,
+    dto: AmendContractDto,
+    effectiveFrom: string,
+  ): Promise<{ agreed_at: string; document_id: string } | null> {
+    if (!dto.external_agreed_at && !dto.external_document_id) return null;
+    if (existing.execution_origin !== 'external') {
+      throw new BadRequestException(
+        'Only a recorded agreement takes a recorded (past) amendment. Amend this contract going forward instead.',
+      );
+    }
+    if (!dto.external_agreed_at || !dto.external_document_id) {
+      throw new BadRequestException(
+        'A recorded amendment needs both its signed document and the date it was agreed.',
+      );
+    }
+    const agreedAt = dto.external_agreed_at.slice(0, 10);
+    if (agreedAt > new Date().toISOString().slice(0, 10)) {
+      throw new BadRequestException('The agreed date cannot be in the future.');
+    }
+    const rootAgreedAt = await this.familyAgreedAt(existing);
+    if (!rootAgreedAt || effectiveFrom < rootAgreedAt) {
+      throw new BadRequestException(
+        'A recorded amendment can take effect no earlier than the date the original agreement was made.',
+      );
+    }
+    const document = await this.evidenceDocument(dto.external_document_id);
+    if (document.project_id !== existing.project_id) {
+      throw new BadRequestException(
+        'The signed amendment must be uploaded to the same project.',
+      );
+    }
+    return { agreed_at: agreedAt, document_id: dto.external_document_id };
+  }
+
+  /** The agreed date of a family's root version. */
+  private async familyAgreedAt(contract: ContractRow): Promise<string | null> {
+    if (!contract.supersedes_contract_id) {
+      return contract.external_agreed_at?.slice(0, 10) ?? null;
+    }
+    const { data, error } = await this.supabase
+      .from('contracts')
+      .select('external_agreed_at')
+      .eq('contract_family_id', contract.contract_family_id)
+      .is('supersedes_contract_id', null)
+      .order('version', { ascending: true })
+      .limit(1)
+      .maybeSingle();
+    if (error) throw new BadRequestException(error.message);
+    const agreed = (data as { external_agreed_at: string | null } | null)
+      ?.external_agreed_at;
+    return agreed ? agreed.slice(0, 10) : null;
+  }
+
+  /**
+   * Once a recorded version is attested, the next queued paper amendment
+   * becomes its own version, back-dated to its historical effective date, and
+   * goes out for attestation. One at a time, oldest first, so every version
+   * is attested against the terms it actually replaced.
+   */
+  async advanceExternalAmendmentQueue(
+    signed: ContractRow,
+  ): Promise<ContractRow | null> {
+    const queue = [...(signed.external_amendment_queue ?? [])].sort((a, b) =>
+      a.effective_from.localeCompare(b.effective_from),
+    );
+    if (signed.execution_origin !== 'external' || queue.length === 0) {
+      return null;
+    }
+    const [next, ...rest] = queue;
+    const actor = signed.created_by ?? signed.consultant_user_id ?? '';
+    const dto = {
+      ...next.terms,
+      scope: 'following',
+      effective_from: next.effective_from,
+      external_agreed_at: next.agreed_at,
+      external_document_id: next.document_id,
+    } as AmendContractDto;
+    // The queue moves to the successor; cleared here first so a retry never
+    // records the same amendment twice, restored if recording fails.
+    await this.supabase
+      .from('contracts')
+      .update({ external_amendment_queue: [] })
+      .eq('id', signed.id);
+    let successor: ContractWithSchedule;
+    try {
+      successor = await this.amendContract(actor, signed.id, dto);
+    } catch (error) {
+      await this.supabase
+        .from('contracts')
+        .update({ external_amendment_queue: queue })
+        .eq('id', signed.id);
+      throw error;
+    }
+    await this.supabase
+      .from('contracts')
+      .update({ external_amendment_queue: rest })
+      .eq('id', successor.id);
+    return this.sendContract(actor, successor.id);
   }
 
   /** The start of the billing period containing today. */
@@ -1280,10 +1416,31 @@ export class ContractsService {
     dto: AmendContractDto,
     effectiveFrom: string,
     callerId: string,
+    external?: {
+      agreed_at: string;
+      document_id: string;
+      queue: ExternalAmendmentEntry[];
+    },
   ): Promise<ContractRow> {
-    const { scope: _scope, effective_from: _effectiveFrom, ...terms } = dto;
+    const {
+      scope: _scope,
+      effective_from: _effectiveFrom,
+      external_agreed_at: _agreedAt,
+      external_document_id: _documentId,
+      ...terms
+    } = dto;
     void _scope;
     void _effectiveFrom;
+    void _agreedAt;
+    void _documentId;
+    // An amendment changes terms from a date; it does not extend the contract.
+    // 'following' restarts the clock at the split, so without this the term
+    // would be re-counted from the effective date and the end would move.
+    const keepsEnd =
+      dto.scope === 'following' &&
+      terms.service_start_date === undefined &&
+      terms.term_count === undefined &&
+      terms.term_unit === undefined;
     const patch = {
       ...this.scalarPatch(terms as UpdateContractDto),
       ...this.termPatch(
@@ -1299,6 +1456,13 @@ export class ContractsService {
         },
         existing,
       ),
+      ...(keepsEnd && existing.service_end_date
+        ? {
+            service_end_date: existing.service_end_date,
+            contract_end_date:
+              existing.contract_end_date ?? existing.service_end_date,
+          }
+        : {}),
     };
 
     const {
@@ -1330,10 +1494,12 @@ export class ContractsService {
         signed_by_client_at: null,
         signed_by_client_name: null,
         signed_by_client_signature_url: null,
-        // An amendment is signed in Proyekto even when its root was not.
-        execution_origin: 'proyekto',
-        external_agreed_at: null,
-        external_document_id: null,
+        // An amendment is signed in Proyekto even when its root was not,
+        // unless it is itself a recorded (past, paper) amendment.
+        execution_origin: external ? 'external' : 'proyekto',
+        external_agreed_at: external?.agreed_at ?? null,
+        external_document_id: external?.document_id ?? null,
+        external_amendment_queue: external?.queue ?? [],
         // The predecessor's frozen copy belongs to the predecessor.
         signed_pdf_path: null,
         signed_pdf_sha256: null,
@@ -1527,6 +1693,17 @@ export class ContractsService {
     // from the notification — everyone on the project should hear about it.
     if (updated.status === 'signed') {
       await this.notifyCounterparty(actorId ?? '', updated);
+      // A recorded agreement with past amendments: the next one is recorded
+      // now that this version is attested. Never blocks the signature itself.
+      if ((updated.external_amendment_queue ?? []).length > 0) {
+        try {
+          await this.advanceExternalAmendmentQueue(updated);
+        } catch (error) {
+          console.warn(
+            `Recording the next amendment of ${updated.id} failed: ${error instanceof Error ? error.message : String(error)}`,
+          );
+        }
+      }
       // Freeze the executed agreement once. Never throws: a failed freeze is
       // retried as a backfill the next time the history is opened.
       const frozen = await this.snapshots?.freeze(
@@ -1781,6 +1958,8 @@ export class ContractsService {
   async recordExternalAgreement(
     callerId: string,
     dto: RecordExternalAgreementDto,
+    /** Past amendments, each recorded as its own version once this is attested. */
+    amendments: ExternalAmendmentEntry[] = [],
   ): Promise<ContractWithSchedule> {
     const {
       external_agreed_at: agreedAtRaw,
@@ -1832,6 +2011,9 @@ export class ContractsService {
         execution_origin: 'external',
         external_agreed_at: agreedAt,
         external_document_id: documentId,
+        external_amendment_queue: [...amendments].sort((a, b) =>
+          a.effective_from.localeCompare(b.effective_from),
+        ),
         updated_at: new Date().toISOString(),
       })
       .eq('id', created.id)

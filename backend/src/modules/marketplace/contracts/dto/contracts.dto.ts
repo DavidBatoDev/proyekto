@@ -405,6 +405,14 @@ export class AmendContractDto extends ContractTermsDto {
    * containing today for 'following', and to the service start for 'all'.
    */
   @IsOptional() @IsDateString() effective_from?: string;
+
+  /**
+   * A past, paper amendment of a RECORDED agreement: the date it was signed
+   * and its uploaded document. Required to back-date an amendment; only an
+   * external family accepts them.
+   */
+  @IsOptional() @IsDateString() external_agreed_at?: string;
+  @IsOptional() @IsUUID() external_document_id?: string;
 }
 
 /**

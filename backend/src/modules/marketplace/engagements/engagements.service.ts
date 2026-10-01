@@ -112,12 +112,24 @@ export interface EngagementView extends EngagementRow {
   current_rates: EngagementTimeRateRow[];
 }
 
-function isEffective(
+export function isEffective(
   row: { effective_from: string; effective_until: string | null },
   today: string,
 ): boolean {
   if (row.effective_from > today) return false;
   return row.effective_until === null || row.effective_until >= today;
+}
+
+/**
+ * The rates in force on a past (or future) date. Past-period reports read the
+ * terms of the version that governed that day, never today's: a recorded
+ * agreement amended in June and September still prices March at the original
+ * rate (decision 2026-09-30).
+ */
+export function ratesInForceOn<
+  T extends { effective_from: string; effective_until: string | null },
+>(rates: T[], date: string): T[] {
+  return rates.filter((row) => isEffective(row, date));
 }
 
 /**
