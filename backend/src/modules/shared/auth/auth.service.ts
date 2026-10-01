@@ -3,6 +3,7 @@ export const AUTH_REPOSITORY = Symbol('AUTH_REPOSITORY');
 import type { AuthRepository } from './repositories/auth.repository.interface';
 import { UpdateProfileDto } from './dto/auth.dto';
 import {
+  EmailAvailabilityDto,
   EmailVerificationConfirmDto,
   EmailVerificationRequestDto,
   PasswordResetConfirmDto,
@@ -92,6 +93,14 @@ export class AuthService {
 
   async confirmEmailVerification(dto: EmailVerificationConfirmDto) {
     return this.emailOtpService.confirmEmailVerification(dto);
+  }
+
+  async checkEmailAvailability(
+    dto: EmailAvailabilityDto,
+  ): Promise<{ available: boolean }> {
+    return {
+      available: !(await this.emailOtpService.isEmailRegistered(dto.email)),
+    };
   }
 
   async requestPasswordReset(dto: PasswordResetRequestDto) {

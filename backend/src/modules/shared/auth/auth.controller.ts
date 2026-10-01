@@ -1,4 +1,14 @@
-import { Body, Controller, Get, Patch, Post, UseGuards } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Get,
+  HttpCode,
+  HttpStatus,
+  Patch,
+  Post,
+  UseGuards,
+} from '@nestjs/common';
+import { Throttle, ThrottlerGuard } from '@nestjs/throttler';
 import { AuthService } from './auth.service';
 import { SupabaseAuthGuard } from '../../../common/guards/supabase-auth.guard';
 import { CurrentUser } from '../../../common/decorators/current-user.decorator';
@@ -8,6 +18,7 @@ import type { AuthenticatedUser } from '../../../common/interfaces/authenticated
 import { CACHE_POLICY_PRESETS } from '../../../common/cache/cache-policy';
 import { CompleteOnboardingDto, UpdateProfileDto } from './dto/auth.dto';
 import {
+  EmailAvailabilityDto,
   EmailVerificationConfirmDto,
   EmailVerificationRequestDto,
   PasswordResetConfirmDto,
@@ -30,6 +41,20 @@ export class AuthController {
   @Post('email-verification/confirm')
   confirmEmailVerification(@Body() dto: EmailVerificationConfirmDto) {
     return this.authService.confirmEmailVerification(dto);
+  }
+
+  /**
+   * Sign-up's first step: is this email already taken? Answers before the
+   * person picks a password and fills in a profile, instead of failing at the
+   * end. Public and IP-throttled; it reveals no more than sign-up itself does.
+   */
+  @Public()
+  @Post('email-availability')
+  @UseGuards(ThrottlerGuard)
+  @Throttle({ default: { limit: 10, ttl: 60_000 } })
+  @HttpCode(HttpStatus.OK)
+  checkEmailAvailability(@Body() dto: EmailAvailabilityDto) {
+    return this.authService.checkEmailAvailability(dto);
   }
 
   @Public()

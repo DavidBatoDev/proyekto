@@ -37,6 +37,12 @@ export class EmailVerificationConfirmDto {
   code: string;
 }
 
+export class EmailAvailabilityDto {
+  @IsEmail()
+  @MaxLength(320)
+  email: string;
+}
+
 export class PasswordResetRequestDto {
   @IsEmail()
   email: string;

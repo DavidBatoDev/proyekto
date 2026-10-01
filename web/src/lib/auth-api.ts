@@ -28,6 +28,28 @@ export async function completeOnboarding(): Promise<CompleteOnboardingResult> {
 	return response.data;
 }
 
+/**
+ * Whether an email can still be used to sign up. Asked on the first sign-up
+ * step so a taken address is caught before the person picks a password.
+ *
+ * Returns null when the check itself fails (offline, rate-limited): the
+ * caller lets the person continue, and the final sign-up still refuses a
+ * duplicate, so a failed check never blocks a legitimate sign-up.
+ */
+export async function checkEmailAvailable(
+	email: string,
+): Promise<boolean | null> {
+	try {
+		const response = await apiClient.post("/api/auth/email-availability", {
+			email: email.trim(),
+		});
+		const body = response.data?.data ?? response.data;
+		return typeof body?.available === "boolean" ? body.available : null;
+	} catch {
+		return null;
+	}
+}
+
 export async function getProfile(): Promise<{ data: Profile }> {
 	const response = await apiClient.get("/api/auth/profile");
 	return response.data;

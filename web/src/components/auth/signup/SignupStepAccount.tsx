@@ -2,6 +2,7 @@ import { Link } from "@tanstack/react-router";
 import { useState } from "react";
 import { useAppleSignIn } from "../../../hooks/useAppleSignIn";
 import { useGoogleSignIn } from "../../../hooks/useGoogleSignIn";
+import { checkEmailAvailable } from "../../../lib/auth-api";
 import { AppleSignInButton } from "../AppleSignInButton";
 import { FloatingInput } from "./FloatingInput";
 import { GoogleButton } from "./SignupButtons";
@@ -62,6 +63,11 @@ export function SignupStepAccount({
 		lastName: "",
 		email: "",
 	});
+	const [isCheckingEmail, setIsCheckingEmail] = useState(false);
+	/** The address the server said is taken, so the hint clears once it changes. */
+	const [takenEmail, setTakenEmail] = useState<string | null>(null);
+	const emailTaken =
+		!!takenEmail && takenEmail.toLowerCase() === email.trim().toLowerCase();
 
 	const { signIn: handleGoogleSignIn } = useGoogleSignIn({
 		source: "signup",
@@ -100,8 +106,9 @@ export function SignupStepAccount({
 	const isFormValid =
 		!!firstName.trim() && !!lastName.trim() && EMAIL_RE.test(email.trim());
 
-	const handleNext = (e: React.FormEvent) => {
+	const handleNext = async (e: React.FormEvent) => {
 		e.preventDefault();
+		if (isCheckingEmail) return;
 		const newErrors: FieldErrors = {
 			firstName: validateField("firstName", firstName),
 			lastName: validateField("lastName", lastName),
@@ -111,12 +118,27 @@ export function SignupStepAccount({
 			setErrors(newErrors);
 			return;
 		}
+
+		// Catch a taken address now, not after the password and profile steps.
+		// A failed check (null) lets them continue: sign-up still refuses it.
+		setIsCheckingEmail(true);
+		const available = await checkEmailAvailable(email);
+		setIsCheckingEmail(false);
+		if (available === false) {
+			setTakenEmail(email.trim());
+			setErrors((prev) => ({
+				...prev,
+				email: "An account with this email already exists.",
+			}));
+			return;
+		}
+		setTakenEmail(null);
 		onNext();
 	};
 
 	return (
 		<form
-			onSubmit={handleNext}
+			onSubmit={(e) => void handleNext(e)}
 			style={{ display: "flex", flexDirection: "column", gap: "16px" }}
 		>
 			<div>
@@ -202,17 +224,53 @@ export function SignupStepAccount({
 				label="Email"
 				type="email"
 				value={email}
-				onChange={(v) => handleChange("email", v, setEmail)}
-				onBlur={() => handleBlur("email", email)}
+				onChange={(v) => {
+					handleChange("email", v, setEmail);
+					// A different address clears the "already exists" message.
+					if (
+						takenEmail &&
+						v.trim().toLowerCase() !== takenEmail.toLowerCase()
+					) {
+						setTakenEmail(null);
+					}
+				}}
+				onBlur={() => {
+					if (!emailTaken) handleBlur("email", email);
+				}}
 				error={errors.email}
 				required
 				autoComplete="email"
 			/>
+			{emailTaken && (
+				<p
+					style={{
+						margin: "-8px 0 0",
+						fontSize: "13px",
+						color: "var(--muted-foreground)",
+						fontFamily: "'Manrope', sans-serif",
+					}}
+				>
+					Is it yours?{" "}
+					<Link
+						to="/auth/login"
+						search={authRedirect ? { redirect: authRedirect } : {}}
+						style={{
+							color: "#1E293B",
+							fontWeight: 700,
+							textDecoration: "none",
+						}}
+					>
+						Sign in instead
+					</Link>
+				</p>
+			)}
 
 			<WizardNav
 				onBack={onBack}
 				primaryLabel="Continue"
-				primaryDisabled={!isFormValid}
+				primaryDisabled={!isFormValid || emailTaken}
+				isLoading={isCheckingEmail}
+				loadingLabel="Checking…"
 			/>
 			<p
 				style={{

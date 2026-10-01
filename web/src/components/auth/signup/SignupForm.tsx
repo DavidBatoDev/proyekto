@@ -11,7 +11,7 @@ import {
 import { hasPendingProjectFromRoadmapIntent } from "@/lib/guestRoadmapConversion";
 import { runGuestMigrationIfNeeded } from "@/services/migration.service";
 import { useToast } from "../../../hooks/useToast";
-import { completeOnboarding } from "../../../lib/auth-api";
+import { checkEmailAvailable, completeOnboarding } from "../../../lib/auth-api";
 import {
 	confirmEmailVerificationCode,
 	requestEmailVerificationCode,
@@ -19,6 +19,7 @@ import {
 import { supabase } from "../../../lib/supabase";
 import { fetchProfile, profileKeys } from "../../../queries/profile";
 import { useAuthStore } from "../../../stores/authStore";
+import { isAcceptablePhone } from "./PhoneField";
 import { SignupStepAccount } from "./SignupStepAccount";
 import { SignupStepPassword } from "./SignupStepPassword";
 import { SignupStepProfile } from "./SignupStepProfile";
@@ -150,8 +151,24 @@ export function SignupForm(_props: SignupFormProps) {
 			toast.error("Please accept the terms and conditions");
 			return;
 		}
+		// Phone is optional, but a half-typed number must not be saved.
+		if (!isAcceptablePhone(phoneNumber, country)) {
+			toast.error("Check your phone number, or clear it — it's optional.");
+			return;
+		}
 
 		setIsLoading(true);
+		// The address may have been taken since step 1, and Supabase can hide
+		// duplicates (signUp "succeeds" without creating anything), so check
+		// again here. A failed check (null) falls through to signUp.
+		if ((await checkEmailAvailable(email)) === false) {
+			setIsLoading(false);
+			toast.error(
+				"An account with this email already exists. Sign in instead, or use a different email.",
+			);
+			setStep(1);
+			return;
+		}
 		try {
 			// Persist all data
 			sessionStorage.setItem("signup_firstName", firstName);
@@ -235,10 +252,13 @@ export function SignupForm(_props: SignupFormProps) {
 				msg.toLowerCase().includes("already exists") ||
 				msg.toLowerCase().includes("duplicate")
 			) {
-				toast.error("Email already exists. Try logging in instead.");
-			} else {
-				toast.error(msg || "Signup failed");
+				toast.error(
+					"An account with this email already exists. Sign in instead, or use a different email.",
+				);
+				setStep(1);
+				return;
 			}
+			toast.error(msg || "Signup failed");
 			setStep(3);
 		} finally {
 			setIsLoading(false);

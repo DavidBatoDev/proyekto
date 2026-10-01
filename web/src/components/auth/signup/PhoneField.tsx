@@ -52,6 +52,21 @@ function getDialCode(country: string): string {
 	}
 }
 
+/**
+ * The phone number is optional at sign-up: empty is fine, but anything typed
+ * has to be a real number for the chosen country. Used by the field's blur
+ * check and by the form's submit, so a half-typed number is never saved.
+ */
+export function isAcceptablePhone(e164: string, country: string): boolean {
+	if (!e164.trim()) return true;
+	if (!country) return false;
+	try {
+		return isValidPhoneNumber(e164, country.toUpperCase() as CountryCode);
+	} catch {
+		return false;
+	}
+}
+
 function extractNational(e164: string, dialCode: string): string {
 	if (!e164 || !dialCode) return "";
 	if (e164.startsWith(dialCode)) return e164.slice(dialCode.length);
@@ -255,25 +270,16 @@ export function PhoneField({ country, value, onChange }: PhoneFieldProps) {
 	function handleBlur() {
 		setFocused(false);
 		setTouched(true);
-		if (!hasCountry) {
+		// Optional: leaving it empty is fine.
+		if (!hasCountry || !nationalNumber) {
 			setError("");
 			return;
 		}
-		if (!nationalNumber) {
-			setError("Phone number is required.");
-			return;
-		}
-		try {
-			const valid = isValidPhoneNumber(
-				value,
-				country.toUpperCase() as CountryCode,
-			);
-			setError(
-				valid ? "" : "Please enter a valid phone number for this country.",
-			);
-		} catch {
-			setError("");
-		}
+		setError(
+			isAcceptablePhone(value, country)
+				? ""
+				: "Please enter a valid phone number for this country.",
+		);
 	}
 
 	// ── Styles ───────────────────────────────────────────────────────────────────
@@ -302,7 +308,16 @@ export function PhoneField({ country, value, onChange }: PhoneFieldProps) {
 					letterSpacing: "0.05em",
 				}}
 			>
-				Phone
+				Phone{" "}
+				<span
+					style={{
+						fontWeight: 500,
+						textTransform: "none",
+						letterSpacing: 0,
+					}}
+				>
+					(optional)
+				</span>
 			</p>
 
 			{/* Input row */}
