@@ -139,6 +139,10 @@ function build(options: {
         error: null,
       };
     }
+    if (call.table === 'teams') {
+      // A verified team owner by default (recorded agreements need one).
+      return { data: null, count: 1, error: null };
+    }
     return { data: null, error: null };
   });
   const notifications = { createNotification: jest.fn() };
@@ -1023,5 +1027,76 @@ describe('ContractsService: recorded (external) agreements', () => {
         type_name: 'contract_attestation_requested',
       }),
     );
+  });
+});
+
+describe('ContractsService: recorded agreements are held by a verified team owner', () => {
+  const profile = (teams: number) => (call: Call) =>
+    call.table === 'teams'
+      ? { data: null, count: teams, error: null }
+      : call.table === 'profiles'
+        ? {
+            data: {
+              id: 'consultant-1',
+              display_name: 'Dev Consultant',
+              first_name: null,
+              last_name: null,
+              email: null,
+            },
+            error: null,
+          }
+        : undefined;
+
+  it('refuses an unverified consultant, pointing at vetting', async () => {
+    const { service } = build({ activeConsultant: false, reply: profile(1) });
+    await expect(service.assertAdoptionHolder('consultant-1')).rejects.toThrow(
+      /Dev Consultant must be a verified consultant.*vetting/,
+    );
+  });
+
+  it('refuses a verified consultant who owns no team', async () => {
+    const { service } = build({ activeConsultant: true, reply: profile(0) });
+    await expect(service.assertAdoptionHolder('consultant-1')).rejects.toThrow(
+      /must own a team/,
+    );
+  });
+
+  it('accepts a verified team owner', async () => {
+    const { service } = build({ activeConsultant: true, reply: profile(2) });
+    await expect(
+      service.assertAdoptionHolder('consultant-1'),
+    ).resolves.toBeUndefined();
+  });
+});
+
+describe('ContractsService: past amendments of recorded agreements', () => {
+  it('refuses paper-amendment evidence on a contract signed in Proyekto', async () => {
+    const contract = contractFixture({
+      status: 'signed',
+      service_start_date: '2026-03-01',
+      execution_origin: 'proyekto',
+    });
+    const { service } = build({ contract });
+    await expect(
+      service.amendContract('client-1', contract.id, {
+        scope: 'following',
+        effective_from: '2026-06-01',
+        external_agreed_at: '2026-05-20',
+        external_document_id: '11111111-1111-4111-8111-111111111111',
+      }),
+    ).rejects.toThrow(/Only a recorded agreement/);
+  });
+
+  it('does nothing when no amendment is queued', async () => {
+    const { service } = build({});
+    await expect(
+      service.advanceExternalAmendmentQueue(
+        contractFixture({
+          status: 'signed',
+          execution_origin: 'external',
+          external_amendment_queue: [],
+        }),
+      ),
+    ).resolves.toBeNull();
   });
 });

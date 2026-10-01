@@ -2002,6 +2002,12 @@ export class ContractsService {
       ...createDto,
       scope_mode: 'project_specific',
     });
+    try {
+      await this.assertAdoptionHolder(created.consultant_user_id);
+    } catch (error) {
+      await this.supabase.from('contracts').delete().eq('id', created.id);
+      throw error;
+    }
     await this.assertNoDuplicateEngagement(created);
 
     // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
@@ -2033,6 +2039,38 @@ export class ContractsService {
         .eq('id', documentId);
     }
     return this.withSchedule(data as ContractRow);
+  }
+
+  /**
+   * A recorded (adopted) agreement is held by a TEAM OWNER in the consultant
+   * seat, and that owner must have passed consultant vetting (decision
+   * 2026-09-30). Shared by POST /contracts/external and intake replicate.
+   */
+  async assertAdoptionHolder(consultantId: string | null): Promise<void> {
+    if (!consultantId) {
+      throw new BadRequestException(
+        'A recorded agreement needs a verified consultant who owns a team in the consultant seat.',
+      );
+    }
+    const [verified, teams, profile] = await Promise.all([
+      isActiveConsultantEnrollment(this.supabase, consultantId),
+      this.supabase
+        .from('teams')
+        .select('id', { count: 'exact', head: true })
+        .eq('owner_id', consultantId),
+      this.resolveProfile(consultantId).catch(() => null),
+    ]);
+    const name = displayNameOf(profile);
+    if (!verified) {
+      throw new BadRequestException(
+        `${name} must be a verified consultant to hold a recorded agreement. Complete consultant vetting (Marketplace → Become a consultant, /marketplace/consultant/apply) first.`,
+      );
+    }
+    if ((teams.count ?? 0) === 0) {
+      throw new BadRequestException(
+        `${name} must own a team to hold a recorded agreement. Create the team first, then record the agreement.`,
+      );
+    }
   }
 
   /**
