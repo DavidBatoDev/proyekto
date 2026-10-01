@@ -30,6 +30,21 @@ export type FinanceProjectPermission = Extract<
   'finance.view' | 'finance.view_contracts' | 'finance.manage_invoices'
 >;
 
+/**
+ * One attached project whose finance the caller may read under the
+ * PROJECT-level gate (`assertProjectFinanceActor`): the gate every
+ * project-scoped money surface uses — imports, the project invoice
+ * workspace, invoice issuing and payments.
+ */
+export interface TeamProjectFinanceAccess {
+  id: string;
+  title: string | null;
+  status: string | null;
+  currency: string | null;
+  /** `finance.manage_invoices`: upload/record imports, issue invoices. */
+  can_manage_invoices: boolean;
+}
+
 export interface AdministeredTeam {
   id: string;
   name: string;
@@ -162,6 +177,89 @@ export class TeamFinanceAccessService {
     const { data: projects, error } = await query;
     if (error) throw new Error(error.message);
     return (projects ?? []) as ConsultantFinanceProject[];
+  }
+
+  /**
+   * The team's attached projects the caller passes the project-level finance
+   * read gate on — exactly the set `assertProjectFinanceActor(..., 'read')`
+   * admits, so a web picker built from it never offers a project whose
+   * project-scoped money endpoints would then refuse.
+   *
+   * Deliberately NOT `listTeamProjects`: that list also admits every attached
+   * project to a team finance-book role (the team book's grant), which the
+   * project-scoped endpoints do not honour. A team admin who is only an
+   * editor on a project therefore sees it in neither list, and a book manager
+   * sees it in the team rollup but not here.
+   *
+   * Never refuses: for a stranger, or a team id that does not exist, the
+   * answer is simply the empty list — it names only projects the caller can
+   * already read, so it confirms nothing about the team.
+   */
+  async listProjectFinanceAccess(
+    callerId: string,
+    teamId: string,
+  ): Promise<TeamProjectFinanceAccess[]> {
+    const { data: links, error: linksError } = await this.supabase
+      .from('project_teams')
+      .select('project_id')
+      .eq('team_id', teamId);
+    if (linksError) throw new Error(linksError.message);
+    const attachedIds = [
+      ...new Set(
+        (links ?? []).map((row: { project_id: string }) => row.project_id),
+      ),
+    ].filter(Boolean);
+    if (attachedIds.length === 0) return [];
+
+    const { data: accessRows, error: accessError } = await this.supabase
+      .from('project_access')
+      .select('project_id, role, capabilities')
+      .eq('user_id', callerId)
+      .in('project_id', attachedIds);
+    if (accessError) throw new Error(accessError.message);
+
+    // A caller can hold several access rows on one project (one per origin);
+    // `ProjectAuthorizationService.resolvePermissions` unions them, so each
+    // capability here is "any row grants it".
+    const manageById = new Map<string, boolean>();
+    for (const row of (accessRows ?? []) as Array<{
+      project_id: string;
+      role: ProjectRole;
+      capabilities: Record<string, unknown> | null;
+    }>) {
+      const permissions = resolvePermissions(row.role, row.capabilities);
+      if (!getPermission(permissions, 'finance.view')) continue;
+      manageById.set(
+        row.project_id,
+        manageById.get(row.project_id) === true ||
+          getPermission(permissions, 'finance.manage_invoices'),
+      );
+    }
+    if (manageById.size === 0) return [];
+
+    const { data: projects, error } = await this.supabase
+      .from('projects')
+      .select('id, title, status, currency')
+      .in('id', [...manageById.keys()])
+      .order('updated_at', { ascending: false });
+    if (error) throw new Error(error.message);
+
+    return (
+      (projects ?? []) as Array<{
+        id: string;
+        title: string | null;
+        status: string | null;
+        currency: string | null;
+      }>
+    )
+      .filter((project) => manageById.has(project.id))
+      .map((project) => ({
+        id: project.id,
+        title: project.title,
+        status: project.status,
+        currency: project.currency,
+        can_manage_invoices: manageById.get(project.id) === true,
+      }));
   }
 
   /**

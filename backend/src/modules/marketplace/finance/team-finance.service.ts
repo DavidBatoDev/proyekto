@@ -72,6 +72,10 @@ export class TeamFinanceService {
     return this.access.listAdministeredTeams(callerId);
   }
 
+  async listFinanceProjects(callerId: string, teamId: string) {
+    return this.access.listProjectFinanceAccess(callerId, teamId);
+  }
+
   async getPortfolio(
     callerId: string,
     teamId: string,
@@ -212,7 +216,11 @@ export class TeamFinanceService {
 
     return {
       projects: projects.map((project) =>
-        this.toProjectSummary(project, perProject.get(project.id), latestContract),
+        this.toProjectSummary(
+          project,
+          perProject.get(project.id),
+          latestContract,
+        ),
       ),
       totals_by_currency: [...currencies.entries()]
         .map(([currency, totals]) => ({

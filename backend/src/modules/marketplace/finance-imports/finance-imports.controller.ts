@@ -7,6 +7,7 @@ import {
   HttpCode,
   HttpStatus,
   Param,
+  ParseUUIDPipe,
   Post,
   Query,
   Res,
@@ -68,7 +69,10 @@ export class FinanceImportsController {
   }
 
   @Get('documents/:id')
-  getDocument(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string) {
+  getDocument(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('id', ParseUUIDPipe) id: string,
+  ) {
     return this.imports.getDocument(user.id, id);
   }
 
@@ -83,7 +87,7 @@ export class FinanceImportsController {
   @Header('Cache-Control', 'private, max-age=300')
   async getDocumentFile(
     @CurrentUser() user: AuthenticatedUser,
-    @Param('id') id: string,
+    @Param('id', ParseUUIDPipe) id: string,
     @Res() response: Response,
   ) {
     const file = await this.imports.getDocumentFile(user.id, id);
@@ -100,7 +104,7 @@ export class FinanceImportsController {
   @HttpCode(HttpStatus.OK)
   readDocument(
     @CurrentUser() user: AuthenticatedUser,
-    @Param('id') id: string,
+    @Param('id', ParseUUIDPipe) id: string,
   ) {
     return this.imports.readDocument(user.id, id);
   }
@@ -109,7 +113,7 @@ export class FinanceImportsController {
   @HttpCode(HttpStatus.NO_CONTENT)
   deleteDocument(
     @CurrentUser() user: AuthenticatedUser,
-    @Param('id') id: string,
+    @Param('id', ParseUUIDPipe) id: string,
   ) {
     return this.imports.deleteDocument(user.id, id);
   }
@@ -125,7 +129,7 @@ export class FinanceImportsController {
   @Get('invoices/:invoiceId/snips')
   listInvoiceSnips(
     @CurrentUser() user: AuthenticatedUser,
-    @Param('invoiceId') invoiceId: string,
+    @Param('invoiceId', ParseUUIDPipe) invoiceId: string,
   ) {
     return this.imports.listInvoiceSnips(user.id, invoiceId);
   }

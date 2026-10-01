@@ -1,4 +1,11 @@
-import { Controller, Get, Param, ParseUUIDPipe, Query, UseGuards } from '@nestjs/common';
+import {
+  Controller,
+  Get,
+  Param,
+  ParseUUIDPipe,
+  Query,
+  UseGuards,
+} from '@nestjs/common';
 import { CurrentUser } from '../../../common/decorators/current-user.decorator';
 import { SupabaseAuthGuard } from '../../../common/guards/supabase-auth.guard';
 import type { AuthenticatedUser } from '../../../common/interfaces/authenticated-request.interface';
@@ -36,6 +43,20 @@ export class TeamFinanceController {
     @Query() query: FinanceFiltersDto,
   ) {
     return this.teamFinance.getPortfolio(user.id, teamId, query);
+  }
+
+  /**
+   * The team's projects the caller may read finance for under the
+   * project-level gate — what imports and the project invoice workspace
+   * accept. Web pickers and tab visibility are built from this, never from
+   * the team's plain attachment list.
+   */
+  @Get('teams/:teamId/finance-projects')
+  listFinanceProjects(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('teamId', ParseUUIDPipe) teamId: string,
+  ) {
+    return this.teamFinance.listFinanceProjects(user.id, teamId);
   }
 
   @Get('teams/:teamId/contracts')

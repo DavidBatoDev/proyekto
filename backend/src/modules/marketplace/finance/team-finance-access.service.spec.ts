@@ -360,4 +360,117 @@ describe('TeamFinanceAccessService', () => {
       expect(bookAccess.resolveAccess).not.toHaveBeenCalled();
     });
   });
+
+  describe('listProjectFinanceAccess', () => {
+    const financeProject = {
+      id: PROJECT_ID,
+      title: 'Alpha',
+      status: 'active',
+      currency: 'PHP',
+    };
+    const serviceFor = (input: Parameters<typeof fakeSupabase>[0]) =>
+      new TeamFinanceAccessService(
+        fakeSupabase(input),
+        { assertPermission: jest.fn() } as never,
+        consultantAccessDenied as never,
+      );
+
+    it('leaves out a project where a team admin is only an editor', async () => {
+      // The PROD report: team admin, project editor. Editors do not hold
+      // finance.view, so the project-scoped endpoints refuse them — and the
+      // picker must not offer the project in the first place.
+      const service = serviceFor({
+        adminCount: 1,
+        projectTeams: [{ team_id: TEAM_ID, project_id: PROJECT_ID }],
+        accessRows: [
+          { project_id: PROJECT_ID, role: 'editor', capabilities: null },
+        ],
+      });
+
+      await expect(
+        service.listProjectFinanceAccess('admin-1', TEAM_ID),
+      ).resolves.toEqual([]);
+    });
+
+    it('lists a project the caller administers, with manage rights', async () => {
+      const service = serviceFor({
+        projectTeams: [{ team_id: TEAM_ID, project_id: PROJECT_ID }],
+        accessRows: [
+          { project_id: PROJECT_ID, role: 'admin', capabilities: null },
+        ],
+      });
+
+      await expect(
+        service.listProjectFinanceAccess('admin-1', TEAM_ID),
+      ).resolves.toEqual([{ ...financeProject, can_manage_invoices: true }]);
+    });
+
+    it('reports read-only access when invoice management is denied', async () => {
+      const service = serviceFor({
+        projectTeams: [{ team_id: TEAM_ID, project_id: PROJECT_ID }],
+        accessRows: [
+          {
+            project_id: PROJECT_ID,
+            role: 'admin',
+            capabilities: { 'finance.manage_invoices': false },
+          },
+        ],
+      });
+
+      await expect(
+        service.listProjectFinanceAccess('admin-1', TEAM_ID),
+      ).resolves.toEqual([{ ...financeProject, can_manage_invoices: false }]);
+    });
+
+    it('unions several access rows on one project, like the project gate', async () => {
+      const service = serviceFor({
+        projectTeams: [{ team_id: TEAM_ID, project_id: PROJECT_ID }],
+        accessRows: [
+          { project_id: PROJECT_ID, role: 'admin', capabilities: null },
+          {
+            project_id: PROJECT_ID,
+            role: 'admin',
+            capabilities: { 'finance.manage_invoices': false },
+          },
+        ],
+      });
+
+      await expect(
+        service.listProjectFinanceAccess('admin-1', TEAM_ID),
+      ).resolves.toEqual([{ ...financeProject, can_manage_invoices: true }]);
+    });
+
+    it('does not widen to every attached project for a team book role', async () => {
+      // `listTeamProjects` admits all attached projects to a book manager; the
+      // project-scoped gate does not, so neither does this list.
+      const bookAccess = {
+        resolveAccess: jest.fn().mockResolvedValue({
+          role: 'manager',
+          permissions: { view_contracts: true, manage_money: true },
+        }),
+      };
+      const service = new TeamFinanceAccessService(
+        fakeSupabase({
+          projectTeams: [{ team_id: TEAM_ID, project_id: PROJECT_ID }],
+          accessRows: [],
+        }),
+        { assertPermission: jest.fn() } as never,
+        consultantAccessDenied as never,
+        bookAccess as never,
+      );
+
+      await expect(
+        service.listProjectFinanceAccess('manager-1', TEAM_ID),
+      ).resolves.toEqual([]);
+      expect(bookAccess.resolveAccess).not.toHaveBeenCalled();
+    });
+
+    it('answers a stranger or an unknown team with an empty list, not an error', async () => {
+      const service = serviceFor({ projectTeams: [] });
+
+      await expect(
+        service.listProjectFinanceAccess('stranger', TEAM_ID),
+      ).resolves.toEqual([]);
+    });
+  });
 });
