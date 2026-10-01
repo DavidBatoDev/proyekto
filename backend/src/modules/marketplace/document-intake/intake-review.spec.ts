@@ -5,6 +5,8 @@ import {
   chargeablePages,
   contractTermsFromIntake,
   correctField,
+  currencyQuestion,
+  documentCurrencies,
   counterpartyOf,
   groupByCounterparty,
   importerSideCheck,
@@ -299,5 +301,63 @@ describe('detected page ranges', () => {
       ['invoice', 5, 6],
       ['invoice', 7, 8],
     ]);
+  });
+});
+
+describe('project currency question', () => {
+  it('asks only when the documents are in another currency', () => {
+    expect(
+      currencyQuestion({ documentCurrencies: ['AUD'], projectCurrency: 'AUD' }),
+    ).toBeNull();
+    expect(
+      currencyQuestion({ documentCurrencies: ['AUD'], projectCurrency: 'USD' }),
+    ).toEqual({
+      document_currencies: ['AUD'],
+      project_currency: 'USD',
+      project_is_new: false,
+      suggested: null,
+    });
+  });
+
+  it("preselects the documents' currency for a new project", () => {
+    expect(
+      currencyQuestion({ documentCurrencies: ['AUD'], projectCurrency: null }),
+    ).toMatchObject({ project_currency: 'USD', suggested: 'AUD' });
+    expect(
+      currencyQuestion({ documentCurrencies: ['USD'], projectCurrency: null }),
+    ).toBeNull();
+  });
+
+  it('asks again only when the currencies changed since the last answer', () => {
+    const previous = { project_currency: 'USD', document_currencies: ['AUD'] };
+    expect(
+      currencyQuestion({
+        documentCurrencies: ['AUD'],
+        projectCurrency: 'USD',
+        previous,
+      }),
+    ).toBeNull();
+    expect(
+      currencyQuestion({
+        documentCurrencies: ['AUD', 'NZD'],
+        projectCurrency: 'USD',
+        previous,
+      }),
+    ).not.toBeNull();
+  });
+
+  it('reads currencies from money documents only, most used first', () => {
+    const doc = (doc_type: 'invoice' | 'receipt', currency: string) => ({
+      doc_type,
+      fields: fields({ currency }),
+    });
+    expect(
+      documentCurrencies([
+        doc('invoice', 'nzd'),
+        doc('invoice', 'AUD'),
+        doc('invoice', 'AUD'),
+        doc('receipt', 'EUR'),
+      ]),
+    ).toEqual(['AUD', 'NZD']);
   });
 });

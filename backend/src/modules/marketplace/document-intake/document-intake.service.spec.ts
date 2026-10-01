@@ -428,7 +428,9 @@ describe('IntakeReplicateService', () => {
               data: { id: `fd-${call.filters.length}-${Math.random()}` },
               error: null,
             }
-          : { data: null, error: null }),
+          : call.table === 'projects'
+            ? { data: { currency: 'AUD' }, error: null }
+            : { data: null, error: null }),
     );
     const intake = {
       requireRelationship: jest.fn().mockResolvedValue(rel),
@@ -445,7 +447,10 @@ describe('IntakeReplicateService', () => {
       assertAdoptionHolder: jest.fn().mockResolvedValue(undefined),
     };
     const projects = {
-      createProject: jest.fn(),
+      createProject: jest
+        .fn()
+        .mockResolvedValue({ project: { id: 'project-new' } }),
+      updateProject: jest.fn().mockResolvedValue({}),
       inviteByEmail: jest.fn().mockResolvedValue({ id: 'invite-1' }),
       onInviteAccepted: jest.fn(),
     };
@@ -659,6 +664,104 @@ describe('IntakeReplicateService', () => {
         terms: { recurring_fee: 1500 },
       }),
     ]);
+  });
+
+  describe("project currency is the person's choice", () => {
+    const usdProject = (call: { table: string }) =>
+      call.table === 'projects'
+        ? { data: { currency: 'USD' }, error: null as null }
+        : undefined;
+
+    it('asks before writing anything when the documents are in another currency', async () => {
+      const { service, contracts, financeImports, projects, calls } = harness(
+        relationship,
+        [invoiceDoc],
+        usdProject,
+      );
+      await expect(service.replicate('user-1', 'rel-1')).rejects.toThrow(
+        'The documents are in AUD; the project is in USD. Choose whether to set the project currency to AUD or keep USD.',
+      );
+      expect(projects.updateProject).not.toHaveBeenCalled();
+      expect(financeImports.importInvoice).not.toHaveBeenCalled();
+      expect(contracts.recordExternalAgreement).not.toHaveBeenCalled();
+      expect(calls.some((call) => call.op === 'insert')).toBe(false);
+    });
+
+    it("sets the project currency only when the person picks the documents' currency", async () => {
+      const { service, projects, calls } = harness(
+        relationship,
+        [invoiceDoc],
+        usdProject,
+      );
+      await service.replicate('user-1', 'rel-1', { project_currency: 'aud' });
+      expect(projects.updateProject).toHaveBeenCalledWith(
+        'project-1',
+        'user-1',
+        { currency: 'AUD' },
+      );
+      const saved = calls.find(
+        (call) => call.table === 'intake_relationships' && call.op === 'update',
+      )?.payload as { replicated: Record<string, unknown> };
+      expect(saved.replicated.currency_decision).toEqual({
+        project_currency: 'AUD',
+        document_currencies: ['AUD'],
+      });
+    });
+
+    it('keeps the project currency when the person says so', async () => {
+      const { service, projects, financeImports } = harness(
+        relationship,
+        [invoiceDoc],
+        usdProject,
+      );
+      await service.replicate('user-1', 'rel-1', { project_currency: 'USD' });
+      expect(projects.updateProject).not.toHaveBeenCalled();
+      expect(financeImports.importInvoice).toHaveBeenCalled();
+    });
+
+    it('does not ask again once the same currencies were decided', async () => {
+      const { service, projects } = harness(
+        {
+          ...relationship,
+          replicated: {
+            currency_decision: {
+              project_currency: 'USD',
+              document_currencies: ['AUD'],
+            },
+          },
+        },
+        [invoiceDoc],
+        usdProject,
+      );
+      await expect(service.replicate('user-1', 'rel-1')).resolves.toBeTruthy();
+      expect(projects.updateProject).not.toHaveBeenCalled();
+    });
+
+    it('a new project takes the confirmed currency, never a guessed one', async () => {
+      const newGroup = { ...relationship, project_id: null };
+      const first = harness(newGroup, [invoiceDoc]);
+      await expect(first.service.replicate('user-1', 'rel-1')).rejects.toThrow(
+        'a new project defaults to USD. Confirm the project currency (AUD or USD)',
+      );
+      expect(first.projects.createProject).not.toHaveBeenCalled();
+
+      const second = harness(newGroup, [invoiceDoc]);
+      await second.service.replicate('user-1', 'rel-1', {
+        project_currency: 'AUD',
+      });
+      expect(second.projects.createProject).toHaveBeenCalledWith(
+        'user-1',
+        expect.objectContaining({ currency: 'AUD' }),
+      );
+      expect(second.projects.updateProject).not.toHaveBeenCalled();
+    });
+
+    it('refuses a currency that was not one of the choices', async () => {
+      const { service } = harness(relationship, [invoiceDoc], usdProject);
+      await expect(
+        service.replicate('user-1', 'rel-1', { project_currency: 'EUR' }),
+      ).rejects.toThrow('Choose AUD or USD for the project currency.');
+    });
   });
 
   it('will not run before the group is confirmed', async () => {

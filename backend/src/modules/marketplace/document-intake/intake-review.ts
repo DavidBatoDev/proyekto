@@ -553,3 +553,92 @@ export function amendmentChainFromIntake(
     };
   });
 }
+
+/** What a new project's currency is when nobody picks one (projects.currency default). */
+export const NEW_PROJECT_DEFAULT_CURRENCY = 'USD';
+
+export interface CurrencyDecision {
+  project_currency: string;
+  document_currencies: string[];
+}
+
+export interface CurrencyQuestion {
+  /** The currencies the group's documents are in, most used first. */
+  document_currencies: string[];
+  /** The target project's currency now (a new project's default). */
+  project_currency: string;
+  project_is_new: boolean;
+  /** Preselected for a new project (the documents' currency); none otherwise. */
+  suggested: string | null;
+}
+
+/** The currencies a group's confirmed money documents are in, most used first. */
+export function documentCurrencies(
+  docs: Array<{ doc_type: IntakeDocType | null; fields: ReviewFields }>,
+): string[] {
+  const counts = new Map<string, number>();
+  for (const doc of docs) {
+    if (
+      doc.doc_type !== 'invoice' &&
+      doc.doc_type !== 'contract' &&
+      doc.doc_type !== 'amendment'
+    ) {
+      continue;
+    }
+    const code = doc.fields.currency?.value?.trim().toUpperCase();
+    if (!code || !/^[A-Z]{3}$/.test(code)) continue;
+    counts.set(code, (counts.get(code) ?? 0) + 1);
+  }
+  return [...counts.entries()]
+    .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
+    .map(([code]) => code);
+}
+
+/**
+ * Decision 2026-10-01: intake never changes a project's currency on its own.
+ * When the documents are in a currency the project is not, the person is
+ * asked; null means there is nothing to ask (they match, or the same choice
+ * was already made for these currencies).
+ */
+export function currencyQuestion(input: {
+  documentCurrencies: string[];
+  /** The linked project's currency; null when import will create one. */
+  projectCurrency: string | null;
+  previous?: CurrencyDecision | null;
+}): CurrencyQuestion | null {
+  const isNew = input.projectCurrency === null;
+  const current = (
+    input.projectCurrency ?? NEW_PROJECT_DEFAULT_CURRENCY
+  ).toUpperCase();
+  const foreign = input.documentCurrencies.filter((code) => code !== current);
+  if (foreign.length === 0) return null;
+  const previous = input.previous;
+  if (
+    previous &&
+    previous.project_currency === current &&
+    input.documentCurrencies.every((code) =>
+      previous.document_currencies.includes(code),
+    )
+  ) {
+    return null;
+  }
+  return {
+    document_currencies: input.documentCurrencies,
+    project_currency: current,
+    project_is_new: isNew,
+    suggested: isNew ? foreign[0] : null,
+  };
+}
+
+/** The question in words, for the refusal when Import is pressed unanswered. */
+export function currencyQuestionMessage(question: CurrencyQuestion): string {
+  const docs = question.document_currencies.join(' and ');
+  const options = [
+    ...question.document_currencies.filter(
+      (code) => code !== question.project_currency,
+    ),
+  ];
+  return question.project_is_new
+    ? `The documents are in ${docs}; a new project defaults to ${question.project_currency}. Confirm the project currency (${[...options, question.project_currency].join(' or ')}) before importing.`
+    : `The documents are in ${docs}; the project is in ${question.project_currency}. Choose whether to set the project currency to ${options.join(' or ')} or keep ${question.project_currency}.`;
+}

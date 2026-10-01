@@ -91,6 +91,17 @@ export interface IntakeRelationship {
 		team_name: string | null;
 		matches: boolean;
 	};
+	/**
+	 * The documents are in a currency the project is not: the person picks the
+	 * project's currency before Import (nothing changes it automatically).
+	 */
+	currency_question?: {
+		document_currencies: string[];
+		project_currency: string;
+		project_is_new: boolean;
+		/** Preselected for a new project; still needs an explicit confirm. */
+		suggested: string | null;
+	} | null;
 	replicated: {
 		contract_id?: string;
 		project_id?: string;
@@ -329,9 +340,9 @@ export const intakeService = {
 			() => apiClient.patch(`/api/intake/relationships/${id}`, patch),
 			"Could not save the group",
 		),
-	replicate: (id: string) =>
+	replicate: (id: string, body: { project_currency?: string } = {}) =>
 		call<ReplicateResult>(
-			() => apiClient.post(`/api/intake/relationships/${id}/replicate`),
+			() => apiClient.post(`/api/intake/relationships/${id}/replicate`, body),
 			"Could not import this group",
 		),
 	/** The original file's bytes, for the review pane. */

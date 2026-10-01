@@ -1,5 +1,6 @@
 import {
   BadRequestException,
+  ConflictException,
   Inject,
   Injectable,
   Logger,
@@ -15,9 +16,14 @@ import {
   type IntakeDocumentRow,
   type IntakeRelationshipRow,
 } from './document-intake.service';
+import type { ReplicateIntakeRelationshipDto } from './dto/document-intake.dto';
 import {
   amendmentChainFromIntake,
   contractTermsFromIntake,
+  type CurrencyDecision,
+  currencyQuestion,
+  currencyQuestionMessage,
+  documentCurrencies,
 } from './intake-review';
 
 type Outcome = {
@@ -96,7 +102,11 @@ export class IntakeReplicateService implements OnModuleInit {
     );
   }
 
-  async replicate(callerId: string, relationshipId: string) {
+  async replicate(
+    callerId: string,
+    relationshipId: string,
+    dto: ReplicateIntakeRelationshipDto = {},
+  ) {
     const relationship = await this.intake.requireRelationship(
       callerId,
       relationshipId,
@@ -123,7 +133,55 @@ export class IntakeReplicateService implements OnModuleInit {
       );
     }
 
-    const projectId = await this.ensureProject(callerId, relationship, batch);
+    // Decision 2026-10-01: the project's currency changes only by the
+    // person's choice, asked here before anything is written.
+    const currencies = documentCurrencies(confirmed);
+    const currentCurrency = relationship.project_id
+      ? await this.projectCurrency(relationship.project_id)
+      : null;
+    const question = currencyQuestion({
+      documentCurrencies: currencies,
+      projectCurrency: currentCurrency,
+      previous:
+        (relationship.replicated.currency_decision as
+          | CurrencyDecision
+          | undefined) ?? null,
+    });
+    let chosenCurrency: string | null = null;
+    if (question) {
+      const picked = dto.project_currency?.trim().toUpperCase();
+      if (!picked) {
+        throw new ConflictException(currencyQuestionMessage(question));
+      }
+      if (
+        picked !== question.project_currency &&
+        !question.document_currencies.includes(picked)
+      ) {
+        throw new BadRequestException(
+          `Choose ${[...question.document_currencies, question.project_currency].filter((c, i, all) => all.indexOf(c) === i).join(' or ')} for the project currency.`,
+        );
+      }
+      chosenCurrency = picked;
+    }
+
+    const projectId = await this.ensureProject(
+      callerId,
+      relationship,
+      batch,
+      chosenCurrency,
+    );
+    if (
+      chosenCurrency &&
+      currentCurrency !== null &&
+      chosenCurrency !== currentCurrency
+    ) {
+      await this.projects.updateProject(projectId, callerId, {
+        currency: chosenCurrency,
+      });
+    }
+    const currencyDecision: CurrencyDecision | null = chosenCurrency
+      ? { project_currency: chosenCurrency, document_currencies: currencies }
+      : null;
     const outcomes: Outcome[] = [];
     const financeDocs = new Map<string, string>();
     for (const doc of confirmed) {
@@ -288,6 +346,7 @@ export class IntakeReplicateService implements OnModuleInit {
       ...relationship.replicated,
       project_id: projectId,
       ...(contractId ? { contract_id: contractId } : {}),
+      ...(currencyDecision ? { currency_decision: currencyDecision } : {}),
       pending_agreement: contractId ? null : pendingAgreement,
       replicated_at: new Date().toISOString(),
     };
@@ -494,6 +553,18 @@ export class IntakeReplicateService implements OnModuleInit {
       .eq('id', relationship.id);
   }
 
+  private async projectCurrency(projectId: string): Promise<string> {
+    const { data, error } = await this.supabase
+      .from('projects')
+      .select('currency')
+      .eq('id', projectId)
+      .maybeSingle();
+    if (error) throw new BadRequestException(error.message);
+    return (
+      (data as { currency: string | null } | null)?.currency ?? 'USD'
+    ).toUpperCase();
+  }
+
   private async ensureProject(
     callerId: string,
     relationship: IntakeRelationshipRow,
@@ -501,9 +572,12 @@ export class IntakeReplicateService implements OnModuleInit {
       importer_capacity: 'consultant' | 'client';
       workspace_id: string | null;
     },
+    /** Only the currency the person picked; otherwise the project default. */
+    currency: string | null = null,
   ): Promise<string> {
     if (relationship.project_id) return relationship.project_id;
     const created = await this.projects.createProject(callerId, {
+      ...(currency ? { currency } : {}),
       title:
         relationship.project_title?.trim() ||
         `Work with ${relationship.counterparty_name ?? 'imported client'}`,

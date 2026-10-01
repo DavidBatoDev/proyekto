@@ -10,6 +10,7 @@ import {
   IsOptional,
   IsString,
   IsUUID,
+  Matches,
   MaxLength,
   Min,
   ValidateNested,
@@ -178,4 +179,17 @@ export class CreateIntakeRelationshipDto {
   @IsString()
   @MaxLength(200)
   counterparty_name?: string;
+}
+
+/**
+ * Import one group. `project_currency` answers the currency question (the
+ * documents are in a currency the project is not): the currency the person
+ * picked for the project. Nothing changes the project's currency without it.
+ */
+export class ReplicateIntakeRelationshipDto {
+  @IsOptional()
+  @Matches(/^[A-Za-z]{3}$/, {
+    message: 'project_currency must be a three-letter currency code',
+  })
+  project_currency?: string;
 }

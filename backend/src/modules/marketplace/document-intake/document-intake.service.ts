@@ -32,6 +32,9 @@ import {
   blockingFields,
   chargeablePages,
   correctField,
+  type CurrencyDecision,
+  currencyQuestion,
+  documentCurrencies,
   type ExtractedFieldInput,
   groupByCounterparty,
   importerSideCheck,
@@ -209,7 +212,14 @@ export class DocumentIntakeService {
       this.batchDocuments(batch.id),
       this.batchRelationships(batch.id),
     ]);
-    const importer = await this.importerIdentity(batch.created_by);
+    const [importer, projectCurrencies] = await Promise.all([
+      this.importerIdentity(batch.created_by),
+      this.projectCurrencies(
+        relationships
+          .map((row) => row.project_id)
+          .filter((id): id is string => Boolean(id)),
+      ),
+    ]);
     return {
       ...batch,
       documents,
@@ -221,6 +231,26 @@ export class DocumentIntakeService {
           importer,
           batch.importer_capacity,
         ),
+        // Asked on the page before Import; replicate refuses without it.
+        currency_question:
+          relationship.status === 'replicated'
+            ? null
+            : currencyQuestion({
+                documentCurrencies: documentCurrencies(
+                  documents.filter(
+                    (doc) =>
+                      doc.relationship_id === relationship.id &&
+                      doc.status === 'confirmed',
+                  ),
+                ),
+                projectCurrency: relationship.project_id
+                  ? (projectCurrencies.get(relationship.project_id) ?? 'USD')
+                  : null,
+                previous:
+                  (relationship.replicated.currency_decision as
+                    | CurrencyDecision
+                    | undefined) ?? null,
+              }),
       })),
       pages: pagesOf(documents),
     };
@@ -1158,6 +1188,19 @@ export class DocumentIntakeService {
       ref,
       'document_intake_pages_monthly',
       { used: charge.used, adding: charge.adding, context: 'write' },
+    );
+  }
+
+  private async projectCurrencies(ids: string[]): Promise<Map<string, string>> {
+    if (ids.length === 0) return new Map();
+    const { data } = await this.supabase
+      .from('projects')
+      .select('id, currency')
+      .in('id', ids);
+    return new Map(
+      ((data ?? []) as Array<{ id: string; currency: string | null }>).map(
+        (row) => [row.id, (row.currency ?? 'USD').toUpperCase()],
+      ),
     );
   }
 

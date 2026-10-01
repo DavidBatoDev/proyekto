@@ -8,7 +8,7 @@ import {
 	Sparkles,
 	Users,
 } from "lucide-react";
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
 	AppEmptyState,
 	AppSurfaceCard,
@@ -23,7 +23,12 @@ import {
 	type ReplicateResult,
 } from "@/services/intake.service";
 import { IntakeReviewPanel } from "./IntakeReviewPanel";
-import { heldAgreementLabel, importerSideHint } from "./intakeHints";
+import {
+	currencyOptions,
+	currencyQuestionText,
+	heldAgreementLabel,
+	importerSideHint,
+} from "./intakeHints";
 
 const STATUS_LABEL: Record<IntakeDocument["status"], string> = {
 	uploaded: "Uploaded",
@@ -418,6 +423,27 @@ function RelationshipCard({
 	);
 	const [kind, setKind] = useState(relationship.relationship_kind);
 	const [result, setResult] = useState<ReplicateResult | null>(null);
+	// Decision 2026-10-01: the project's currency is never changed for the
+	// person. A new project preselects the documents' currency, and the choice
+	// still has to be confirmed.
+	const currencyQuestion = relationship.currency_question ?? null;
+	const [currencyPick, setCurrencyPick] = useState<string | null>(
+		currencyQuestion?.suggested ?? null,
+	);
+	const [currencyConfirmed, setCurrencyConfirmed] = useState(false);
+	const questionKey = currencyQuestion
+		? `${currencyQuestion.project_currency}:${currencyQuestion.document_currencies.join(",")}`
+		: "";
+	const suggestedCurrency = currencyQuestion?.suggested ?? null;
+	// A different question (documents confirmed since) starts a fresh choice.
+	useEffect(() => {
+		setCurrencyPick(suggestedCurrency);
+		setCurrencyConfirmed(false);
+	}, [questionKey]);
+	const currencyReady =
+		!currencyQuestion ||
+		(Boolean(currencyPick) &&
+			(!currencyQuestion.project_is_new || currencyConfirmed));
 	const saveMutation = useMutation({
 		mutationFn: (confirm: boolean) =>
 			intakeService.updateRelationship(relationship.id, {
@@ -440,7 +466,12 @@ function RelationshipCard({
 				projectTitle !== (relationship.project_title ?? "") ||
 				kind !== relationship.relationship_kind;
 			if (dirty) await saveMutation.mutateAsync(false);
-			return intakeService.replicate(relationship.id);
+			return intakeService.replicate(
+				relationship.id,
+				currencyQuestion && currencyPick
+					? { project_currency: currencyPick }
+					: {},
+			);
 		},
 		onSuccess: (next) => {
 			setResult(next);
@@ -537,6 +568,54 @@ function RelationshipCard({
 						still be imported; the agreement is recorded once they sign up.
 					</p>
 				)}
+			{!locked && currencyQuestion && (
+				<fieldset className="mt-2 rounded-md border border-amber-300/60 bg-amber-50/60 p-2 text-xs dark:border-amber-500/40 dark:bg-amber-500/10">
+					<legend className="px-1 font-semibold text-foreground">
+						Project currency
+					</legend>
+					<p className="text-foreground">
+						{currencyQuestionText(
+							currencyQuestion,
+							documents
+								.filter((doc) => doc.status === "confirmed")
+								.every(
+									(doc) =>
+										doc.doc_type !== "contract" && doc.doc_type !== "amendment",
+								),
+						)}
+					</p>
+					<div className="mt-1.5 flex flex-wrap gap-3">
+						{currencyOptions(currencyQuestion).map((option) => (
+							<label
+								key={option.value}
+								className="inline-flex items-center gap-1.5"
+							>
+								<input
+									type="radio"
+									name={`currency-${relationship.id}`}
+									value={option.value}
+									checked={currencyPick === option.value}
+									onChange={() => {
+										setCurrencyPick(option.value);
+										setCurrencyConfirmed(false);
+									}}
+								/>
+								{option.label}
+							</label>
+						))}
+					</div>
+					{currencyQuestion.project_is_new && currencyPick && (
+						<label className="mt-1.5 inline-flex items-center gap-1.5 font-medium text-foreground">
+							<input
+								type="checkbox"
+								checked={currencyConfirmed}
+								onChange={(event) => setCurrencyConfirmed(event.target.checked)}
+							/>
+							Create the new project in {currencyPick}
+						</label>
+					)}
+				</fieldset>
+			)}
 			{!locked && (
 				<div className="mt-2 flex gap-2">
 					<button
@@ -553,6 +632,7 @@ function RelationshipCard({
 						disabled={
 							relationship.status === "proposed" ||
 							confirmed === 0 ||
+							!currencyReady ||
 							replicateMutation.isPending
 						}
 						className="app-cta inline-flex items-center gap-1 rounded-md px-3 py-1 text-xs font-semibold text-white disabled:opacity-50"

@@ -27,6 +27,7 @@ import {
 import {
   CreateIntakeBatchDto,
   CreateIntakeRelationshipDto,
+  ReplicateIntakeRelationshipDto,
   RereadIntakeFieldDto,
   SplitIntakeDocumentDto,
   UpdateIntakeClausesDto,
@@ -228,7 +229,8 @@ export class DocumentIntakeController {
   replicate(
     @CurrentUser() user: AuthenticatedUser,
     @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: ReplicateIntakeRelationshipDto,
   ) {
-    return this.replicator.replicate(user.id, id);
+    return this.replicator.replicate(user.id, id, dto);
   }
 }
