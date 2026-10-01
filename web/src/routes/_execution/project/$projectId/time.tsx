@@ -20,6 +20,7 @@ import {
 	type TimeViewMode,
 	TimeViewToggle,
 } from "@/components/team-time/calendar/TimeViewToggle";
+import { contractBannerText } from "@/components/team-time/contractBannerText";
 import { FilterSelect } from "@/components/team-time/FilterSelect";
 import { HourCapBanner } from "@/components/team-time/HourCapBanner";
 import {
@@ -63,6 +64,7 @@ import { useActiveTimer } from "@/components/team-time/useActiveTimer";
 import { useTimeTaskCreation } from "@/components/team-time/useTimeTaskCreation";
 import { useProjectMyPermissionsQuery } from "@/hooks/useProjectQueries";
 import { useToast } from "@/hooks/useToast";
+import { isNativeApp } from "@/lib/platform";
 import { projectService } from "@/services/project.service";
 import {
 	type TaskTimeLog,
@@ -982,9 +984,7 @@ function ContractStatusBanner({
 				className={`mt-0.5 h-4 w-4 shrink-0 ${enforce ? "text-red-600" : "text-amber-600"}`}
 			/>
 			<p className={`text-sm ${enforce ? "text-red-800" : "text-amber-800"}`}>
-				{enforce
-					? "Time tracking on this project requires a signed contract. Ask the team to send you one — until it is signed, new time logs are blocked."
-					: "This team asks for a signed contract before tracking time here. You can still log time for now, but your logs may be flagged until a contract is signed."}
+				{contractBannerText(enforce, isNativeApp())}
 			</p>
 		</div>
 	);

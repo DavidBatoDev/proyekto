@@ -20,7 +20,8 @@ import {
  * A blocking prompt for anyone signed in without a display name: after
  * sign-up, after an OAuth or invite sign-in, and for existing accounts that
  * never set one. It cannot be dismissed; the name is what contracts, seats,
- * invites and chat show for this person instead of their email.
+ * invites and chat show for this person instead of their email. The copy
+ * stays free of contract wording because the prompt also runs in the app.
  */
 export function DisplayNameGate() {
 	const isAuthenticated = useAuthStore((state) => state.isAuthenticated);
@@ -77,7 +78,7 @@ export function DisplayNameGate() {
 			zIndex={1300}
 			initialFocusRef={inputRef}
 			title="What should people call you?"
-			description="Your name appears on contracts, invites and messages. You can change it later in your profile."
+			description="This is the name your teammates see on invites, messages and shared work. You can change it later in your profile."
 		>
 			<form
 				onSubmit={(event) => {

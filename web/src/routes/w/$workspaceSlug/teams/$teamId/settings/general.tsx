@@ -557,15 +557,19 @@ function TeamGeneralSettings() {
 					</div>
 				</section>
 
-				<TradingNamesSection
-					teamName={team.legal_name?.trim() || team.name}
-					names={team.trading_names ?? []}
-					canEdit={isOwner}
-					saving={updateMutation.isPending}
-					onSave={(trading_names) =>
-						updateMutation.mutateAsync({ trading_names })
-					}
-				/>
+				{/* Trading names exist for contracts, invoices and document
+				    import, all web-only, so the app leaves them out too. */}
+				{!isNativeApp() && (
+					<TradingNamesSection
+						teamName={team.legal_name?.trim() || team.name}
+						names={team.trading_names ?? []}
+						canEdit={isOwner}
+						saving={updateMutation.isPending}
+						onSave={(trading_names) =>
+							updateMutation.mutateAsync({ trading_names })
+						}
+					/>
+				)}
 
 				{!isOwner && (
 					<div className="rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800">

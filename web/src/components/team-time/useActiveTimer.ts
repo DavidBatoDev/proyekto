@@ -1,6 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useMemo } from "react";
 import { useToast } from "@/contexts/ToastContext";
+import { isNativeApp } from "@/lib/platform";
 import { serverNow } from "@/lib/serverClock";
 import {
 	type TaskTimeLog,
@@ -97,7 +98,14 @@ export function useActiveTimer(options?: {
 		onSuccess: (row) => {
 			setRunning(row);
 			invalidateTime();
-			if (row.contract_warning) toast.warning(row.contract_warning);
+			// Contracts are web-only; the app warns without naming them.
+			if (row.contract_warning) {
+				toast.warning(
+					isNativeApp()
+						? "This team asks to set you up before you track time here."
+						: row.contract_warning,
+				);
+			}
 			onStarted?.(row);
 		},
 		onError: (error) => {
