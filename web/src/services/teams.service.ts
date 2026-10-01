@@ -65,6 +65,8 @@ export interface Team {
 	 * when a project bills through this team. Null until the owner fills it in.
 	 */
 	legal_name?: string | null;
+	/** Other names the team trades under; document intake treats each as the team. */
+	trading_names?: string[];
 	billing_address?: string | null;
 	tax_id?: string | null;
 	billing_email?: string | null;
@@ -307,6 +309,8 @@ export interface UpdateTeamPatch {
 	tags?: string[];
 	status?: TeamStatus;
 	legal_name?: string;
+	/** `[]` clears them; omitting the field leaves them alone. Owner only. */
+	trading_names?: string[];
 	billing_address?: string;
 	tax_id?: string;
 	billing_email?: string;

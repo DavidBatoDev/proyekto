@@ -18,7 +18,12 @@ import {
   ValidateIf,
   ValidateNested,
 } from 'class-validator';
-import { TEAM_TAG_MAX_COUNT, TEAM_TAG_MAX_LENGTH } from '../team-tags';
+import {
+  TEAM_TAG_MAX_COUNT,
+  TEAM_TAG_MAX_LENGTH,
+  TEAM_TRADING_NAME_MAX_COUNT,
+  TEAM_TRADING_NAME_MAX_LENGTH,
+} from '../team-tags';
 
 /**
  * A single payout cut-off period. Kept as a plain interface (not a validated
@@ -143,6 +148,18 @@ export class UpdateTeamDto {
   @IsString()
   @Length(0, 200)
   legal_name?: string;
+
+  /**
+   * Other names the team trades under ("PRODIGITALITY" for JC Studio).
+   * Document intake treats each as the team. `[]` clears them; omitting the
+   * field leaves them alone. Owner-only, like the rest of the identity block.
+   */
+  @IsOptional()
+  @IsArray()
+  @ArrayMaxSize(TEAM_TRADING_NAME_MAX_COUNT)
+  @IsString({ each: true })
+  @MaxLength(TEAM_TRADING_NAME_MAX_LENGTH, { each: true })
+  trading_names?: string[];
 
   @IsOptional()
   @IsString()

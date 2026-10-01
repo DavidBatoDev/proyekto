@@ -22,12 +22,15 @@ import {
 	intakeService,
 	type ReplicateResult,
 } from "@/services/intake.service";
+import { getTeam, updateTeam } from "@/services/teams.service";
 import { IntakeReviewPanel } from "./IntakeReviewPanel";
 import {
 	currencyOptions,
 	currencyQuestionText,
 	heldAgreementLabel,
 	importerSideHint,
+	tradingNameAction,
+	withTradingName,
 } from "./intakeHints";
 
 const STATUS_LABEL: Record<IntakeDocument["status"], string> = {
@@ -495,6 +498,21 @@ function RelationshipCard({
 	).length;
 	const heldAgreement = relationship.replicated.pending_agreement ?? null;
 	const partyHint = importerSideHint(relationship.party_check);
+	const aliasAction = tradingNameAction(relationship.party_check);
+	const aliasMutation = useMutation({
+		mutationFn: async (action: NonNullable<typeof aliasAction>) => {
+			// Read the current list first so another alias is never dropped.
+			const team = await getTeam(action.teamId);
+			return updateTeam(action.teamId, {
+				trading_names: withTradingName(team.trading_names ?? [], action.name),
+			});
+		},
+		onSuccess: (_team, action) => {
+			toast.success(`"${action.name}" saved as a trading name.`);
+			onChanged();
+		},
+		onError: (error: Error) => toast.error(error.message),
+	});
 	const locked = relationship.status === "replicated";
 	return (
 		<div className="rounded-lg border border-border p-3">
@@ -527,9 +545,22 @@ function RelationshipCard({
 				/>
 			</label>
 			{!locked && partyHint && (
-				<p className="mt-1 text-[11px] text-amber-700 dark:text-amber-300">
-					{partyHint}
-				</p>
+				<div className="mt-1 text-[11px] text-amber-700 dark:text-amber-300">
+					<p>{partyHint}</p>
+					{aliasAction && (
+						<button
+							type="button"
+							disabled={aliasMutation.isPending}
+							onClick={() => aliasMutation.mutate(aliasAction)}
+							className="mt-1 inline-flex items-center gap-1 rounded-md border border-amber-300 px-2 py-0.5 font-medium hover:bg-amber-50 disabled:opacity-50 dark:border-amber-700 dark:hover:bg-amber-950"
+						>
+							{aliasMutation.isPending && (
+								<Loader2 className="h-3 w-3 animate-spin" />
+							)}
+							{aliasAction.label}
+						</button>
+					)}
+				</div>
 			)}
 			<div className="mt-2 grid gap-2 text-xs sm:grid-cols-3">
 				<input

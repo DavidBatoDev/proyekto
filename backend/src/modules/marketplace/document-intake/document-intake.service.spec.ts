@@ -962,7 +962,7 @@ describe('DocumentIntakeService: the counterparty name is the person’s to edit
         }
         if (call.table === 'teams') {
           return {
-            data: [{ name: 'JC Studio', legal_name: null }],
+            data: [{ id: 'team-1', name: 'JC Studio', legal_name: null }],
             error: null,
           };
         }
@@ -973,7 +973,40 @@ describe('DocumentIntakeService: the counterparty name is the person’s to edit
     expect(batch.relationships[0].party_check).toEqual({
       read_name: 'PRODIGITALITY',
       team_name: 'JC Studio',
+      team_id: 'team-1',
       matches: false,
+    });
+  });
+
+  it('treats a saved trading name as the team, so there is nothing to warn about', async () => {
+    const { service } = build({
+      reply: (call) => {
+        if (call.table === 'intake_documents' && call.op === 'select') {
+          return { data: [invoice('i1', 'rel-1')], error: null };
+        }
+        if (call.table === 'intake_relationships' && call.op === 'select') {
+          return { data: [relationship], error: null };
+        }
+        if (call.table === 'teams') {
+          return {
+            data: [
+              {
+                id: 'team-1',
+                name: 'JC Studio',
+                legal_name: null,
+                trading_names: ['Prodigitality'],
+              },
+            ],
+            error: null,
+          };
+        }
+        return undefined;
+      },
+    });
+    const batch = await service.getBatch('user-1', 'batch-1');
+    expect(batch.relationships[0].party_check).toMatchObject({
+      read_name: null,
+      matches: true,
     });
   });
 });

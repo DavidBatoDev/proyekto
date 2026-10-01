@@ -42,3 +42,32 @@ export function normalizeTeamTags(input: unknown): string[] {
 
   return out;
 }
+
+export const TEAM_TRADING_NAME_MAX_COUNT = 10;
+export const TEAM_TRADING_NAME_MAX_LENGTH = 120;
+
+/**
+ * Canonicalize a team's trading names (the names it appears under on paper,
+ * "PRODIGITALITY" for JC Studio): trim, collapse inner whitespace, drop
+ * empties, truncate, dedupe case-insensitively keeping the first spelling, and
+ * cap at TEAM_TRADING_NAME_MAX_COUNT. Order is the order the owner typed.
+ */
+export function normalizeTradingNames(input: unknown): string[] {
+  if (!Array.isArray(input)) return [];
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const raw of input) {
+    if (typeof raw !== 'string') continue;
+    const name = raw
+      .replace(/\s+/g, ' ')
+      .trim()
+      .slice(0, TEAM_TRADING_NAME_MAX_LENGTH);
+    if (!name) continue;
+    const key = name.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push(name);
+    if (out.length >= TEAM_TRADING_NAME_MAX_COUNT) break;
+  }
+  return out;
+}

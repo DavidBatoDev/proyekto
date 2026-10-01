@@ -3,6 +3,8 @@ import {
 	currencyOptions,
 	currencyQuestionText,
 	importerSideHint,
+	tradingNameAction,
+	withTradingName,
 } from "./intakeHints";
 
 describe("importerSideHint", () => {
@@ -27,6 +29,52 @@ describe("importerSideHint", () => {
 			}),
 		).toBeNull();
 		expect(importerSideHint(undefined)).toBeNull();
+	});
+});
+
+describe("tradingNameAction", () => {
+	it("offers to save the paper's name as a trading name of the team", () => {
+		expect(
+			tradingNameAction({
+				read_name: "PRODIGITALITY",
+				team_name: "JC Studio",
+				team_id: "team-1",
+				matches: false,
+			}),
+		).toEqual({
+			teamId: "team-1",
+			name: "PRODIGITALITY",
+			label: 'Save "PRODIGITALITY" as a trading name of JC Studio',
+		});
+	});
+
+	it("offers nothing when the names match or there is no team", () => {
+		expect(
+			tradingNameAction({
+				read_name: null,
+				team_name: "JC Studio",
+				team_id: "team-1",
+				matches: true,
+			}),
+		).toBeNull();
+		expect(
+			tradingNameAction({
+				read_name: "PRODIGITALITY",
+				team_name: null,
+				team_id: null,
+				matches: false,
+			}),
+		).toBeNull();
+	});
+
+	it("adds a name once, keeping the existing ones", () => {
+		expect(withTradingName(["Pro Digi"], " PRODIGITALITY ")).toEqual([
+			"Pro Digi",
+			"PRODIGITALITY",
+		]);
+		expect(withTradingName(["Prodigitality"], "PRODIGITALITY")).toEqual([
+			"Prodigitality",
+		]);
 	});
 });
 

@@ -24,7 +24,7 @@ import { buildTeamInviteEmail } from './team-invite-email.template';
 import { TEAM_INVITES_PATH } from './team-invites-path';
 import { sanitizeOptionalRichHtml } from '../../../common/rich-text/sanitize-rich-html';
 import { WorkspacesService } from '../workspaces/workspaces.service';
-import { normalizeTeamTags } from './team-tags';
+import { normalizeTeamTags, normalizeTradingNames } from './team-tags';
 import {
   AddTeamMemberDto,
   CreateTeamDto,
@@ -107,6 +107,8 @@ export interface TeamRow {
    * contract seeding falls back to the consultant's profile field by field.
    */
   legal_name: string | null;
+  /** Other names the team trades under; document intake treats each as the team. */
+  trading_names: string[];
   billing_address: string | null;
   tax_id: string | null;
   billing_email: string | null;
@@ -193,6 +195,7 @@ void TEAM_SHARED_UPDATE_FIELDS;
  */
 const TEAM_OWNER_ONLY_UPDATE_FIELDS = [
   'legal_name',
+  'trading_names',
   'billing_address',
   'tax_id',
   'billing_email',
@@ -584,6 +587,11 @@ export class TeamsService {
     // these are descriptive labels and gating them on a capability would be
     // exactly the anti-pattern the glossary forbids.
     if (dto.tags !== undefined) patch.tags = normalizeTeamTags(dto.tags);
+    // A trading name is how the team is named on paper, so it is identity:
+    // owner-only (TEAM_OWNER_ONLY_UPDATE_FIELDS) and `[]` clears it.
+    if (dto.trading_names !== undefined) {
+      patch.trading_names = normalizeTradingNames(dto.trading_names);
+    }
 
     // Billing identity. '' clears the field rather than storing an empty
     // string, so `legal_name || name` in the contract seeder falls through

@@ -22,6 +22,7 @@ import { TagInput } from "@/components/common/TagInput";
 import { UploadModal } from "@/components/profile/UploadModal";
 import { TeamAvatar } from "@/components/team/TeamAvatar";
 import { TeamSettingsLayout } from "@/components/team/TeamSettingsLayout";
+import { TradingNamesSection } from "@/components/team/TradingNamesSection";
 import { useToast } from "@/hooks/useToast";
 import { isRichTextEmpty } from "@/lib/richText";
 import {
@@ -547,6 +548,16 @@ function TeamGeneralSettings() {
 						</div>
 					</div>
 				</section>
+
+				<TradingNamesSection
+					teamName={team.legal_name?.trim() || team.name}
+					names={team.trading_names ?? []}
+					canEdit={isOwner}
+					saving={updateMutation.isPending}
+					onSave={(trading_names) =>
+						updateMutation.mutateAsync({ trading_names })
+					}
+				/>
 
 				{!isOwner && (
 					<div className="rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800">

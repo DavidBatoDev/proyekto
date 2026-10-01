@@ -264,9 +264,18 @@ export class DocumentIntakeService {
   private partyCheck(
     relationship: IntakeRelationshipRow,
     documents: IntakeDocumentRow[],
-    importer: { names: string[]; teamName: string | null },
+    importer: {
+      names: string[];
+      teamName: string | null;
+      teamId: string | null;
+    },
     capacity: 'consultant' | 'client',
-  ): { read_name: string | null; team_name: string | null; matches: boolean } {
+  ): {
+    read_name: string | null;
+    team_name: string | null;
+    team_id: string | null;
+    matches: boolean;
+  } {
     const mine = documents.filter(
       (doc) => doc.relationship_id === relationship.id,
     );
@@ -279,7 +288,8 @@ export class DocumentIntakeService {
       importer.names,
       capacity,
     );
-    return { ...check, team_name: importer.teamName };
+    // team_id lets the review offer "Save as a trading name of <team>".
+    return { ...check, team_name: importer.teamName, team_id: importer.teamId };
   }
 
   // ─── upload ────────────────────────────────────────────────────────────────
@@ -1205,25 +1215,32 @@ export class DocumentIntakeService {
   }
 
   /** The importer's names, and the team name their records are created under. */
-  private async importerIdentity(
-    callerId: string,
-  ): Promise<{ names: string[]; teamName: string | null }> {
+  private async importerIdentity(callerId: string): Promise<{
+    names: string[];
+    teamName: string | null;
+    teamId: string | null;
+  }> {
     const [names, { data: teams }] = await Promise.all([
       this.importerNames(callerId),
       this.supabase
         .from('teams')
-        .select('name, legal_name')
+        .select('id, name, legal_name')
         .eq('owner_id', callerId)
         .order('created_at', { ascending: true })
         .limit(1),
     ]);
     const team = (
       (teams ?? []) as Array<{
+        id: string;
         name: string;
         legal_name: string | null;
       }>
     )[0];
-    return { names, teamName: team ? team.legal_name || team.name : null };
+    return {
+      names,
+      teamName: team ? team.legal_name || team.name : null,
+      teamId: team?.id ?? null,
+    };
   }
 
   private async importerNames(callerId: string): Promise<string[]> {
@@ -1235,7 +1252,7 @@ export class DocumentIntakeService {
         .maybeSingle(),
       this.supabase
         .from('teams')
-        .select('name, legal_name')
+        .select('name, legal_name, trading_names')
         .eq('owner_id', callerId),
     ]);
     const p = profile as {
@@ -1246,9 +1263,18 @@ export class DocumentIntakeService {
     const names = [
       p?.display_name,
       [p?.first_name, p?.last_name].filter(Boolean).join(' '),
+      // A trading name ("PRODIGITALITY" for JC Studio) is the team too.
       ...(
-        (teams ?? []) as Array<{ name: string; legal_name: string | null }>
-      ).flatMap((team) => [team.name, team.legal_name]),
+        (teams ?? []) as Array<{
+          name: string;
+          legal_name: string | null;
+          trading_names: string[] | null;
+        }>
+      ).flatMap((team) => [
+        team.name,
+        team.legal_name,
+        ...(team.trading_names ?? []),
+      ]),
     ];
     return names.filter((name): name is string => Boolean(name?.trim()));
   }

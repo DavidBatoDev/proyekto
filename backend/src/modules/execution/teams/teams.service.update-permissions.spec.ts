@@ -95,6 +95,8 @@ describe('TeamsService — updateTeam permissions', () => {
   /** Money and legal identity. An admin must be refused every one of these. */
   const OWNER_ONLY_PATCHES: Array<[string, Record<string, unknown>]> = [
     ['legal_name', { legal_name: 'Rogue Holdings' }],
+    // How the team is named on paper; intake treats it as the team.
+    ['trading_names', { trading_names: ['ROGUE HOLDINGS'] }],
     ['billing_address', { billing_address: '1 Rogue Way' }],
     ['tax_id', { tax_id: 'ROGUE-1' }],
     ['billing_email', { billing_email: 'rogue@example.com' }],
@@ -177,6 +179,23 @@ describe('TeamsService — updateTeam permissions', () => {
         expect(captured.update).toHaveProperty(field);
       },
     );
+  });
+
+  describe('trading names', () => {
+    it('are stored normalized and cleared with []', async () => {
+      const { service, captured } = build(null);
+      await service.updateTeam('team-1', OWNER, {
+        trading_names: [' PRODIGITALITY ', 'Prodigitality', ''],
+      } as any);
+      expect(captured.update).toMatchObject({
+        trading_names: ['PRODIGITALITY'],
+      });
+      const second = build(null);
+      await second.service.updateTeam('team-1', OWNER, {
+        trading_names: [],
+      } as any);
+      expect(second.captured.update).toMatchObject({ trading_names: [] });
+    });
   });
 
   describe('the rates -> payouts dependency', () => {

@@ -89,6 +89,8 @@ export interface IntakeRelationship {
 	party_check?: {
 		read_name: string | null;
 		team_name: string | null;
+		/** The importer's team, to save `read_name` as one of its trading names. */
+		team_id?: string | null;
 		matches: boolean;
 	};
 	/**
