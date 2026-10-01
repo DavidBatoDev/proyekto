@@ -1,12 +1,16 @@
-import { Badge, Divider, Menu, MenuItem } from "@mui/material";
+import { Badge, Menu, MenuItem } from "@mui/material";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
 import { Bell } from "lucide-react";
 import { type MouseEvent, useState } from "react";
-import { openProjectInviteModal } from "@/components/invites/projectInviteModalEvents";
 import { useNotificationsRealtime } from "@/hooks/useNotificationsRealtime";
-import { mapLegacyPath } from "@/lib/legacyRoutePaths";
-import { notificationsService } from "@/services/notifications.service";
+import { isNotificationShownInApp } from "@/lib/appNotifications";
+import { openNotificationTarget } from "@/lib/notificationNavigation";
+import { isNativeApp } from "@/lib/platform";
+import {
+	type NotificationItem,
+	notificationsService,
+} from "@/services/notifications.service";
 import { useAuthStore } from "@/stores/authStore";
 
 function notificationTitle(typeName?: string) {
@@ -76,7 +80,7 @@ export function NotificationBell() {
 
 	const recentNotificationsQuery = useQuery({
 		queryKey: ["notifications", "recent"],
-		queryFn: () => notificationsService.list({ limit: 5 }),
+		queryFn: () => notificationsService.list({ limit: 20 }),
 		enabled: isAuthenticated,
 		staleTime: 30 * 1000,
 		refetchOnWindowFocus: true,
@@ -98,7 +102,9 @@ export function NotificationBell() {
 	});
 
 	const unreadCount = unreadCountQuery.data ?? 0;
-	const recentNotifications = recentNotificationsQuery.data || [];
+	const recentNotifications = (recentNotificationsQuery.data || []).filter(
+		(notification) => isNotificationShownInApp(notification, isNativeApp()),
+	);
 
 	const openNotifications = (event: MouseEvent<HTMLElement>) => {
 		setNotificationAnchor(event.currentTarget);
@@ -108,33 +114,10 @@ export function NotificationBell() {
 		setNotificationAnchor(null);
 	};
 
-	const handleNotificationClick = (
-		id: string,
-		linkUrl?: string | null,
-		typeName?: string,
-		inviteId?: string | null,
-	) => {
-		if (!id) return;
+	const handleNotificationClick = (notification: NotificationItem) => {
 		closeNotifications();
-
-		if (typeName === "project_invite_received" && inviteId) {
-			openProjectInviteModal(inviteId);
-			markReadMutation.mutate(id);
-			return;
-		}
-
-		markReadMutation.mutate(id);
-
-		if (linkUrl) {
-			// link_url is backend-authored and persisted, so historical rows still
-			// carry pre-/marketplace paths; mapLegacyPath rewrites them without a
-			// visible bounce through the route shim.
-			const resolved =
-				linkUrl === "/freelancer/profile" && profile?.id
-					? `/profile/${profile.id}`
-					: mapLegacyPath(linkUrl);
-			window.location.href = resolved;
-		}
+		markReadMutation.mutate(notification.id);
+		openNotificationTarget(notification, profile?.id);
 	};
 
 	if (!isAuthenticated) return null;
@@ -170,11 +153,14 @@ export function NotificationBell() {
 						backgroundColor: "var(--popover)",
 						border: "1px solid var(--border)",
 						boxShadow: "var(--app-shadow-lg)",
-						overflow: "hidden",
+						// MUI caps the paper at the viewport; scroll inside it so the
+						// footer link is never clipped on short screens.
+						maxHeight: "min(560px, calc(100vh - 96px))",
+						overflowY: "auto",
 					},
 				}}
 			>
-				<div className="flex items-center justify-between px-4 py-3">
+				<div className="sticky top-0 z-10 flex items-center justify-between border-b border-border bg-popover px-4 py-3">
 					<p className="text-[0.95rem] font-bold text-popover-foreground">
 						Notifications
 					</p>
@@ -187,7 +173,6 @@ export function NotificationBell() {
 						Mark all read
 					</button>
 				</div>
-				<Divider sx={{ borderColor: "var(--border)" }} />
 
 				{recentNotifications.length === 0 ? (
 					<div className="px-4 py-8 text-center text-sm text-muted-foreground">
@@ -197,20 +182,12 @@ export function NotificationBell() {
 					recentNotifications.map((notification) => {
 						const typeName = notification.type?.name;
 						const title = notificationTitle(typeName);
-						const inviteIdValue = notification.content?.invite_id;
 						const message = notificationBody(notification.content ?? null);
 
 						return (
 							<MenuItem
 								key={notification.id}
-								onClick={() =>
-									handleNotificationClick(
-										notification.id,
-										notification.link_url,
-										typeName,
-										typeof inviteIdValue === "string" ? inviteIdValue : null,
-									)
-								}
+								onClick={() => handleNotificationClick(notification)}
 								sx={{
 									display: "flex",
 									alignItems: "flex-start",
@@ -259,8 +236,7 @@ export function NotificationBell() {
 					})
 				)}
 
-				<Divider sx={{ borderColor: "var(--border)" }} />
-				<div className="px-4 py-2">
+				<div className="sticky bottom-0 z-10 border-t border-border bg-popover px-4 py-2">
 					<Link
 						to="/notifications"
 						className="rounded-sm text-sm font-medium text-primary hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"

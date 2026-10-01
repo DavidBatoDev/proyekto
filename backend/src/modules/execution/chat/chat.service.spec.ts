@@ -1,4 +1,6 @@
 import { ChatPushService } from './chat-push.service';
+import type { BlocksService } from '../../shared/safety/blocks.service';
+import { EVERYONE_MENTION_ID } from './chat.tokens';
 import { ChatService } from './chat.service';
 import type { RealtimePublisher } from '../../shared/realtime/realtime-publisher.service';
 import type { ProjectAuthorizationService } from '../projects/authorization/project-authorization.service';
@@ -166,11 +168,20 @@ describe('ChatService', () => {
     } as unknown as ChatPushService;
   };
 
+  // Default: nobody has blocked anybody.
+  const buildBlocks = (overrides: Record<string, unknown> = {}) =>
+    ({
+      isBlockedEitherWay: jest.fn().mockResolvedValue(false),
+      blockersOf: jest.fn().mockResolvedValue(new Set<string>()),
+      ...overrides,
+    }) as unknown as BlocksService;
+
   const makeService = (
     repo: ChatRepository,
     authOverrides = {},
     notifications = buildNotifications(),
     chatPush = buildChatPush(),
+    blocks = buildBlocks(),
   ) =>
     new ChatService(
       repo,
@@ -181,6 +192,7 @@ describe('ChatService', () => {
       notifications,
       buildKnowledgeOutbox(),
       chatPush,
+      blocks,
     );
 
   // ── Channels: arbitrary channel fixtures for visibility tests ──────────────
@@ -1553,6 +1565,131 @@ describe('ChatService', () => {
       await expect(
         sendDm(buildNotifications({ createNotification })),
       ).resolves.toBeDefined();
+    });
+  });
+
+  describe('blocking', () => {
+    // Kept as a local so assertions don't read a method off the mock object.
+    const blockedEitherWay = () => {
+      const isBlockedEitherWay = jest.fn().mockResolvedValue(true);
+      return {
+        isBlockedEitherWay,
+        blocks: buildBlocks({ isBlockedEitherWay }),
+      };
+    };
+
+    it('refuses a new DM to someone blocked either way, without revealing who blocked', async () => {
+      const createMessage = jest.fn();
+      const repo = buildRepo({ createMessage });
+      const { blocks, isBlockedEitherWay } = blockedEitherWay();
+
+      await expect(
+        makeService(repo, {}, undefined, undefined, blocks).sendDmMessage(
+          'actor-1',
+          { recipient_id: 'rec-1', content: 'hi' },
+        ),
+      ).rejects.toMatchObject({
+        response: {
+          code: 'chat_blocked',
+          message: "You can't message this person.",
+        },
+      });
+      expect(isBlockedEitherWay).toHaveBeenCalledWith('actor-1', 'rec-1');
+      expect(createMessage).not.toHaveBeenCalled();
+    });
+
+    it('refuses a reply in an existing DM room, reading the other person from the slug', async () => {
+      const createMessage = jest.fn();
+      const repo = buildRepo({
+        findRoomForParticipant: jest
+          .fn()
+          .mockResolvedValue(buildRoom({ id: 'dm-1', slug: 'actor-1_rec-1' })),
+        createMessage,
+      });
+      const { blocks, isBlockedEitherWay } = blockedEitherWay();
+
+      await expect(
+        makeService(repo, {}, undefined, undefined, blocks).sendDmMessage(
+          'actor-1',
+          { room_id: 'dm-1', content: 'hi' },
+        ),
+      ).rejects.toMatchObject({ response: { code: 'chat_blocked' } });
+      expect(isBlockedEitherWay).toHaveBeenCalledWith('actor-1', 'rec-1');
+      expect(createMessage).not.toHaveBeenCalled();
+    });
+
+    it('resolveDmRoom refuses a blocked pair and creates no room', async () => {
+      const upsertDm = jest.fn();
+      const repo = buildRepo({ upsertDm });
+
+      await expect(
+        makeService(
+          repo,
+          {},
+          undefined,
+          undefined,
+          blockedEitherWay().blocks,
+        ).resolveDmRoom('actor-1', 'rec-1'),
+      ).rejects.toMatchObject({ response: { code: 'chat_blocked' } });
+      expect(upsertDm).not.toHaveBeenCalled();
+    });
+
+    it('sends a channel message but skips push and pings for people who blocked the sender', async () => {
+      const createMessage = jest.fn().mockResolvedValue({
+        id: 'msg-1',
+        room_id: 'room-chan',
+        project_id: 'project-1',
+        sender_id: 'actor-1',
+        content: '@everyone hi',
+        attachments: [],
+        mentions: [],
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      });
+      const repo = buildRepo({
+        findRoomForParticipant: jest
+          .fn()
+          .mockResolvedValue(channelForMentions()),
+        createMessage,
+        listProjectParticipantUserIds: jest
+          .fn()
+          .mockResolvedValue(['actor-1', 'm2', 'blocker-1']),
+      });
+      const createNotification = jest.fn().mockResolvedValue({ id: 'n1' });
+      const sendForMessage = jest.fn().mockResolvedValue(undefined);
+      const chatPush = buildChatPush({ sendForMessage });
+      const blocks = buildBlocks({
+        blockersOf: jest.fn().mockResolvedValue(new Set(['blocker-1'])),
+      });
+
+      await makeService(
+        repo,
+        {},
+        buildNotifications({ createNotification }),
+        chatPush,
+        blocks,
+      ).sendChannelMessage('project-1', 'actor-1', {
+        room_id: 'room-chan',
+        content: '@everyone hi',
+        mentions: [
+          {
+            user_id: EVERYONE_MENTION_ID,
+            name: 'everyone',
+            offset: 0,
+            length: 9,
+          },
+        ],
+      });
+      await flush();
+
+      expect(createMessage).toHaveBeenCalledTimes(1);
+      const notified = createNotification.mock.calls.map(
+        (call: [{ user_id: string }]) => call[0].user_id,
+      );
+      expect(notified).toEqual(['m2']);
+      expect(sendForMessage).toHaveBeenCalledWith(
+        expect.objectContaining({ recipientIds: ['actor-1', 'm2'] }),
+      );
     });
   });
 });

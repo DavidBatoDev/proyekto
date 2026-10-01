@@ -1,6 +1,6 @@
 # Routing & Access
 
-> **Last updated:** 2026-09-23 · **Status:** current
+> **Last updated:** 2026-09-29 · **Status:** current
 
 Routing is **file-based** (TanStack Router): files under
 [`web/src/routes/`](../../web/src/routes/) become routes, and
@@ -290,6 +290,38 @@ Plan limits still apply in full on mobile; only the destination disappears. `usa
 takes a `CopySurface` and, in the app, drops the upgrade sentence and the toast button —
 and `PlanLimitBridge`/`PlanLimitNotice` ignore the server's own `plan_limit` message there,
 so `usageCopy.ts` is the only source of limit wording on a phone.
+
+**Payout details and identity documents are web-only, inside `app` pages.** They sit on
+pages the app does carry, so the route gate cannot reach them; a component-level check does.
+[`lib/sensitiveData.ts`](../../web/src/lib/sensitiveData.ts) `canHandleSensitiveData()` is
+`false` on native, and two places read it:
+
+- `routes/profile/$profileId.tsx` — the owner's *Verification Documents* card,
+  `PayoutMethodsSection` and `IdentityDocumentModal` do not mount; a one-line note says both
+  are managed on the web.
+- `components/team-time/PayMemberModal.tsx` (team payouts, team logs, project time) — the
+  member's payout methods are never fetched and the *Pay to* block is replaced by a note.
+  The payout still records, with `payout_method_id` unset.
+
+This keeps the app out of the Data safety / App Privacy financial and government-ID
+categories. The backend is unchanged: the web still reads and writes both.
+
+**Marketplace features and wording on `app` pages are web-only too (2026-09-29).** The route
+gate stops navigation, but marketplace *content* on an app page needs its own check, all on
+`isNativeApp()`:
+
+| Where | In the app |
+| --- | --- |
+| Profile (`routes/profile/$profileId.tsx`) | No services section, hourly rate, *Rate & Availability* card, *Verified consultant* / *Open to work* badges, or listing checklist; the go-live eligibility query does not run — all behind `showTalentControls` |
+| `UserMenu`, settings overview | Account label is always *Member* |
+| Settings → Notifications | No *Your consultant application* group |
+| Notification bell and `/notifications` | `lib/appNotifications.ts` drops marketplace-only types and rows whose link is not an `app` path |
+| New project (`routes/_execution/project/new.tsx`) | No client/consultant picker, never posts `status: "bidding"` — a verified consultant leads (draft, owner), everyone else gets a plain draft |
+| Project status (`ProjectsGrid` config, overview picker, settings) | `bidding` reads *Not started*, and pickers only offer it when the project is already in it (`pickableProjectStatuses`) |
+| Project settings → Time | No `RateBudgetCalculator` (contract economics) |
+| Team settings → General | No *Billing identity* (the contract/invoice provider block) |
+| Help articles (`DocsMarkdown`) | A link to a non-`app` path renders as plain text |
+| Welcome slide 2, `/get-started`, dashboard tour, roadmaps grid | SaaS wording — no consultant hiring, bids or invoices |
 
 ## The documentation site
 

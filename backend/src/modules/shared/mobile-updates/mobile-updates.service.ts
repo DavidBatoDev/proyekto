@@ -29,6 +29,25 @@ const NO_UPDATE: CheckResult = {
 
 const PRESIGN_EXPIRY_SECONDS = 900;
 
+/**
+ * The device's native build number, for the `native_build_min` guard.
+ *
+ * Capgo puts the native *versionCode* in `version_code` and the native
+ * *versionName* in `version_build` (Android: `pInfo.versionName`). Reading
+ * `version_build` parsed "0.7.2" as 0, so no bundle (native_build_min 7000)
+ * ever matched and every device silently stayed on its built-in bundle.
+ * Prefer `version_code`; fall back to `version_build` only when it is a
+ * plain integer (older plugin builds / hand-rolled clients). A dotted
+ * version is never truncated into a build number.
+ */
+function nativeBuildFrom(body: CapgoCheckBody): number {
+  for (const raw of [body.version_code, body.version_build]) {
+    const value = String(raw ?? '').trim();
+    if (/^\d+$/.test(value)) return Number.parseInt(value, 10);
+  }
+  return Number.NaN;
+}
+
 @Injectable()
 export class MobileUpdatesService {
   private readonly logger = new Logger(MobileUpdatesService.name);
@@ -56,7 +75,7 @@ export class MobileUpdatesService {
       typeof body.defaultChannel === 'string' && body.defaultChannel.trim()
         ? body.defaultChannel.trim()
         : 'production';
-    const nativeBuild = Number.parseInt(String(body.version_build ?? ''), 10);
+    const nativeBuild = nativeBuildFrom(body);
     const activeVersion =
       typeof body.version_name === 'string' ? body.version_name : '';
 
@@ -159,11 +178,21 @@ export class MobileUpdatesService {
     };
   }
 
-  /** Capgo stats sink — fire-and-forget log only (never touch the DB here). */
-  recordStat(body: CapgoStatsBody): void {
-    this.logger.log(
-      `ota-stat platform=${body.platform ?? '?'} action=${body.action ?? '?'} version=${body.version ?? body.version_name ?? '?'}`,
-    );
+  /**
+   * Capgo stats sink — fire-and-forget log only (never touch the DB here).
+   *
+   * Plugin v8 batches: the body is a JSON array of events, not one object.
+   * Reading it as an object logged every event as `platform=? action=?`,
+   * which hid every download/apply failure. Accept both shapes.
+   */
+  recordStat(body: CapgoStatsBody | CapgoStatsBody[] | null | undefined): void {
+    const events = Array.isArray(body) ? body : body ? [body] : [];
+    for (const e of events) {
+      if (!e || typeof e !== 'object') continue;
+      this.logger.log(
+        `ota-stat platform=${e.platform ?? '?'} action=${e.action ?? '?'} version=${e.version ?? e.version_name ?? '?'} old=${e.old_version_name ?? '-'} build=${e.version_code ?? e.version_build ?? '?'}`,
+      );
+    }
   }
 
   /**

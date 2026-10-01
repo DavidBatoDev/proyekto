@@ -75,9 +75,12 @@ export default function UserMenu() {
 		setIsOpen(false);
 		navigate({ to: "/" });
 	};
-	const accountLabel = isActiveConsultant(profile)
-		? "Verified consultant"
-		: "Member";
+	// "Verified consultant" is a marketplace status; the installed app carries
+	// no marketplace, so it just says Member there.
+	const accountLabel =
+		!isNativeApp() && isActiveConsultant(profile)
+			? "Verified consultant"
+			: "Member";
 
 	return (
 		<div className="relative overflow-visible" ref={dropdownRef}>

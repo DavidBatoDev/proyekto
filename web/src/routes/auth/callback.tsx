@@ -37,14 +37,16 @@ function AuthCallbackPage() {
 					throw sessionError;
 				}
 				if (!session?.user) {
-					throw new Error("No authenticated session returned from Google.");
+					throw new Error(
+						"No authenticated session was returned. Please try again.",
+					);
 				}
 
 				const user = session.user;
 				const metadata = (user.user_metadata ?? {}) as Record<string, unknown>;
 				const email = user.email ?? null;
 				if (!email) {
-					throw new Error("Google account did not provide an email address.");
+					throw new Error("Your account did not provide an email address.");
 				}
 				const firstName =
 					typeof metadata.given_name === "string"

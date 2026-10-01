@@ -11,6 +11,7 @@ import Header from "../components/layout/Header";
 import { NotFoundRoute } from "../components/layout/NotFoundRoute";
 import { MigrationHandler } from "../components/migration";
 import { AppUpdateGate } from "../components/mobile/AppUpdateGate";
+import { SafetyProvider } from "../components/safety/SafetyProvider";
 import { FloatingActiveTimer } from "../components/team-time/FloatingActiveTimer";
 import { ToastProvider } from "../contexts/ToastContext";
 import { ConfirmProvider } from "../hooks/useConfirm";
@@ -68,24 +69,28 @@ function RootLayout() {
 	return (
 		<ToastProvider>
 			<ConfirmProvider>
-				{/* Shows the upgrade prompt for any write a plan limit blocked.
+				{/* Report and block (App Store guideline 1.2): one sheet and one
+				    dialog for every surface. Needs the toast and confirm providers. */}
+				<SafetyProvider>
+					{/* Shows the upgrade prompt for any write a plan limit blocked.
 				    Inside the toast provider and the router: it does both. */}
-				<PlanLimitBridge />
-				<Header />
-				<Outlet />
-				<FloatingActiveTimer />
-				<MigrationHandler />
-				{/* Blocks until a signed-in person has a display name: the name
-				    contracts, seats and invites show instead of an email. */}
-				<DisplayNameGate />
-				{/* Native-only; renders nothing on web and nothing unless the
+					<PlanLimitBridge />
+					<Header />
+					<Outlet />
+					<FloatingActiveTimer />
+					<MigrationHandler />
+					{/* Blocks until a signed-in person has a display name: the name
+					    contracts, seats and invites show instead of an email. */}
+					<DisplayNameGate />
+					{/* Native-only; renders nothing on web and nothing unless the
 				    backend says this shell is out of date. */}
-				<AppUpdateGate />
-				{DevelopmentDevtools && (
-					<Suspense fallback={null}>
-						<DevelopmentDevtools />
-					</Suspense>
-				)}
+					<AppUpdateGate />
+					{DevelopmentDevtools && (
+						<Suspense fallback={null}>
+							<DevelopmentDevtools />
+						</Suspense>
+					)}
+				</SafetyProvider>
 			</ConfirmProvider>
 		</ToastProvider>
 	);

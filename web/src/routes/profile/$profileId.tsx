@@ -53,8 +53,10 @@ import {
 } from "@/components/profile/ProfileUi";
 import { SpecializationModal } from "@/components/profile/SpecializationModal";
 import { UploadModal } from "@/components/profile/UploadModal";
+import { PersonSafetyMenu } from "@/components/safety/PersonSafetyActions";
 import { useToast } from "@/hooks/useToast";
 import { isNativeApp } from "@/lib/platform";
+import { canHandleSensitiveData } from "@/lib/sensitiveData";
 import {
 	type FullProfile,
 	type ProficiencyLevel,
@@ -155,6 +157,9 @@ function ProfilePage() {
 	// Listing yourself on the marketplace is not something the installed app
 	// offers, so the owner keeps "Edit profile" and loses the listing controls.
 	const showTalentControls = !isNativeApp();
+	// Payout details and identity documents are collected on the web only —
+	// see lib/sensitiveData.ts.
+	const showSensitiveSections = canHandleSensitiveData();
 	const qc = useQueryClient();
 	const toast = useToast();
 
@@ -171,7 +176,11 @@ function ProfilePage() {
 	const { data: talentEligibility } = useQuery({
 		queryKey: ["talentGoLiveEligibility", profileId],
 		queryFn: () => profileService.getGoLiveEligibility(),
-		enabled: isOwner && !!profile && profile.talent_status === null,
+		enabled:
+			showTalentControls &&
+			isOwner &&
+			!!profile &&
+			profile.talent_status === null,
 	});
 
 	// ── Mutations ─────────────────────────────────────────────────────────────
@@ -662,6 +671,20 @@ function ProfilePage() {
 										</PillButton>
 									</div>
 								)}
+								{/* Someone else's profile: Report / Block (App Store guideline 1.2) */}
+								{!isOwner && (
+									<div className="flex items-center gap-2 pb-1 sm:justify-end">
+										<PersonSafetyMenu
+											person={{
+												id: profileId,
+												name: fullName,
+												avatarUrl: profile.avatar_url ?? null,
+											}}
+											label={`More actions for ${fullName}`}
+											triggerClassName="inline-flex h-9 w-9 items-center justify-center rounded-full border border-border bg-card text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+										/>
+									</div>
+								)}
 							</div>
 
 							{/* Name & headline */}
@@ -670,13 +693,13 @@ function ProfilePage() {
 									<h1 className="text-[26px] font-bold leading-tight tracking-tight text-foreground">
 										{fullName}
 									</h1>
-									{profile.is_consultant_verified && (
+									{showTalentControls && profile.is_consultant_verified && (
 										<span className="inline-flex items-center gap-1 rounded-full bg-primary/10 px-2.5 py-1 text-[11.5px] font-semibold text-primary">
 											<BadgeCheck className="h-3.5 w-3.5" />
 											Verified consultant
 										</span>
 									)}
-									{profile.talent_status === "active" && (
+									{showTalentControls && profile.talent_status === "active" && (
 										<span className="inline-flex items-center gap-1 rounded-full bg-emerald-500/10 px-2.5 py-1 text-[11.5px] font-semibold text-emerald-600 dark:text-emerald-400">
 											<span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />
 											Open to work
@@ -705,13 +728,14 @@ function ProfilePage() {
 												.join(", ")}
 										</span>
 									)}
-									{profile.rate_settings?.hourly_rate != null && (
-										<span className="inline-flex items-center gap-1.5">
-											<DollarSign className="h-3.5 w-3.5" />
-											{profile.rate_settings.hourly_rate}{" "}
-											{profile.rate_settings.currency}/hr
-										</span>
-									)}
+									{showTalentControls &&
+										profile.rate_settings?.hourly_rate != null && (
+											<span className="inline-flex items-center gap-1.5">
+												<DollarSign className="h-3.5 w-3.5" />
+												{profile.rate_settings.hourly_rate}{" "}
+												{profile.rate_settings.currency}/hr
+											</span>
+										)}
 									{profile.languages.length > 0 && (
 										<span className="inline-flex items-center gap-1.5">
 											<Globe className="h-3.5 w-3.5" />
@@ -734,7 +758,8 @@ function ProfilePage() {
 							 * percentage: "add a portfolio item" is something somebody can
 							 * act on, where "68% complete" is a number to feel bad about.
 							 */}
-							{isOwner &&
+							{showTalentControls &&
+								isOwner &&
 								profile.talent_status === null &&
 								talentEligibility &&
 								!talentEligibility.eligible && (
@@ -889,115 +914,119 @@ function ProfilePage() {
 								)}
 							</Card>
 
-							{/* Rate & Availability */}
-							<Card className="p-5">
-								<div className="flex items-center justify-between mb-3">
-									<h3 className="text-[13.5px] font-semibold text-foreground">
-										Rate &amp; Availability
-									</h3>
-									{isOwner && !isEditing("rate") && (
-										<IconButton
-											label="Edit rate and availability"
-											onClick={() => setEditSection("rate")}
-										>
-											<Edit2 className="h-3.5 w-3.5" />
-										</IconButton>
-									)}
-								</div>
-								{isEditing("rate") ? (
-									<div className="space-y-3">
-										<InlineField
-											label="Hourly Rate"
-											name="hourly_rate"
-											value={rateForm.hourly_rate}
-											onChange={(e) =>
-												setRateForm((p) => ({
-													...p,
-													hourly_rate: e.target.value,
-												}))
-											}
-										/>
-										<div>
-											<label className="block text-xs font-medium text-muted-foreground mb-1">
-												Currency
-											</label>
-											<select
-												value={rateForm.currency}
-												onChange={(e) =>
-													setRateForm((p) => ({
-														...p,
-														currency: e.target.value,
-													}))
-												}
-												className="w-full px-3 py-2 border border-border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary/50"
+							{/* Rate & Availability — a marketplace listing detail, web only */}
+							{showTalentControls && (
+								<Card className="p-5">
+									<div className="flex items-center justify-between mb-3">
+										<h3 className="text-[13.5px] font-semibold text-foreground">
+											Rate &amp; Availability
+										</h3>
+										{isOwner && !isEditing("rate") && (
+											<IconButton
+												label="Edit rate and availability"
+												onClick={() => setEditSection("rate")}
 											>
-												{["USD", "EUR", "GBP", "PHP", "AUD", "CAD"].map((c) => (
-													<option key={c}>{c}</option>
-												))}
-											</select>
-										</div>
-										<div>
-											<label className="block text-xs font-medium text-muted-foreground mb-1">
-												Availability
-											</label>
-											<select
-												value={rateForm.availability}
-												onChange={(e) =>
-													setRateForm((p) => ({
-														...p,
-														availability: e.target.value,
-													}))
-												}
-												className="w-full px-3 py-2 border border-border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary/50"
-											>
-												<option value="available">Available</option>
-												<option value="partially_available">
-													Partially Available
-												</option>
-												<option value="unavailable">Unavailable</option>
-											</select>
-										</div>
-										<div className="flex gap-2 pt-1">
-											<button
-												onClick={saveRate}
-												className="flex-1 py-1.5 bg-primary text-primary-foreground text-sm font-semibold rounded-full hover:bg-primary/90 flex items-center justify-center gap-1"
-											>
-												<Check className="w-3.5 h-3.5" /> Save
-											</button>
-											<button
-												onClick={cancelEdit}
-												className="flex-1 py-1.5 border border-border text-muted-foreground text-sm rounded-full hover:bg-muted"
-											>
-												Cancel
-											</button>
-										</div>
-									</div>
-								) : (
-									<div className="space-y-2">
-										{profile.rate_settings?.hourly_rate ? (
-											<div className="flex items-center gap-2">
-												<DollarSign className="w-4 h-4 text-muted-foreground" />
-												<span className="text-sm font-semibold text-foreground">
-													{profile.rate_settings.hourly_rate}{" "}
-													{profile.rate_settings.currency}
-													<span className="font-normal text-muted-foreground">
-														/hr
-													</span>
-												</span>
-											</div>
-										) : isOwner ? (
-											<p className="text-xs text-muted-foreground italic">
-												Set your rate
-											</p>
-										) : null}
-										{profile.rate_settings?.availability && (
-											<AvailabilityBadge
-												status={profile.rate_settings.availability}
-											/>
+												<Edit2 className="h-3.5 w-3.5" />
+											</IconButton>
 										)}
 									</div>
-								)}
-							</Card>
+									{isEditing("rate") ? (
+										<div className="space-y-3">
+											<InlineField
+												label="Hourly Rate"
+												name="hourly_rate"
+												value={rateForm.hourly_rate}
+												onChange={(e) =>
+													setRateForm((p) => ({
+														...p,
+														hourly_rate: e.target.value,
+													}))
+												}
+											/>
+											<div>
+												<label className="block text-xs font-medium text-muted-foreground mb-1">
+													Currency
+												</label>
+												<select
+													value={rateForm.currency}
+													onChange={(e) =>
+														setRateForm((p) => ({
+															...p,
+															currency: e.target.value,
+														}))
+													}
+													className="w-full px-3 py-2 border border-border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary/50"
+												>
+													{["USD", "EUR", "GBP", "PHP", "AUD", "CAD"].map(
+														(c) => (
+															<option key={c}>{c}</option>
+														),
+													)}
+												</select>
+											</div>
+											<div>
+												<label className="block text-xs font-medium text-muted-foreground mb-1">
+													Availability
+												</label>
+												<select
+													value={rateForm.availability}
+													onChange={(e) =>
+														setRateForm((p) => ({
+															...p,
+															availability: e.target.value,
+														}))
+													}
+													className="w-full px-3 py-2 border border-border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary/50"
+												>
+													<option value="available">Available</option>
+													<option value="partially_available">
+														Partially Available
+													</option>
+													<option value="unavailable">Unavailable</option>
+												</select>
+											</div>
+											<div className="flex gap-2 pt-1">
+												<button
+													onClick={saveRate}
+													className="flex-1 py-1.5 bg-primary text-primary-foreground text-sm font-semibold rounded-full hover:bg-primary/90 flex items-center justify-center gap-1"
+												>
+													<Check className="w-3.5 h-3.5" /> Save
+												</button>
+												<button
+													onClick={cancelEdit}
+													className="flex-1 py-1.5 border border-border text-muted-foreground text-sm rounded-full hover:bg-muted"
+												>
+													Cancel
+												</button>
+											</div>
+										</div>
+									) : (
+										<div className="space-y-2">
+											{profile.rate_settings?.hourly_rate ? (
+												<div className="flex items-center gap-2">
+													<DollarSign className="w-4 h-4 text-muted-foreground" />
+													<span className="text-sm font-semibold text-foreground">
+														{profile.rate_settings.hourly_rate}{" "}
+														{profile.rate_settings.currency}
+														<span className="font-normal text-muted-foreground">
+															/hr
+														</span>
+													</span>
+												</div>
+											) : isOwner ? (
+												<p className="text-xs text-muted-foreground italic">
+													Set your rate
+												</p>
+											) : null}
+											{profile.rate_settings?.availability && (
+												<AvailabilityBadge
+													status={profile.rate_settings.availability}
+												/>
+											)}
+										</div>
+									)}
+								</Card>
+							)}
 
 							{/* Languages */}
 							<Card className="p-5">
@@ -1122,7 +1151,13 @@ function ProfilePage() {
 								</Card>
 							)}
 							{/* Identity Documents (KYC/KYB) - Only visible to owner/admins */}
-							{isOwner && (
+							{isOwner && !showSensitiveSections && (
+								<p className="px-1 text-xs leading-relaxed text-muted-foreground">
+									Payout details and verification documents are managed on the
+									web at proyekto.tech.
+								</p>
+							)}
+							{isOwner && showSensitiveSections && (
 								<Card className="p-5 border-[#14b8a6]/20 bg-teal-50/10">
 									<div className="flex items-center justify-between mb-3 border-b border-[#14b8a6]/10 pb-2">
 										<h3 className="flex items-center gap-2 text-[13.5px] font-semibold text-foreground">
@@ -1355,8 +1390,11 @@ function ProfilePage() {
 								)}
 							</Card>
 
-							{/* Services — productised offerings with tiered pricing */}
-							<ProfileServicesSection userId={profileId} isOwner={isOwner} />
+							{/* Services — productised offerings with tiered pricing. A
+							    marketplace listing, so web only. */}
+							{showTalentControls && (
+								<ProfileServicesSection userId={profileId} isOwner={isOwner} />
+							)}
 
 							{/* Work Experience — roadmap/timeline style */}
 							<Card className="p-6">
@@ -1803,7 +1841,7 @@ function ProfilePage() {
 							)}
 
 							{/* Payout methods (own profile only) */}
-							{isOwner && <PayoutMethodsSection />}
+							{isOwner && showSensitiveSections && <PayoutMethodsSection />}
 						</div>
 					</div>
 				</div>
@@ -1942,12 +1980,14 @@ function ProfilePage() {
 					editingLang ? updateLanguage.isPending : addLanguage.isPending
 				}
 			/>
-			<IdentityDocumentModal
-				isOpen={idDocModalOpen}
-				onClose={() => setIdDocModalOpen(false)}
-				onSave={(payload, file) => addIdentityDoc.mutate({ payload, file })}
-				isSaving={addIdentityDoc.isPending}
-			/>
+			{showSensitiveSections && (
+				<IdentityDocumentModal
+					isOpen={idDocModalOpen}
+					onClose={() => setIdDocModalOpen(false)}
+					onSave={(payload, file) => addIdentityDoc.mutate({ payload, file })}
+					isSaving={addIdentityDoc.isPending}
+				/>
+			)}
 			<UploadModal
 				isOpen={avatarModalOpen}
 				onClose={() => setAvatarModalOpen(false)}

@@ -22,13 +22,32 @@ const WEB_CLIENT_ID = import.meta.env.VITE_GOOGLE_WEB_CLIENT_ID as
 	| undefined;
 
 /**
+ * iOS needs its own OAuth client; the web one is not accepted there.
+ *
+ * Unset today, because no iOS OAuth client exists yet: the committed
+ * `GoogleService-Info.plist` carries only the messaging keys and has no
+ * CLIENT_ID or REVERSED_CLIENT_ID. Creating one in the Google Cloud console
+ * regenerates that file and produces both.
+ *
+ * Two things have to land together, or iOS Google sign-in fails at the
+ * redirect rather than at the button: this value, and a `CFBundleURLTypes`
+ * entry in `ios/App/App/Info.plist` whose scheme is the REVERSED_CLIENT_ID.
+ * `isNativeGoogleAuthAvailable` below returns false on iOS until this is set,
+ * so until then the button correctly falls back to the web redirect flow
+ * instead of presenting a sheet that cannot complete.
+ */
+const IOS_CLIENT_ID = import.meta.env.VITE_GOOGLE_IOS_CLIENT_ID as
+	| string
+	| undefined;
+
+/**
  * The plugin name as registered by the native bridge.
  *
  * Checked via `Capacitor.isPluginAvailable`, which reads the bridge's injected
  * PluginHeaders — so it answers correctly WITHOUT importing the module. Import
  * first and the web fallback registers itself, defeating the check.
  */
-const PLUGIN_NAME = "SocialLogin";
+export const PLUGIN_NAME = "SocialLogin";
 
 export type GoogleAuthResult =
 	| { ok: true }
@@ -44,24 +63,46 @@ export type GoogleAuthResult =
  * presenting a button that cannot work.
  */
 export function isNativeGoogleAuthAvailable(): boolean {
-	return (
-		Capacitor.isNativePlatform() &&
-		Capacitor.isPluginAvailable(PLUGIN_NAME) &&
-		typeof WEB_CLIENT_ID === "string" &&
-		WEB_CLIENT_ID.length > 0
-	);
+	if (
+		!Capacitor.isNativePlatform() ||
+		!Capacitor.isPluginAvailable(PLUGIN_NAME) ||
+		typeof WEB_CLIENT_ID !== "string" ||
+		WEB_CLIENT_ID.length === 0
+	) {
+		return false;
+	}
+	// iOS additionally needs its own client id (see IOS_CLIENT_ID). Without it
+	// the native sheet cannot complete, so fall back rather than present it.
+	if (Capacitor.getPlatform() === "ios") {
+		return typeof IOS_CLIENT_ID === "string" && IOS_CLIENT_ID.length > 0;
+	}
+	return true;
 }
 
 let initialized: Promise<
 	typeof import("@capgo/capacitor-social-login")
 > | null = null;
 
-function loadSocialLogin() {
+/**
+ * The plugin is initialized once for every provider this build uses; a second
+ * `initialize` call would reconfigure it. Shared with appleAuth.ts.
+ */
+export function loadSocialLogin() {
 	if (!initialized) {
 		initialized = (async () => {
 			const mod = await import("@capgo/capacitor-social-login");
 			await mod.SocialLogin.initialize({
-				google: { webClientId: WEB_CLIENT_ID },
+				google: {
+					webClientId: WEB_CLIENT_ID,
+					// Ignored on Android; required on iOS.
+					...(IOS_CLIENT_ID ? { iOSClientId: IOS_CLIENT_ID } : {}),
+				},
+				// Sign in with Apple is iOS-only here (App Store guideline 4.8
+				// applies to the iOS app). An empty redirectUrl keeps it on the
+				// native sheet instead of a web redirect.
+				...(Capacitor.getPlatform() === "ios"
+					? { apple: { redirectUrl: "" } }
+					: {}),
 			});
 			return mod;
 		})().catch((err) => {
@@ -73,13 +114,13 @@ function loadSocialLogin() {
 	return initialized;
 }
 
-const randomNonce = (): string => {
+export const randomNonce = (): string => {
 	const bytes = new Uint8Array(32);
 	crypto.getRandomValues(bytes);
 	return Array.from(bytes, (b) => b.toString(16).padStart(2, "0")).join("");
 };
 
-const sha256Hex = async (value: string): Promise<string> => {
+export const sha256Hex = async (value: string): Promise<string> => {
 	const digest = await crypto.subtle.digest(
 		"SHA-256",
 		new TextEncoder().encode(value),
@@ -90,7 +131,7 @@ const sha256Hex = async (value: string): Promise<string> => {
 };
 
 /** Cancelling the account sheet is a normal outcome; the wording varies by OS. */
-const isCancellation = (message: string): boolean =>
+export const isCancellation = (message: string): boolean =>
 	/cancel|dismiss|closed by user|user_cancel|activity is cancelled/i.test(
 		message,
 	);

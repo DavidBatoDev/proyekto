@@ -256,7 +256,7 @@ Pages, not files, because cost is per page. Replicated contracts count toward
 
 | Piece | Where |
 | --- | --- |
-| Schema: `intake_batches`, `intake_documents`, `intake_relationships` (deny-all RLS), plan keys `document_intake_pages_monthly` and `document_intake_onboarding_pages` | `supabase/migrations/20260930120000_document_intake.sql` (DEV only) |
+| Schema: `intake_batches`, `intake_documents`, `intake_relationships` (deny-all RLS), plan keys `document_intake_pages_monthly` and `document_intake_onboarding_pages` | `supabase/migrations/20260930120500_document_intake.sql` (DEV only) |
 | Upload, detect, classify, extract, re-read a drawn box, review, confirm, group | `backend/src/modules/marketplace/document-intake/document-intake.service.ts`, rules in `intake-review.ts` |
 | Replicate | `intake-replicate.service.ts` |
 | Agent routes `POST /intake/classify`, `POST /intake/extract`, `POST /documents/read-json` | `agent/app/core/documents/intake.py`, `agent/app/api/routes/documents.py` |

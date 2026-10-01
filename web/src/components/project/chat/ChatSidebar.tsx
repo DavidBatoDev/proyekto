@@ -1,6 +1,7 @@
 import { motion } from "framer-motion";
-import { Hash, Lock, Plus, SquarePen, Star } from "lucide-react";
-import { useMemo, useState } from "react";
+import { Hash, Lock, Plus, Search, SquarePen, Star, X } from "lucide-react";
+import { useEffect, useMemo, useState } from "react";
+import { ModalPortal } from "@/components/common/ModalPortal";
 import { readChatDraftText, useChatDraftsVersion } from "@/hooks/useChatDraft";
 import type { ChatMemberCandidate } from "@/services/chat.service";
 import { ChatAvatar } from "./Avatar";
@@ -147,33 +148,13 @@ export function ChatSidebar({
 					</button>
 				</div>
 
-				{showPeoplePicker && (
-					<div className="px-4 pb-2">
-						<div className="max-h-56 overflow-y-auto thin-scrollbar rounded-xl border border-slate-200 bg-white">
-							{members.map((member) => {
-								const label =
-									member.user?.display_name ||
-									member.user?.email ||
-									member.user_id;
-								return (
-									<button
-										key={member.user_id}
-										type="button"
-										onClick={() => onSelectMember(member.user_id, null)}
-										className="w-full border-b border-slate-100 px-3 py-2 text-left hover:bg-slate-50 last:border-b-0"
-									>
-										<p className="text-sm font-medium text-slate-900">
-											{label}
-										</p>
-										<p className="text-xs uppercase text-slate-500">
-											{member.position || member.access_role}
-										</p>
-									</button>
-								);
-							})}
-						</div>
-					</div>
-				)}
+				<NewMessageModal
+					open={showPeoplePicker}
+					members={members}
+					currentUserId={currentUserId}
+					onClose={onTogglePeoplePicker}
+					onSelect={(userId) => onSelectMember(userId, null)}
+				/>
 
 				<div className="border-t border-slate-200/80 px-4 pb-5 pt-2">
 					<div className="mb-2 flex items-center justify-between">
@@ -372,5 +353,125 @@ export function ChatSidebar({
 				</div>
 			</div>
 		</aside>
+	);
+}
+
+function NewMessageModal({
+	open,
+	members,
+	currentUserId,
+	onClose,
+	onSelect,
+}: {
+	open: boolean;
+	members: ChatMemberCandidate[];
+	currentUserId?: string;
+	onClose: () => void;
+	onSelect: (userId: string) => void;
+}) {
+	const [query, setQuery] = useState("");
+
+	useEffect(() => {
+		if (!open) return;
+		setQuery("");
+		const onKey = (event: KeyboardEvent) => {
+			if (event.key === "Escape") onClose();
+		};
+		window.addEventListener("keydown", onKey);
+		return () => window.removeEventListener("keydown", onKey);
+	}, [open, onClose]);
+
+	const filtered = useMemo(() => {
+		const needle = query.trim().toLowerCase();
+		return members.filter((member) => {
+			if (member.user_id === currentUserId) return false;
+			if (!needle) return true;
+			const haystack = [member.user?.display_name, member.user?.email]
+				.filter(Boolean)
+				.join(" ")
+				.toLowerCase();
+			return haystack.includes(needle);
+		});
+	}, [members, currentUserId, query]);
+
+	if (!open) return null;
+
+	return (
+		<ModalPortal>
+			<div
+				className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4"
+				onMouseDown={(event) => {
+					if (event.target === event.currentTarget) onClose();
+				}}
+			>
+				<div
+					role="dialog"
+					aria-modal="true"
+					aria-label="New message"
+					className="w-full max-w-md rounded-2xl bg-white shadow-xl"
+				>
+					<div className="flex items-center justify-between border-b border-slate-200 px-5 py-4">
+						<h2 className="text-base font-semibold text-slate-900">
+							New message
+						</h2>
+						<button
+							type="button"
+							onClick={onClose}
+							aria-label="Close"
+							className="inline-flex h-8 w-8 items-center justify-center rounded-md text-slate-500 hover:bg-slate-100"
+						>
+							<X className="h-4 w-4" />
+						</button>
+					</div>
+					<div className="px-5 pt-4">
+						<div className="flex items-center gap-2 rounded-lg border border-slate-300 px-3 py-2 focus-within:border-primary">
+							<Search className="h-4 w-4 text-slate-400" />
+							<input
+								autoFocus
+								value={query}
+								onChange={(event) => setQuery(event.target.value)}
+								placeholder="Search people"
+								className="w-full bg-transparent text-sm text-slate-900 outline-none placeholder:text-slate-400"
+							/>
+						</div>
+					</div>
+					<div className="max-h-80 overflow-y-auto thin-scrollbar px-3 py-3">
+						{filtered.length === 0 ? (
+							<p className="px-2 py-6 text-center text-sm text-slate-500">
+								No one matches.
+							</p>
+						) : (
+							filtered.map((member) => {
+								const label =
+									member.user?.display_name ||
+									member.user?.email ||
+									member.user_id;
+								return (
+									<button
+										key={member.user_id}
+										type="button"
+										onClick={() => onSelect(member.user_id)}
+										className="flex w-full items-center gap-3 rounded-lg px-2 py-2 text-left hover:bg-slate-100"
+									>
+										<ChatAvatar
+											name={label}
+											avatarUrl={member.user?.avatar_url}
+										/>
+										<div className="min-w-0">
+											<p className="truncate text-sm font-medium text-slate-900">
+												{label}
+											</p>
+											<p className="truncate text-xs uppercase text-slate-500">
+												{member.position || member.access_role}
+											</p>
+										</div>
+									</button>
+								);
+							})
+						)}
+					</div>
+				</div>
+			</div>
+		</ModalPortal>
 	);
 }

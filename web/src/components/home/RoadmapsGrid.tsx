@@ -19,6 +19,7 @@ import { RoadmapStartTrigger } from "@/components/roadmap/RoadmapStartDialog";
 import { invalidateDashboardRoadmaps } from "@/hooks/dashboardInvalidation";
 import { roadmapsPreviewQueryOptions } from "@/hooks/useRoadmapsPreviewQuery";
 import { useCurrentWorkspace } from "@/hooks/useWorkspaceQueries";
+import { isNativeApp } from "@/lib/platform";
 import {
 	useTourDemo,
 	useTourDemoActive,
@@ -186,8 +187,9 @@ export function RoadmapsGrid() {
 					</RoadmapStartTrigger>
 				</div>
 				<p className="mt-1 text-xs text-slate-600">
-					Each matched project unlocks a consultant-led roadmap for structured
-					execution
+					{isNativeApp()
+						? "Plan the work here, then turn a roadmap into a project to deliver it"
+						: "Each matched project unlocks a consultant-led roadmap for structured execution"}
 				</p>
 			</div>
 
@@ -201,8 +203,9 @@ export function RoadmapsGrid() {
 						Your roadmap workspace is preparing
 					</p>
 					<p className="text-sm text-slate-600">
-						After consultant matching starts, your roadmap appears here with
-						milestones and execution phases.
+						{isNativeApp()
+							? "Your roadmaps appear here with their milestones and phases once they are ready."
+							: "After consultant matching starts, your roadmap appears here with milestones and execution phases."}
 					</p>
 				</div>
 			) : (

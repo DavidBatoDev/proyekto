@@ -1,0 +1,162 @@
+name: iOS Release — Build + Upload to TestFlight
+
+# Push a semver tag (v1.2.3) -> build the iOS app on a macOS runner, sign it,
+# and upload it to App Store Connect (TestFlight). Mirrors android-release.yml:
+# same tag, same version numbering, so one tag ships both platforms.
+#
+# Signing is App Store distribution signing driven by an App Store Connect API
+# key (see "Fetch signing files"): no Mac, no registered device, and no .p12 or
+# provisioning profile kept in the repo.
+#
+# Ships DARK: the job only runs when the IOS_RELEASE_ENABLED repo variable is
+# set, because until the Apple Developer account, the app record in App Store
+# Connect and these secrets exist, every tag would fail here.
+#
+#   vars.APPLE_TEAM_ID                 10-char team id (developer.apple.com → Membership)
+#   secrets.ASC_KEY_ID                 App Store Connect API key id
+#   secrets.ASC_ISSUER_ID              App Store Connect issuer id
+#   secrets.ASC_KEY_P8_BASE64          the .p8 key file, base64-encoded
+#   secrets.IOS_CERTIFICATE_PRIVATE_KEY  RSA key (PEM) behind the distribution certificate
+#   secrets.GOOGLE_SERVICE_INFO_PLIST  Firebase iOS config, base64 (gitignored)
+#   vars.IOS_RELEASE_ENABLED           any non-empty value turns the job on
+#
+# The web bundle is built in production mode (web/.env.production), exactly as
+# for Android. Web-only changes after release still reach devices over OTA.
+
+on:
+  push:
+    tags: ['v*.*.*']
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Release version (semver, no leading v), e.g. 1.2.3'
+        required: true
+
+concurrency:
+  group: ios-release-${{ github.ref }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  release:
+    if: ${{ vars.IOS_RELEASE_ENABLED != '' }}
+    runs-on: macos-latest
+    environment: production
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Resolve version + build number
+        id: ver
+        run: |
+          set -euo pipefail
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            VER="${{ github.event.inputs.version }}"
+          else
+            VER="${GITHUB_REF_NAME#v}"
+          fi
+          if ! echo "$VER" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+$'; then
+            echo "::error::Version '$VER' is not MAJOR.MINOR.PATCH"; exit 1
+          fi
+          MAJOR="${VER%%.*}"; REST="${VER#*.}"; MINOR="${REST%%.*}"; PATCH="${REST#*.}"
+          # Same number as Android's versionCode, so native_build_min in
+          # mobile-ota-deploy.yml means the same thing on both platforms.
+          BUILD=$(( MAJOR * 1000000 + MINOR * 1000 + PATCH ))
+          echo "version=$VER" >> "$GITHUB_OUTPUT"
+          echo "build=$BUILD" >> "$GITHUB_OUTPUT"
+          echo "Resolved version=$VER  build=$BUILD"
+
+      # Apple requires uploads built with Xcode 26+ and the iOS 26 SDK.
+      - name: Select Xcode
+        uses: maxim-lobanov/setup-xcode@v1
+        with:
+          xcode-version: latest-stable
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+
+      # Gitignored, like Android's google-services.json: written from a secret.
+      - name: Write Firebase config
+        env:
+          PLIST_B64: ${{ secrets.GOOGLE_SERVICE_INFO_PLIST }}
+        run: |
+          set -euo pipefail
+          if [ -z "$PLIST_B64" ]; then
+            echo "::error::Missing GOOGLE_SERVICE_INFO_PLIST secret"; exit 1
+          fi
+          echo "$PLIST_B64" | base64 --decode > web/ios/App/App/GoogleService-Info.plist
+
+      - name: Build web (production) + sync iOS
+        working-directory: web
+        run: |
+          npm ci
+          npm run build
+          npx cap sync ios
+
+      # Signing without a Mac and without a registered device.
+      #
+      # Plain automatic signing fails here: the archive step signs for
+      # *development* first, which needs a registered iPhone ("Your team has
+      # no devices from which to generate a provisioning profile"). App Store
+      # distribution needs no device, so we fetch (or create) an App Store
+      # distribution certificate + profile through the API with Codemagic's
+      # open-source CLI and switch the project to manual signing with them.
+      #
+      # IOS_CERTIFICATE_PRIVATE_KEY is a fixed RSA key generated once and kept
+      # as a secret, so every run reuses the same distribution certificate
+      # instead of minting a new one (Apple allows only a few per team).
+      - name: Fetch signing files
+        env:
+          APP_STORE_CONNECT_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
+          APP_STORE_CONNECT_KEY_IDENTIFIER: ${{ secrets.ASC_KEY_ID }}
+          ASC_KEY_B64: ${{ secrets.ASC_KEY_P8_BASE64 }}
+          CERTIFICATE_PRIVATE_KEY: ${{ secrets.IOS_CERTIFICATE_PRIVATE_KEY }}
+        run: |
+          set -euo pipefail
+          if [ -z "$ASC_KEY_B64" ] || [ -z "$APP_STORE_CONNECT_KEY_IDENTIFIER" ] || [ -z "$APP_STORE_CONNECT_ISSUER_ID" ] || [ -z "$CERTIFICATE_PRIVATE_KEY" ] || [ -z "${{ vars.APPLE_TEAM_ID }}" ]; then
+            echo "::error::Missing ASC_* / IOS_CERTIFICATE_PRIVATE_KEY secret or APPLE_TEAM_ID variable"; exit 1
+          fi
+          echo "$ASC_KEY_B64" | base64 --decode > "$RUNNER_TEMP/AuthKey_$APP_STORE_CONNECT_KEY_IDENTIFIER.p8"
+          export APP_STORE_CONNECT_PRIVATE_KEY="$(cat "$RUNNER_TEMP/AuthKey_$APP_STORE_CONNECT_KEY_IDENTIFIER.p8")"
+          pip3 install --quiet --break-system-packages codemagic-cli-tools
+          keychain initialize
+          app-store-connect fetch-signing-files "tech.proyekto.app"             --type IOS_APP_STORE             --certificate-key=@env:CERTIFICATE_PRIVATE_KEY             --create
+          keychain add-certificates
+          xcode-project use-profiles             --project web/ios/App/App.xcodeproj             --export-options-plist "$RUNNER_TEMP/ExportOptions.plist"
+
+      - name: Set version + build number
+        working-directory: web/ios/App
+        run: |
+          set -euo pipefail
+          sed -i '' -E             -e "s/MARKETING_VERSION = [^;]+;/MARKETING_VERSION = ${{ steps.ver.outputs.version }};/g"             -e "s/CURRENT_PROJECT_VERSION = [^;]+;/CURRENT_PROJECT_VERSION = ${{ steps.ver.outputs.build }};/g"             App.xcodeproj/project.pbxproj
+          grep -E "MARKETING_VERSION|CURRENT_PROJECT_VERSION" App.xcodeproj/project.pbxproj | sort -u
+
+      - name: Archive
+        working-directory: web/ios/App
+        run: |
+          set -euo pipefail
+          xcodebuild archive             -workspace App.xcworkspace             -scheme App             -configuration Release             -destination 'generic/platform=iOS'             -archivePath "$RUNNER_TEMP/Proyekto.xcarchive"
+
+      # destination=upload sends the build straight to App Store Connect; it
+      # appears in TestFlight after Apple's processing (usually 5-30 minutes).
+      - name: Export + upload to App Store Connect
+        run: |
+          set -euo pipefail
+          PL="$RUNNER_TEMP/ExportOptions.plist"
+          /usr/libexec/PlistBuddy -c "Delete :destination" "$PL" 2>/dev/null || true
+          /usr/libexec/PlistBuddy -c "Add :destination string upload" "$PL"
+          /usr/libexec/PlistBuddy -c "Set :method app-store-connect" "$PL" 2>/dev/null || /usr/libexec/PlistBuddy -c "Add :method string app-store-connect" "$PL"
+          xcodebuild -exportArchive             -archivePath "$RUNNER_TEMP/Proyekto.xcarchive"             -exportOptionsPlist "$PL"             -exportPath "$RUNNER_TEMP/export"             -authenticationKeyPath "$RUNNER_TEMP/AuthKey_${{ secrets.ASC_KEY_ID }}.p8"             -authenticationKeyID "${{ secrets.ASC_KEY_ID }}"             -authenticationKeyIssuerID "${{ secrets.ASC_ISSUER_ID }}"
+
+      - name: Summary
+        run: |
+          {
+            echo "### iOS ${{ steps.ver.outputs.version }} (build ${{ steps.ver.outputs.build }}) uploaded"
+            echo "It shows up in App Store Connect → TestFlight once Apple finishes processing."
+          } >> "$GITHUB_STEP_SUMMARY"

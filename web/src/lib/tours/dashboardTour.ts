@@ -7,6 +7,7 @@
  */
 
 import type { Step } from "react-joyride";
+import { isNativeApp } from "@/lib/platform";
 import { DASHBOARD_DEMO_DATASET } from "./demo/dashboardDemoDataset";
 import type { TourDefinition } from "./types";
 
@@ -40,8 +41,10 @@ const teamsStep: Step = {
 const projectsStep: Step = {
 	target: '[data-tour="dashboard-projects"]',
 	title: "Projects are where work gets delivered",
-	content:
-		"A project holds the brief, the contract, the people, and the delivery. Open one to see its roadmap, tasks, chat, and invoices in a single place.",
+	// Contracts and invoices are web-only, so the app's tour leaves them out.
+	content: isNativeApp()
+		? "A project holds the roadmap, the people, and the delivery. Open one to see its tasks, chat, and meetings in a single place."
+		: "A project holds the brief, the contract, the people, and the delivery. Open one to see its roadmap, tasks, chat, and invoices in a single place.",
 	placement: "top",
 };
 

@@ -4,6 +4,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 const capacitor = vi.hoisted(() => ({
 	isNativePlatform: vi.fn(() => true),
 	isPluginAvailable: vi.fn(() => true),
+	getPlatform: vi.fn(() => "android"),
 }));
 // Loosely typed on purpose: these stand in for native/SDK surfaces whose real
 // shapes are unions, and pinning them here buys nothing but casts at every call.
@@ -34,6 +35,12 @@ async function load() {
 describe("googleAuth", () => {
 	beforeEach(() => {
 		vi.clearAllMocks();
+		// stubEnv persists across tests otherwise, so an iOS client id set by one
+		// case leaks into the Android ones and silently changes what they assert.
+		vi.unstubAllEnvs();
+		// Pin the iOS id empty: a developer's web/.env (which Vitest loads) may
+		// set it, and these cases assert the no-iOS-client behaviour.
+		vi.stubEnv("VITE_GOOGLE_IOS_CLIENT_ID", "");
 		socialLogin.initialize.mockResolvedValue(undefined);
 		vi.stubEnv(
 			"VITE_GOOGLE_WEB_CLIENT_ID",
@@ -41,6 +48,7 @@ describe("googleAuth", () => {
 		);
 		capacitor.isNativePlatform.mockReturnValue(true);
 		capacitor.isPluginAvailable.mockReturnValue(true);
+		capacitor.getPlatform.mockReturnValue("android");
 		socialLogin.login.mockResolvedValue(googleToken);
 		auth.signInWithIdToken.mockResolvedValue({ data: {}, error: null });
 	});
@@ -55,6 +63,43 @@ describe("googleAuth", () => {
 			capacitor.isNativePlatform.mockReturnValue(false);
 			const { isNativeGoogleAuthAvailable } = await load();
 			expect(isNativeGoogleAuthAvailable()).toBe(false);
+		});
+
+		// iOS needs its own OAuth client, and none exists yet. Presenting the
+		// native sheet without it fails at the redirect instead of at the
+		// button, which is a worse failure than falling back.
+		it("is false on iOS without an iOS client id", async () => {
+			capacitor.getPlatform.mockReturnValue("ios");
+			const { isNativeGoogleAuthAvailable } = await load();
+			expect(isNativeGoogleAuthAvailable()).toBe(false);
+		});
+
+		it("is true on iOS once the iOS client id is set", async () => {
+			capacitor.getPlatform.mockReturnValue("ios");
+			vi.stubEnv(
+				"VITE_GOOGLE_IOS_CLIENT_ID",
+				"ios-client-id.apps.googleusercontent.com",
+			);
+			const { isNativeGoogleAuthAvailable } = await load();
+			expect(isNativeGoogleAuthAvailable()).toBe(true);
+		});
+
+		it("passes the iOS client id to the plugin when present", async () => {
+			capacitor.getPlatform.mockReturnValue("ios");
+			vi.stubEnv(
+				"VITE_GOOGLE_IOS_CLIENT_ID",
+				"ios-client-id.apps.googleusercontent.com",
+			);
+			const { signInWithGoogleNative } = await load();
+			await signInWithGoogleNative();
+			// On iOS the same initialize also enables Sign in with Apple.
+			expect(socialLogin.initialize).toHaveBeenCalledWith({
+				google: {
+					webClientId: "web-client-id.apps.googleusercontent.com",
+					iOSClientId: "ios-client-id.apps.googleusercontent.com",
+				},
+				apple: { redirectUrl: "" },
+			});
 		});
 
 		// A native build shipped without the id must fall back rather than

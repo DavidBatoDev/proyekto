@@ -596,6 +596,7 @@ export const EpicModal = ({
 			label: "Comments",
 			content: epicId ? (
 				<CommentsSection
+					reportTargetType="epic_comment"
 					comments={comments}
 					onAddComment={handleAddComment}
 					onUpdateComment={handleUpdateComment}

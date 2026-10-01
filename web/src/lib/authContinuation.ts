@@ -6,7 +6,7 @@ export const AUTH_CONTINUATION_KEY = "proyekto_auth_continuation";
 const AUTH_CONTINUATION_TTL_MS = 30 * 60 * 1000;
 
 export type AuthContinuationSource = "login" | "signup";
-export type AuthContinuationMethod = "password" | "google";
+export type AuthContinuationMethod = "password" | "google" | "apple";
 
 export interface AuthContinuation {
 	redirectTo?: string;
@@ -51,7 +51,8 @@ function isAuthContinuation(value: unknown): value is AuthContinuation {
 	}
 	if (
 		candidate.authMethod !== "password" &&
-		candidate.authMethod !== "google"
+		candidate.authMethod !== "google" &&
+		candidate.authMethod !== "apple"
 	) {
 		return false;
 	}

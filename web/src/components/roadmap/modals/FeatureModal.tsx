@@ -6,6 +6,7 @@ import {
 	Edit2,
 	Plus,
 	Search,
+	Trash2,
 	X,
 } from "lucide-react";
 import {
@@ -19,6 +20,7 @@ import {
 import { useShallow } from "zustand/react/shallow";
 import { useUser } from "@/auth";
 import { RichTextEditor } from "@/components/common/RichTextEditor";
+import { useDraftAutosave } from "@/hooks/useAutosave";
 import { useMentionUsers } from "@/hooks/useMentionUsers";
 import { useCommentSummaryUpdaters } from "@/hooks/useRoadmapCommentSummary";
 import { useToast } from "@/hooks/useToast";
@@ -32,11 +34,13 @@ import type {
 	RoadmapFeature,
 	RoadmapTask,
 } from "@/types/roadmap";
+import { Button } from "@/ui/button";
 import { CommentsSection } from "../shared/CommentsSection";
 import {
 	calculateFeatureProgressFromTasks,
 	getCompletedTaskCount,
 } from "../shared/featureProgress";
+import { SaveStatus } from "../shared/SaveStatus";
 import { SortableTaskList } from "../widgets/SortableTaskList";
 import { RoadmapModalLayout } from "./RoadmapModalLayout";
 
@@ -48,6 +52,41 @@ const FEATURE_STATUS_OPTIONS: FeatureStatus[] = [
 	"blocked",
 ];
 
+type FeatureSubmitData = {
+	title: string;
+	description: string;
+	is_deliverable: boolean;
+	start_date?: string;
+	end_date?: string;
+	// Only present (and only honored server-side) when the feature has 0
+	// tasks — otherwise status stays cascade-derived.
+	status?: FeatureStatus;
+	assignee_ids?: string[];
+};
+
+type FeatureDraft = {
+	title: string;
+	description: string;
+	isDeliverable: boolean;
+	startDate: string;
+	endDate: string;
+	status: FeatureStatus;
+	assigneeIds: string[];
+};
+
+const initialAssigneeIds = (initialData?: RoadmapFeature) =>
+	initialData?.assignee_ids ?? (initialData?.assignees ?? []).map((p) => p.id);
+
+const buildFeatureDraft = (initialData?: RoadmapFeature): FeatureDraft => ({
+	title: initialData?.title ?? "",
+	description: initialData?.description ?? "",
+	isDeliverable: initialData?.is_deliverable ?? false,
+	startDate: initialData?.start_date?.slice(0, 10) ?? "",
+	endDate: initialData?.end_date?.slice(0, 10) ?? "",
+	status: initialData?.status ?? "not_started",
+	assigneeIds: [...initialAssigneeIds(initialData)].sort(),
+});
+
 interface FeatureModalProps {
 	isOpen: boolean;
 	epicTitle?: string;
@@ -58,18 +97,19 @@ interface FeatureModalProps {
 	onAddTask?: (featureId: string) => void | Promise<void>;
 	onUpdateTask?: (task: RoadmapTask) => void | Promise<void>;
 	onDeleteTask?: (taskId: string) => void | Promise<void>;
+	/**
+	 * Delete this feature. Only shown when editing an existing feature; the
+	 * caller owns the confirmation (the canvas's delete-confirm dialog).
+	 */
+	onDelete?: () => void;
 	onSelectTask?: (task: RoadmapTask) => void;
-	onSubmit: (data: {
-		title: string;
-		description: string;
-		is_deliverable: boolean;
-		start_date?: string;
-		end_date?: string;
-		// Only present (and only honored server-side) when the feature has 0
-		// tasks — otherwise status stays cascade-derived.
-		status?: FeatureStatus;
-		assignee_ids?: string[];
-	}) => void;
+	onSubmit: (data: FeatureSubmitData) => void;
+	/**
+	 * Save an existing feature while the modal stays open. When provided, edits
+	 * autosave as you go and the header shows Saving… / Saved; without it the
+	 * modal falls back to saving through onSubmit on close.
+	 */
+	onAutosave?: (data: FeatureSubmitData) => Promise<void>;
 	isLoading?: boolean;
 	isPendingCreate?: boolean;
 }
@@ -84,8 +124,10 @@ export const FeatureModal = ({
 	onAddTask,
 	onUpdateTask,
 	onDeleteTask,
+	onDelete,
 	onSelectTask,
 	onSubmit,
+	onAutosave,
 	isLoading = false,
 	isPendingCreate = false,
 }: FeatureModalProps) => {
@@ -185,16 +227,17 @@ export const FeatureModal = ({
 	useEffect(() => {
 		if (isOpen) {
 			const initialProfiles = initialData?.assignees ?? [];
-			const initialIds =
-				initialData?.assignee_ids ?? initialProfiles.map((p) => p.id);
+			const initialIds = initialAssigneeIds(initialData);
+			// Same normaliser the autosave baseline uses, so the two agree.
+			const initialDraft = buildFeatureDraft(initialData);
 			const nextInitialValues = {
-				title: initialData?.title ?? "",
-				description: initialData?.description ?? "",
-				isDeliverable: initialData?.is_deliverable ?? false,
-				startDate: initialData?.start_date?.slice(0, 10) ?? "",
-				endDate: initialData?.end_date?.slice(0, 10) ?? "",
-				status: initialData?.status ?? ("not_started" as FeatureStatus),
-				assigneeKey: [...initialIds].sort().join(","),
+				title: initialDraft.title,
+				description: initialDraft.description,
+				isDeliverable: initialDraft.isDeliverable,
+				startDate: initialDraft.startDate,
+				endDate: initialDraft.endDate,
+				status: initialDraft.status,
+				assigneeKey: initialDraft.assigneeIds.join(","),
 			};
 			initialSnapshotRef.current = nextInitialValues;
 
@@ -263,6 +306,38 @@ export const FeatureModal = ({
 
 	const isFeatureTaskless = (initialData?.tasks?.length ?? 0) === 0;
 
+	const toSubmitData = (value: FeatureDraft): FeatureSubmitData => ({
+		title: value.title,
+		description: value.description,
+		is_deliverable: value.isDeliverable,
+		start_date: value.startDate || undefined,
+		end_date: value.endDate || undefined,
+		status: isFeatureTaskless ? value.status : undefined,
+		assignee_ids: value.assigneeIds,
+	});
+
+	const draft: FeatureDraft = {
+		title,
+		description,
+		isDeliverable,
+		startDate,
+		endDate,
+		status,
+		assigneeIds: [...featureAssigneeIds].sort(),
+	};
+
+	const autosaveActive = Boolean(
+		onAutosave && initialData?.id && !isReadOnlyPending,
+	);
+	const { status: saveStatus, flush: flushAutosave } = useDraftAutosave({
+		draft,
+		baseline: buildFeatureDraft(initialData),
+		resetKey: `${isOpen}:${initialData?.id ?? ""}`,
+		save: (value) =>
+			onAutosave ? onAutosave(toSubmitData(value)) : Promise.resolve(),
+		enabled: isOpen && autosaveActive && title.trim().length > 0,
+	});
+
 	const submitCurrentValues = () => {
 		onSubmit({
 			title,
@@ -326,6 +401,14 @@ export const FeatureModal = ({
 	// submitted, so that case is discarded with a heads-up toast instead.
 	const handleRequestClose = () => {
 		if (isLoading) return;
+		if (autosaveActive) {
+			// Edits already saved as they were made; push out the last one.
+			if (title.trim()) flushAutosave();
+			else if (hasUnsavedChanges)
+				toast.error("Title is required — your last change wasn't saved");
+			onClose();
+			return;
+		}
 		if (hasUnsavedChanges) {
 			if (title.trim()) {
 				submitCurrentValues();
@@ -987,6 +1070,7 @@ export const FeatureModal = ({
 			label: "Comments",
 			content: featureId ? (
 				<CommentsSection
+					reportTargetType="feature_comment"
 					mentionUsers={mentionUsers}
 					canInviteByEmail={canInviteByEmail}
 					comments={comments}
@@ -1039,8 +1123,25 @@ export const FeatureModal = ({
 			titlePlaceholder="Feature title"
 			onSubmit={handleSubmit}
 			actionButtons={dateActionButton}
+			saveStatus={autosaveActive ? <SaveStatus status={saveStatus} /> : null}
 			showDefaultDatesAction={false}
 			body={body}
+			footer={
+				onDelete && featureId && !isReadOnlyPending ? (
+					<div className="flex justify-end">
+						<Button
+							type="button"
+							variant="outlined"
+							colorScheme="destructive"
+							size="md"
+							onClick={onDelete}
+						>
+							<Trash2 className="h-4 w-4" />
+							Delete feature
+						</Button>
+					</div>
+				) : undefined
+			}
 			canComment={Boolean(user) && !isReadOnlyPending}
 			rightPanelTabs={rightPanelTabs}
 			defaultRightPanelTabId="comments"

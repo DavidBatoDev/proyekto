@@ -16,12 +16,13 @@ import { useEffect, useMemo, useState } from "react";
 import { ModalPortal } from "@/components/common/ModalPortal";
 import { RichTextEditor } from "@/components/common/RichTextEditor";
 import { cleanHTML } from "@/components/common/RichTextEditor/utils/formatting";
-import { PROJECT_STATUS_CONFIG } from "@/components/home/ProjectsGrid";
+import { pickableProjectStatuses } from "@/components/home/ProjectsGrid";
 import { ProjectSettingsLayout } from "@/components/project/ProjectSettingsLayout";
 import { invalidateDashboardProjects } from "@/hooks/useDashboardProjectsQuery";
 import { useProjectMyPermissionsQuery } from "@/hooks/useProjectQueries";
 import { useToast } from "@/hooks/useToast";
 import { CURRENCIES } from "@/lib/currency";
+import { isNativeApp } from "@/lib/platform";
 import { supabase } from "@/lib/supabase";
 import {
 	type Project,
@@ -617,13 +618,14 @@ function SettingsGeneralPage() {
 											onChange={(e) => void saveStatus(e.target.value)}
 											className="w-full appearance-none rounded-lg border border-slate-300 bg-white px-3 py-2.5 pr-9 text-sm text-slate-800 focus:border-slate-500 focus:outline-none focus:ring-2 focus:ring-slate-400/30 disabled:opacity-50"
 										>
-											{Object.entries(PROJECT_STATUS_CONFIG).map(
-												([key, cfg]) => (
-													<option key={key} value={key}>
-														{cfg.label}
-													</option>
-												),
-											)}
+											{pickableProjectStatuses(
+												project?.status,
+												isNativeApp(),
+											).map(([key, cfg]) => (
+												<option key={key} value={key}>
+													{cfg.label}
+												</option>
+											))}
 										</select>
 										<div className="pointer-events-none absolute inset-y-0 right-3 flex items-center">
 											{isSavingStatus ? (
@@ -642,10 +644,9 @@ function SettingsGeneralPage() {
 										Currency
 									</h3>
 									<p className="text-sm text-slate-500 mb-3">
-										Default currency for new member rates, contracts, and
-										invoices on this project, and the currency shown in this
-										project's time views. Changing it does not convert existing
-										amounts.
+										{isNativeApp()
+											? "Default currency for new member rates on this project, and the currency shown in this project's time views. Changing it does not convert existing amounts."
+											: "Default currency for new member rates, contracts, and invoices on this project, and the currency shown in this project's time views. Changing it does not convert existing amounts."}
 									</p>
 									<div className="relative max-w-xs">
 										<select

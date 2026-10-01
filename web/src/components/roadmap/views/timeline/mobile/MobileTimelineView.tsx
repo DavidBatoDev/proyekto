@@ -524,7 +524,7 @@ export const MobileTimelineView = ({
 						<button
 							type="button"
 							onClick={onAddEpic}
-							className="inline-flex items-center gap-1.5 rounded-md bg-blue-600 px-3 py-2 text-sm font-medium text-white"
+							className="inline-flex items-center gap-1.5 rounded-md bg-primary px-3 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90"
 						>
 							<Plus className="h-4 w-4" />
 							Add epic

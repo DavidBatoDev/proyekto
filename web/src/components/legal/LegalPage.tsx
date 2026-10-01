@@ -1,6 +1,7 @@
 import { Link } from "@tanstack/react-router";
 import type { ReactNode } from "react";
 import { BrandMark } from "@/components/brand/BrandMark";
+import { COMPANY, COMPANY_ADDRESS } from "@/lib/company";
 
 /**
  * The shell both legal pages share.
@@ -67,6 +68,9 @@ export function LegalPage({
 					</p>
 					<p className="mt-4 text-sm text-muted-foreground">
 						Last updated {updated}
+					</p>
+					<p className="mt-1 text-sm text-muted-foreground">
+						Proyekto is operated by {COMPANY.legalName}, {COMPANY_ADDRESS}.
 					</p>
 				</section>
 

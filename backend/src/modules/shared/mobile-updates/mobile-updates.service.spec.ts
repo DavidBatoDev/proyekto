@@ -60,6 +60,30 @@ describe('MobileUpdatesService.resolveUpdate', () => {
     expect(builder.lte).toHaveBeenCalledWith('native_build_min', 3);
   });
 
+  it('reads the build number from version_code, as the Capgo v8 plugin sends it', async () => {
+    // Real payload shape: version_build is the native versionName, version_code
+    // the versionCode. Parsing "0.7.2" gave 0 and matched no bundle at all.
+    const { svc, builder } = make({ data: null, error: null });
+    await svc.resolveUpdate({
+      platform: 'android',
+      version_build: '0.7.2',
+      version_code: '7002',
+      version_name: 'builtin',
+      defaultChannel: 'production',
+    });
+    expect(builder.lte).toHaveBeenCalledWith('native_build_min', 7002);
+  });
+
+  it('never truncates a dotted versionName into a build number', async () => {
+    const { svc, from } = make({ data: null, error: null });
+    const res = await svc.resolveUpdate({
+      ...baseBody,
+      version_build: '0.7.2',
+    });
+    expect(from).not.toHaveBeenCalled();
+    expect(res).toHaveProperty('error');
+  });
+
   it('orders by created_at DESC (monotonic, no string-sort downgrade)', async () => {
     const { svc, builder } = make({ data: null, error: null });
     await svc.resolveUpdate(baseBody);
@@ -204,5 +228,43 @@ describe('MobileUpdatesService.resolveRequirement', () => {
     await expect(
       svc.resolveRequirement({ platform: 'android', build: '1' }),
     ).resolves.toEqual(ok);
+  });
+});
+
+describe('MobileUpdatesService.recordStat', () => {
+  const svc = new MobileUpdatesService({} as never, {} as never, {} as never);
+  const log = jest
+    .spyOn(
+      (svc as unknown as { logger: { log: (m: string) => void } }).logger,
+      'log',
+    )
+    .mockImplementation(() => undefined);
+
+  afterEach(() => log.mockClear());
+
+  it('logs every event in a Capgo v8 batch', () => {
+    svc.recordStat([
+      {
+        platform: 'android',
+        action: 'download_complete',
+        version_name: '7000.212',
+      },
+      { platform: 'android', action: 'set', version_name: '7000.212' },
+    ]);
+    expect(log).toHaveBeenCalledTimes(2);
+    expect(log.mock.calls[0][0]).toContain('action=download_complete');
+    expect(log.mock.calls[1][0]).toContain('action=set');
+  });
+
+  it('still accepts a single event object', () => {
+    svc.recordStat({ platform: 'ios', action: 'update_fail' });
+    expect(log).toHaveBeenCalledTimes(1);
+    expect(log.mock.calls[0][0]).toContain('platform=ios');
+  });
+
+  it('ignores an empty or malformed body', () => {
+    svc.recordStat(undefined);
+    svc.recordStat([null as never]);
+    expect(log).not.toHaveBeenCalled();
   });
 });

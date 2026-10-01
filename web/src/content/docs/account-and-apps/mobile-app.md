@@ -13,13 +13,16 @@ access to, chat, meetings, your assigned work. See
 
 ## What is not in the app
 
-Two things are missing on purpose:
+Three things are missing on purpose:
 
 - **The marketplace.** Finding consultants, posting a brief, contracts and
   invoices all live on the web. The app carries your workspace and the delivery
   work inside it.
 - **Every page that shows a price or sells a plan.** Plan and billing management
   happen in a browser.
+- **Payout details and verification documents.** Where you want to be paid, and
+  any identity document, are added and viewed on the web. You can still record a
+  payout from the app — it just goes without the member's stored payout details.
 
 > Your workspace's plan applies in the app in full. It simply is not managed
 > from your phone.

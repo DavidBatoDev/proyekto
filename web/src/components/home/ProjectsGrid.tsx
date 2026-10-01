@@ -14,6 +14,7 @@ import { ProjectStatusBadge } from "@/components/common/SemanticBadge";
 import { openProjectInviteModal } from "@/components/invites/projectInviteModalEvents";
 import { dashboardProjectsQueryOptions } from "@/hooks/useDashboardProjectsQuery";
 import { useCurrentWorkspace } from "@/hooks/useWorkspaceQueries";
+import { isNativeApp } from "@/lib/platform";
 import { supabase } from "@/lib/supabase";
 import {
 	useTourDemo,
@@ -33,12 +34,20 @@ type DashboardCard =
 	| { kind: "invite"; invite: ProjectInvite }
 	| { kind: "project"; project: Project };
 
+/**
+ * "Bidding" means the project is posted for consultant bids — a marketplace
+ * idea, and the installed app carries no marketplace. There it reads as "Not
+ * started", which is what it means for delivery. Evaluated once: the platform
+ * never changes under a running bundle.
+ */
+const BIDDING_LABEL = isNativeApp() ? "Not started" : "Bidding";
+
 export const PROJECT_STATUS_CONFIG: Record<
 	string,
 	{ label: string; color: string }
 > = {
 	bidding: {
-		label: "Bidding",
+		label: BIDDING_LABEL,
 		color: "#7c3aed",
 	},
 	draft: {
@@ -62,6 +71,22 @@ export const PROJECT_STATUS_CONFIG: Record<
 		color: "#6b7280",
 	},
 };
+
+/**
+ * The statuses a status picker offers. The installed app never offers
+ * "bidding", because choosing it posts the project for consultant bids on the
+ * web marketplace — unless the project is already in it, so the picker can
+ * still show where it stands.
+ */
+export function pickableProjectStatuses(
+	currentStatus: string | null | undefined,
+	isNative: boolean,
+): [string, { label: string; color: string }][] {
+	const current = (currentStatus ?? "").toLowerCase();
+	return Object.entries(PROJECT_STATUS_CONFIG).filter(
+		([key]) => !isNative || key !== "bidding" || current === "bidding",
+	);
+}
 
 const PRIMARY_EMPTY_COPY = {
 	title: "No projects yet",

@@ -212,7 +212,7 @@ export const SEED_KEYS: SeedKey[] = [
     group: 'usage',
     values: [3, 25, 250, null],
   },
-  // 20260930120000_document_intake, values set by 20261001090000.
+  // 20260930120500_document_intake, values set by 20261001090000.
   {
     key: 'document_intake_pages_monthly',
     kind: 'quota',

@@ -1,3 +1,4 @@
+import { findBlockerIds } from '../../../shared/safety/blocks.queries';
 import { Inject, Injectable, NotFoundException } from '@nestjs/common';
 import { SupabaseClient } from '@supabase/supabase-js';
 import { SUPABASE_ADMIN } from '../../../../config/supabase.module';
@@ -283,6 +284,13 @@ export class RoadmapAuthorizationService {
   async filterUsersWhoCanViewRoadmap(
     roadmapId: string,
     userIds: string[],
+    options: {
+      /**
+       * Also drop anyone who has blocked this user (the comment author), so a
+       * blocked person can't reach them with an @mention.
+       */
+      excludeBlockersOf?: string;
+    } = {},
   ): Promise<string[]> {
     const unique = Array.from(new Set(userIds));
     if (unique.length === 0) return [];
@@ -296,7 +304,9 @@ export class RoadmapAuthorizationService {
     if (roadmap.owner_id && unique.includes(roadmap.owner_id)) {
       allowed.add(roadmap.owner_id);
     }
-    if (!roadmap.project_id) return Array.from(allowed);
+    if (!roadmap.project_id) {
+      return this.withoutBlockers(allowed, options.excludeBlockersOf);
+    }
 
     const { data, error } = await this.db
       .from('project_access')
@@ -311,7 +321,16 @@ export class RoadmapAuthorizationService {
       const id = (row as { user_id?: string | null }).user_id;
       if (id) allowed.add(id);
     }
-    return Array.from(allowed);
+    return this.withoutBlockers(allowed, options.excludeBlockersOf);
+  }
+
+  private async withoutBlockers(
+    allowed: Set<string>,
+    authorId: string | undefined,
+  ): Promise<string[]> {
+    if (!authorId || allowed.size === 0) return Array.from(allowed);
+    const blockers = await findBlockerIds(this.db, authorId, [...allowed]);
+    return Array.from(allowed).filter((id) => !blockers.has(id));
   }
 
   /**

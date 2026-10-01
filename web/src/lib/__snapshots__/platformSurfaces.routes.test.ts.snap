@@ -147,6 +147,7 @@ exports[`every generated route has a platform decision > matches the recorded su
   "/settings": "app",
   "/settings/": "app",
   "/settings/appearance": "app",
+  "/settings/blocked": "app",
   "/settings/delete-account": "app",
   "/settings/mcp-tokens": "app",
   "/settings/notifications": "app",

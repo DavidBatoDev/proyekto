@@ -12,7 +12,9 @@ import {
 	rememberAuthContinuation,
 	resolvePostAuthDestination,
 } from "@/lib/authContinuation";
+import { AppleSignInButton } from "../../components/auth/AppleSignInButton";
 import { SignupLayout } from "../../components/auth/signup/SignupLayout";
+import { useAppleSignIn } from "../../hooks/useAppleSignIn";
 import { useGoogleSignIn } from "../../hooks/useGoogleSignIn";
 import { useToast } from "../../hooks/useToast";
 import {
@@ -126,6 +128,19 @@ function RouteComponent() {
 	const handleGoogleSignIn = async () => {
 		setIsLoading(true);
 		await googleSignIn();
+	};
+
+	const { signIn: appleSignIn, isAvailable: isAppleAvailable } = useAppleSignIn(
+		{
+			source: "login",
+			redirectTo,
+			onSettled: () => setIsLoading(false),
+		},
+	);
+
+	const handleAppleSignIn = async () => {
+		setIsLoading(true);
+		await appleSignIn();
 	};
 
 	const handleSubmit = async (e: React.FormEvent) => {
@@ -490,6 +505,11 @@ function RouteComponent() {
 						Start your roadmap, match with experts, and execute in one system.
 					</p>
 				</div>
+
+				{/* Sign in with Apple — iOS app only (App Store guideline 4.8) */}
+				{isAppleAvailable && (
+					<AppleSignInButton onClick={handleAppleSignIn} disabled={isLoading} />
+				)}
 
 				{/* Google Sign-In */}
 				<button

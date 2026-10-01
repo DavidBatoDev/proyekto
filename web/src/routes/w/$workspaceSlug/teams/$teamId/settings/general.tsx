@@ -24,6 +24,7 @@ import { TeamAvatar } from "@/components/team/TeamAvatar";
 import { TeamSettingsLayout } from "@/components/team/TeamSettingsLayout";
 import { TradingNamesSection } from "@/components/team/TradingNamesSection";
 import { useToast } from "@/hooks/useToast";
+import { isNativeApp } from "@/lib/platform";
 import { isRichTextEmpty } from "@/lib/richText";
 import {
 	deleteTeam,
@@ -436,115 +437,122 @@ function TeamGeneralSettings() {
 								)}
 							</section>
 
-							<section>
-								<div className="mb-1 flex items-center justify-between gap-2">
-									<h3 className="text-[18px] font-semibold text-foreground">
-										Billing identity
-									</h3>
-									{isOwner && !isEditingBilling && (
-										<button
-											type="button"
-											onClick={() => setIsEditingBilling(true)}
-											className="inline-flex items-center gap-1.5 text-sm font-medium text-foreground hover:text-foreground"
-										>
-											<Edit2 className="h-4 w-4" />
-											Edit
-										</button>
-									)}
-								</div>
-								<p className="mb-3 text-[13px] leading-6 text-muted-foreground">
-									Used as the service-provider block on contracts and invoices
-									when a project bills through this team. Anything left blank
-									falls back to the consultant's own profile.
-								</p>
-
-								{isEditingBilling ? (
-									<div className="space-y-3">
-										<BillingField
-											label="Registered business name"
-											placeholder={team.name || "e.g. Pro Digitality"}
-											value={billingDraft.legal_name}
-											onChange={(v) =>
-												setBillingDraft((d) => ({ ...d, legal_name: v }))
-											}
-											disabled={updateMutation.isPending}
-										/>
-										<BillingField
-											label="Business address"
-											placeholder="Street, city, country"
-											value={billingDraft.billing_address}
-											onChange={(v) =>
-												setBillingDraft((d) => ({ ...d, billing_address: v }))
-											}
-											disabled={updateMutation.isPending}
-										/>
-										<BillingField
-											label="Tax ID"
-											placeholder="TIN / VAT / EIN"
-											value={billingDraft.tax_id}
-											onChange={(v) =>
-												setBillingDraft((d) => ({ ...d, tax_id: v }))
-											}
-											disabled={updateMutation.isPending}
-										/>
-										<BillingField
-											label="Billing email"
-											type="email"
-											placeholder="billing@example.com"
-											value={billingDraft.billing_email}
-											onChange={(v) =>
-												setBillingDraft((d) => ({ ...d, billing_email: v }))
-											}
-											disabled={updateMutation.isPending}
-										/>
-										<div className="flex items-center gap-2">
+							{/* Contracts and invoices are web-only, so the block that
+							    fills their provider section is too. */}
+							{!isNativeApp() && (
+								<section>
+									<div className="mb-1 flex items-center justify-between gap-2">
+										<h3 className="text-[18px] font-semibold text-foreground">
+											Billing identity
+										</h3>
+										{isOwner && !isEditingBilling && (
 											<button
 												type="button"
-												onClick={() => void saveBilling()}
-												disabled={updateMutation.isPending}
-												className="app-cta inline-flex items-center gap-1.5 rounded-md px-3 py-1.5 text-sm font-medium text-white disabled:opacity-50"
+												onClick={() => setIsEditingBilling(true)}
+												className="inline-flex items-center gap-1.5 text-sm font-medium text-foreground hover:text-foreground"
 											>
-												{updateMutation.isPending ? (
-													<Loader2 className="h-4 w-4 animate-spin" />
-												) : (
-													<Save className="h-4 w-4" />
-												)}
-												Save
+												<Edit2 className="h-4 w-4" />
+												Edit
 											</button>
-											<button
-												type="button"
-												onClick={() => {
-													setBillingDraft({
-														legal_name: team.legal_name ?? "",
-														billing_address: team.billing_address ?? "",
-														tax_id: team.tax_id ?? "",
-														billing_email: team.billing_email ?? "",
-													});
-													setIsEditingBilling(false);
-												}}
-												disabled={updateMutation.isPending}
-												className="inline-flex items-center gap-1.5 rounded-md bg-muted px-3 py-1.5 text-sm font-medium text-foreground hover:bg-accent disabled:opacity-50"
-											>
-												<X className="h-4 w-4" />
-												Cancel
-											</button>
-										</div>
+										)}
 									</div>
-								) : (
-									<dl className="space-y-1.5 text-[13px] leading-6">
-										<BillingRow
-											label="Registered name"
-											value={team.legal_name}
-										/>
-										<BillingRow label="Address" value={team.billing_address} />
-										<BillingRow label="Tax ID" value={team.tax_id} />
-										<BillingRow
-											label="Billing email"
-											value={team.billing_email}
-										/>
-									</dl>
-								)}
-							</section>
+									<p className="mb-3 text-[13px] leading-6 text-muted-foreground">
+										Used as the service-provider block on contracts and invoices
+										when a project bills through this team. Anything left blank
+										falls back to the consultant's own profile.
+									</p>
+
+									{isEditingBilling ? (
+										<div className="space-y-3">
+											<BillingField
+												label="Registered business name"
+												placeholder={team.name || "e.g. Pro Digitality"}
+												value={billingDraft.legal_name}
+												onChange={(v) =>
+													setBillingDraft((d) => ({ ...d, legal_name: v }))
+												}
+												disabled={updateMutation.isPending}
+											/>
+											<BillingField
+												label="Business address"
+												placeholder="Street, city, country"
+												value={billingDraft.billing_address}
+												onChange={(v) =>
+													setBillingDraft((d) => ({ ...d, billing_address: v }))
+												}
+												disabled={updateMutation.isPending}
+											/>
+											<BillingField
+												label="Tax ID"
+												placeholder="TIN / VAT / EIN"
+												value={billingDraft.tax_id}
+												onChange={(v) =>
+													setBillingDraft((d) => ({ ...d, tax_id: v }))
+												}
+												disabled={updateMutation.isPending}
+											/>
+											<BillingField
+												label="Billing email"
+												type="email"
+												placeholder="billing@example.com"
+												value={billingDraft.billing_email}
+												onChange={(v) =>
+													setBillingDraft((d) => ({ ...d, billing_email: v }))
+												}
+												disabled={updateMutation.isPending}
+											/>
+											<div className="flex items-center gap-2">
+												<button
+													type="button"
+													onClick={() => void saveBilling()}
+													disabled={updateMutation.isPending}
+													className="app-cta inline-flex items-center gap-1.5 rounded-md px-3 py-1.5 text-sm font-medium text-white disabled:opacity-50"
+												>
+													{updateMutation.isPending ? (
+														<Loader2 className="h-4 w-4 animate-spin" />
+													) : (
+														<Save className="h-4 w-4" />
+													)}
+													Save
+												</button>
+												<button
+													type="button"
+													onClick={() => {
+														setBillingDraft({
+															legal_name: team.legal_name ?? "",
+															billing_address: team.billing_address ?? "",
+															tax_id: team.tax_id ?? "",
+															billing_email: team.billing_email ?? "",
+														});
+														setIsEditingBilling(false);
+													}}
+													disabled={updateMutation.isPending}
+													className="inline-flex items-center gap-1.5 rounded-md bg-muted px-3 py-1.5 text-sm font-medium text-foreground hover:bg-accent disabled:opacity-50"
+												>
+													<X className="h-4 w-4" />
+													Cancel
+												</button>
+											</div>
+										</div>
+									) : (
+										<dl className="space-y-1.5 text-[13px] leading-6">
+											<BillingRow
+												label="Registered name"
+												value={team.legal_name}
+											/>
+											<BillingRow
+												label="Address"
+												value={team.billing_address}
+											/>
+											<BillingRow label="Tax ID" value={team.tax_id} />
+											<BillingRow
+												label="Billing email"
+												value={team.billing_email}
+											/>
+										</dl>
+									)}
+								</section>
+							)}
 						</div>
 					</div>
 				</section>

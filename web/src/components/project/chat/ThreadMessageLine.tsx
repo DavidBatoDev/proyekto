@@ -1,8 +1,12 @@
 import { motion } from "framer-motion";
 import { Download, FileText } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
+import { BlockedContent } from "@/components/safety/BlockedPlaceholder";
+import { useSafety } from "@/components/safety/SafetyProvider";
+import { useLongPress } from "@/hooks/useLongPress";
 import type { ChatAttachment } from "@/services/chat.service";
 import { resolveAttachmentSrc } from "./attachmentPreviewCache";
+import { MessageActionSheet } from "./MessageActionSheet";
 import { MessageActionsMenu } from "./MessageActionsMenu";
 import { mentionsCurrentUser, renderMentionContent } from "./mentions";
 import type { ThreadUiMessage } from "./thread";
@@ -196,6 +200,33 @@ export function ThreadMessageLine({
 
 	const align = isMine ? "items-end" : "items-start";
 
+	// ── Safety (App Store guideline 1.2): report someone else's message, and
+	// collapse messages from people the viewer blocked. ──
+	const safety = useSafety();
+	const senderName = getSenderName?.(message.sender_id) ?? "Someone";
+	const previewText =
+		message.content.trim() || attachments.map((a) => a.name).join(", ");
+	const onReport =
+		!isMine && safety.canActOn(message.sender_id)
+			? () =>
+					safety.report({
+						type: "chat_message",
+						id: message.id,
+						author: { id: message.sender_id, name: senderName },
+						preview: previewText,
+						previewMeta: formatSentAt(message.created_at),
+					})
+			: undefined;
+	const blockedSender = !isMine && safety.isBlocked(message.sender_id);
+
+	// ── Touch: long-press opens the action sheet (phones have no hover) ──
+	const [sheetOpen, setSheetOpen] = useState(false);
+	const longPress = useLongPress(
+		!message.optimisticStatus && !isEditing && !isDeleted
+			? () => setSheetOpen(true)
+			: undefined,
+	);
+
 	// ── Tombstone: a soft-deleted message shows only a muted placeholder ──
 	if (isDeleted) {
 		return (
@@ -219,161 +250,206 @@ export function ThreadMessageLine({
 			data-message-id={message.id}
 			className={`group/line relative min-w-0 flex flex-col gap-1 ${align} ${isSending ? "opacity-60" : ""}`}
 		>
-			{/* ── Reply quote (the message this one replies to) ── */}
-			{message.reply_to && (
-				<ReplyQuote
-					replyTo={message.reply_to}
-					isMine={isMine}
-					name={getSenderName?.(message.reply_to.sender_id)}
-					onClick={() => {
-						if (message.reply_to) onJumpToMessage?.(message.reply_to.id);
+			<BlockedContent blocked={blockedSender}>
+				{/* ── Reply quote (the message this one replies to) ── */}
+				{message.reply_to && (
+					<ReplyQuote
+						replyTo={message.reply_to}
+						isMine={isMine}
+						name={getSenderName?.(message.reply_to.sender_id)}
+						onClick={() => {
+							if (message.reply_to) onJumpToMessage?.(message.reply_to.id);
+						}}
+					/>
+				)}
+
+				{isEditing ? (
+					<InlineEditor
+						initialValue={message.content}
+						isMine={isMine}
+						onSubmit={(value) => onSubmitEdit?.(message, value)}
+						onCancel={() => onCancelEdit?.()}
+					/>
+				) : (
+					<>
+						{/* ── Colored bubble: text + file attachments ── */}
+						{(hasText || bubbleAttachments.length > 0) && (
+							<div
+								className="relative inline-block max-w-full [-webkit-touch-callout:none] [@media(hover:none)]:select-none"
+								{...longPress}
+							>
+								<div
+									className={`inline-block max-w-full ${radius} ${highlightRing} ${
+										isMediaOnly
+											? "overflow-hidden"
+											: `px-3.5 py-2 ${bubbleColor}`
+									}`}
+								>
+									{hasText && (
+										<p
+											className={`text-sm leading-relaxed whitespace-pre-wrap wrap-anywhere md:text-[15px] ${
+												isMine ? "text-white" : "text-slate-900"
+											}`}
+										>
+											{renderMentionContent(message.content, message.mentions, {
+												currentUserId,
+												isMine,
+											})}
+											{isEdited && (
+												<span
+													className={`ml-1.5 align-baseline text-[11px] ${
+														isMine ? "text-white/60" : "text-slate-400"
+													}`}
+												>
+													(edited)
+												</span>
+											)}
+										</p>
+									)}
+
+									{bubbleAttachments.length > 0 && (
+										<div
+											className={`flex flex-col gap-2 ${hasText ? "mt-1.5" : ""}`}
+										>
+											{bubbleAttachments.map((attachment, index) => (
+												<AttachmentBlock
+													key={`${message.id}-att-${index}`}
+													attachment={attachment}
+													isMine={isMine}
+												/>
+											))}
+										</div>
+									)}
+								</div>
+
+								{/* Per-message actions (⋯) — hidden while the send is in flight */}
+								{!message.optimisticStatus && (
+									<MessageActionsMenu
+										isMine={isMine}
+										canModify={!!canModify}
+										hasText={hasText}
+										onReply={onReply ? () => onReply(message) : undefined}
+										onCopy={
+											hasText && onCopy ? () => onCopy(message) : undefined
+										}
+										onEdit={
+											canModify && hasText && onStartEdit
+												? () => onStartEdit(message)
+												: undefined
+										}
+										onDelete={
+											canModify && onRequestUnsend
+												? (bypass) => onRequestUnsend(message, bypass)
+												: undefined
+										}
+										onReport={onReport}
+									/>
+								)}
+							</div>
+						)}
+
+						{/* ── Images in mixed messages: no bubble background ── */}
+						{outlineImages.map((attachment, index) => (
+							<a
+								key={`${message.id}-img-${index}`}
+								href={attachment.url}
+								target="_blank"
+								rel="noopener noreferrer"
+								className="block"
+							>
+								<img
+									src={resolveAttachmentSrc(attachment.url)}
+									alt={attachment.name}
+									loading="lazy"
+									className="max-h-72 w-full max-w-60 rounded-2xl object-cover transition-opacity hover:opacity-95 sm:max-w-xs"
+								/>
+							</a>
+						))}
+
+						{/* ── Reactions ── */}
+						{message.reactions && message.reactions.length > 0 && (
+							<div
+								className={`mt-1 flex flex-wrap gap-1 ${isMine ? "justify-end" : "justify-start"}`}
+							>
+								{message.reactions.map((reaction, index) => (
+									<motion.button
+										key={`${message.id}-${reaction.emoji}`}
+										type="button"
+										initial={{ opacity: 0, y: 4, scale: 0.9 }}
+										animate={{ opacity: 1, y: 0, scale: 1 }}
+										transition={{
+											duration: 0.18,
+											ease: "easeOut",
+											delay: index * 0.02,
+										}}
+										onClick={() =>
+											onToggleReaction?.(
+												message.id,
+												message.room_id,
+												reaction.emoji,
+											)
+										}
+										className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-xs transition-colors ${
+											reaction.reacted_by_me
+												? "border-slate-400 bg-slate-200 text-slate-800"
+												: "border-slate-300 bg-white text-slate-700 hover:bg-slate-100"
+										}`}
+									>
+										<span>{reaction.emoji}</span>
+										<span>{reaction.count}</span>
+									</motion.button>
+								))}
+							</div>
+						)}
+
+						{/* ── Send status ── */}
+						{message.optimisticStatus === "failed" && (
+							<p
+								className={`mt-0.5 text-[11px] text-red-500 ${isMine ? "text-right" : ""}`}
+							>
+								Failed to send
+							</p>
+						)}
+					</>
+				)}
+			</BlockedContent>
+
+			{sheetOpen && (
+				<MessageActionSheet
+					open
+					onClose={() => setSheetOpen(false)}
+					senderName={isMine ? "You" : senderName}
+					preview={previewText}
+					actions={{
+						onReact: onToggleReaction
+							? (emoji) => onToggleReaction(message.id, message.room_id, emoji)
+							: undefined,
+						onReply: onReply ? () => onReply(message) : undefined,
+						onCopy: hasText && onCopy ? () => onCopy(message) : undefined,
+						onEdit:
+							canModify && hasText && onStartEdit
+								? () => onStartEdit(message)
+								: undefined,
+						onDelete:
+							canModify && onRequestUnsend
+								? () => onRequestUnsend(message, false)
+								: undefined,
+						onReport,
 					}}
 				/>
 			)}
-
-			{isEditing ? (
-				<InlineEditor
-					initialValue={message.content}
-					isMine={isMine}
-					onSubmit={(value) => onSubmitEdit?.(message, value)}
-					onCancel={() => onCancelEdit?.()}
-				/>
-			) : (
-				<>
-					{/* ── Colored bubble: text + file attachments ── */}
-					{(hasText || bubbleAttachments.length > 0) && (
-						<div className="relative inline-block max-w-full">
-							<div
-								className={`inline-block max-w-full ${radius} ${highlightRing} ${
-									isMediaOnly ? "overflow-hidden" : `px-3.5 py-2 ${bubbleColor}`
-								}`}
-							>
-								{hasText && (
-									<p
-										className={`text-sm leading-relaxed whitespace-pre-wrap wrap-anywhere md:text-[15px] ${
-											isMine ? "text-white" : "text-slate-900"
-										}`}
-									>
-										{renderMentionContent(message.content, message.mentions, {
-											currentUserId,
-											isMine,
-										})}
-										{isEdited && (
-											<span
-												className={`ml-1.5 align-baseline text-[11px] ${
-													isMine ? "text-white/60" : "text-slate-400"
-												}`}
-											>
-												(edited)
-											</span>
-										)}
-									</p>
-								)}
-
-								{bubbleAttachments.length > 0 && (
-									<div
-										className={`flex flex-col gap-2 ${hasText ? "mt-1.5" : ""}`}
-									>
-										{bubbleAttachments.map((attachment, index) => (
-											<AttachmentBlock
-												key={`${message.id}-att-${index}`}
-												attachment={attachment}
-												isMine={isMine}
-											/>
-										))}
-									</div>
-								)}
-							</div>
-
-							{/* Per-message actions (⋯) — hidden while the send is in flight */}
-							{!message.optimisticStatus && (
-								<MessageActionsMenu
-									isMine={isMine}
-									canModify={!!canModify}
-									hasText={hasText}
-									onReply={onReply ? () => onReply(message) : undefined}
-									onCopy={hasText && onCopy ? () => onCopy(message) : undefined}
-									onEdit={
-										canModify && hasText && onStartEdit
-											? () => onStartEdit(message)
-											: undefined
-									}
-									onDelete={
-										canModify && onRequestUnsend
-											? (bypass) => onRequestUnsend(message, bypass)
-											: undefined
-									}
-								/>
-							)}
-						</div>
-					)}
-
-					{/* ── Images in mixed messages: no bubble background ── */}
-					{outlineImages.map((attachment, index) => (
-						<a
-							key={`${message.id}-img-${index}`}
-							href={attachment.url}
-							target="_blank"
-							rel="noopener noreferrer"
-							className="block"
-						>
-							<img
-								src={resolveAttachmentSrc(attachment.url)}
-								alt={attachment.name}
-								loading="lazy"
-								className="max-h-72 w-full max-w-60 rounded-2xl object-cover transition-opacity hover:opacity-95 sm:max-w-xs"
-							/>
-						</a>
-					))}
-
-					{/* ── Reactions ── */}
-					{message.reactions && message.reactions.length > 0 && (
-						<div
-							className={`mt-1 flex flex-wrap gap-1 ${isMine ? "justify-end" : "justify-start"}`}
-						>
-							{message.reactions.map((reaction, index) => (
-								<motion.button
-									key={`${message.id}-${reaction.emoji}`}
-									type="button"
-									initial={{ opacity: 0, y: 4, scale: 0.9 }}
-									animate={{ opacity: 1, y: 0, scale: 1 }}
-									transition={{
-										duration: 0.18,
-										ease: "easeOut",
-										delay: index * 0.02,
-									}}
-									onClick={() =>
-										onToggleReaction?.(
-											message.id,
-											message.room_id,
-											reaction.emoji,
-										)
-									}
-									className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-xs transition-colors ${
-										reaction.reacted_by_me
-											? "border-slate-400 bg-slate-200 text-slate-800"
-											: "border-slate-300 bg-white text-slate-700 hover:bg-slate-100"
-									}`}
-								>
-									<span>{reaction.emoji}</span>
-									<span>{reaction.count}</span>
-								</motion.button>
-							))}
-						</div>
-					)}
-
-					{/* ── Send status ── */}
-					{message.optimisticStatus === "failed" && (
-						<p
-							className={`mt-0.5 text-[11px] text-red-500 ${isMine ? "text-right" : ""}`}
-						>
-							Failed to send
-						</p>
-					)}
-				</>
-			)}
 		</div>
 	);
+}
+
+function formatSentAt(iso: string | undefined): string | null {
+	if (!iso) return null;
+	const date = new Date(iso);
+	if (Number.isNaN(date.getTime())) return null;
+	const sameDay = date.toDateString() === new Date().toDateString();
+	return sameDay
+		? date.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })
+		: date.toLocaleDateString([], { month: "short", day: "numeric" });
 }
 
 /** Inline editor that replaces a message bubble while the sender edits it. */

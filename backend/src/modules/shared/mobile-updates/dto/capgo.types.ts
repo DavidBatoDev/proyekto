@@ -9,8 +9,10 @@ export interface CapgoCheckBody {
   device_id?: string;
   app_id?: string;
   custom_id?: string;
-  version_build?: string; // native build (versionCode / CFBundleVersion), e.g. "1"
-  version_code?: string;
+  // Capgo naming is inverted from what it looks like: version_build is the
+  // native versionName ("0.7.2") and version_code is the build number ("7002").
+  version_build?: string;
+  version_code?: string; // native versionCode / CFBundleVersion, e.g. "7002"
   version_os?: string;
   version_name?: string; // currently-active bundle version (or native versionName)
   plugin_version?: string;
@@ -27,6 +29,9 @@ export interface CapgoStatsBody {
   version_name?: string;
   action?: string;
   version?: string;
+  old_version_name?: string;
+  version_code?: string;
+  version_build?: string;
 }
 
 /** No-update sentinel the plugin understands. */

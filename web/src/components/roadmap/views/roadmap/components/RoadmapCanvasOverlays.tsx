@@ -51,6 +51,18 @@ interface RoadmapCanvasOverlaysProps {
 	setIsEditEpicModalOpen: Dispatch<SetStateAction<boolean>>;
 	setEditingEpicId: Dispatch<SetStateAction<string | null>>;
 	handleTaskUpdate: (task: RoadmapTask) => Promise<void>;
+	/** Saves from an open editor (no loading lock); enables Saving… / Saved. */
+	handleTaskAutosave?: (task: RoadmapTask) => Promise<void>;
+	handleAutosaveEpicFromModal?: (
+		data: Parameters<
+			RoadmapCanvasOverlaysProps["handleUpdateEpicFromModal"]
+		>[0],
+	) => Promise<void>;
+	handleAutosaveFeatureFromModal?: (
+		data: Parameters<
+			RoadmapCanvasOverlaysProps["handleUpdateFeatureFromModal"]
+		>[0],
+	) => Promise<void>;
 	handleTaskDelete: (taskId: string) => Promise<void>;
 	handleTaskDuplicate?: (taskId: string) => Promise<void>;
 	handleTaskCreate: (taskData: Partial<RoadmapTask>) => Promise<void>;
@@ -136,6 +148,9 @@ export function RoadmapCanvasOverlays({
 	setIsEditEpicModalOpen,
 	setEditingEpicId,
 	handleTaskUpdate,
+	handleTaskAutosave,
+	handleAutosaveEpicFromModal,
+	handleAutosaveFeatureFromModal,
 	handleTaskDelete,
 	handleTaskDuplicate,
 	handleTaskCreate,
@@ -186,6 +201,7 @@ export function RoadmapCanvasOverlays({
 					}
 				}}
 				onUpdateTask={handleTaskUpdate}
+				onAutosaveTask={handleTaskAutosave}
 				onDeleteTask={handleTaskDelete}
 				onDuplicateTask={handleTaskDuplicate}
 				onCreateTask={handleTaskCreate}
@@ -207,6 +223,7 @@ export function RoadmapCanvasOverlays({
 					setEditingEpicId(null);
 				}}
 				onSubmit={handleUpdateEpicFromModal}
+				onAutosave={handleAutosaveEpicFromModal}
 				onAddFeature={
 					editingEpicId
 						? () => {
@@ -254,6 +271,20 @@ export function RoadmapCanvasOverlays({
 				}
 				titleText="Edit Epic"
 				submitLabel="Save Changes"
+				onDelete={
+					editingEpicId
+						? () => {
+								const epic = epics.find((e) => e.id === editingEpicId);
+								setIsEditEpicModalOpen(false);
+								setEditingEpicId(null);
+								setDeleteConfirm({
+									type: "epic",
+									id: editingEpicId,
+									label: epic?.title ? `"${epic.title}"` : "this epic",
+								});
+							}
+						: undefined
+				}
 				isLoading={isEpicLoading}
 				isPendingCreate={isEditingEpicPending}
 			/>
@@ -289,6 +320,23 @@ export function RoadmapCanvasOverlays({
 				}
 				titleText="Edit Feature"
 				submitLabel="Save Changes"
+				onDelete={
+					editingFeatureId
+						? () => {
+								const feature = epics
+									.find((epic) => epic.id === editingFeatureEpicId)
+									?.features?.find((f) => f.id === editingFeatureId);
+								setIsEditFeatureModalOpen(false);
+								setEditingFeatureId(null);
+								setEditingFeatureEpicId(null);
+								setDeleteConfirm({
+									type: "feature",
+									id: editingFeatureId,
+									label: feature?.title ? `"${feature.title}"` : "this feature",
+								});
+							}
+						: undefined
+				}
 				onClose={() => {
 					setIsEditFeatureModalOpen(false);
 					setEditingFeatureId(null);
@@ -299,6 +347,7 @@ export function RoadmapCanvasOverlays({
 				onDeleteTask={handleTaskDelete}
 				onSelectTask={selectTask}
 				onSubmit={handleUpdateFeatureFromModal}
+				onAutosave={handleAutosaveFeatureFromModal}
 				isLoading={isFeatureLoading}
 				isPendingCreate={isEditingFeaturePending}
 			/>

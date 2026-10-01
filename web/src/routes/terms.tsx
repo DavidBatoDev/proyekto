@@ -1,6 +1,7 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { LegalPage, type LegalSection } from "@/components/legal/LegalPage";
 import { useDocumentTitle } from "@/hooks/useDocumentTitle";
+import { COMPANY, COMPANY_ADDRESS } from "@/lib/company";
 
 /**
  * The terms of service.
@@ -26,10 +27,11 @@ const SECTIONS: LegalSection[] = [
 		body: (
 			<>
 				<p>
-					These terms are the agreement between you and Proyekto for use of the
-					Proyekto web application at proyekto.tech and the Proyekto apps for
-					Android and iOS. By creating an account or using Proyekto, you accept
-					them.
+					These terms are the agreement between you and{" "}
+					<strong>{COMPANY.legalName}</strong> ("Proyekto", "we", "us"), of{" "}
+					{COMPANY_ADDRESS}, for use of the Proyekto web application at
+					proyekto.tech and the Proyekto apps for Android and iOS. By creating
+					an account or using Proyekto, you accept them.
 				</p>
 				<p>
 					If you are accepting on behalf of a company, you are confirming you
@@ -195,10 +197,21 @@ const SECTIONS: LegalSection[] = [
 						harass or abuse other people, or send unsolicited bulk messages;
 					</li>
 					<li>
+						post content that is hateful, sexually explicit, violent, or
+						otherwise objectionable;
+					</li>
+					<li>
 						resell or redistribute Proyekto as your own product, or scrape it at
 						scale.
 					</li>
 				</ul>
+				<p>
+					We have zero tolerance for objectionable content and abusive users.
+					You can report a message, a comment or a person, and block anyone,
+					from inside the app. We review reports within 24 hours, remove content
+					that breaks these terms, and suspend or close the accounts
+					responsible.
+				</p>
 			</>
 		),
 	},
@@ -263,8 +276,10 @@ const SECTIONS: LegalSection[] = [
 				</p>
 				<p>
 					Nothing here excludes liability that cannot legally be excluded,
-					including for fraud. If you are a consumer, you keep the rights your
-					local law gives you.
+					including for fraud. Nothing in these terms excludes, restricts or
+					modifies any guarantee, right or remedy you have under the Australian
+					Consumer Law that cannot lawfully be excluded. If you are a consumer
+					elsewhere, you keep the rights your local law gives you.
 				</p>
 			</>
 		),
@@ -274,8 +289,8 @@ const SECTIONS: LegalSection[] = [
 		heading: "Governing law",
 		body: (
 			<p>
-				These terms are governed by the laws of the Republic of the Philippines,
-				and disputes go to the courts there — except where the law where you
+				These terms are governed by the laws of Queensland, Australia, and
+				disputes go to the courts of Queensland — except where the law where you
 				live gives you the right to bring a claim locally, which it may.
 			</p>
 		),
@@ -296,10 +311,15 @@ const SECTIONS: LegalSection[] = [
 		id: "contact",
 		heading: "Contact",
 		body: (
-			<p>
-				Email <a href="mailto:support@proyekto.tech">support@proyekto.tech</a>{" "}
-				or use the <Link to="/contact">contact form</Link>.
-			</p>
+			<>
+				<p>
+					Email <a href={`mailto:${COMPANY.email}`}>{COMPANY.email}</a> or use
+					the <Link to="/contact">contact form</Link>.
+				</p>
+				<p>
+					By post: {COMPANY.legalName}, {COMPANY_ADDRESS}.
+				</p>
+			</>
 		),
 	},
 ];
@@ -310,7 +330,7 @@ function TermsPage() {
 		<LegalPage
 			title="Terms of Service"
 			intro="The agreement for using Proyekto. Short, in plain language, and specific about what the product does and does not do."
-			updated="23 September 2026"
+			updated="29 September 2026"
 			sections={SECTIONS}
 		/>
 	);

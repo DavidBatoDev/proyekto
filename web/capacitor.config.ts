@@ -45,14 +45,14 @@ const config: CapacitorConfig = {
     // Facebook and Twitter are off: the plugin defaults every provider to true,
     // which pulls the Facebook SDK into the APK for a button we do not have.
     //
-    // Apple stays ON despite also being unused. Turning it off does NOT build:
-    // Apple contributes androidx.browser:browser:1.9.0, while Google's
-    // androidbrowserhelper:2.5.0 pins {strictly 1.4.0}, and with Apple demoted to
-    // compileOnly the compile and runtime classpaths disagree —
-    // ":capgo-capacitor-social-login:extractDebugAnnotations" then fails with
-    // "Cannot find a version of androidx.browser:browser that satisfies the
-    // version constraints". Verified both ways locally. It costs no SDK, only the
-    // browser artifact Google already needs.
+    // Apple is ON because the iOS app offers Sign in with Apple (App Store
+    // guideline 4.8 — required next to Google; see src/services/appleAuth.ts).
+    // `false` disables the provider at runtime, not just its dependencies. On
+    // Android it is never called (the button renders on iOS only) and costs only
+    // androidx.browser, which Google's provider already needs. History: before
+    // Capacitor 8 (AGP 8.13 / compileSdk 36) the androidx.browser 1.9.0 vs
+    // {strictly 1.4.0} constraint made BOTH settings fragile — see
+    // android/build.gradle.
     //
     // These flags are written into node_modules, not the repo, so CI reproduces
     // them from this file via `npx cap sync`. Changing one needs a re-sync.
@@ -60,7 +60,7 @@ const config: CapacitorConfig = {
       providers: {
         google: true,
         facebook: false,
-        apple: false,
+        apple: true,
         twitter: false,
       },
     },

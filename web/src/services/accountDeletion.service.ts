@@ -102,7 +102,7 @@ export interface DeletionFailure {
 }
 
 export async function getDeletionPreflight(): Promise<DeletionPreflight> {
-	const { data } = await apiClient.get("/account/deletion/preflight");
+	const { data } = await apiClient.get("/api/account/deletion/preflight");
 	return (data?.data ?? data) as DeletionPreflight;
 }
 
@@ -110,14 +110,14 @@ export async function requestDeletionCode(): Promise<{
 	sent: boolean;
 	expires_at: string;
 }> {
-	const { data } = await apiClient.post("/account/deletion/challenge");
+	const { data } = await apiClient.post("/api/account/deletion/challenge");
 	return (data?.data ?? data) as { sent: boolean; expires_at: string };
 }
 
 export async function deleteAccount(
 	input: DeleteAccountInput,
 ): Promise<{ deleted: true; summary: Record<string, number> }> {
-	const { data } = await apiClient.delete("/account/deletion", {
+	const { data } = await apiClient.delete("/api/account/deletion", {
 		data: input,
 	});
 	return (data?.data ?? data) as {

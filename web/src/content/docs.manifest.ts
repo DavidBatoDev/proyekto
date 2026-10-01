@@ -228,6 +228,26 @@ export const DOC_ARTICLES: DocArticle[] = [
 		related: ["your-account", "workspaces", "members-and-seats"],
 	},
 	{
+		slug: "reporting-and-blocking",
+		section: "account-and-apps",
+		// Between deleting-your-account (15) and notifications (20).
+		order: 18,
+		title: "Reporting and blocking",
+		description:
+			"Report a message, comment or person that breaks the rules, and block someone so they can't message you.",
+		updated: UPDATED,
+		keywords: [
+			"report",
+			"block",
+			"abuse",
+			"harassment",
+			"spam",
+			"safety",
+			"unblock",
+		],
+		related: ["project-chat", "notifications", "your-account"],
+	},
+	{
 		slug: "notifications",
 		section: "account-and-apps",
 		order: 20,

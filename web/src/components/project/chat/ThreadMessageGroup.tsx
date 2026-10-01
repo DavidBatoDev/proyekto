@@ -4,10 +4,9 @@ import { Plus } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { useThemeMode } from "@/theme/useThemeMode";
 import { ChatAvatar } from "./Avatar";
+import { QUICK_REACTIONS } from "./reactions";
 import { type BubblePosition, ThreadMessageLine } from "./ThreadMessageLine";
 import type { ThreadMessageGroup as Group, ThreadUiMessage } from "./thread";
-
-const QUICK_REACTIONS = ["👍", "❤️", "😄", "😢", "🙏", "👎", "😡"];
 
 function positionOf(index: number, total: number): BubblePosition {
 	if (total === 1) return "solo";

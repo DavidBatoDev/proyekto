@@ -39,6 +39,7 @@ import { Route as AdminIndexRouteImport } from './routes/admin/index'
 import { Route as SettingsNotificationsRouteImport } from './routes/settings/notifications'
 import { Route as SettingsMcpTokensRouteImport } from './routes/settings/mcp-tokens'
 import { Route as SettingsDeleteAccountRouteImport } from './routes/settings/delete-account'
+import { Route as SettingsBlockedRouteImport } from './routes/settings/blocked'
 import { Route as SettingsAppearanceRouteImport } from './routes/settings/appearance'
 import { Route as RoadmapTemplatesSlugRouteImport } from './routes/roadmap-templates/$slug'
 import { Route as ProfileProfileIdRouteImport } from './routes/profile/$profileId'
@@ -356,6 +357,11 @@ const SettingsMcpTokensRoute = SettingsMcpTokensRouteImport.update({
 const SettingsDeleteAccountRoute = SettingsDeleteAccountRouteImport.update({
   id: '/delete-account',
   path: '/delete-account',
+  getParentRoute: () => SettingsRouteRoute,
+} as any)
+const SettingsBlockedRoute = SettingsBlockedRouteImport.update({
+  id: '/blocked',
+  path: '/blocked',
   getParentRoute: () => SettingsRouteRoute,
 } as any)
 const SettingsAppearanceRoute = SettingsAppearanceRouteImport.update({
@@ -1384,6 +1390,7 @@ export interface FileRoutesByFullPath {
   '/profile/$profileId': typeof ProfileProfileIdRoute
   '/roadmap-templates/$slug': typeof RoadmapTemplatesSlugRoute
   '/settings/appearance': typeof SettingsAppearanceRoute
+  '/settings/blocked': typeof SettingsBlockedRoute
   '/settings/delete-account': typeof SettingsDeleteAccountRoute
   '/settings/mcp-tokens': typeof SettingsMcpTokensRoute
   '/settings/notifications': typeof SettingsNotificationsRoute
@@ -1577,6 +1584,7 @@ export interface FileRoutesByTo {
   '/profile/$profileId': typeof ProfileProfileIdRoute
   '/roadmap-templates/$slug': typeof RoadmapTemplatesSlugRoute
   '/settings/appearance': typeof SettingsAppearanceRoute
+  '/settings/blocked': typeof SettingsBlockedRoute
   '/settings/delete-account': typeof SettingsDeleteAccountRoute
   '/settings/mcp-tokens': typeof SettingsMcpTokensRoute
   '/settings/notifications': typeof SettingsNotificationsRoute
@@ -1773,6 +1781,7 @@ export interface FileRoutesById {
   '/profile/$profileId': typeof ProfileProfileIdRoute
   '/roadmap-templates/$slug': typeof RoadmapTemplatesSlugRoute
   '/settings/appearance': typeof SettingsAppearanceRoute
+  '/settings/blocked': typeof SettingsBlockedRoute
   '/settings/delete-account': typeof SettingsDeleteAccountRoute
   '/settings/mcp-tokens': typeof SettingsMcpTokensRoute
   '/settings/notifications': typeof SettingsNotificationsRoute
@@ -1975,6 +1984,7 @@ export interface FileRouteTypes {
     | '/profile/$profileId'
     | '/roadmap-templates/$slug'
     | '/settings/appearance'
+    | '/settings/blocked'
     | '/settings/delete-account'
     | '/settings/mcp-tokens'
     | '/settings/notifications'
@@ -2168,6 +2178,7 @@ export interface FileRouteTypes {
     | '/profile/$profileId'
     | '/roadmap-templates/$slug'
     | '/settings/appearance'
+    | '/settings/blocked'
     | '/settings/delete-account'
     | '/settings/mcp-tokens'
     | '/settings/notifications'
@@ -2363,6 +2374,7 @@ export interface FileRouteTypes {
     | '/profile/$profileId'
     | '/roadmap-templates/$slug'
     | '/settings/appearance'
+    | '/settings/blocked'
     | '/settings/delete-account'
     | '/settings/mcp-tokens'
     | '/settings/notifications'
@@ -2760,6 +2772,13 @@ declare module '@tanstack/react-router' {
       path: '/delete-account'
       fullPath: '/settings/delete-account'
       preLoaderRoute: typeof SettingsDeleteAccountRouteImport
+      parentRoute: typeof SettingsRouteRoute
+    }
+    '/settings/blocked': {
+      id: '/settings/blocked'
+      path: '/blocked'
+      fullPath: '/settings/blocked'
+      preLoaderRoute: typeof SettingsBlockedRouteImport
       parentRoute: typeof SettingsRouteRoute
     }
     '/settings/appearance': {
@@ -4089,6 +4108,7 @@ const RoadmapTemplatesRouteRouteWithChildren =
 
 interface SettingsRouteRouteChildren {
   SettingsAppearanceRoute: typeof SettingsAppearanceRoute
+  SettingsBlockedRoute: typeof SettingsBlockedRoute
   SettingsDeleteAccountRoute: typeof SettingsDeleteAccountRoute
   SettingsMcpTokensRoute: typeof SettingsMcpTokensRoute
   SettingsNotificationsRoute: typeof SettingsNotificationsRoute
@@ -4097,6 +4117,7 @@ interface SettingsRouteRouteChildren {
 
 const SettingsRouteRouteChildren: SettingsRouteRouteChildren = {
   SettingsAppearanceRoute: SettingsAppearanceRoute,
+  SettingsBlockedRoute: SettingsBlockedRoute,
   SettingsDeleteAccountRoute: SettingsDeleteAccountRoute,
   SettingsMcpTokensRoute: SettingsMcpTokensRoute,
   SettingsNotificationsRoute: SettingsNotificationsRoute,

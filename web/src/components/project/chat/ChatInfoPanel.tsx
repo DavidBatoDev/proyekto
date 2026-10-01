@@ -16,6 +16,7 @@ import {
 	X,
 } from "lucide-react";
 import { type ReactNode, useEffect, useMemo, useState } from "react";
+import { PersonSafetyRows } from "@/components/safety/PersonSafetyActions";
 import { TeamAvatar } from "@/components/team/TeamAvatar";
 import {
 	useChannelMembersQuery,
@@ -655,6 +656,15 @@ export function ChatInfoPanel({
 										<ExternalLink className="h-4 w-4 text-slate-500" />
 										View full profile
 									</Link>
+								)}
+								{!isChannel && dmMember && (
+									<PersonSafetyRows
+										person={{
+											id: dmMember.userId,
+											name: dmMember.name,
+											avatarUrl: dmMember.avatarUrl ?? null,
+										}}
+									/>
 								)}
 								{isChannel && canManage && (
 									<button

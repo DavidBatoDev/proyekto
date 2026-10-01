@@ -10,6 +10,7 @@ import {
 	useState,
 } from "react";
 import { createPortal } from "react-dom";
+import { useBackHandler } from "@/lib/backStack";
 
 interface RoadmapModalLayoutProps {
 	isOpen: boolean;
@@ -20,6 +21,8 @@ interface RoadmapModalLayoutProps {
 	titlePlaceholder: string;
 	onSubmit: (e: FormEvent) => void;
 	actionButtons?: ReactNode;
+	/** Save-state line (e.g. "Saving…"), shown at the end of the action row. */
+	saveStatus?: ReactNode;
 	showDefaultDatesAction?: boolean;
 	body: ReactNode;
 	footer?: ReactNode;
@@ -38,6 +41,7 @@ export const RoadmapModalLayout = ({
 	titlePlaceholder,
 	onSubmit,
 	actionButtons,
+	saveStatus,
 	showDefaultDatesAction = true,
 	body,
 	footer,
@@ -118,6 +122,9 @@ export const RoadmapModalLayout = ({
 		}
 	}, []);
 
+	// Android back closes this modal, not the page underneath it.
+	useBackHandler(isOpen, onClose);
+
 	return createPortal(
 		<AnimatePresence>
 			{isOpen && (
@@ -180,8 +187,9 @@ export const RoadmapModalLayout = ({
 										{title || titlePlaceholder}
 									</h2>
 								</div>
-								{actionButtons && (
+								{(actionButtons || saveStatus) && (
 									<div className="flex items-center gap-2 ml-4">
+										{saveStatus}
 										{actionButtons}
 									</div>
 								)}
@@ -243,6 +251,9 @@ export const RoadmapModalLayout = ({
 										Attachment
 									</button>
 									{actionButtons}
+									{saveStatus && (
+										<div className="ml-auto pl-2">{saveStatus}</div>
+									)}
 								</div>
 							</div>
 

@@ -2,6 +2,7 @@ import { createFileRoute, Link } from "@tanstack/react-router";
 import { useState } from "react";
 import { BrandMark } from "@/components/brand/BrandMark";
 import { useDocumentTitle } from "@/hooks/useDocumentTitle";
+import { COMPANY } from "@/lib/company";
 import {
 	type ContactTopic,
 	sendContactMessage,
@@ -267,6 +268,24 @@ function ContactPage() {
 								— so a reply lands in your inbox rather than somewhere you have
 								to log in to find.
 							</p>
+						</div>
+
+						<div>
+							<h2 className="text-sm font-semibold text-foreground">Company</h2>
+							<address className="mt-1.5 text-sm not-italic leading-relaxed text-muted-foreground">
+								{COMPANY.legalName}
+								{COMPANY.addressLines.map((line) => (
+									<span key={line} className="block">
+										{line}
+									</span>
+								))}
+								<a
+									href={`mailto:${COMPANY.email}`}
+									className="mt-1 inline-block font-medium text-primary underline underline-offset-4 hover:no-underline"
+								>
+									{COMPANY.email}
+								</a>
+							</address>
 						</div>
 					</aside>
 				</div>

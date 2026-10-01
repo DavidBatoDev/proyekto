@@ -259,6 +259,7 @@ export class TaskExtrasService {
     const targets = await this.roadmapAuthz.filterUsersWhoCanViewRoadmap(
       roadmapId,
       mentionedIds,
+      { excludeBlockersOf: authorId },
     );
 
     // The invite is awaited HERE rather than early-returned around: a comment

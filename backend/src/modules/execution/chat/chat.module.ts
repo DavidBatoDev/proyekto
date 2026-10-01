@@ -3,6 +3,7 @@ import { SupabaseModule } from '../../../config/supabase.module';
 import { AuthorizationModule } from '../projects/authorization/authorization.module';
 import { NotificationsModule } from '../../shared/notifications/notifications.module';
 import { PushModule } from '../../shared/push/push.module';
+import { BlocksModule } from '../../shared/safety/blocks.module';
 import { ChatController } from './chat.controller';
 import { ChatDmController } from './chat-dm.controller';
 import { ChatRoomsController } from './chat-rooms.controller';
@@ -17,6 +18,7 @@ import { SupabaseChatRepository } from './repositories/chat.repository.supabase'
     AuthorizationModule,
     NotificationsModule,
     PushModule,
+    BlocksModule,
   ],
   controllers: [ChatController, ChatDmController, ChatRoomsController],
   providers: [

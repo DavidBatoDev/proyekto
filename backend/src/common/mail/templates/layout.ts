@@ -1,3 +1,4 @@
+import { COMPANY, COMPANY_ADDRESS } from '../../company';
 import { escapeHtml } from './escape';
 
 /**
@@ -116,6 +117,7 @@ ${greetingBlock}${bodyHtml}${ctaBlock}
             <tr>
               <td style="padding:20px 0 0;border-top:1px solid ${COLOR.rule};">
                 <p style="margin:0;color:${COLOR.muted};font-size:13px;line-height:1.6;">${escapeHtml(footerNote)}</p>${unsubscribeBlock}
+                <p style="margin:12px 0 0;color:${COLOR.muted};font-size:12px;line-height:1.6;">${escapeHtml(`${COMPANY.legalName} · ${COMPANY_ADDRESS}`)}</p>
               </td>
             </tr>
           </table>
