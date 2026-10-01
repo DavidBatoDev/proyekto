@@ -1,5 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
+import { FinanceNoAccess } from "@/components/finance/access/FinanceAccessStates";
 import { ProjectInvoices } from "@/components/finance/ProjectInvoices";
 import {
 	FINANCE_PAGE_SIZE,
@@ -10,7 +11,7 @@ import {
 } from "@/components/finance/portfolio/financeSearch";
 import { InvoicePortfolio } from "@/components/finance/portfolio/InvoicePortfolio";
 import { TeamFinanceChrome } from "@/components/finance/team/TeamFinanceChrome";
-import { useTeamFinanceProjectOptions } from "@/components/finance/team/useTeamFinanceProjectOptions";
+import { useTeamFinanceAccess } from "@/components/finance/team/useTeamFinanceAccess";
 import { useToast } from "@/hooks/useToast";
 import { type CsvColumn, downloadCsv, toCsv } from "@/lib/csv-export";
 import {
@@ -51,6 +52,12 @@ function TeamFinanceInvoicesPage() {
 		to: search.to,
 	};
 	const page = search.page ?? 1;
+	const access = useTeamFinanceAccess(teamId);
+	const allowed = access.tabAccess("invoices") === "allowed";
+	// `?projectId` swaps in the project's own invoice workspace, which sits
+	// behind the PROJECT-level finance gate. The URL is not trusted on its own:
+	// a project outside the caller's finance list is refused here, not queried.
+	const projectReadable = access.canReadProject(search.projectId);
 	const invoicesQuery = useQuery({
 		queryKey: [
 			"team-finance",
@@ -67,9 +74,14 @@ function TeamFinanceInvoicesPage() {
 				page,
 				limit: FINANCE_PAGE_SIZE,
 			}),
-		enabled: !search.projectId,
+		enabled: allowed && !search.projectId,
 	});
-	const projectOptionsQuery = useTeamFinanceProjectOptions(teamId, search);
+	// The Project facet opens the project's invoice workspace, so it offers
+	// only projects that workspace would admit.
+	const projectOptions = access.financeProjects.map((project) => ({
+		id: project.id,
+		title: project.title ?? "Untitled project",
+	}));
 
 	const updateSearch = (patch: Partial<FinanceInvoicesSearch>) =>
 		void navigate({
@@ -96,21 +108,28 @@ function TeamFinanceInvoicesPage() {
 			teamId={teamId}
 			section="invoices"
 			search={search}
-			projects={projectOptionsQuery.data?.projects ?? []}
+			projects={projectOptions}
 			onChange={updateSearch}
 			showFilters
 		>
 			{search.projectId ? (
-				<ProjectInvoices projectId={search.projectId} />
+				projectReadable ? (
+					<ProjectInvoices projectId={search.projectId} />
+				) : (
+					<FinanceNoAccess scope="project" />
+				)
 			) : (
 				<InvoicePortfolio
 					loading={invoicesQuery.isPending}
+					error={invoicesQuery.isError ? invoicesQuery.error : undefined}
+					onRetry={() => void invoicesQuery.refetch()}
 					items={invoicesQuery.data?.items ?? []}
 					total={invoicesQuery.data?.total ?? 0}
 					page={page}
 					limit={FINANCE_PAGE_SIZE}
 					onPageChange={(next) => updateSearch({ page: next })}
 					onOpenProject={(projectId) => updateSearch({ projectId })}
+					canOpenProject={(projectId) => access.canReadProject(projectId)}
 					onExport={exportInvoices}
 				/>
 			)}

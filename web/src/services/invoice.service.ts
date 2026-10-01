@@ -1,5 +1,5 @@
 import apiClient from "@/api/axios";
-import { extractApiErrorMessage } from "@/lib/permissionErrors";
+import { apiErrorFrom } from "@/lib/apiErrors";
 
 export type InvoiceStatus =
 	| "draft"
@@ -293,12 +293,7 @@ export const invoiceService = {
 				),
 			};
 		} catch (err) {
-			throw new Error(
-				extractApiErrorMessage(
-					(err as { response?: { data?: unknown } }).response?.data,
-					"Failed to load invoices",
-				),
-			);
+			throw apiErrorFrom(err, "Failed to load invoices");
 		}
 	},
 
@@ -310,12 +305,7 @@ export const invoiceService = {
 			);
 			return normalizeInvoice(data.data);
 		} catch (err) {
-			throw new Error(
-				extractApiErrorMessage(
-					(err as { response?: { data?: unknown } }).response?.data,
-					"Failed to create invoice",
-				),
-			);
+			throw apiErrorFrom(err, "Failed to create invoice");
 		}
 	},
 
@@ -326,12 +316,7 @@ export const invoiceService = {
 			);
 			return normalizeInvoice(data.data);
 		} catch (err) {
-			throw new Error(
-				extractApiErrorMessage(
-					(err as { response?: { data?: unknown } }).response?.data,
-					"Failed to load invoice",
-				),
-			);
+			throw apiErrorFrom(err, "Failed to load invoice");
 		}
 	},
 
@@ -346,12 +331,7 @@ export const invoiceService = {
 			);
 			return normalizeInvoice(data.data);
 		} catch (err) {
-			throw new Error(
-				extractApiErrorMessage(
-					(err as { response?: { data?: unknown } }).response?.data,
-					"Failed to update invoice",
-				),
-			);
+			throw apiErrorFrom(err, "Failed to update invoice");
 		}
 	},
 
@@ -366,12 +346,7 @@ export const invoiceService = {
 			);
 			return normalizeInvoice(data.data);
 		} catch (err) {
-			throw new Error(
-				extractApiErrorMessage(
-					(err as { response?: { data?: unknown } }).response?.data,
-					"Failed to issue invoice",
-				),
-			);
+			throw apiErrorFrom(err, "Failed to issue invoice");
 		}
 	},
 
@@ -383,12 +358,7 @@ export const invoiceService = {
 			);
 			return data.data;
 		} catch (err) {
-			throw new Error(
-				extractApiErrorMessage(
-					(err as { response?: { data?: unknown } }).response?.data,
-					"Failed to re-send the invoice",
-				),
-			);
+			throw apiErrorFrom(err, "Failed to re-send the invoice");
 		}
 	},
 
@@ -409,12 +379,7 @@ export const invoiceService = {
 			);
 			return normalizeInvoice(data.data);
 		} catch (err) {
-			throw new Error(
-				extractApiErrorMessage(
-					(err as { response?: { data?: unknown } }).response?.data,
-					"Failed to record payment",
-				),
-			);
+			throw apiErrorFrom(err, "Failed to record payment");
 		}
 	},
 
@@ -430,12 +395,7 @@ export const invoiceService = {
 			);
 			return normalizeInvoice(data.data);
 		} catch (err) {
-			throw new Error(
-				extractApiErrorMessage(
-					(err as { response?: { data?: unknown } }).response?.data,
-					"Failed to reverse payment",
-				),
-			);
+			throw apiErrorFrom(err, "Failed to reverse payment");
 		}
 	},
 
@@ -452,12 +412,7 @@ export const invoiceService = {
 				replacement: normalizeInvoice(data.data.replacement),
 			};
 		} catch (err) {
-			throw new Error(
-				extractApiErrorMessage(
-					(err as { response?: { data?: unknown } }).response?.data,
-					"Failed to void and replace invoice",
-				),
-			);
+			throw apiErrorFrom(err, "Failed to void and replace invoice");
 		}
 	},
 
@@ -466,12 +421,7 @@ export const invoiceService = {
 		try {
 			await apiClient.delete(`/api/invoices/${invoiceId}`);
 		} catch (err) {
-			throw new Error(
-				extractApiErrorMessage(
-					(err as { response?: { data?: unknown } }).response?.data,
-					"Failed to delete the invoice",
-				),
-			);
+			throw apiErrorFrom(err, "Failed to delete the invoice");
 		}
 	},
 
@@ -486,12 +436,7 @@ export const invoiceService = {
 			);
 			return data.data;
 		} catch (err) {
-			throw new Error(
-				extractApiErrorMessage(
-					(err as { response?: { data?: unknown } }).response?.data,
-					"Failed to generate scheduled invoices",
-				),
-			);
+			throw apiErrorFrom(err, "Failed to generate scheduled invoices");
 		}
 	},
 
@@ -512,12 +457,7 @@ export const invoiceService = {
 			}>(`/api/invoices/${invoiceId}/generate-pdf`);
 			return data.data;
 		} catch (err) {
-			throw new Error(
-				extractApiErrorMessage(
-					(err as { response?: { data?: unknown } }).response?.data,
-					"Failed to generate invoice PDF",
-				),
-			);
+			throw apiErrorFrom(err, "Failed to generate invoice PDF");
 		}
 	},
 
@@ -535,12 +475,7 @@ export const invoiceService = {
 			}>(`/api/invoices/${invoiceId}/pdf-url`);
 			return data.data;
 		} catch (err) {
-			throw new Error(
-				extractApiErrorMessage(
-					(err as { response?: { data?: unknown } }).response?.data,
-					"Failed to open the invoice PDF",
-				),
-			);
+			throw apiErrorFrom(err, "Failed to open the invoice PDF");
 		}
 	},
 
@@ -552,12 +487,7 @@ export const invoiceService = {
 			);
 			return data.data;
 		} catch (err) {
-			throw new Error(
-				extractApiErrorMessage(
-					(err as { response?: { data?: unknown } }).response?.data,
-					"Failed to resolve the invoice recipient",
-				),
-			);
+			throw apiErrorFrom(err, "Failed to resolve the invoice recipient");
 		}
 	},
 };

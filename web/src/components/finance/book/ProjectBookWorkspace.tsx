@@ -21,13 +21,16 @@ import {
 	AppSurfaceCard,
 } from "@/components/common/AppPrimitives";
 import { AppTabs } from "@/components/common/AppTabs";
+import { FinanceNoAccess } from "@/components/finance/access/FinanceAccessStates";
 import { ExpensesPanel } from "@/components/finance/expenses/ExpensesPanel";
 import { ProjectImportsPanel } from "@/components/finance/imports/ProjectImportsPanel";
 import { ProjectInvoices } from "@/components/finance/ProjectInvoices";
 import {
+	FinanceLoading,
 	FinanceStatusBadge,
 	formatFinanceDate,
 } from "@/components/finance/portfolio/FinancePrimitives";
+import { useTeamFinanceProjects } from "@/components/finance/team/useTeamFinanceAccess";
 import { formatMoney } from "@/lib/contract-term";
 import {
 	type FinanceBookOverview,
@@ -102,13 +105,30 @@ export function ProjectBookWorkspace({
 	const canExpenses = Boolean(
 		permissions.manage_expenses || permissions.view_costs,
 	);
+	// The book role decides what this page shows, but imports and the live
+	// invoice workspace sit behind the PROJECT's own finance gate
+	// (`assertProjectFinanceActor`), which a book role does not satisfy. Both
+	// need the project in the caller's project-level finance list.
+	const financeProjectsQuery = useTeamFinanceProjects(teamId);
+	const projectAccess = financeProjectsQuery.data?.find(
+		(project) => project.id === book.project_id,
+	);
+	const projectFinance = Boolean(projectAccess);
 	const tabs = PROJECT_BOOK_TABS.filter((id) => {
 		if (id === "invoices") return Boolean(permissions.view_contracts);
 		if (id === "expenses") return canExpenses;
-		if (id === "imports") return canMoney;
+		if (id === "imports") return canMoney && projectFinance;
 		return true;
 	});
 	const active = tabs.includes(tab) ? tab : "overview";
+	// A direct link to a tab the caller cannot use says so instead of quietly
+	// showing the overview; imports waits for the project list first.
+	const requestedState: "ok" | "loading" | "denied" =
+		tab === active
+			? "ok"
+			: tab === "imports" && canMoney && financeProjectsQuery.isPending
+				? "loading"
+				: "denied";
 
 	return (
 		<>
@@ -132,7 +152,11 @@ export function ProjectBookWorkspace({
 				onChange={(key) => onTabChange(key)}
 			/>
 
-			{active === "overview" ? (
+			{requestedState === "loading" ? (
+				<FinanceLoading />
+			) : requestedState === "denied" ? (
+				<FinanceNoAccess className="mt-6" scope="project" />
+			) : active === "overview" ? (
 				<>
 					<ContractLinks overview={overview} />
 					<MoneyInSection overview={overview} />
@@ -147,7 +171,7 @@ export function ProjectBookWorkspace({
 			) : null}
 
 			{active === "invoices" ? (
-				canMoney && book.project_id ? (
+				canMoney && projectFinance && book.project_id ? (
 					<div className="mt-6">
 						<ProjectInvoices projectId={book.project_id} />
 					</div>
@@ -169,6 +193,7 @@ export function ProjectBookWorkspace({
 				<div className="mt-6">
 					<ProjectImportsPanel
 						projectId={book.project_id ?? undefined}
+						canUpload={projectAccess?.can_manage_invoices ?? false}
 						onOpenDocument={onOpenImport}
 					/>
 				</div>

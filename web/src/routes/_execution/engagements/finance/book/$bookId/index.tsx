@@ -1,7 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
 import { createFileRoute, Navigate } from "@tanstack/react-router";
-import { BookOpen } from "lucide-react";
-import { AppEmptyState } from "@/components/common/AppPrimitives";
+import { FinanceQueryError } from "@/components/finance/access/FinanceAccessStates";
 import { FinanceLoading } from "@/components/finance/portfolio/FinancePrimitives";
 import { financeBooksService } from "@/services/financeBooks.service";
 
@@ -29,13 +28,10 @@ function FinanceBookRedirect() {
 	if (!book) {
 		return (
 			<div className="mx-auto mt-12 max-w-xl px-5">
-				<AppEmptyState
-					icon={BookOpen}
-					title="Finance not found"
-					description={
-						overviewQuery.error?.message ??
-						"This finance page could not be loaded."
-					}
+				<FinanceQueryError
+					error={overviewQuery.error}
+					scope="project"
+					onRetry={() => void overviewQuery.refetch()}
 				/>
 			</div>
 		);

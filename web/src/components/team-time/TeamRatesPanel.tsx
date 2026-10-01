@@ -5,6 +5,7 @@ import {
 	useQueryClient,
 } from "@tanstack/react-query";
 import { useEffect, useMemo, useState } from "react";
+import { FinanceQueryError } from "@/components/finance/access/FinanceAccessStates";
 import {
 	DEFAULT_RATE_TYPE_DRAFT,
 	isRateTypeDraftValid,
@@ -353,6 +354,22 @@ export function TeamRatesPanel({ teamId, links }: TeamRatesPanelProps) {
 			rateId: deletingRate.id,
 		});
 	};
+
+	// Members or rates that failed to load are not "nobody has a rate".
+	const loadError =
+		membersQuery.error ?? ratesQueries.find((q) => q.isError)?.error ?? null;
+	if (loadError) {
+		return (
+			<FinanceQueryError
+				error={loadError}
+				scope="team"
+				onRetry={() => {
+					void membersQuery.refetch();
+					for (const q of ratesQueries) if (q.isError) void q.refetch();
+				}}
+			/>
+		);
+	}
 
 	return (
 		<>

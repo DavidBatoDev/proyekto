@@ -1,4 +1,5 @@
 import apiClient from "@/api/axios";
+import { apiErrorFrom } from "@/lib/apiErrors";
 import { extractApiErrorMessage } from "@/lib/permissionErrors";
 
 /**
@@ -119,12 +120,7 @@ async function request<T>(
 						: await apiClient.post<{ data: T }>(path, body);
 		return data.data;
 	} catch (error) {
-		throw new Error(
-			extractApiErrorMessage(
-				(error as { response?: { data?: unknown } }).response?.data,
-				"Failed to load finance books",
-			),
-		);
+		throw apiErrorFrom(error, "Failed to load finance books");
 	}
 }
 

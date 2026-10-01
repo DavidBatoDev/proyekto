@@ -8,8 +8,10 @@ import {
 } from "lucide-react";
 import { useRef, useState } from "react";
 import { AppEmptyState } from "@/components/common/AppPrimitives";
+import { FinanceQueryError } from "@/components/finance/access/FinanceAccessStates";
 import { formatFinanceDate } from "@/components/finance/portfolio/FinancePrimitives";
 import { useToast } from "@/hooks/useToast";
+import { isAccessDeniedError, retryUnlessAccessDenied } from "@/lib/apiErrors";
 import {
 	type FinanceDocument,
 	type FinanceDocumentKind,
@@ -39,9 +41,15 @@ const KINDS: Array<{ kind: FinanceDocumentKind; label: string; hint: string }> =
 export function ProjectImportsPanel({
 	projectId,
 	onOpenDocument,
+	canUpload = true,
 }: {
 	projectId: string | undefined;
 	onOpenDocument: (documentId: string) => void;
+	/**
+	 * Whether the caller may upload (`finance.manage_invoices`). Readers who
+	 * hold only `finance.view` see the documents without the uploader.
+	 */
+	canUpload?: boolean;
 }) {
 	const toast = useToast();
 	const qc = useQueryClient();
@@ -53,6 +61,7 @@ export function ProjectImportsPanel({
 		queryKey: ["finance-import", "documents", projectId],
 		queryFn: () => financeImportsService.list(projectId ?? ""),
 		enabled: Boolean(projectId),
+		retry: retryUnlessAccessDenied(),
 	});
 
 	const uploadMutation = useMutation({
@@ -80,6 +89,12 @@ export function ProjectImportsPanel({
 		);
 	}
 
+	// A refusal replaces the whole panel: no uploader to a ledger the caller
+	// cannot read, and never "No documents yet" for documents they may not see.
+	if (documentsQuery.isError && isAccessDeniedError(documentsQuery.error)) {
+		return <FinanceQueryError error={documentsQuery.error} scope="project" />;
+	}
+
 	const documents = documentsQuery.data ?? [];
 	const invoices = documents.filter((document) => document.kind === "invoice");
 	const proofs = documents.filter(
@@ -88,70 +103,82 @@ export function ProjectImportsPanel({
 
 	return (
 		<div className="space-y-5">
-			<section className="rounded-xl border border-border bg-card p-4">
-				<h2 className="text-sm font-semibold text-foreground">
-					Record past billing
-				</h2>
-				<p className="mt-0.5 text-xs text-muted-foreground">
-					Upload an invoice that was issued outside Proyekto, snip its figures
-					from the document itself, and it joins this project's overview,
-					ageing, and totals.
-				</p>
+			{canUpload ? (
+				<section className="rounded-xl border border-border bg-card p-4">
+					<h2 className="text-sm font-semibold text-foreground">
+						Record past billing
+					</h2>
+					<p className="mt-0.5 text-xs text-muted-foreground">
+						Upload an invoice that was issued outside Proyekto, snip its figures
+						from the document itself, and it joins this project's overview,
+						ageing, and totals.
+					</p>
 
-				<div className="mt-3 flex flex-wrap items-center gap-2">
-					{KINDS.map((entry) => (
+					<div className="mt-3 flex flex-wrap items-center gap-2">
+						{KINDS.map((entry) => (
+							<button
+								key={entry.kind}
+								type="button"
+								onClick={() => setKind(entry.kind)}
+								aria-pressed={kind === entry.kind}
+								className={`rounded-lg border px-3 py-1.5 text-left text-xs transition-colors ${
+									kind === entry.kind
+										? "border-primary bg-primary/10 text-foreground"
+										: "border-border text-muted-foreground hover:bg-muted"
+								}`}
+							>
+								<span className="block font-semibold">{entry.label}</span>
+								<span className="block text-[11px]">{entry.hint}</span>
+							</button>
+						))}
+
 						<button
-							key={entry.kind}
 							type="button"
-							onClick={() => setKind(entry.kind)}
-							aria-pressed={kind === entry.kind}
-							className={`rounded-lg border px-3 py-1.5 text-left text-xs transition-colors ${
-								kind === entry.kind
-									? "border-primary bg-primary/10 text-foreground"
-									: "border-border text-muted-foreground hover:bg-muted"
-							}`}
+							onClick={() => fileInputRef.current?.click()}
+							disabled={uploadMutation.isPending}
+							className="app-cta ml-auto inline-flex items-center gap-1.5 rounded-lg px-4 py-2 text-sm font-semibold text-white disabled:opacity-60"
 						>
-							<span className="block font-semibold">{entry.label}</span>
-							<span className="block text-[11px]">{entry.hint}</span>
+							{uploadMutation.isPending ? (
+								<Loader2 className="h-4 w-4 animate-spin" />
+							) : (
+								<Upload className="h-4 w-4" />
+							)}
+							Upload {kind === "invoice" ? "invoice" : "proof"}
 						</button>
-					))}
-
-					<button
-						type="button"
-						onClick={() => fileInputRef.current?.click()}
-						disabled={uploadMutation.isPending}
-						className="app-cta ml-auto inline-flex items-center gap-1.5 rounded-lg px-4 py-2 text-sm font-semibold text-white disabled:opacity-60"
-					>
-						{uploadMutation.isPending ? (
-							<Loader2 className="h-4 w-4 animate-spin" />
-						) : (
-							<Upload className="h-4 w-4" />
-						)}
-						Upload {kind === "invoice" ? "invoice" : "proof"}
-					</button>
-					<input
-						ref={fileInputRef}
-						type="file"
-						accept="application/pdf,image/png,image/jpeg,image/webp"
-						className="hidden"
-						onChange={(event) => {
-							const file = event.target.files?.[0];
-							if (file) uploadMutation.mutate(file);
-							event.target.value = "";
-						}}
-					/>
-				</div>
-			</section>
+						<input
+							ref={fileInputRef}
+							type="file"
+							accept="application/pdf,image/png,image/jpeg,image/webp"
+							className="hidden"
+							onChange={(event) => {
+								const file = event.target.files?.[0];
+								if (file) uploadMutation.mutate(file);
+								event.target.value = "";
+							}}
+						/>
+					</div>
+				</section>
+			) : null}
 
 			{documentsQuery.isPending ? (
 				<div className="flex justify-center py-16">
 					<Loader2 className="h-5 w-5 animate-spin text-primary" />
 				</div>
+			) : documentsQuery.isError ? (
+				<FinanceQueryError
+					error={documentsQuery.error}
+					scope="project"
+					onRetry={() => void documentsQuery.refetch()}
+				/>
 			) : documents.length === 0 ? (
 				<AppEmptyState
 					icon={FileText}
 					title="No documents yet"
-					description="Upload the invoice PDFs and bank records for this project's past billing to record it here."
+					description={
+						canUpload
+							? "Upload the invoice PDFs and bank records for this project's past billing to record it here."
+							: "Nothing has been imported for this project."
+					}
 				/>
 			) : (
 				<>

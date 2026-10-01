@@ -1,5 +1,5 @@
 import apiClient from "@/api/axios";
-import { extractApiErrorMessage } from "@/lib/permissionErrors";
+import { apiErrorFrom } from "@/lib/apiErrors";
 import type {
 	FinanceContractSummary,
 	FinanceFilters,
@@ -27,22 +27,37 @@ export interface AdministeredTeam {
 	project_count: number;
 }
 
+/**
+ * One of the team's projects whose finance the caller may read under the
+ * project-level gate — the gate imports and the project invoice workspace
+ * enforce. Pickers and tabs are built from this list, never from the team's
+ * plain attachment list (which also carries projects the caller is only an
+ * editor on).
+ */
+export interface TeamFinanceProject {
+	id: string;
+	title: string | null;
+	status: string | null;
+	currency: string | null;
+	/** Upload/record imports and issue invoices (`finance.manage_invoices`). */
+	can_manage_invoices: boolean;
+}
+
 async function get<T>(path: string, params?: object): Promise<T> {
 	try {
 		const { data } = await apiClient.get<{ data: T }>(path, { params });
 		return data.data;
 	} catch (error) {
-		throw new Error(
-			extractApiErrorMessage(
-				(error as { response?: { data?: unknown } }).response?.data,
-				"Failed to load team finance data",
-			),
-		);
+		throw apiErrorFrom(error, "Failed to load team finance data");
 	}
 }
 
 export const teamFinanceService = {
 	teams: () => get<AdministeredTeam[]>("/api/team-finance/teams"),
+	financeProjects: (teamId: string) =>
+		get<TeamFinanceProject[]>(
+			`/api/team-finance/teams/${teamId}/finance-projects`,
+		),
 	portfolio: (teamId: string, filters: FinanceFilters) =>
 		get<FinancePortfolio>(
 			`/api/team-finance/teams/${teamId}/portfolio`,

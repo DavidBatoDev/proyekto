@@ -1,13 +1,14 @@
-import { useQuery } from "@tanstack/react-query";
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { SelectField } from "@/components/common/FormFields";
+import { FinanceNoAccess } from "@/components/finance/access/FinanceAccessStates";
 import { ProjectImportsPanel } from "@/components/finance/imports/ProjectImportsPanel";
 import {
 	findProjectHome,
 	useFinanceHub,
 } from "@/components/finance/nav/useManagedTeams";
 import { TeamFinanceChrome } from "@/components/finance/team/TeamFinanceChrome";
-import { listTeamProjects } from "@/services/teams.service";
+import { resolveImportsProject } from "@/components/finance/team/teamFinanceAccess";
+import { useTeamFinanceAccess } from "@/components/finance/team/useTeamFinanceAccess";
 
 interface TeamImportsSearch {
 	projectId?: string;
@@ -36,14 +37,12 @@ function TeamImportsPage() {
 	const navigate = useNavigate();
 	const hubQuery = useFinanceHub();
 
-	const projectsQuery = useQuery({
-		queryKey: ["teams", teamId, "projects"],
-		queryFn: () => listTeamProjects(teamId),
-	});
-	const projects = projectsQuery.data ?? [];
-	// With one project there is nothing to choose.
-	const selected =
-		projectId ?? (projects.length === 1 ? projects[0].project_id : undefined);
+	// Only projects whose finance the caller may read: the team's attachment
+	// list also carries projects they are merely an editor on, which the
+	// documents endpoint then refuses.
+	const { financeProjects: projects } = useTeamFinanceAccess(teamId);
+	const { selected, refused } = resolveImportsProject(projectId, projects);
+	const selectedProject = projects.find((project) => project.id === selected);
 
 	return (
 		<TeamFinanceChrome
@@ -66,30 +65,35 @@ function TeamImportsPage() {
 						}
 						options={[
 							{ value: "", label: "Choose a project…" },
-							...projects.map((attachment) => ({
-								value: attachment.project_id,
-								label: attachment.project?.title ?? "Untitled project",
+							...projects.map((project) => ({
+								value: project.id,
+								label: project.title ?? "Untitled project",
 							})),
 						]}
 					/>
 				</div>
-				<ProjectImportsPanel
-					projectId={selected}
-					onOpenDocument={(documentId) => {
-						const home = findProjectHome(hubQuery.data, selected);
-						if (home) {
-							void navigate({
-								to: "/engagements/finance/team/$teamId/project/$bookId/imports/$documentId",
-								params: { ...home, documentId },
-							});
-						} else {
-							void navigate({
-								to: "/engagements/finance/imports/$documentId",
-								params: { documentId },
-							});
-						}
-					}}
-				/>
+				{refused ? (
+					<FinanceNoAccess scope="project" />
+				) : (
+					<ProjectImportsPanel
+						projectId={selected}
+						canUpload={selectedProject?.can_manage_invoices ?? false}
+						onOpenDocument={(documentId) => {
+							const home = findProjectHome(hubQuery.data, selected);
+							if (home) {
+								void navigate({
+									to: "/engagements/finance/team/$teamId/project/$bookId/imports/$documentId",
+									params: { ...home, documentId },
+								});
+							} else {
+								void navigate({
+									to: "/engagements/finance/imports/$documentId",
+									params: { documentId },
+								});
+							}
+						}}
+					/>
+				)}
 			</div>
 		</TeamFinanceChrome>
 	);

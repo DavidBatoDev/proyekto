@@ -12,6 +12,7 @@ import {
 	X,
 } from "lucide-react";
 import { useMemo, useState } from "react";
+import { FinanceQueryError } from "@/components/finance/access/FinanceAccessStates";
 import {
 	buildTeamLogPeriodSearch,
 	payPeriodForDate,
@@ -324,6 +325,15 @@ export function TeamPayoutsPanel({ teamId, links }: TeamPayoutsPanelProps) {
 						<div className="flex justify-center py-8">
 							<Loader2 className="h-5 w-5 animate-spin text-slate-400" />
 						</div>
+					) : approvedQuery.isError || pendingQuery.isError ? (
+						<FinanceQueryError
+							error={approvedQuery.error ?? pendingQuery.error}
+							scope="team"
+							onRetry={() => {
+								void approvedQuery.refetch();
+								void pendingQuery.refetch();
+							}}
+						/>
 					) : groups.length === 0 ? (
 						<div className="rounded-lg border border-dashed border-slate-200 px-4 py-8 text-center text-sm text-slate-500">
 							Nothing to pay or review. Approved logs will appear here grouped
@@ -362,6 +372,13 @@ export function TeamPayoutsPanel({ teamId, links }: TeamPayoutsPanelProps) {
 					<div className="flex justify-center p-12">
 						<Loader2 className="h-6 w-6 animate-spin text-slate-400" />
 					</div>
+				) : payoutsQuery.isError ? (
+					<FinanceQueryError
+						className="p-4"
+						error={payoutsQuery.error}
+						scope="team"
+						onRetry={() => void payoutsQuery.refetch()}
+					/>
 				) : payouts.length === 0 ? (
 					<div className="px-6 py-12 text-center text-sm text-slate-500">
 						No payouts recorded yet. Pay a member above (or from Team Logs) and

@@ -1,8 +1,8 @@
 import { useQuery } from "@tanstack/react-query";
 import { createFileRoute, Navigate, useNavigate } from "@tanstack/react-router";
-import { Archive, BookOpen, Folder, Share2 } from "lucide-react";
+import { Archive, Folder, Share2 } from "lucide-react";
 import { useState } from "react";
-import { AppEmptyState } from "@/components/common/AppPrimitives";
+import { FinanceQueryError } from "@/components/finance/access/FinanceAccessStates";
 import {
 	PROJECT_BOOK_TABS,
 	type ProjectBookTab,
@@ -93,13 +93,12 @@ function ProjectFinancePage() {
 
 				{overviewQuery.isError || !overview ? (
 					<div className="mt-8">
-						<AppEmptyState
-							icon={BookOpen}
-							title="Project finance not found"
-							description={
-								overviewQuery.error?.message ??
-								"This project's finance could not be loaded."
-							}
+						{/* The book gate answers "not yours" with a 404 so a miss does
+						    not confirm the book exists; both read as no access. */}
+						<FinanceQueryError
+							error={overviewQuery.error}
+							scope="project"
+							onRetry={() => void overviewQuery.refetch()}
 						/>
 					</div>
 				) : (

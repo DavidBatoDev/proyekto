@@ -12,10 +12,7 @@ import {
 } from "@/components/finance/book/ProjectBookWorkspace";
 import { FinanceShareDialog } from "@/components/finance/FinanceShareDialog";
 import { InitialsStack } from "@/components/finance/InitialsTile";
-import {
-	findProjectHome,
-	useHubTeam,
-} from "@/components/finance/nav/useManagedTeams";
+import { findProjectHome } from "@/components/finance/nav/useManagedTeams";
 import { FinanceStatusBadge } from "@/components/finance/portfolio/FinancePrimitives";
 import {
 	type FinanceSharedSearch,
@@ -25,8 +22,8 @@ import { PortfolioOverview } from "@/components/finance/portfolio/PortfolioOverv
 import {
 	canSeeTeamMoneyIn,
 	TeamFinanceChrome,
-	visibleTeamTabs,
 } from "@/components/finance/team/TeamFinanceChrome";
+import { useTeamFinanceAccess } from "@/components/finance/team/useTeamFinanceAccess";
 import { useTeamFinanceProjectOptions } from "@/components/finance/team/useTeamFinanceProjectOptions";
 import { formatCurrency } from "@/lib/currency";
 import {
@@ -72,8 +69,8 @@ function TeamFinanceOverviewPage() {
 	const search = Route.useSearch();
 	const navigate = useNavigate();
 	const [shareOpen, setShareOpen] = useState(false);
-	const { team, hubQuery } = useHubTeam(teamId);
-	const tabs = visibleTeamTabs(team).map((tab) => tab.id);
+	const access = useTeamFinanceAccess(teamId);
+	const { team, hubQuery, tabs } = access;
 	const canSeeMoneyIn = canSeeTeamMoneyIn(team);
 
 	const filters = {
@@ -153,6 +150,7 @@ function TeamFinanceOverviewPage() {
 						team={team}
 						canSeeMoneyOut={tabs.includes("expenses")}
 						portfolioTotals={portfolioQuery.data?.totals_by_currency}
+						portfolioFailed={portfolioQuery.isError}
 					/>
 
 					<section>
@@ -191,10 +189,15 @@ function TeamFinanceOverviewPage() {
 									});
 									return;
 								}
+								// The project's invoice workspace sits behind the project's
+								// own finance gate; without it, the team invoice list is the
+								// furthest this caller can go.
 								void navigate({
 									to: "/engagements/finance/team/$teamId/invoices",
 									params: { teamId },
-									search: { ...search, projectId },
+									search: access.canReadProject(projectId)
+										? { ...search, projectId }
+										: { ...search, projectId: undefined },
 								});
 							}}
 						/>
@@ -263,10 +266,13 @@ function TeamKpis({
 	team,
 	canSeeMoneyOut,
 	portfolioTotals,
+	portfolioFailed,
 }: {
 	teamId: string;
 	team: FinanceHubTeam;
 	canSeeMoneyOut: boolean;
+	/** Money in failed to load: say so rather than show an empty tile. */
+	portfolioFailed?: boolean;
 	portfolioTotals:
 		| Array<{
 				currency: string;
@@ -325,14 +331,16 @@ function TeamKpis({
 						: "—"
 				}
 				hint={
-					moneyIn.length
-						? moneyIn
-								.map(
-									(row) =>
-										`${formatCurrency(row.revenue, row.currency)} billed · ${formatCurrency(row.outstanding, row.currency)} open`,
-								)
-								.join(" · ")
-						: "collected from client invoices"
+					portfolioFailed
+						? "could not load money in"
+						: moneyIn.length
+							? moneyIn
+									.map(
+										(row) =>
+											`${formatCurrency(row.revenue, row.currency)} billed · ${formatCurrency(row.outstanding, row.currency)} open`,
+									)
+									.join(" · ")
+							: "collected from client invoices"
 				}
 				compact={moneyIn.length > 1}
 			/>

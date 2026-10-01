@@ -10,26 +10,25 @@ import {
 } from "lucide-react";
 import type { ReactNode } from "react";
 import { AppTabs } from "@/components/common/AppTabs";
+import {
+	FinanceNoAccess,
+	FinanceQueryError,
+} from "@/components/finance/access/FinanceAccessStates";
 import { FINANCE_ROLE_LABELS } from "@/components/finance/FinanceShareDialog";
 import { InitialsTile } from "@/components/finance/InitialsTile";
 import { FinanceTrail } from "@/components/finance/nav/FinanceTrail";
-import { useHubTeam } from "@/components/finance/nav/useManagedTeams";
 import { FinanceFiltersBar } from "@/components/finance/portfolio/FinanceFiltersBar";
+import { FinanceLoading } from "@/components/finance/portfolio/FinancePrimitives";
 import type {
 	FinanceSearchState,
 	FinanceSection,
 } from "@/components/finance/portfolio/financeSearch";
+import type { TeamFinanceTab } from "@/components/finance/team/teamFinanceAccess";
+import { useTeamFinanceAccess } from "@/components/finance/team/useTeamFinanceAccess";
 import type { FinanceHubTeam } from "@/services/financeBooks.service";
 
-export type TeamFinanceTab =
-	| "overview"
-	| "invoices"
-	| "time-logs"
-	| "rates"
-	| "payouts"
-	| "expenses"
-	| "imports"
-	| "members";
+export type { TeamFinanceTab } from "@/components/finance/team/teamFinanceAccess";
+export { visibleTeamTabs } from "@/components/finance/team/teamFinanceAccess";
 
 const TEAM_FINANCE_TABS: Array<{
 	id: TeamFinanceTab;
@@ -47,37 +46,40 @@ const TEAM_FINANCE_TABS: Array<{
 ];
 
 /**
- * Which team tabs the caller can use. Time logs, rates, and payouts are the
- * team's HR layer (team owner or admin, the same rule as Teams → Time); the
- * money-in and money-out ledgers follow the finance role on the team book.
- * A tab the caller cannot use is not drawn — never drawn-then-refused.
+ * What a refused direct URL says, per tab. Imports and invoices are refused
+ * by the PROJECT-level finance gate, so they point at the project owner; the
+ * rest are team-level and point at the team owner.
  */
-export function visibleTeamTabs(team: FinanceHubTeam | undefined) {
-	const isAdmin =
-		team?.my_team_role === "owner" || team?.my_team_role === "admin";
-	const financeRole =
-		team?.my_team_role === "owner" ? "owner" : team?.book_role;
-	const canMoney =
-		isAdmin ||
-		financeRole === "owner" ||
-		financeRole === "manager" ||
-		financeRole === "accountant";
-	return TEAM_FINANCE_TABS.filter((tab) => {
-		switch (tab.id) {
-			case "time-logs":
-			case "rates":
-			case "payouts":
-				return isAdmin;
-			case "invoices":
-			case "imports":
-				return isAdmin || financeRole === "owner" || financeRole === "manager";
-			case "expenses":
-				return canMoney;
-			default:
-				return true;
-		}
-	});
-}
+const DENIED_COPY: Partial<
+	Record<TeamFinanceTab, { title: string; description: string }>
+> = {
+	imports: {
+		title: "You don't have finance access to any of this team's projects.",
+		description:
+			"Imports record billing against one project's ledger. Ask the project owner for access.",
+	},
+	invoices: {
+		title: "You don't have finance access to any of this team's projects.",
+		description: "Ask the project owner for access.",
+	},
+	expenses: {
+		title: "You don't have access to this team's expenses.",
+		description:
+			"Money out is visible to the team owner and the finance owner, manager, or accountant. Ask the team owner for access.",
+	},
+	"time-logs": {
+		title: "You don't have access to this team's time and pay.",
+		description: "Team owners and admins review logs, rates, and payouts.",
+	},
+	rates: {
+		title: "You don't have access to this team's time and pay.",
+		description: "Team owners and admins review logs, rates, and payouts.",
+	},
+	payouts: {
+		title: "You don't have access to this team's time and pay.",
+		description: "Team owners and admins review logs, rates, and payouts.",
+	},
+};
 
 /**
  * The viewer's standing on a team, for the badge beside its name: the team
@@ -143,11 +145,16 @@ export function TeamFinanceChrome({
 	subtitle?: string;
 	children: ReactNode;
 }) {
-	const { team } = useHubTeam(teamId);
+	const access = useTeamFinanceAccess(teamId);
+	const { team } = access;
 	const teamName = team?.team_name ?? "Team";
 	const badge = roleLabel ?? teamRoleLabel(team);
-	const tabs = visibleTeamTabs(team);
+	const tabs = TEAM_FINANCE_TABS.filter((tab) => access.tabs.includes(tab.id));
 	const currentTab = TEAM_FINANCE_TABS.find((tab) => tab.id === section);
+	// Only tabs that depend on the project list wait for it.
+	const sectionAccess = access.hubQuery.isPending
+		? "pending"
+		: access.tabAccess(section);
 
 	const sharedSearch = search
 		? {
@@ -269,7 +276,7 @@ export function TeamFinanceChrome({
 					/>
 				</header>
 
-				{showFilters && search && onChange ? (
+				{sectionAccess === "allowed" && showFilters && search && onChange ? (
 					<FinanceFiltersBar
 						search={search}
 						section={section as FinanceSection}
@@ -280,7 +287,39 @@ export function TeamFinanceChrome({
 					<div className="mt-5" />
 				)}
 
-				{children}
+				{/*
+				 * The page body mounts only once access is known and granted, so a
+				 * refused tab never fires its own (refused) requests, never shows a
+				 * spinner for seconds, and never falls through to an empty list.
+				 */}
+				{access.hubQuery.isError ? (
+					<FinanceQueryError
+						error={access.hubQuery.error}
+						scope="team"
+						onRetry={() => void access.hubQuery.refetch()}
+					/>
+				) : sectionAccess === "pending" ? (
+					access.projectsError ? (
+						<FinanceQueryError
+							error={access.projectsError}
+							onRetry={access.refetchProjects}
+						/>
+					) : (
+						<FinanceLoading />
+					)
+				) : sectionAccess === "denied" ? (
+					!team ? (
+						<FinanceNoAccess scope="team" />
+					) : (
+						<FinanceNoAccess
+							scope="project"
+							title={DENIED_COPY[section]?.title}
+							description={DENIED_COPY[section]?.description}
+						/>
+					)
+				) : (
+					children
+				)}
 			</div>
 		</div>
 	);

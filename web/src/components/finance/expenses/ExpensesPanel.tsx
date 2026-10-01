@@ -14,6 +14,7 @@ import { AppTabs } from "@/components/common/AppTabs";
 import { CurrencySelect } from "@/components/common/CurrencySelect";
 import { DateField } from "@/components/common/DateField";
 import { SelectField, TextField } from "@/components/common/FormFields";
+import { FinanceQueryError } from "@/components/finance/access/FinanceAccessStates";
 import { useHubTeam } from "@/components/finance/nav/useManagedTeams";
 import {
 	FinanceLoading,
@@ -130,10 +131,10 @@ export function ExpensesPanel({
 			{expensesQuery.isPending ? (
 				<FinanceLoading />
 			) : expensesQuery.isError ? (
-				<AppEmptyState
-					icon={TrendingDown}
-					title="Could not load expenses"
-					description={expensesQuery.error.message}
+				<FinanceQueryError
+					error={expensesQuery.error}
+					scope="team"
+					onRetry={() => void expensesQuery.refetch()}
 				/>
 			) : (
 				<>

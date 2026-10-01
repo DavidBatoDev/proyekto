@@ -2,6 +2,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
 import { FolderKanban, ListChecks, Loader2, Users } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
+import { FinanceQueryError } from "@/components/finance/access/FinanceAccessStates";
 import { TimeLogCalendar } from "@/components/team-time/calendar/TimeLogCalendar";
 import {
 	loadTimeView,
@@ -503,17 +504,26 @@ export function TeamLogsPanel({
 						</p>
 					)}
 
-					<TeamApprovalsInbox
-						showMoney={hasRates}
-						logs={items}
-						loadingLogs={logsQuery.isPending}
-						currentUserId={user?.id ?? null}
-						busyLogIds={busyLogIds}
-						onReviewLogs={handleReviewLogs}
-						onPayMember={canPay ? handlePayMember : undefined}
-						onOpenTaskInRoadmap={handleOpenInRoadmap}
-						canOpenTaskInRoadmap={(taskId) => Boolean(taskId)}
-					/>
+					{/* A failed or refused load is not "no logs to review". */}
+					{logsQuery.isError ? (
+						<FinanceQueryError
+							error={logsQuery.error}
+							scope="team"
+							onRetry={() => void logsQuery.refetch()}
+						/>
+					) : (
+						<TeamApprovalsInbox
+							showMoney={hasRates}
+							logs={items}
+							loadingLogs={logsQuery.isPending}
+							currentUserId={user?.id ?? null}
+							busyLogIds={busyLogIds}
+							onReviewLogs={handleReviewLogs}
+							onPayMember={canPay ? handlePayMember : undefined}
+							onOpenTaskInRoadmap={handleOpenInRoadmap}
+							canOpenTaskInRoadmap={(taskId) => Boolean(taskId)}
+						/>
+					)}
 				</>
 			)}
 

@@ -1,6 +1,7 @@
 import { Loader2 } from "lucide-react";
 import type { ReactNode } from "react";
 import { AppSurfaceCard } from "@/components/common/AppPrimitives";
+import { FinanceQueryError } from "@/components/finance/access/FinanceAccessStates";
 import { useTeamMoneyAccess } from "@/components/team-time/useTeamMoneyAccess";
 
 export type TeamMoneyNeed = "approver" | "rates" | "payouts";
@@ -61,6 +62,11 @@ export function TeamMoneyGate({
 				<Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
 			</div>
 		);
+	}
+
+	// A refusal or failure loading the team is not "time tracking is off".
+	if (access.error) {
+		return <FinanceQueryError error={access.error} scope="team" />;
 	}
 
 	const blocked: Blocked | null = !access.timeTrackingEnabled

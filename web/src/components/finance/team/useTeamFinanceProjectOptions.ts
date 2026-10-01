@@ -13,6 +13,7 @@ import { teamFinanceService } from "@/services/teamFinance.service";
 export function useTeamFinanceProjectOptions(
 	teamId: string,
 	search: FinanceSearchState,
+	enabled = true,
 ) {
 	return useQuery({
 		queryKey: [
@@ -29,5 +30,6 @@ export function useTeamFinanceProjectOptions(
 				project_status: search.projectStatus,
 				currency: search.currency,
 			}),
+		enabled,
 	});
 }

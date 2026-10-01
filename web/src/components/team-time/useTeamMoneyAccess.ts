@@ -10,6 +10,12 @@ import { useUser } from "@/stores/authStore";
 export interface TeamMoneyAccess {
 	/** True until the team, its members and the caller's rate check resolve. */
 	isLoading: boolean;
+	/**
+	 * The team or its member list failed to load (a refusal or a failure).
+	 * Without them nothing below is known, so callers must not read the flags
+	 * as "time tracking is off" or "not an approver".
+	 */
+	error: unknown;
 	team: Team | undefined;
 	/** Team owner, or a member with the owner/admin role. */
 	isApprover: boolean;
@@ -43,10 +49,12 @@ export function useTeamMoneyAccess(teamId: string): TeamMoneyAccess {
 		enabled: Boolean(user?.id),
 	});
 
+	const error = teamQuery.error ?? membersQuery.error ?? null;
 	const isLoading =
-		teamQuery.isPending ||
-		membersQuery.isPending ||
-		Boolean(user?.id && myActiveRateQuery.isPending);
+		!error &&
+		(teamQuery.isPending ||
+			membersQuery.isPending ||
+			Boolean(user?.id && myActiveRateQuery.isPending));
 
 	const team = teamQuery.data;
 	const myMembership = membersQuery.data?.find((m) => m.user_id === user?.id);
@@ -57,6 +65,7 @@ export function useTeamMoneyAccess(teamId: string): TeamMoneyAccess {
 
 	return {
 		isLoading,
+		error,
 		team,
 		isApprover,
 		isTeamMember: Boolean(myMembership),

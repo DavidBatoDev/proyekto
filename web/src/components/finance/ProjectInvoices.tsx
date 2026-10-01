@@ -21,12 +21,14 @@ import {
 	AppSectionHeader,
 	AppSurfaceCard,
 } from "@/components/common/AppPrimitives";
+import { FinanceQueryError } from "@/components/finance/access/FinanceAccessStates";
 import {
 	FinanceStatusBadge,
 	formatFinanceDate,
 } from "@/components/finance/portfolio/FinancePrimitives";
 import { ConfirmIssueInvoiceModal } from "@/components/invoices/ConfirmIssueInvoiceModal";
 import { useToast } from "@/hooks/useToast";
+import { retryUnlessAccessDenied } from "@/lib/apiErrors";
 import { formatMoney } from "@/lib/contract-term";
 import { effectiveInvoiceStatus } from "@/lib/finance-status";
 import { invoiceHasClient, NO_CLIENT_HINT } from "@/lib/invoiceClient";
@@ -51,6 +53,7 @@ export function ProjectInvoices({ projectId }: { projectId: string }) {
 	const invoicesQuery = useQuery({
 		queryKey: ["invoices", "project", projectId],
 		queryFn: () => invoiceService.listByProject(projectId, { limit: 100 }),
+		retry: retryUnlessAccessDenied(),
 	});
 
 	// Generating scheduled drafts needs a signed contract to bill against.
@@ -351,6 +354,12 @@ export function ProjectInvoices({ projectId }: { projectId: string }) {
 						<Loader2 className="mr-2 h-5 w-5 animate-spin" />
 						Loading invoices…
 					</div>
+				) : invoicesQuery.isError ? (
+					<FinanceQueryError
+						error={invoicesQuery.error}
+						scope="project"
+						onRetry={() => void invoicesQuery.refetch()}
+					/>
 				) : invoices.length === 0 ? (
 					<AppEmptyState
 						icon={ReceiptText}

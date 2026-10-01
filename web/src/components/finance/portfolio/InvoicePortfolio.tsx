@@ -1,5 +1,6 @@
 import { ChevronRight, Download, ReceiptText, Unlink } from "lucide-react";
 import { AppSurfaceCard } from "@/components/common/AppPrimitives";
+import { FinanceQueryError } from "@/components/finance/access/FinanceAccessStates";
 import { formatCurrency } from "@/lib/currency";
 import { effectiveInvoiceStatus } from "@/lib/finance-status";
 import type { FinanceInvoiceSummary } from "@/services/finance.service";
@@ -15,24 +16,37 @@ import {
 
 export function InvoicePortfolio({
 	loading,
+	error,
+	onRetry,
 	items,
 	total,
 	page,
 	limit,
 	onPageChange,
 	onOpenProject,
+	canOpenProject,
 	onExport,
 }: {
 	loading: boolean;
+	/** The list's load error, if any: rendered instead of "no records". */
+	error?: unknown;
+	onRetry?: () => void;
 	items: FinanceInvoiceSummary[];
 	total: number;
 	page: number;
 	limit: number;
 	onPageChange: (page: number) => void;
 	onOpenProject: (projectId: string) => void;
+	/**
+	 * Whether the caller may open a project's invoice workspace. A row whose
+	 * project they cannot read renders as a plain row, never a link to a page
+	 * that would refuse them. Omitted: every project opens.
+	 */
+	canOpenProject?: (projectId: string) => boolean;
 	onExport: () => void;
 }) {
 	if (loading) return <FinanceLoading />;
+	if (error) return <FinanceQueryError error={error} onRetry={onRetry} />;
 	if (!items.length) return <NoFinanceData />;
 
 	const outstanding = new Map<string, number>();
@@ -82,7 +96,17 @@ export function InvoicePortfolio({
 
 			<AppSurfaceCard className="divide-y divide-border overflow-hidden">
 				{items.map((item) => (
-					<InvoiceRow key={item.id} item={item} onOpenProject={onOpenProject} />
+					<InvoiceRow
+						key={item.id}
+						item={item}
+						onOpenProject={
+							item.project_id &&
+							canOpenProject &&
+							!canOpenProject(item.project_id)
+								? undefined
+								: onOpenProject
+						}
+					/>
 				))}
 			</AppSurfaceCard>
 
@@ -101,7 +125,8 @@ function InvoiceRow({
 	onOpenProject,
 }: {
 	item: FinanceInvoiceSummary;
-	onOpenProject: (projectId: string) => void;
+	/** Absent when the caller cannot open this row's project. */
+	onOpenProject?: (projectId: string) => void;
 }) {
 	const severed = !item.project_id;
 	const status = effectiveInvoiceStatus(item);
@@ -154,7 +179,7 @@ function InvoiceRow({
 	// A severed invoice has no project workspace to open, so it renders as a
 	// plain row with an explanation rather than a dead disabled button — which
 	// is what it used to be, with nothing to say why it would not respond.
-	if (severed) {
+	if (severed || !onOpenProject) {
 		return (
 			<div className="flex w-full items-center justify-between gap-4 p-4 text-left md:px-5 md:py-4">
 				{body}

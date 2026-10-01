@@ -7,6 +7,7 @@ import {
 	Sparkles,
 } from "lucide-react";
 import { type ReactNode, useCallback, useMemo, useState } from "react";
+import { FinanceQueryError } from "@/components/finance/access/FinanceAccessStates";
 import {
 	type CanvasSnip,
 	DocumentCanvas,
@@ -17,6 +18,7 @@ import {
 	SnipField,
 } from "@/components/finance/imports/SnipField";
 import { useToast } from "@/hooks/useToast";
+import { retryUnlessAccessDenied } from "@/lib/apiErrors";
 import { CURRENCY_CODE_OPTIONS } from "@/lib/currency";
 import {
 	type DocumentSnip,
@@ -123,11 +125,16 @@ export function ImportWorkspace({
 	const documentQuery = useQuery({
 		queryKey: ["finance-import", "document", documentId],
 		queryFn: () => financeImportsService.get(documentId),
+		retry: retryUnlessAccessDenied(),
 	});
 	const bytesQuery = useQuery({
 		queryKey: ["finance-import", "file", documentId],
 		queryFn: () => financeImportsService.file(documentId),
 		staleTime: 5 * 60_000,
+		// The bytes sit behind the same gate as the document; ask only once the
+		// document itself was granted.
+		enabled: documentQuery.isSuccess,
+		retry: retryUnlessAccessDenied(),
 	});
 	const document = documentQuery.data;
 	const projectQuery = useQuery({
@@ -400,9 +407,11 @@ export function ImportWorkspace({
 		return (
 			<div className="mx-auto min-h-full max-w-3xl px-5 py-10">
 				<div className="mb-4">{trail(undefined)}</div>
-				<p className="text-sm text-muted-foreground">
-					That document is not available.
-				</p>
+				<FinanceQueryError
+					error={documentQuery.error}
+					scope="document"
+					onRetry={() => void documentQuery.refetch()}
+				/>
 			</div>
 		);
 	}

@@ -1,4 +1,5 @@
 import apiClient from "@/api/axios";
+import { apiErrorFrom } from "@/lib/apiErrors";
 import { extractApiErrorMessage } from "@/lib/permissionErrors";
 import { toServiceError } from "@/lib/planLimitErrors";
 import type { ProjectRoadmapSummary } from "@/services/project.service";
@@ -257,12 +258,7 @@ export async function listMyTeams(): Promise<Team[]> {
 		const { data } = await apiClient.get<{ data: Team[] }>("/api/teams");
 		return data.data;
 	} catch (err) {
-		throw new Error(
-			extractApiErrorMessage(
-				(err as { response?: { data?: unknown } }).response?.data,
-				"Failed to load teams",
-			),
-		);
+		throw apiErrorFrom(err, "Failed to load teams");
 	}
 }
 
@@ -273,12 +269,7 @@ export async function getTeam(teamId: string): Promise<Team> {
 		);
 		return data.data;
 	} catch (err) {
-		throw new Error(
-			extractApiErrorMessage(
-				(err as { response?: { data?: unknown } }).response?.data,
-				"Failed to load team",
-			),
-		);
+		throw apiErrorFrom(err, "Failed to load team");
 	}
 }
 
@@ -353,12 +344,7 @@ export async function deleteTeam(teamId: string): Promise<void> {
 	try {
 		await apiClient.delete(`/api/teams/${teamId}`);
 	} catch (err) {
-		throw new Error(
-			extractApiErrorMessage(
-				(err as { response?: { data?: unknown } }).response?.data,
-				"Failed to delete team",
-			),
-		);
+		throw apiErrorFrom(err, "Failed to delete team");
 	}
 }
 
@@ -371,12 +357,7 @@ export async function listTeamMembers(teamId: string): Promise<TeamMember[]> {
 		);
 		return data.data;
 	} catch (err) {
-		throw new Error(
-			extractApiErrorMessage(
-				(err as { response?: { data?: unknown } }).response?.data,
-				"Failed to load team members",
-			),
-		);
+		throw apiErrorFrom(err, "Failed to load team members");
 	}
 }
 
@@ -398,12 +379,7 @@ export async function updateTeamMember(
 		);
 		return data.data;
 	} catch (err) {
-		throw new Error(
-			extractApiErrorMessage(
-				(err as { response?: { data?: unknown } }).response?.data,
-				"Failed to update team member",
-			),
-		);
+		throw apiErrorFrom(err, "Failed to update team member");
 	}
 }
 
@@ -449,12 +425,7 @@ export async function updateWorkspaceDefaults(
 		}>("/api/teams/preferences/defaults", patch);
 		return data.data;
 	} catch (err) {
-		throw new Error(
-			extractApiErrorMessage(
-				(err as { response?: { data?: unknown } }).response?.data,
-				"Failed to update workspace defaults",
-			),
-		);
+		throw apiErrorFrom(err, "Failed to update workspace defaults");
 	}
 }
 
@@ -470,12 +441,7 @@ export async function listMemberRates(
 		);
 		return data.data;
 	} catch (err) {
-		throw new Error(
-			extractApiErrorMessage(
-				(err as { response?: { data?: unknown } }).response?.data,
-				"Failed to load member rate history",
-			),
-		);
+		throw apiErrorFrom(err, "Failed to load member rate history");
 	}
 }
 
@@ -491,12 +457,7 @@ export async function getActiveMemberRate(
 		);
 		return data.data;
 	} catch (err) {
-		throw new Error(
-			extractApiErrorMessage(
-				(err as { response?: { data?: unknown } }).response?.data,
-				"Failed to load active rate",
-			),
-		);
+		throw apiErrorFrom(err, "Failed to load active rate");
 	}
 }
 
@@ -559,12 +520,7 @@ export async function deleteMemberRate(
 			`/api/teams/${teamId}/members/${userId}/rates/${rateId}`,
 		);
 	} catch (err) {
-		throw new Error(
-			extractApiErrorMessage(
-				(err as { response?: { data?: unknown } }).response?.data,
-				"Failed to delete rate",
-			),
-		);
+		throw apiErrorFrom(err, "Failed to delete rate");
 	}
 }
 
@@ -575,12 +531,7 @@ export async function removeTeamMember(
 	try {
 		await apiClient.delete(`/api/teams/${teamId}/members/${userId}`);
 	} catch (err) {
-		throw new Error(
-			extractApiErrorMessage(
-				(err as { response?: { data?: unknown } }).response?.data,
-				"Failed to remove team member",
-			),
-		);
+		throw apiErrorFrom(err, "Failed to remove team member");
 	}
 }
 
@@ -621,12 +572,7 @@ export async function listTeamProjects(
 		);
 		return data.data;
 	} catch (err) {
-		throw new Error(
-			extractApiErrorMessage(
-				(err as { response?: { data?: unknown } }).response?.data,
-				"Failed to load attached projects",
-			),
-		);
+		throw apiErrorFrom(err, "Failed to load attached projects");
 	}
 }
 
@@ -641,12 +587,7 @@ export async function listProjectTeams(
 		);
 		return data.data;
 	} catch (err) {
-		throw new Error(
-			extractApiErrorMessage(
-				(err as { response?: { data?: unknown } }).response?.data,
-				"Failed to load project teams",
-			),
-		);
+		throw apiErrorFrom(err, "Failed to load project teams");
 	}
 }
 
@@ -665,12 +606,7 @@ export async function attachTeam(
 		);
 		return data.data;
 	} catch (err) {
-		throw new Error(
-			extractApiErrorMessage(
-				(err as { response?: { data?: unknown } }).response?.data,
-				"Failed to attach team",
-			),
-		);
+		throw apiErrorFrom(err, "Failed to attach team");
 	}
 }
 
@@ -691,12 +627,7 @@ export async function detachTeam(
 			params: opts?.members === "keep" ? { members: "keep" } : undefined,
 		});
 	} catch (err) {
-		throw new Error(
-			extractApiErrorMessage(
-				(err as { response?: { data?: unknown } }).response?.data,
-				"Failed to detach team",
-			),
-		);
+		throw apiErrorFrom(err, "Failed to detach team");
 	}
 }
 
@@ -714,12 +645,7 @@ export async function updateProjectTeam(
 		);
 		return data.data;
 	} catch (err) {
-		throw new Error(
-			extractApiErrorMessage(
-				(err as { response?: { data?: unknown } }).response?.data,
-				"Failed to update project team attachment",
-			),
-		);
+		throw apiErrorFrom(err, "Failed to update project team attachment");
 	}
 }
 
@@ -733,12 +659,7 @@ export async function listCuratedMembers(
 		);
 		return data.data;
 	} catch (err) {
-		throw new Error(
-			extractApiErrorMessage(
-				(err as { response?: { data?: unknown } }).response?.data,
-				"Failed to load curated members",
-			),
-		);
+		throw apiErrorFrom(err, "Failed to load curated members");
 	}
 }
 
@@ -752,12 +673,7 @@ export async function listAvailableTeamMembers(
 		);
 		return data.data;
 	} catch (err) {
-		throw new Error(
-			extractApiErrorMessage(
-				(err as { response?: { data?: unknown } }).response?.data,
-				"Failed to load available members",
-			),
-		);
+		throw apiErrorFrom(err, "Failed to load available members");
 	}
 }
 
@@ -777,12 +693,7 @@ export async function addCuratedMember(
 		);
 		return data.data;
 	} catch (err) {
-		throw new Error(
-			extractApiErrorMessage(
-				(err as { response?: { data?: unknown } }).response?.data,
-				"Failed to add member",
-			),
-		);
+		throw apiErrorFrom(err, "Failed to add member");
 	}
 }
 
@@ -796,12 +707,7 @@ export async function removeCuratedMember(
 			`/api/projects/${projectId}/teams/${teamId}/members/${userId}`,
 		);
 	} catch (err) {
-		throw new Error(
-			extractApiErrorMessage(
-				(err as { response?: { data?: unknown } }).response?.data,
-				"Failed to remove curated member",
-			),
-		);
+		throw apiErrorFrom(err, "Failed to remove curated member");
 	}
 }
 
@@ -818,12 +724,7 @@ export async function inviteTeamMemberByEmail(
 		);
 		return data.data;
 	} catch (err) {
-		throw new Error(
-			extractApiErrorMessage(
-				(err as { response?: { data?: unknown } }).response?.data,
-				"Failed to send invite",
-			),
-		);
+		throw apiErrorFrom(err, "Failed to send invite");
 	}
 }
 
@@ -875,12 +776,7 @@ export async function listTeamInvites(teamId: string): Promise<TeamInvite[]> {
 		);
 		return data.data;
 	} catch (err) {
-		throw new Error(
-			extractApiErrorMessage(
-				(err as { response?: { data?: unknown } }).response?.data,
-				"Failed to load team invites",
-			),
-		);
+		throw apiErrorFrom(err, "Failed to load team invites");
 	}
 }
 
@@ -894,12 +790,7 @@ export async function cancelTeamInvite(
 		);
 		return data.data;
 	} catch (err) {
-		throw new Error(
-			extractApiErrorMessage(
-				(err as { response?: { data?: unknown } }).response?.data,
-				"Failed to cancel invite",
-			),
-		);
+		throw apiErrorFrom(err, "Failed to cancel invite");
 	}
 }
 
@@ -910,12 +801,7 @@ export async function listMyTeamInvites(): Promise<TeamInvite[]> {
 		);
 		return data.data;
 	} catch (err) {
-		throw new Error(
-			extractApiErrorMessage(
-				(err as { response?: { data?: unknown } }).response?.data,
-				"Failed to load your invites",
-			),
-		);
+		throw apiErrorFrom(err, "Failed to load your invites");
 	}
 }
 
@@ -930,12 +816,7 @@ export async function respondTeamInvite(
 		);
 		return data.data;
 	} catch (err) {
-		throw new Error(
-			extractApiErrorMessage(
-				(err as { response?: { data?: unknown } }).response?.data,
-				"Failed to respond to invite",
-			),
-		);
+		throw apiErrorFrom(err, "Failed to respond to invite");
 	}
 }
 
@@ -998,12 +879,7 @@ export async function inviteTeamToProject(
 		);
 		return data.data;
 	} catch (err) {
-		throw new Error(
-			extractApiErrorMessage(
-				(err as { response?: { data?: unknown } }).response?.data,
-				"Failed to send team invitation",
-			),
-		);
+		throw apiErrorFrom(err, "Failed to send team invitation");
 	}
 }
 
@@ -1016,12 +892,7 @@ export async function listProjectTeamInvites(
 		);
 		return data.data;
 	} catch (err) {
-		throw new Error(
-			extractApiErrorMessage(
-				(err as { response?: { data?: unknown } }).response?.data,
-				"Failed to load team invitations",
-			),
-		);
+		throw apiErrorFrom(err, "Failed to load team invitations");
 	}
 }
 
@@ -1035,12 +906,7 @@ export async function cancelProjectTeamInvite(
 		);
 		return data.data;
 	} catch (err) {
-		throw new Error(
-			extractApiErrorMessage(
-				(err as { response?: { data?: unknown } }).response?.data,
-				"Failed to cancel invitation",
-			),
-		);
+		throw apiErrorFrom(err, "Failed to cancel invitation");
 	}
 }
 
@@ -1051,12 +917,7 @@ export async function listMyProjectTeamInvites(): Promise<ProjectTeamInvite[]> {
 		);
 		return data.data;
 	} catch (err) {
-		throw new Error(
-			extractApiErrorMessage(
-				(err as { response?: { data?: unknown } }).response?.data,
-				"Failed to load your project invitations",
-			),
-		);
+		throw apiErrorFrom(err, "Failed to load your project invitations");
 	}
 }
 
@@ -1079,11 +940,6 @@ export async function respondProjectTeamInvite(
 		);
 		return data.data;
 	} catch (err) {
-		throw new Error(
-			extractApiErrorMessage(
-				(err as { response?: { data?: unknown } }).response?.data,
-				"Failed to respond to invitation",
-			),
-		);
+		throw apiErrorFrom(err, "Failed to respond to invitation");
 	}
 }

@@ -1,5 +1,5 @@
 import apiClient from "@/api/axios";
-import { extractApiErrorMessage } from "@/lib/permissionErrors";
+import { apiErrorFrom } from "@/lib/apiErrors";
 
 /**
  * Team expenses — money out that is not a payout: contractors, software and
@@ -88,12 +88,7 @@ async function request<T>(
 					: await apiClient.post<{ data: T }>(path, body);
 		return data.data;
 	} catch (error) {
-		throw new Error(
-			extractApiErrorMessage(
-				(error as { response?: { data?: unknown } }).response?.data,
-				"Failed to load expenses",
-			),
-		);
+		throw apiErrorFrom(error, "Failed to load expenses");
 	}
 }
 

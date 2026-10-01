@@ -19,6 +19,7 @@ import { formatFinanceDate } from "@/components/finance/portfolio/FinancePrimiti
 import { TeamFinanceChrome } from "@/components/finance/team/TeamFinanceChrome";
 import { useConfirm } from "@/hooks/useConfirm";
 import { useToast } from "@/hooks/useToast";
+import { isAccessDeniedError } from "@/lib/apiErrors";
 import {
 	type FinanceBookMember,
 	financeBooksService,
@@ -150,6 +151,12 @@ function TeamMembersSection({
 			<AppSurfaceCard className="overflow-hidden">
 				{membersQuery.isPending ? (
 					<EmptyRow>Loading…</EmptyRow>
+				) : membersQuery.isError ? (
+					<EmptyRow>
+						{isAccessDeniedError(membersQuery.error)
+							? "You don't have access to this team's member list."
+							: `Couldn't load team members: ${membersQuery.error.message}`}
+					</EmptyRow>
 				) : (
 					(membersQuery.data ?? []).map((member) => (
 						<PersonRow
@@ -240,6 +247,12 @@ function FinanceAccessSection({
 					</EmptyRow>
 				) : membersQuery.isPending ? (
 					<EmptyRow>Loading…</EmptyRow>
+				) : membersQuery.isError ? (
+					<EmptyRow>
+						{isAccessDeniedError(membersQuery.error)
+							? "You don't have access to see who holds this team's finance."
+							: `Couldn't load finance access: ${membersQuery.error.message}`}
+					</EmptyRow>
 				) : (
 					(membersQuery.data ?? []).map((member) => (
 						<PersonRow

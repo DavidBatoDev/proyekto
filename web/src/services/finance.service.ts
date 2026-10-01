@@ -1,5 +1,5 @@
 import apiClient from "@/api/axios";
-import { extractApiErrorMessage } from "@/lib/permissionErrors";
+import { apiErrorFrom } from "@/lib/apiErrors";
 
 export interface FinanceFilters {
 	q?: string;
@@ -124,12 +124,7 @@ async function get<T>(path: string, params: object): Promise<T> {
 		const { data } = await apiClient.get<{ data: T }>(path, { params });
 		return data.data;
 	} catch (error) {
-		throw new Error(
-			extractApiErrorMessage(
-				(error as { response?: { data?: unknown } }).response?.data,
-				"Failed to load finance data",
-			),
-		);
+		throw apiErrorFrom(error, "Failed to load finance data");
 	}
 }
 

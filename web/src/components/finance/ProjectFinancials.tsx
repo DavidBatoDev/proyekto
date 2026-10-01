@@ -8,6 +8,7 @@ import {
 } from "lucide-react";
 import type { ReactNode } from "react";
 import { AppSurfaceCard } from "@/components/common/AppPrimitives";
+import { FinanceQueryError } from "@/components/finance/access/FinanceAccessStates";
 import { formatFinanceDate } from "@/components/finance/portfolio/FinancePrimitives";
 import { BudgetSplitPanel } from "@/components/financials/BudgetSplitPanel";
 import {
@@ -45,6 +46,15 @@ export function ProjectFinancials({ projectId }: { projectId: string }) {
 			<div className="flex justify-center py-20">
 				<Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
 			</div>
+		);
+	}
+	if (financialsQuery.isError) {
+		return (
+			<FinanceQueryError
+				error={financialsQuery.error}
+				scope="project"
+				onRetry={() => void financialsQuery.refetch()}
+			/>
 		);
 	}
 	if (!fin) return null;
