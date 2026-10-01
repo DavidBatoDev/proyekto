@@ -1,4 +1,4 @@
-import { supabaseFetch } from './supabase-fetch';
+import { FIRST_READ_TIMEOUT_MS, supabaseFetch } from './supabase-fetch';
 
 /**
  * Reproduces the 2026-10-01 failure: a read of a just-sent amendment hung
@@ -67,6 +67,58 @@ describe('supabaseFetch', () => {
     await expect(fetcher(url)).rejects.toThrow('fetch failed');
     expect(baseFetch).toHaveBeenCalledTimes(2);
     expect(logger.warn).toHaveBeenCalledTimes(2);
+  });
+
+  describe('the attempt bounds', () => {
+    /** Records the bound each attempt got, by when its signal fired. */
+    function timedHang(bounds: number[]) {
+      return (_input: unknown, init?: RequestInit) =>
+        new Promise<Response>((_resolve, reject) => {
+          const started = Date.now();
+          init?.signal?.addEventListener('abort', () => {
+            bounds.push(Date.now() - started);
+            reject(new Error('The operation was aborted due to timeout'));
+          });
+        });
+    }
+
+    it('gives a read a short first attempt and the full bound on the retry', async () => {
+      const bounds: number[] = [];
+      const baseFetch = jest.fn().mockImplementation(timedHang(bounds));
+      const fetcher = supabaseFetch(300, {
+        baseFetch: baseFetch as never,
+        logger: { warn: jest.fn() },
+        firstReadTimeoutMs: 50,
+      });
+      await expect(fetcher(url)).rejects.toBeDefined();
+      expect(baseFetch).toHaveBeenCalledTimes(2);
+      expect(bounds[0]).toBeLessThan(200);
+      expect(bounds[1]).toBeGreaterThanOrEqual(250);
+    });
+
+    it('keeps the full bound on a write', async () => {
+      const bounds: number[] = [];
+      const baseFetch = jest.fn().mockImplementation(timedHang(bounds));
+      const fetcher = supabaseFetch(200, {
+        baseFetch: baseFetch as never,
+        logger: { warn: jest.fn() },
+        firstReadTimeoutMs: 20,
+      });
+      await expect(
+        fetcher(url, { method: 'POST', body: '{}' }),
+      ).rejects.toBeDefined();
+      expect(bounds).toHaveLength(1);
+      expect(bounds[0]).toBeGreaterThanOrEqual(150);
+    });
+
+    it('keeps the default worst case well under the 25 s request budget', () => {
+      const SUPABASE_FETCH_TIMEOUT_MS = 12000;
+      const REQUEST_TIMEOUT_MS = 25000;
+      expect(FIRST_READ_TIMEOUT_MS).toBe(6000);
+      expect(
+        FIRST_READ_TIMEOUT_MS + SUPABASE_FETCH_TIMEOUT_MS,
+      ).toBeLessThanOrEqual(REQUEST_TIMEOUT_MS - 5000);
+    });
   });
 
   it('does not retry when the caller aborted', async () => {
