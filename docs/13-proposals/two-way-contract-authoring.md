@@ -377,3 +377,10 @@ Differences from the text above:
 - **Metering against `ai_messages_monthly`** is a TODO: that quota is display-only everywhere.
 - The page stays in `13-proposals` until the branch is merged; moving it to `11-domains` is the
   last step.
+
+## Decided 2026-09-30: sending waits for the consultant's vetting
+
+A client- or talent-authored contract **cannot be sent** until the named consultant's vetting
+enrollment is approved. `sendContract` refuses with "Waiting for *name*'s verification…";
+`GET /contracts/:id` returns `consultant_verification { verified, name }`, and the web disables
+Send and shows "Waiting for *name*'s verification". Signing keeps its existing check.

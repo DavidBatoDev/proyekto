@@ -76,6 +76,7 @@ import {
 	formatPeriodRange,
 	type InvoiceCadence,
 } from "@/lib/contract-term";
+import { contractSendBlockedReason } from "@/lib/contractSendGate";
 import { CURRENCIES } from "@/lib/currency";
 import {
 	financeStatusBadgeClass,
@@ -525,11 +526,22 @@ export function ProjectContract({
 						<History className="h-3.5 w-3.5" />
 						<span className="hidden sm:inline">History</span>
 					</button>
+					{isAuthor &&
+						contract.status === "draft" &&
+						contractSendBlockedReason(contract) && (
+							<span className="text-xs font-medium text-muted-foreground">
+								{contractSendBlockedReason(contract)}
+							</span>
+						)}
 					{isAuthor && contract.status === "draft" && (
 						<button
 							type="button"
 							onClick={() => sendMutation.mutate()}
-							disabled={sendMutation.isPending}
+							disabled={
+								sendMutation.isPending ||
+								Boolean(contractSendBlockedReason(contract))
+							}
+							title={contractSendBlockedReason(contract) ?? undefined}
 							className="inline-flex items-center gap-1.5 rounded-md border border-primary/40 px-2.5 py-1.5 text-xs font-semibold text-primary hover:bg-primary/10 disabled:opacity-50"
 						>
 							<Send className="h-3.5 w-3.5" />

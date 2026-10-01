@@ -177,6 +177,8 @@ export interface Contract {
 	signed_by_client_signature_offset_y: number;
 
 	created_by: string | null;
+	/** Single-contract reads: whether the consultant seat has passed vetting. */
+	consultant_verification?: { verified: boolean; name: string };
 	created_at: string;
 	updated_at: string;
 	positions: ContractPosition[];

@@ -264,6 +264,8 @@ export interface ContractWithSchedule extends ContractRow {
   periods: BillingPeriod[];
   /** Per-page initials, so the document can stamp each page it renders. */
   page_initials: ContractPageInitial[];
+  /** Present on single-contract reads: whether the consultant seat is vetted. */
+  consultant_verification?: { verified: boolean; name: string };
 }
 
 /** The project's primary team, as far as contracts care about it. */
@@ -274,6 +276,17 @@ interface PrimaryTeamRow {
   tax_id: string | null;
   billing_email: string | null;
   pay_period_config: PayPeriodConfig | null;
+}
+
+/** "Jane Doe", else the email, else a neutral fallback. */
+export function displayNameOf(profile: ProfileIdentity | null): string {
+  if (!profile) return 'the consultant';
+  const full = [profile.first_name, profile.last_name]
+    .filter(Boolean)
+    .join(' ');
+  return (
+    profile.display_name?.trim() || full || profile.email || 'the consultant'
+  );
 }
 
 export interface ProfileIdentity {
@@ -572,7 +585,28 @@ export class ContractsService {
   ): Promise<ContractWithSchedule> {
     const row = await this.getContractRow(contractId);
     await this.assertContractRead(callerId, row);
-    return this.withSchedule(row);
+    const contract = await this.withSchedule(row);
+    return {
+      ...contract,
+      consultant_verification: await this.consultantVerification(row),
+    };
+  }
+
+  /**
+   * Whether the consultant seat has passed vetting, and the name to show while
+   * it has not. A client- or talent-authored contract cannot be SENT until it
+   * has (two-way authoring, decision 2026-09-30); signing keeps its own check.
+   */
+  async consultantVerification(
+    row: Pick<ContractRow, 'consultant_user_id'>,
+  ): Promise<{ verified: boolean; name: string }> {
+    const consultantId = row.consultant_user_id;
+    if (!consultantId) return { verified: false, name: displayNameOf(null) };
+    const [verified, profile] = await Promise.all([
+      isActiveConsultantEnrollment(this.supabase, consultantId),
+      this.resolveProfile(consultantId).catch(() => null),
+    ]);
+    return { verified, name: displayNameOf(profile) };
   }
 
   /** Internal exact-row lookup for invoice provenance. No caller authorization. */
@@ -1962,6 +1996,19 @@ export class ContractsService {
     await this.assertPartyControl(callerId, existing);
     if (existing.status !== 'draft') {
       throw new BadRequestException('Only a draft can be sent.');
+    }
+    // A contract drafted by the client or talent names a consultant who may
+    // still be in vetting. It stays a draft until they are verified.
+    if (
+      existing.created_by &&
+      existing.created_by !== existing.consultant_user_id
+    ) {
+      const verification = await this.consultantVerification(existing);
+      if (!verification.verified) {
+        throw new BadRequestException(
+          `Waiting for ${verification.name}'s verification. This contract can be sent once their consultant vetting is approved.`,
+        );
+      }
     }
     await this.assertActiveContractCapacity(existing);
     // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment

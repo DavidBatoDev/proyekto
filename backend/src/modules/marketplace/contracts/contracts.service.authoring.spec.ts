@@ -570,6 +570,84 @@ describe('ContractsService: active_contracts is checked on send', () => {
   });
 });
 
+describe('ContractsService: a counterparty-authored contract waits for vetting', () => {
+  const draft = () =>
+    contractFixture({
+      status: 'draft',
+      created_by: 'client-1',
+      consultant_user_id: 'consultant-1',
+      workspace_id: 'ws-1',
+    });
+  const profile = (call: Call): Reply | undefined =>
+    call.table === 'contracts' &&
+    call.op === 'select' &&
+    call.filters.some((f) => f[0] === 'in')
+      ? { data: [], error: null }
+      : call.table === 'profiles'
+        ? {
+            data: {
+              id: 'consultant-1',
+              display_name: 'Dev Consultant',
+              first_name: null,
+              last_name: null,
+              email: 'c@example.test',
+            },
+            error: null,
+          }
+        : undefined;
+
+  it('refuses to send while the named consultant is unverified', async () => {
+    const contract = draft();
+    const { service, calls } = build({
+      contract,
+      activeConsultant: false,
+      reply: profile,
+      entitlements: {
+        assertCountedLimit: jest.fn(),
+        assertFeature: jest.fn(),
+      },
+    });
+
+    await expect(service.sendContract('client-1', contract.id)).rejects.toThrow(
+      "Waiting for Dev Consultant's verification",
+    );
+    expect(
+      calls.some((call) => call.table === 'contracts' && call.op === 'update'),
+    ).toBe(false);
+  });
+
+  it('sends once the consultant is verified', async () => {
+    const contract = draft();
+    const { service } = build({
+      contract,
+      activeConsultant: true,
+      reply: profile,
+      entitlements: {
+        assertCountedLimit: jest.fn(),
+        assertFeature: jest.fn(),
+      },
+    });
+
+    await expect(
+      service.sendContract('client-1', contract.id),
+    ).resolves.toMatchObject({ status: 'sent' });
+  });
+
+  it('reports the verification on a single read', async () => {
+    const contract = draft();
+    const { service } = build({
+      contract,
+      activeConsultant: false,
+      reply: profile,
+    });
+    const read = await service.getContract('client-1', contract.id);
+    expect(read.consultant_verification).toEqual({
+      verified: false,
+      name: 'Dev Consultant',
+    });
+  });
+});
+
 describe('ContractsService: changes must be reviewed before signing (rule 4)', () => {
   it('refuses to sign over unseen changes by the other party', async () => {
     const contract = contractFixture({ revision: 4 });
