@@ -43,13 +43,14 @@ export interface TeamFinanceProjectAccess {
  *   `finance.view` on (`TeamFinanceAccessService.listTeamProjects` filters
  *   administrators per project — an admin with none would only ever get an
  *   empty list that looks like "no invoices"); for anyone else, an
- *   owner/manager role on the team book, whose grant covers every attached
- *   project.
+ *   owner/manager/accountant role on the team book (`view_contracts`), whose
+ *   grant covers every attached project.
  * - Expenses: the team owner, or an owner/manager/accountant on the team book
  *   (`FinanceExpensesService.resolveTeamAccess`). Team admin alone is NOT
  *   enough there, so it does not show the tab.
- * - Imports: at least one project passing the project-level finance gate
- *   (`assertProjectFinanceActor`); a team role alone never admits it.
+ * - Imports: at least one project passing the project-scoped finance gate
+ *   (`assertProjectFinanceActor`: `finance.view` on the project, or a
+ *   team-running role on the team book); a team role alone never admits it.
  *
  * A tab the caller cannot use is not drawn — never drawn-then-refused.
  */
@@ -64,7 +65,10 @@ export function visibleTeamTabs(
 	// The backend checks administration FIRST and only consults the book for
 	// non-administrators, so a book grant widens nothing for a team admin.
 	const bookOnlyRuns =
-		!isAdmin && (team.book_role === "owner" || team.book_role === "manager");
+		!isAdmin &&
+		(team.book_role === "owner" ||
+			team.book_role === "manager" ||
+			team.book_role === "accountant");
 	const hasFinanceProjects = (access.financeProjectCount ?? 0) > 0;
 
 	return TEAM_FINANCE_TAB_ORDER.filter((tab) => {

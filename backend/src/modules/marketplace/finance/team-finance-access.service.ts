@@ -180,16 +180,18 @@ export class TeamFinanceAccessService {
   }
 
   /**
-   * The team's attached projects the caller passes the project-level finance
-   * read gate on — exactly the set `assertProjectFinanceActor(..., 'read')`
-   * admits, so a web picker built from it never offers a project whose
-   * project-scoped money endpoints would then refuse.
+   * The team's attached projects the caller passes the project-scoped
+   * finance read gate on — exactly the set `assertProjectFinanceActor(...,
+   * 'read')` admits, so a web picker built from it never offers a project
+   * whose project-scoped money endpoints would then refuse.
    *
-   * Deliberately NOT `listTeamProjects`: that list also admits every attached
-   * project to a team finance-book role (the team book's grant), which the
-   * project-scoped endpoints do not honour. A team admin who is only an
-   * editor on a project therefore sees it in neither list, and a book manager
-   * sees it in the team rollup but not here.
+   * Two ways in, as in that gate: `finance.view` on the caller's own
+   * project_access rows (per project), or a team-running role
+   * (owner/manager/accountant) on this team's active finance book, which
+   * covers every attached project — reads via the book's `view_contracts`,
+   * management via `manage_money`. Client viewers never qualify. A team admin
+   * who is only an editor on a project, with no book role, sees it in neither
+   * list.
    *
    * Never refuses: for a stranger, or a team id that does not exist, the
    * answer is simply the empty list — it names only projects the caller can
@@ -210,6 +212,13 @@ export class TeamFinanceAccessService {
       ),
     ].filter(Boolean);
     if (attachedIds.length === 0) return [];
+
+    // A team-running role on this team's finance book admits every attached
+    // project, exactly as `assertProjectFinanceActor` now does.
+    const [bookRead, bookManage] = await Promise.all([
+      this.hasTeamBookCapability(callerId, teamId, 'finance.view'),
+      this.hasTeamBookCapability(callerId, teamId, 'finance.manage_invoices'),
+    ]);
 
     const { data: accessRows, error: accessError } = await this.supabase
       .from('project_access')
@@ -234,6 +243,11 @@ export class TeamFinanceAccessService {
         manageById.get(row.project_id) === true ||
           getPermission(permissions, 'finance.manage_invoices'),
       );
+    }
+    if (bookRead) {
+      for (const id of attachedIds) {
+        manageById.set(id, manageById.get(id) === true || bookManage);
+      }
     }
     if (manageById.size === 0) return [];
 
@@ -278,9 +292,20 @@ export class TeamFinanceAccessService {
       // Fall through to the capability branch.
     }
 
-    const path: PermissionPath =
+    const path: FinanceProjectPermission =
       action === 'read' ? 'finance.view' : 'finance.manage_invoices';
-    await this.projectAuth.assertPermission(callerId, projectId, path);
+    try {
+      await this.projectAuth.assertPermission(callerId, projectId, path);
+    } catch (refusal) {
+      // A second way in, never a replacement: a team-running role on the
+      // finance book of a team this project is attached to (the same grant
+      // `listTeamProjects` honours). Reads need the book's `view_contracts`,
+      // mutations its `manage_money`; client viewers never qualify. Without
+      // it, the original project-level refusal stands.
+      if (!(await this.hasBookGrantOnProject(callerId, projectId, path))) {
+        throw refusal;
+      }
+    }
 
     const { data: project, error } = await this.supabase
       .from('projects')
@@ -291,6 +316,34 @@ export class TeamFinanceAccessService {
       throw new NotFoundException('Finance project not found');
     }
     return project as ConsultantFinanceProject;
+  }
+
+  /**
+   * Whether a team-running role (owner/manager/accountant) on the finance
+   * book of ANY team this project is attached to grants `permission`.
+   */
+  private async hasBookGrantOnProject(
+    callerId: string,
+    projectId: string,
+    permission: FinanceProjectPermission,
+  ): Promise<boolean> {
+    if (!this.bookAccess) return false;
+    const { data, error } = await this.supabase
+      .from('project_teams')
+      .select('team_id')
+      .eq('project_id', projectId);
+    if (error) throw new Error(error.message);
+    const teamIds = [
+      ...new Set(
+        ((data ?? []) as Array<{ team_id: string }>).map((row) => row.team_id),
+      ),
+    ].filter(Boolean);
+    for (const teamId of teamIds) {
+      if (await this.hasTeamBookCapability(callerId, teamId, permission)) {
+        return true;
+      }
+    }
+    return false;
   }
 
   /**

@@ -106,9 +106,9 @@ export function ProjectBookWorkspace({
 		permissions.manage_expenses || permissions.view_costs,
 	);
 	// The book role decides what this page shows, but imports and the live
-	// invoice workspace sit behind the PROJECT's own finance gate
-	// (`assertProjectFinanceActor`), which a book role does not satisfy. Both
-	// need the project in the caller's project-level finance list.
+	// invoice workspace sit behind the project-scoped finance gate
+	// (`assertProjectFinanceActor`: project `finance.view`, or a team-running
+	// role on the team book). Both need the project in that gate's list.
 	const financeProjectsQuery = useTeamFinanceProjects(teamId);
 	const projectAccess = financeProjectsQuery.data?.find(
 		(project) => project.id === book.project_id,

@@ -72,12 +72,28 @@ describe("visibleTeamTabs", () => {
 		expect(tabs).toEqual(["overview", "invoices", "expenses", "members"]);
 	});
 
-	it("shows an accountant money out but not the invoice workspace", () => {
+	it("shows an accountant invoices and money out, following the backend gate", () => {
 		const tabs = visibleTeamTabs(
 			hubTeam({ my_team_role: "guest", book_role: "accountant" }),
 			loaded(0),
 		);
-		expect(tabs).toEqual(["overview", "expenses", "members"]);
+		expect(tabs).toEqual(["overview", "invoices", "expenses", "members"]);
+	});
+
+	it("gives an accountant imports once the book grant admits the team's projects", () => {
+		const tabs = visibleTeamTabs(
+			hubTeam({ my_team_role: "member", book_role: "accountant" }),
+			loaded(2),
+		);
+		expect(tabs).toContain("imports");
+	});
+
+	it("never shows a client viewer the team's invoices or imports", () => {
+		const tabs = visibleTeamTabs(
+			hubTeam({ my_team_role: "guest", book_role: "viewer_client" }),
+			loaded(0),
+		);
+		expect(tabs).toEqual(["overview", "members"]);
 	});
 
 	it("draws nothing for a team the hub does not know", () => {

@@ -29,8 +29,8 @@ export interface AdministeredTeam {
 
 /**
  * One of the team's projects whose finance the caller may read under the
- * project-level gate — the gate imports and the project invoice workspace
- * enforce. Pickers and tabs are built from this list, never from the team's
+ * project-scoped gate imports and the project invoice workspace enforce
+ * (project `finance.view`, or a team-running role on the team book). Pickers and tabs are built from this list, never from the team's
  * plain attachment list (which also carries projects the caller is only an
  * editor on).
  */

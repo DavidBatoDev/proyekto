@@ -145,6 +145,108 @@ describe('TeamFinanceAccessService', () => {
     });
   });
 
+  describe('assertProjectFinanceActor via a team finance-book role', () => {
+    const refused = () =>
+      Object.assign(new Error('missing finance.view'), { status: 403 });
+    const projectAuthRefusing = () => ({
+      assertPermission: jest.fn().mockRejectedValue(refused()),
+    });
+    const bookRole = (role: string, permissions: Record<string, boolean>) => ({
+      resolveAccess: jest.fn().mockResolvedValue({ role, permissions }),
+    });
+
+    it('lets an accountant with no project_access read an attached project', async () => {
+      const service = new TeamFinanceAccessService(
+        fakeSupabase({
+          projectTeams: [{ team_id: TEAM_ID, project_id: PROJECT_ID }],
+          accessRows: [],
+        }),
+        projectAuthRefusing() as never,
+        consultantAccessDenied as never,
+        bookRole('accountant', {
+          view_contracts: true,
+          manage_money: false,
+        }) as never,
+      );
+
+      await expect(
+        service.assertProjectFinanceActor('accountant-1', PROJECT_ID, 'read'),
+      ).resolves.toEqual(projectRow);
+    });
+
+    it('does not let that accountant manage (no manage_money)', async () => {
+      const service = new TeamFinanceAccessService(
+        fakeSupabase({
+          projectTeams: [{ team_id: TEAM_ID, project_id: PROJECT_ID }],
+        }),
+        projectAuthRefusing() as never,
+        consultantAccessDenied as never,
+        bookRole('accountant', {
+          view_contracts: true,
+          manage_money: false,
+        }) as never,
+      );
+
+      await expect(
+        service.assertProjectFinanceActor('accountant-1', PROJECT_ID, 'manage'),
+      ).rejects.toThrow('missing finance.view');
+    });
+
+    it('refuses the accountant on a project not attached to any team', async () => {
+      const bookAccess = bookRole('accountant', {
+        view_contracts: true,
+        manage_money: false,
+      });
+      const service = new TeamFinanceAccessService(
+        fakeSupabase({ projectTeams: [] }),
+        projectAuthRefusing() as never,
+        consultantAccessDenied as never,
+        bookAccess as never,
+      );
+
+      await expect(
+        service.assertProjectFinanceActor('accountant-1', PROJECT_ID, 'read'),
+      ).rejects.toThrow('missing finance.view');
+      expect(bookAccess.resolveAccess).not.toHaveBeenCalled();
+    });
+
+    it('lets a book manager manage an attached project', async () => {
+      const service = new TeamFinanceAccessService(
+        fakeSupabase({
+          projectTeams: [{ team_id: TEAM_ID, project_id: PROJECT_ID }],
+        }),
+        projectAuthRefusing() as never,
+        consultantAccessDenied as never,
+        bookRole('manager', {
+          view_contracts: true,
+          manage_money: true,
+        }) as never,
+      );
+
+      await expect(
+        service.assertProjectFinanceActor('manager-1', PROJECT_ID, 'manage'),
+      ).resolves.toEqual(projectRow);
+    });
+
+    it('refuses a client viewer on the team book, keeping the 403', async () => {
+      const service = new TeamFinanceAccessService(
+        fakeSupabase({
+          projectTeams: [{ team_id: TEAM_ID, project_id: PROJECT_ID }],
+        }),
+        projectAuthRefusing() as never,
+        consultantAccessDenied as never,
+        bookRole('viewer_client', {
+          view_contracts: true,
+          manage_money: false,
+        }) as never,
+      );
+
+      await expect(
+        service.assertProjectFinanceActor('client-1', PROJECT_ID, 'read'),
+      ).rejects.toMatchObject({ status: 403 });
+    });
+  });
+
   describe('listTeamProjects', () => {
     it('refuses a caller who does not administer the team', async () => {
       const service = new TeamFinanceAccessService(
@@ -440,29 +542,63 @@ describe('TeamFinanceAccessService', () => {
       ).resolves.toEqual([{ ...financeProject, can_manage_invoices: true }]);
     });
 
-    it('does not widen to every attached project for a team book role', async () => {
-      // `listTeamProjects` admits all attached projects to a book manager; the
-      // project-scoped gate does not, so neither does this list.
-      const bookAccess = {
-        resolveAccess: jest.fn().mockResolvedValue({
-          role: 'manager',
-          permissions: { view_contracts: true, manage_money: true },
-        }),
-      };
-      const service = new TeamFinanceAccessService(
-        fakeSupabase({
-          projectTeams: [{ team_id: TEAM_ID, project_id: PROJECT_ID }],
-          accessRows: [],
-        }),
+    const bookRole = (role: string, permissions: Record<string, boolean>) => ({
+      resolveAccess: jest.fn().mockResolvedValue({ role, permissions }),
+    });
+    const serviceWithBook = (
+      bookAccess: unknown,
+      input: Parameters<typeof fakeSupabase>[0],
+    ) =>
+      new TeamFinanceAccessService(
+        fakeSupabase(input),
         { assertPermission: jest.fn() } as never,
         consultantAccessDenied as never,
         bookAccess as never,
       );
 
+    it('admits every attached project to a team book manager, with manage rights', async () => {
+      const service = serviceWithBook(
+        bookRole('manager', { view_contracts: true, manage_money: true }),
+        {
+          projectTeams: [{ team_id: TEAM_ID, project_id: PROJECT_ID }],
+          accessRows: [],
+        },
+      );
+
       await expect(
         service.listProjectFinanceAccess('manager-1', TEAM_ID),
+      ).resolves.toEqual([{ ...financeProject, can_manage_invoices: true }]);
+    });
+
+    it('admits an accountant read-only', async () => {
+      const service = serviceWithBook(
+        bookRole('accountant', { view_contracts: true, manage_money: false }),
+        {
+          projectTeams: [{ team_id: TEAM_ID, project_id: PROJECT_ID }],
+          accessRows: [],
+        },
+      );
+
+      await expect(
+        service.listProjectFinanceAccess('accountant-1', TEAM_ID),
+      ).resolves.toEqual([{ ...financeProject, can_manage_invoices: false }]);
+    });
+
+    it('never admits a client viewer on the team book', async () => {
+      const service = serviceWithBook(
+        bookRole('viewer_client', {
+          view_contracts: true,
+          manage_money: false,
+        }),
+        {
+          projectTeams: [{ team_id: TEAM_ID, project_id: PROJECT_ID }],
+          accessRows: [],
+        },
+      );
+
+      await expect(
+        service.listProjectFinanceAccess('client-1', TEAM_ID),
       ).resolves.toEqual([]);
-      expect(bookAccess.resolveAccess).not.toHaveBeenCalled();
     });
 
     it('answers a stranger or an unknown team with an empty list, not an error', async () => {
