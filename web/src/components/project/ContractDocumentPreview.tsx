@@ -787,6 +787,7 @@ export function ContractPaperDocument({
 						<PartyBlock
 							heading={partyHeadings(parties.relationship_kind).provider}
 							name={provider}
+							email={parties.provider_email}
 							address={parties.provider_address}
 							large={large}
 						/>
@@ -794,6 +795,7 @@ export function ContractPaperDocument({
 							heading={partyHeadings(parties.relationship_kind).hirer}
 							name={client}
 							contact={parties.client_contact_name}
+							email={parties.client_email}
 							address={parties.client_address}
 							large={large}
 						/>
@@ -965,12 +967,15 @@ function PartyBlock({
 	heading,
 	name,
 	contact,
+	email,
 	address,
 	large,
 }: {
 	heading: string;
 	name: string;
 	contact?: string;
+	/** Secondary to the name: a recorded agreement names the party as its paper does. */
+	email?: string | null;
 	address?: string;
 	large?: boolean;
 }) {
@@ -985,6 +990,7 @@ function PartyBlock({
 			{contact && contact !== name && (
 				<p className="text-[#6b7280]">Contact: {contact}</p>
 			)}
+			{email && email !== name && <p className="text-[#6b7280]">{email}</p>}
 			{address && <p className="text-[#6b7280]">{address}</p>}
 		</div>
 	);

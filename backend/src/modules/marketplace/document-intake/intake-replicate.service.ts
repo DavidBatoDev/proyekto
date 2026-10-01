@@ -24,6 +24,7 @@ import {
   currencyQuestion,
   currencyQuestionMessage,
   documentCurrencies,
+  normalizePartyName,
 } from './intake-review';
 
 type Outcome = {
@@ -718,11 +719,77 @@ export class IntakeReplicateService implements OnModuleInit {
         external_agreed_at,
         external_document_id: financeDocumentId,
         ...(clauses.length ? { clauses } : {}),
+        ...(await this.paperPartyBlock(
+          importerCapacity,
+          relationship,
+          contractDoc,
+        )),
       },
       queue,
     );
     await this.contracts.sendContract(callerId, recorded.id);
     return recorded.id;
+  }
+
+  /**
+   * Decision 2026-10-01: the recorded terms name the counterparty as the
+   * paper does ("Join Test Co"), with their email beneath, not by whatever
+   * their account is called. Their account still holds the seat, and its
+   * person is named as the contact when they sign for a company.
+   */
+  private async paperPartyBlock(
+    importerCapacity: 'consultant' | 'client',
+    relationship: IntakeRelationshipRow,
+    contractDoc: IntakeDocumentRow,
+  ): Promise<Record<string, string>> {
+    const counterpartySeat =
+      (relationship.relationship_kind === 'client_services') ===
+      (importerCapacity === 'consultant')
+        ? 'hirer'
+        : 'provider';
+    const paperField =
+      counterpartySeat === 'hirer' ? 'client_name' : 'provider_name';
+    const paperName =
+      relationship.counterparty_name?.trim() ||
+      contractDoc.fields[paperField]?.value?.trim() ||
+      null;
+    if (!paperName) return {};
+    const { data } = await this.supabase
+      .from('profiles')
+      .select('display_name, first_name, last_name, email')
+      .eq('id', relationship.counterparty_user_id as string)
+      .maybeSingle();
+    const profile = data as {
+      display_name: string | null;
+      first_name: string | null;
+      last_name: string | null;
+      email: string | null;
+    } | null;
+    const personName =
+      profile?.display_name?.trim() ||
+      [profile?.first_name, profile?.last_name]
+        .filter(Boolean)
+        .join(' ')
+        .trim() ||
+      null;
+    const email =
+      relationship.counterparty_email?.trim() || profile?.email?.trim() || null;
+    const isCompany =
+      !personName ||
+      normalizePartyName(personName) !== normalizePartyName(paperName);
+    if (counterpartySeat === 'hirer') {
+      return {
+        client_name: paperName,
+        client_kind: isCompany ? 'company' : 'individual',
+        ...(isCompany && personName ? { client_contact_name: personName } : {}),
+        ...(email ? { client_email: email } : {}),
+      };
+    }
+    return {
+      provider_name: paperName,
+      provider_kind: isCompany ? 'agency' : 'individual',
+      ...(email ? { provider_email: email } : {}),
+    };
   }
 
   private async importInvoice(

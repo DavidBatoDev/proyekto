@@ -93,6 +93,24 @@ describe("ContractDocumentPreview canvas", () => {
 		expect(outline.map((item) => item.number)).toEqual(["1", "1.1", "2"]);
 	});
 
+	it("names a recorded party as the paper does, with the email beneath", () => {
+		render(
+			<ContractDocumentPreview
+				contract={contract}
+				parties={{
+					...parties,
+					client_name: "Join Test Co",
+					client_contact_name: "",
+					client_email: "jointest@example.test",
+				}}
+				terms={terms}
+				mode="canvas"
+			/>,
+		);
+		const name = screen.getAllByText("Join Test Co")[0];
+		expect(name.nextElementSibling?.textContent).toBe("jointest@example.test");
+	});
+
 	it("uses document regions to drive the structured inspector", () => {
 		const onSectionSelect = vi.fn();
 		render(

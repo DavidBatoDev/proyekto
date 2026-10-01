@@ -646,7 +646,11 @@ function RelationshipCard({
 			)}
 			{heldAgreement && !relationship.replicated.contract_id && (
 				<p className="mt-2 text-xs font-medium text-amber-700 dark:text-amber-300">
-					{heldAgreementLabel(heldAgreement)}
+					{heldAgreementLabel({
+						...heldAgreement,
+						// The name as it now stands on the page (the paper's, or the edit).
+						name: relationship.counterparty_name ?? heldAgreement.name,
+					})}
 				</p>
 			)}
 			{relationship.replicated.contract_id && (

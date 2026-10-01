@@ -669,7 +669,7 @@ describe('IntakeReplicateService', () => {
   describe("project currency is the person's choice", () => {
     const usdProject = (call: { table: string }) =>
       call.table === 'projects'
-        ? { data: { currency: 'USD' }, error: null as null }
+        ? { data: { currency: 'USD' }, error: null }
         : undefined;
 
     it('asks before writing anything when the documents are in another currency', async () => {
@@ -761,6 +761,93 @@ describe('IntakeReplicateService', () => {
       await expect(
         service.replicate('user-1', 'rel-1', { project_currency: 'EUR' }),
       ).rejects.toThrow('Choose AUD or USD for the project currency.');
+    });
+  });
+
+  describe('the recorded terms name the counterparty as the paper does', () => {
+    const joinTest = {
+      ...relationship,
+      counterparty_name: 'Join Test Co',
+      counterparty_email: 'jointest@example.test',
+      counterparty_user_id: 'joined-1',
+    };
+    const profile =
+      (row: Record<string, string | null>) => (call: { table: string }) =>
+        call.table === 'profiles'
+          ? { data: row, error: null }
+          : call.table === 'projects'
+            ? { data: { currency: 'AUD' }, error: null }
+            : undefined;
+
+    it('keeps the paper name, with the email beneath, for an account with no name', async () => {
+      const { service, contracts } = harness(
+        joinTest,
+        [contractDoc],
+        profile({
+          display_name: null,
+          first_name: null,
+          last_name: null,
+          email: 'jointest@example.test',
+        }),
+      );
+      await service.replicate('user-1', 'rel-1');
+      const dto = contracts.recordExternalAgreement.mock.calls[0][1] as Record<
+        string,
+        unknown
+      >;
+      expect(dto).toMatchObject({
+        client_name: 'Join Test Co',
+        client_kind: 'company',
+        client_email: 'jointest@example.test',
+      });
+      expect(dto.client_contact_name).toBeUndefined();
+    });
+
+    it('names the joined account as the contact signing for the company', async () => {
+      const { service, contracts } = harness(
+        joinTest,
+        [contractDoc],
+        profile({
+          display_name: 'Jo Tester',
+          first_name: null,
+          last_name: null,
+          email: 'jointest@example.test',
+        }),
+      );
+      await service.replicate('user-1', 'rel-1');
+      expect(contracts.recordExternalAgreement.mock.calls[0][1]).toMatchObject({
+        client_name: 'Join Test Co',
+        client_contact_name: 'Jo Tester',
+        client_email: 'jointest@example.test',
+      });
+    });
+
+    it('fills the provider block when the importer is the client', async () => {
+      const { service, contracts, intake } = harness(
+        { ...joinTest, counterparty_name: 'JC Studio Digital Inc.' },
+        [contractDoc],
+        profile({
+          display_name: 'Dev Consultant',
+          first_name: null,
+          last_name: null,
+          email: 'jointest@example.test',
+        }),
+      );
+      intake.requireBatch.mockResolvedValue({
+        ...BATCH,
+        importer_capacity: 'client',
+      });
+      await service.replicate('user-1', 'rel-1');
+      const dto = contracts.recordExternalAgreement.mock.calls[0][1] as Record<
+        string,
+        unknown
+      >;
+      expect(dto).toMatchObject({
+        provider_name: 'JC Studio Digital Inc.',
+        provider_kind: 'agency',
+        provider_email: 'jointest@example.test',
+      });
+      expect(dto.client_name).toBeUndefined();
     });
   });
 
