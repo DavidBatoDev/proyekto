@@ -24,8 +24,11 @@ export interface CompleteOnboardingResult {
  * onboarding incomplete and retryable.
  */
 export async function completeOnboarding(): Promise<CompleteOnboardingResult> {
-	const response = await apiClient.patch("/api/auth/onboarding/complete", {});
-	return response.data;
+	const response = await apiClient.patch<{ data: CompleteOnboardingResult }>(
+		"/api/auth/onboarding/complete",
+		{},
+	);
+	return response.data.data;
 }
 
 /**
