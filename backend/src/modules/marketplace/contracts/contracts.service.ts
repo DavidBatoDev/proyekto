@@ -1355,7 +1355,38 @@ export class ContractsService {
       .from('contracts')
       .update({ external_amendment_queue: rest })
       .eq('id', successor.id);
-    return this.sendContract(actor, successor.id);
+    // The successor is a draft until sent, and a draft is invisible to the
+    // counterparty, so a failed send would strand the attestation. Sent in
+    // this same request, after the version is fully written (inserted at
+    // revision 1 with all its terms; there is no revision row to wait for),
+    // and retried once on a transient failure. A send that still fails leaves
+    // a draft the author can send by hand; the log says which.
+    let sent: ContractWithSchedule;
+    try {
+      sent = await this.sendContract(actor, successor.id);
+    } catch (first) {
+      this.logger.warn(
+        `Sending queued amendment ${successor.id} (version ${successor.version}, revision ${successor.revision}) of ${signed.id} failed: ${first instanceof Error ? first.message : String(first)}; retrying once`,
+      );
+      try {
+        // The first attempt may have landed before it failed (a timed-out
+        // response): then it is sent, and sending again would be refused.
+        const current = await this.getContractById(successor.id);
+        sent =
+          current && current.status === 'sent'
+            ? await this.withSchedule(current)
+            : await this.sendContract(actor, successor.id);
+      } catch (second) {
+        this.logger.error(
+          `Queued amendment ${successor.id} of ${signed.id} stays a draft: ${second instanceof Error ? second.message : String(second)}`,
+        );
+        throw second;
+      }
+    }
+    this.logger.log(
+      `Queued amendment ${sent.id} (version ${sent.version}, revision ${sent.revision}) of ${signed.id} sent for attestation; ${rest.length} more queued`,
+    );
+    return sent;
   }
 
   /** The start of the billing period containing today. */
@@ -1700,7 +1731,7 @@ export class ContractsService {
         try {
           await this.advanceExternalAmendmentQueue(updated);
         } catch (error) {
-          console.warn(
+          this.logger.error(
             `Recording the next amendment of ${updated.id} failed: ${error instanceof Error ? error.message : String(error)}`,
           );
         }

@@ -11,6 +11,9 @@ import {
   type ContractRow,
 } from './contracts.service';
 import { contractFixture } from './contracts.service.test-fixtures';
+import { MISSING_REVISION, SignContractDto } from './dto/contracts.dto';
+import { plainToInstance } from 'class-transformer';
+import { validate } from 'class-validator';
 
 type Op = 'select' | 'insert' | 'update' | 'delete';
 type Call = { table: string; op: Op; payload?: unknown; filters: unknown[][] };
@@ -1098,6 +1101,129 @@ describe('ContractsService: past amendments of recorded agreements', () => {
         }),
       ),
     ).resolves.toBeNull();
+  });
+});
+
+describe('ContractsService: the next recorded amendment goes out in the attesting request', () => {
+  const signedRoot = () =>
+    contractFixture({
+      id: 'v1',
+      status: 'signed',
+      execution_origin: 'external',
+      created_by: 'consultant-1',
+      external_amendment_queue: [
+        {
+          effective_from: '2026-09-01',
+          agreed_at: '2026-08-25',
+          document_id: 'doc-sept',
+          terms: { recurring_fee: 1500 },
+        },
+        {
+          effective_from: '2026-06-01',
+          agreed_at: '2026-05-20',
+          document_id: 'doc-june',
+          terms: { recurring_fee: 1200 },
+        },
+      ],
+    });
+  const successor = contractFixture({
+    id: 'v2',
+    version: 2,
+    revision: 1,
+    status: 'draft',
+    supersedes_contract_id: 'v1',
+  });
+
+  function harness(sendOutcomes: Array<'fail' | 'ok'>, landed = false) {
+    const { service, calls } = build({});
+    const order: string[] = [];
+    jest.spyOn(service, 'amendContract').mockImplementation(() => {
+      order.push('amend');
+      return Promise.resolve({
+        ...successor,
+        positions: [],
+        periods: [],
+        page_initials: [],
+      });
+    });
+    const send = jest.spyOn(service, 'sendContract').mockImplementation(() => {
+      const outcome = sendOutcomes.shift() ?? 'ok';
+      order.push(`send:${outcome}`);
+      if (outcome === 'fail') {
+        return Promise.reject(
+          new Error('AbortError: The operation was aborted due to timeout'),
+        );
+      }
+      return Promise.resolve({
+        ...successor,
+        status: 'sent',
+        positions: [],
+        periods: [],
+        page_initials: [],
+      });
+    });
+    jest.spyOn(service, 'getContractById').mockImplementation(() => {
+      order.push('reread');
+      return Promise.resolve({
+        ...successor,
+        status: landed ? 'sent' : 'draft',
+      });
+    });
+    return { service, calls, order, send };
+  }
+
+  it('records the oldest amendment, then sends it once its queue is written', async () => {
+    const { service, calls, order } = harness(['ok']);
+    const sent = await service.advanceExternalAmendmentQueue(signedRoot());
+    expect(sent?.status).toBe('sent');
+    expect(order).toEqual(['amend', 'send:ok']);
+    const queueWrites = calls.filter(
+      (call) =>
+        call.table === 'contracts' &&
+        call.op === 'update' &&
+        'external_amendment_queue' in (call.payload as object),
+    );
+    // Cleared on the attested version, then the rest moved to the successor.
+    expect(queueWrites.map((call) => call.filters)).toEqual([
+      [['eq', 'id', 'v1']],
+      [['eq', 'id', 'v2']],
+    ]);
+    expect(
+      (queueWrites[1].payload as { external_amendment_queue: unknown[] })
+        .external_amendment_queue,
+    ).toHaveLength(1);
+  });
+
+  it('retries a send that failed transiently, so the counterparty can see it', async () => {
+    const { service, order, send } = harness(['fail', 'ok']);
+    const sent = await service.advanceExternalAmendmentQueue(signedRoot());
+    expect(sent?.status).toBe('sent');
+    expect(send).toHaveBeenCalledTimes(2);
+    expect(order).toEqual(['amend', 'send:fail', 'reread', 'send:ok']);
+  });
+
+  it('does not send twice when the failed attempt had landed', async () => {
+    const { service, order, send } = harness(['fail'], true);
+    const sent = await service.advanceExternalAmendmentQueue(signedRoot());
+    expect(sent?.status).toBe('sent');
+    expect(send).toHaveBeenCalledTimes(1);
+    expect(order).toEqual(['amend', 'send:fail', 'reread']);
+  });
+});
+
+describe('Signing names the reviewed revision', () => {
+  it('a request without one is refused with words a person can act on', async () => {
+    const errors = await validate(
+      plainToInstance(SignContractDto, {
+        party: 'client',
+        signer_name: 'Alina Reyes',
+        attest: true,
+      }),
+    );
+    const revision = errors.find((error) => error.property === 'revision');
+    expect(Object.values(revision?.constraints ?? {})).toContain(
+      MISSING_REVISION,
+    );
   });
 });
 

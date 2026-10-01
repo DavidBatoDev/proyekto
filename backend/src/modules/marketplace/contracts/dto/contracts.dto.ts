@@ -73,6 +73,14 @@ export const TERM_UNITS = ['month', 'year'] as const;
 export const PERIOD_SOURCES = ['team_config', 'contract'] as const;
 
 /** Whose identity signs a contract: the consultant personally, or their team. */
+/**
+ * Signing and review name the revision the person was shown. A request
+ * without one (the page had not loaded the contract) is refused with words a
+ * person can act on rather than the validator's default.
+ */
+export const MISSING_REVISION =
+  'Which version of the contract you reviewed is missing. Reload the contract and try again.';
+
 export const PROVIDER_KINDS = ['individual', 'agency'] as const;
 export type ProviderKind = (typeof PROVIDER_KINDS)[number];
 
@@ -368,8 +376,8 @@ export class ApplyContractTemplateDto {
 /** Rule 4: the revision the caller's seat has now reviewed. */
 export class MarkContractViewedDto {
   @Type(() => Number)
-  @IsInt()
-  @Min(1)
+  @IsInt({ message: MISSING_REVISION })
+  @Min(1, { message: MISSING_REVISION })
   revision!: number;
 }
 
@@ -441,8 +449,8 @@ export class SignContractDto {
    * have changed since, so nobody signs terms they did not see.
    */
   @Type(() => Number)
-  @IsInt()
-  @Min(1)
+  @IsInt({ message: MISSING_REVISION })
+  @Min(1, { message: MISSING_REVISION })
   revision!: number;
 
   @IsOptional()
