@@ -1599,6 +1599,30 @@ export class ProjectsService {
     return this.projectsRepo.listInvitesForUser(userId, query);
   }
 
+  private readonly inviteAcceptedListeners: Array<
+    (event: {
+      userId: string;
+      projectId: string;
+      inviteId: string;
+    }) => Promise<void>
+  > = [];
+
+  /**
+   * Runs after a project invite is accepted and access is granted. Used by
+   * document intake to record an agreement held for someone who had no
+   * account (decision 2026-09-30: invite first, record on join). A listener
+   * never fails the accept.
+   */
+  onInviteAccepted(
+    listener: (event: {
+      userId: string;
+      projectId: string;
+      inviteId: string;
+    }) => Promise<void>,
+  ): void {
+    this.inviteAcceptedListeners.push(listener);
+  }
+
   async respondInvite(
     userId: string,
     inviteId: string,
@@ -1635,6 +1659,19 @@ export class ProjectsService {
           `Failed to grant project_share for invite ${inviteId}:`,
           err,
         );
+      }
+    }
+
+    if (result.status === 'accepted' && typeof result.project_id === 'string') {
+      for (const listener of this.inviteAcceptedListeners) {
+        try {
+          await listener({ userId, projectId: result.project_id, inviteId });
+        } catch (err) {
+          console.error(
+            `Invite-accepted listener failed for ${inviteId}:`,
+            err,
+          );
+        }
       }
     }
 

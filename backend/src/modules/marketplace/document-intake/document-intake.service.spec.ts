@@ -389,18 +389,51 @@ describe('IntakeReplicateService', () => {
     }),
   });
 
-  function harness(rel: IntakeRelationshipRow = relationship) {
-    const { client } = fakeSupabase((call) =>
-      call.table === 'finance_documents'
-        ? { data: { id: `fd-${Math.random()}` }, error: null }
-        : { data: null, error: null },
+  const amendmentJune = documentRow({
+    id: 'a-june',
+    status: 'confirmed',
+    doc_type: 'amendment',
+    relationship_id: 'rel-1',
+    fields: reviewFieldsFromExtraction({
+      effective_date: { value: '2026-06-01', confidence: 1 },
+      date_signed: { value: '2026-05-20', confidence: 1 },
+      rate_amount: { value: '1200', confidence: 1 },
+    }),
+  });
+  const amendmentSeptember = documentRow({
+    id: 'a-sep',
+    status: 'confirmed',
+    doc_type: 'amendment',
+    relationship_id: 'rel-1',
+    fields: reviewFieldsFromExtraction({
+      effective_date: { value: '2026-09-01', confidence: 1 },
+      rate_amount: { value: '1500', confidence: 1 },
+    }),
+  });
+
+  function harness(
+    rel: IntakeRelationshipRow = relationship,
+    docs = [contractDoc, invoiceDoc, paymentDoc],
+    reply?: (call: {
+      table: string;
+      op: string;
+      filters: unknown[][];
+    }) => { data: unknown; error: null } | undefined,
+  ) {
+    const { client, calls } = fakeSupabase(
+      (call) =>
+        reply?.(call) ??
+        (call.table === 'finance_documents'
+          ? {
+              data: { id: `fd-${call.filters.length}-${Math.random()}` },
+              error: null,
+            }
+          : { data: null, error: null }),
     );
     const intake = {
       requireRelationship: jest.fn().mockResolvedValue(rel),
       requireBatch: jest.fn().mockResolvedValue(BATCH),
-      batchDocuments: jest
-        .fn()
-        .mockResolvedValue([contractDoc, invoiceDoc, paymentDoc]),
+      batchDocuments: jest.fn().mockResolvedValue(docs),
       batchRelationships: jest.fn().mockResolvedValue([rel]),
       patchDocument: jest.fn().mockResolvedValue({}),
     };
@@ -409,6 +442,12 @@ describe('IntakeReplicateService', () => {
         .fn()
         .mockResolvedValue({ id: 'contract-9' }),
       sendContract: jest.fn().mockResolvedValue({}),
+      assertAdoptionHolder: jest.fn().mockResolvedValue(undefined),
+    };
+    const projects = {
+      createProject: jest.fn(),
+      inviteByEmail: jest.fn().mockResolvedValue({ id: 'invite-1' }),
+      onInviteAccepted: jest.fn(),
     };
     const financeImports = {
       importInvoice: jest.fn().mockResolvedValue({ invoice_id: 'invoice-9' }),
@@ -418,9 +457,9 @@ describe('IntakeReplicateService', () => {
       intake as never,
       contracts as never,
       financeImports as never,
-      { createProject: jest.fn() } as never,
+      projects as never,
     );
-    return { service, intake, contracts, financeImports };
+    return { service, intake, contracts, financeImports, projects, calls };
   }
 
   it('records the agreement for attestation and imports invoices with their payments', async () => {
@@ -437,6 +476,7 @@ describe('IntakeReplicateService', () => {
         recurring_fee: 1000,
         author_capacity: 'consultant',
       }),
+      [],
     );
     // Sent at once: the counterparty is asked to attest.
     expect(contracts.sendContract).toHaveBeenCalledWith('user-1', 'contract-9');
@@ -453,8 +493,8 @@ describe('IntakeReplicateService', () => {
     expect(result.outcomes.every((o) => o.created)).toBe(true);
   });
 
-  it('cannot record against a counterparty with no account, but still imports the money', async () => {
-    const { service, contracts, financeImports } = harness({
+  it('holds the agreement for a counterparty with no account, invites them, and still imports the money', async () => {
+    const { service, contracts, financeImports, projects } = harness({
       ...relationship,
       counterparty_user_id: null,
     });
@@ -462,10 +502,163 @@ describe('IntakeReplicateService', () => {
     const result = await service.replicate('user-1', 'rel-1');
 
     expect(contracts.recordExternalAgreement).not.toHaveBeenCalled();
-    expect(result.outcomes.find((o) => o.document_id === 'c')?.error).toMatch(
-      /no Proyekto account/,
+    // Invite first: the project invite is also the attestation request.
+    expect(projects.inviteByEmail).toHaveBeenCalledWith(
+      'project-1',
+      'user-1',
+      expect.objectContaining({
+        email: 'ap@yachatdac.com',
+        message: expect.stringMatching(/confirm our agreement/),
+      }),
     );
+    expect(result.pending_agreement).toMatchObject({
+      email: 'ap@yachatdac.com',
+      invite_id: 'invite-1',
+      importer_id: 'user-1',
+      contract_document_id: 'c',
+    });
+    expect(result.outcomes.find((o) => o.document_id === 'c')).toMatchObject({
+      pending: 'Waiting for Yachatdac to join',
+    });
     expect(financeImports.importInvoice).toHaveBeenCalled();
+  });
+
+  it('records the held agreement when the invited email joins, and asks them to attest', async () => {
+    const pending = {
+      email: 'ap@yachatdac.com',
+      name: 'Yachatdac',
+      invite_id: 'invite-1',
+      importer_id: 'user-1',
+      contract_document_id: 'c',
+      amendment_document_ids: [],
+      since: '2026-09-30T00:00:00Z',
+    };
+    const held = {
+      ...relationship,
+      counterparty_user_id: null,
+      replicated: { pending_agreement: pending },
+    };
+    const withFinance = {
+      ...contractDoc,
+      replicated_record: { finance_document_id: 'fd-c' },
+    };
+    const { service, contracts, calls } = harness(
+      held,
+      [withFinance, invoiceDoc, paymentDoc],
+      (call) =>
+        call.table === 'intake_relationships' && call.op === 'select'
+          ? { data: [held], error: null }
+          : call.table === 'profiles'
+            ? { data: { email: 'ap@yachatdac.com' }, error: null }
+            : call.table === 'intake_batches'
+              ? { data: { importer_capacity: 'consultant' }, error: null }
+              : undefined,
+    );
+
+    await service.completePendingAgreements('client-new', 'project-1');
+
+    expect(contracts.recordExternalAgreement).toHaveBeenCalledWith(
+      'user-1',
+      expect.objectContaining({
+        counterparty_user_id: 'client-new',
+        external_document_id: 'fd-c',
+      }),
+      [],
+    );
+    // Recording sends it: the new account is asked to attest.
+    expect(contracts.sendContract).toHaveBeenCalledWith('user-1', 'contract-9');
+    const cleared = calls.find(
+      (call) => call.table === 'intake_relationships' && call.op === 'update',
+    );
+    expect(cleared?.payload).toMatchObject({
+      counterparty_user_id: 'client-new',
+      replicated: expect.objectContaining({
+        contract_id: 'contract-9',
+        pending_agreement: null,
+      }),
+    });
+  });
+
+  it('ignores a join by a different email', async () => {
+    const held = {
+      ...relationship,
+      counterparty_user_id: null,
+      replicated: {
+        pending_agreement: {
+          email: 'ap@yachatdac.com',
+          name: null,
+          invite_id: null,
+          importer_id: 'user-1',
+          contract_document_id: 'c',
+          amendment_document_ids: [],
+          since: '',
+        },
+      },
+    };
+    const { service, contracts } = harness(held, undefined, (call) =>
+      call.table === 'intake_relationships' && call.op === 'select'
+        ? { data: [held], error: null }
+        : call.table === 'profiles'
+          ? { data: { email: 'someone@else.test' }, error: null }
+          : undefined,
+    );
+    await service.completePendingAgreements('other', 'project-1');
+    expect(contracts.recordExternalAgreement).not.toHaveBeenCalled();
+  });
+
+  it('refuses to record when the consultant seat is not a verified team owner', async () => {
+    const { service, contracts } = harness();
+    contracts.assertAdoptionHolder.mockRejectedValue(
+      new Error(
+        'Dev must be a verified consultant to hold a recorded agreement.',
+      ),
+    );
+
+    const result = await service.replicate('user-1', 'rel-1');
+
+    expect(contracts.assertAdoptionHolder).toHaveBeenCalledWith('user-1');
+    expect(contracts.recordExternalAgreement).not.toHaveBeenCalled();
+    expect(result.outcomes.find((o) => o.document_id === 'c')?.error).toMatch(
+      /verified consultant/,
+    );
+  });
+
+  it('checks the consultant counterparty when a client imports', async () => {
+    const { service, contracts, intake } = harness();
+    intake.requireBatch.mockResolvedValue({
+      ...BATCH,
+      importer_capacity: 'client',
+    });
+    await service.replicate('user-1', 'rel-1');
+    expect(contracts.assertAdoptionHolder).toHaveBeenCalledWith('client-1');
+  });
+
+  it('records each past amendment as its own version, oldest first, not folded in', async () => {
+    const { service, contracts } = harness(relationship, [
+      contractDoc,
+      amendmentSeptember,
+      amendmentJune,
+      invoiceDoc,
+      paymentDoc,
+    ]);
+
+    await service.replicate('user-1', 'rel-1');
+
+    const [, dto, queue] = contracts.recordExternalAgreement.mock.calls[0];
+    // The original is recorded as signed: its own rate, not the latest.
+    expect(dto).toMatchObject({ recurring_fee: 1000 });
+    expect(queue).toEqual([
+      expect.objectContaining({
+        effective_from: '2026-06-01',
+        agreed_at: '2026-05-20',
+        terms: { recurring_fee: 1200 },
+      }),
+      expect.objectContaining({
+        effective_from: '2026-09-01',
+        agreed_at: '2026-09-01',
+        terms: { recurring_fee: 1500 },
+      }),
+    ]);
   });
 
   it('will not run before the group is confirmed', async () => {

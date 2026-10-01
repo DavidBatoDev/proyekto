@@ -436,3 +436,65 @@ export function chargeablePages(input: {
   );
   return { used, adding: after - used, unlimited: false };
 }
+
+/**
+ * Past amendments as their own versions (decision 2026-09-30), oldest first.
+ * Each carries only what it changes; terms it does not mention are inherited
+ * from the version before it when it is recorded. The rate follows the mode in
+ * force at that point in the chain, so an amendment that only changes the rate
+ * lands on the right field.
+ */
+export function amendmentChainFromIntake(
+  contract: ReviewFields,
+  amendments: Array<{ id: string; fields: ReviewFields }>,
+): Array<{
+  id: string;
+  effective_from: string;
+  agreed_at: string;
+  terms: Record<string, string | number>;
+}> {
+  const v = (fields: ReviewFields, key: string) => fields[key]?.value ?? null;
+  const ordered = amendments
+    .map((doc) => ({
+      doc,
+      effective: isoDate(v(doc.fields, 'effective_date')),
+    }))
+    .filter(
+      (
+        entry,
+      ): entry is { doc: (typeof amendments)[number]; effective: string } =>
+        Boolean(entry.effective),
+    )
+    .sort((a, b) => a.effective.localeCompare(b.effective));
+  let mode = BILLING_MODES.find(
+    (m) => m === (v(contract, 'billing_mode') ?? '').toLowerCase(),
+  );
+  return ordered.map(({ doc, effective }) => {
+    const f = doc.fields;
+    const nextMode =
+      BILLING_MODES.find(
+        (m) => m === (v(f, 'billing_mode') ?? '').toLowerCase(),
+      ) ?? mode;
+    const terms: Record<string, string | number> = {};
+    if (nextMode && nextMode !== mode) terms.billing_mode = nextMode;
+    mode = nextMode;
+    const rate = amount(v(f, 'rate_amount'));
+    if (rate !== null) {
+      if (mode === 'retainer') terms.recurring_fee = rate;
+      else if (mode === 'fixed') terms.fixed_fee = rate;
+      else terms.client_hourly_rate = rate;
+    }
+    const currency = v(f, 'currency')?.toUpperCase();
+    if (currency && /^[A-Z]{3}$/.test(currency)) terms.currency = currency;
+    const notice = amount(v(f, 'notice_days'));
+    if (notice !== null && notice >= 0 && notice <= 365) {
+      terms.notice_days = Math.round(notice);
+    }
+    return {
+      id: doc.id,
+      effective_from: effective,
+      agreed_at: isoDate(v(f, 'date_signed')) ?? effective,
+      terms,
+    };
+  });
+}

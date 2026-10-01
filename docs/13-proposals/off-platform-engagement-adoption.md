@@ -161,24 +161,53 @@ Beyond letting real customers in, adoption pays for itself twice:
 - It does not let a non-consultant author a contract. Adoption is authored by a verified
   consultant like every other contract.
 
-## Open question: who is the consultant?
+## Decided (2026-09-30): the team owner holds the consultant seat
 
-A team migrating in may have no verified consultant at all — they were running their own
-project, not a managed engagement. Adoption as specified requires one, because
-`sign_contract_position_and_activate` re-checks `is_active_consultant` on the consultant
-seat and the capacity matrix admits no other shape.
+~~Open question: who is the consultant?~~ **Closed.** Option 1, *require vetting*, applied
+to the team owner:
 
-Two candidate answers, neither chosen here:
+- On a recorded agreement the **consultant seat is held by the team owner**, and that owner
+  **must be a verified consultant** (approved vetting enrollment) who owns a team.
+- Enforced by `ContractsService.assertAdoptionHolder`, called from `POST /contracts/external`
+  (the draft is deleted if the check fails) and from intake replicate before anything is
+  recorded. The refusal names the person and points at vetting
+  (`/marketplace/consultant/apply`) or at creating the team first.
+- `sign_contract_position_and_activate` still re-checks `is_active_consultant` at activation.
+- A client↔talent direct engagement kind (option 2) is not built.
 
-1. **Require vetting.** The consultant layer is the product's differentiator; an
-   unvetted-lead engagement contradicts it. Migrating teams apply for vetting first.
-2. **Allow a client↔talent direct engagement kind.** A genuine model change — a third
-   `relationship_kind` with its own capacity matrix — and much larger than it looks.
+The teams-as-parties constraint below still applies: `engagement_parties.user_id` is a
+profile, so the owner holds the seat as a person, signing on behalf of their team.
 
-This is a product decision, not a technical one, and it should be settled before build. It
-interacts with the **teams-as-parties** constraint: `engagement_parties.user_id` is a
-profile FK, so a migrating *company* cannot hold a seat today either — see
-[organizations-and-services](./organizations-and-services.md).
+## Decided (2026-09-30): past amendments are their own versions
+
+Intake and adoption record each paper amendment as **its own version** (March original →
+June → September), never folded into the original. This narrows the dating exception
+above with one more, equally narrow, case:
+
+> In an `execution_origin = 'external'` family, an amendment that is itself recorded
+> (`execution_origin = 'external'`, with its signed paper and agreed date) may take effect
+> on its historical date, never before the family root's `external_agreed_at`, and only
+> after the version it replaces (`AMENDMENT_EFFECTIVE_DATE_NOT_PROSPECTIVE` still applies).
+> Every other amendment stays strictly prospective.
+
+- `20261001100000_external_amendment_backdating` (DEV only) carries the RPC change
+  (`EXTERNAL_AMENDMENT_BEFORE_AGREEMENT`) and `contracts.external_amendment_queue`.
+- Intake records the original, queues the amendments oldest first, and the API records the
+  next one, back-dated, as soon as the version before it is attested
+  (`advanceExternalAmendmentQueue`). Each version is attested on its own.
+- By hand: `POST /contracts/:id/amend` with `external_agreed_at` and `external_document_id`
+  back-dates an amendment of a recorded agreement; any other contract refuses the evidence.
+- Past-period reports read the rates in force on the day (`ratesInForceOn`): the RPC closes
+  each version's settings and rates the day before the next one starts.
+
+## Decided (2026-09-30): a counterparty without an account is invited first
+
+Intake creates the project and imports invoices and payments at once. The agreement is
+held on the relationship (`replicated.pending_agreement`, "Waiting for *name* to join") with
+the counterparty's email, and they are sent a **project invite whose note is the
+attestation request**. When that email accepts the invite (`ProjectsService.onInviteAccepted`),
+the agreement is recorded against the new account and sent to them to attest. A failure
+(for example an unverified consultant) stays on the relationship as `last_error`.
 
 ## Sequencing
 
@@ -218,13 +247,14 @@ Differences from the text above:
 - **Who may record one:** anyone who may author a contract under
   [two-way authoring](./two-way-contract-authoring.md), not only a verified consultant. The
   consultant seat is still required, and `is_active_consultant` is still checked when the
-  engagement activates, so the open question below is unchanged.
+  engagement activates. *Closed 2026-09-30:* the team owner holds that seat and must be verified.
 - **The adopted engagement's `started_at` is `external_agreed_at`**, the date the relationship
   actually began.
 - **The duplicate check runs twice**: in the service before the draft exists (it is deleted if the
   check fails), and in the RPC under the row lock (`ADOPTION_DUPLICATE_ENGAGEMENT`).
 - **Amendments of an adopted agreement** are created with `execution_origin = 'proyekto'`: they are
-  Proyekto-signed documents, strictly prospective, in the same family.
+  Proyekto-signed documents, strictly prospective, in the same family. *Superseded 2026-09-30:* a
+  past paper amendment is recorded as its own external version (see "past amendments" above).
 - **The evidence is served through the contract**, `GET /contracts/:id/evidence` for any contract
   reader and `GET /contracts/sign/:token/evidence` for the link holder, so a counterparty with no
   project finance access can still compare the record with the paper.

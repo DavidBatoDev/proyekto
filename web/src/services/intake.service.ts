@@ -82,7 +82,17 @@ export interface IntakeRelationship {
 	project_id: string | null;
 	project_title: string | null;
 	status: "proposed" | "confirmed" | "replicated";
-	replicated: { contract_id?: string; project_id?: string };
+	replicated: {
+		contract_id?: string;
+		project_id?: string;
+		/** An agreement held until the counterparty joins (invite first, record on join). */
+		pending_agreement?: {
+			email: string;
+			name: string | null;
+			since: string;
+			last_error?: string | null;
+		} | null;
+	};
 }
 
 export interface IntakeBatch {
@@ -98,7 +108,13 @@ export interface IntakeBatch {
 export interface ReplicateResult {
 	project_id: string;
 	contract_id: string | null;
-	outcomes: Array<{ document_id: string; created?: string; error?: string }>;
+	pending_agreement?: IntakeRelationship["replicated"]["pending_agreement"];
+	outcomes: Array<{
+		document_id: string;
+		created?: string;
+		error?: string;
+		pending?: string;
+	}>;
 }
 
 function fail(err: unknown, fallback: string): never {

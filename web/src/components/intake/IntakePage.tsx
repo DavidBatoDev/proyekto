@@ -434,6 +434,10 @@ function RelationshipCard({
 			onChanged();
 			const failed = next.outcomes.filter((o) => o.error).length;
 			if (failed) toast.error(`${failed} document(s) need attention`);
+			else if (next.pending_agreement)
+				toast.success(
+					`Imported. The agreement waits for ${next.pending_agreement.name ?? next.pending_agreement.email} to join; they have been invited.`,
+				);
 			else
 				toast.success("Imported. The other party has been asked to confirm.");
 		},
@@ -442,6 +446,10 @@ function RelationshipCard({
 	const confirmed = documents.filter(
 		(doc) => doc.status === "confirmed",
 	).length;
+	const imported = documents.filter(
+		(doc) => doc.status === "replicated",
+	).length;
+	const heldAgreement = relationship.replicated.pending_agreement ?? null;
 	const locked = relationship.status === "replicated";
 	return (
 		<div className="rounded-lg border border-border p-3">
@@ -451,6 +459,7 @@ function RelationshipCard({
 					<span className="ml-2 text-xs font-normal text-muted-foreground">
 						{documents.length} document{documents.length === 1 ? "" : "s"},{" "}
 						{confirmed} confirmed
+						{imported ? `, ${imported} imported` : ""}
 					</span>
 				</p>
 				<span className="text-xs text-muted-foreground">
@@ -525,6 +534,11 @@ function RelationshipCard({
 					</button>
 				</div>
 			)}
+			{heldAgreement && !relationship.replicated.contract_id && (
+				<p className="mt-2 text-xs font-medium text-amber-700 dark:text-amber-300">
+					{heldAgreementLabel(heldAgreement)}
+				</p>
+			)}
 			{relationship.replicated.contract_id && (
 				<Link
 					to="/engagements/contracts/$contractId"
@@ -550,4 +564,16 @@ function RelationshipCard({
 			)}
 		</div>
 	);
+}
+
+/** "Waiting for <name> to join", plus why it could not record if it tried. */
+export function heldAgreementLabel(held: {
+	email: string;
+	name: string | null;
+	last_error?: string | null;
+}): string {
+	const who = held.name ?? held.email;
+	return held.last_error
+		? `${who} joined, but the agreement could not be recorded: ${held.last_error}`
+		: `Waiting for ${who} to join. The agreement is recorded and sent to them to confirm when they accept the invite sent to ${held.email}.`;
 }

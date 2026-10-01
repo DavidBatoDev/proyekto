@@ -3,6 +3,7 @@ import {
   Inject,
   Injectable,
   Logger,
+  type OnModuleInit,
 } from '@nestjs/common';
 import { SupabaseClient } from '@supabase/supabase-js';
 import { SUPABASE_ADMIN } from '../../../config/supabase.module';
@@ -14,9 +15,34 @@ import {
   type IntakeDocumentRow,
   type IntakeRelationshipRow,
 } from './document-intake.service';
-import { contractTermsFromIntake } from './intake-review';
+import {
+  amendmentChainFromIntake,
+  contractTermsFromIntake,
+} from './intake-review';
 
-type Outcome = { document_id: string; created?: string; error?: string };
+type Outcome = {
+  document_id: string;
+  created?: string;
+  error?: string;
+  /** Held, not failed: waiting for the counterparty to join. */
+  pending?: string;
+};
+
+/**
+ * An agreement whose counterparty has no account yet (decision 2026-09-30:
+ * invite first, record on join). Kept on the relationship until they accept
+ * the project invite, which doubles as the attestation request.
+ */
+export interface PendingAgreement {
+  email: string;
+  name: string | null;
+  invite_id: string | null;
+  importer_id: string;
+  contract_document_id: string;
+  amendment_document_ids: string[];
+  since: string;
+  last_error?: string | null;
+}
 
 const FINANCE_KIND: Record<string, string> = {
   contract: 'contract',
@@ -51,7 +77,7 @@ function isoDate(value: string | null | undefined): string | undefined {
  * record keeps its original. Nothing here runs without the person's Confirm.
  */
 @Injectable()
-export class IntakeReplicateService {
+export class IntakeReplicateService implements OnModuleInit {
   private readonly logger = new Logger(IntakeReplicateService.name);
 
   constructor(
@@ -61,6 +87,14 @@ export class IntakeReplicateService {
     private readonly financeImports: FinanceImportsService,
     private readonly projects: ProjectsService,
   ) {}
+
+  onModuleInit(): void {
+    // Accepting the project invite is the counterparty "joining": the held
+    // agreement is recorded then, and goes to them to attest.
+    this.projects.onInviteAccepted?.((event) =>
+      this.completePendingAgreements(event.userId, event.projectId),
+    );
+  }
 
   async replicate(callerId: string, relationshipId: string) {
     const relationship = await this.intake.requireRelationship(
@@ -93,18 +127,62 @@ export class IntakeReplicateService {
     const outcomes: Outcome[] = [];
     const financeDocs = new Map<string, string>();
     for (const doc of confirmed) {
-      financeDocs.set(
-        doc.id,
-        await this.copyToFinance(callerId, projectId, doc),
-      );
+      const financeId = await this.copyToFinance(callerId, projectId, doc);
+      financeDocs.set(doc.id, financeId);
+      if (doc.replicated_record?.finance_document_id !== financeId) {
+        await this.intake.patchDocument(doc.id, {
+          replicated_record: {
+            ...(doc.replicated_record ?? {}),
+            finance_document_id: financeId,
+            project_id: projectId,
+          },
+        });
+        doc.replicated_record = {
+          ...(doc.replicated_record ?? {}),
+          finance_document_id: financeId,
+        };
+      }
     }
+    let pendingAgreement =
+      (relationship.replicated.pending_agreement as
+        | PendingAgreement
+        | undefined) ?? null;
 
     // Contract (+ amendments folded in).
     const contractDoc = confirmed.find((doc) => doc.doc_type === 'contract');
     const amendments = confirmed.filter((doc) => doc.doc_type === 'amendment');
     let contractId: string | null =
       (relationship.replicated.contract_id as string | undefined) ?? null;
-    if (contractDoc) {
+    if (contractDoc && !relationship.counterparty_user_id) {
+      // Decision 3: the counterparty has no account. Invoices and payments
+      // import now; the agreement waits for them, and the project invite is
+      // also the request to attest it.
+      try {
+        pendingAgreement = await this.holdAgreement(
+          callerId,
+          batch.importer_capacity,
+          relationship,
+          projectId,
+          contractDoc,
+          amendments,
+          pendingAgreement,
+        );
+        const waiting = `Waiting for ${pendingAgreement.name ?? pendingAgreement.email} to join`;
+        outcomes.push({ document_id: contractDoc.id, pending: waiting });
+        for (const amendment of amendments) {
+          outcomes.push({ document_id: amendment.id, pending: waiting });
+        }
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        outcomes.push({ document_id: contractDoc.id, error: message });
+        for (const amendment of amendments) {
+          outcomes.push({
+            document_id: amendment.id,
+            error: 'Waits for its contract to be recorded.',
+          });
+        }
+      }
+    } else if (contractDoc) {
       try {
         contractId = await this.recordAgreement(
           callerId,
@@ -114,6 +192,7 @@ export class IntakeReplicateService {
           contractDoc,
           amendments,
           financeDocs.get(contractDoc.id) as string,
+          financeDocs,
         );
         outcomes.push({ document_id: contractDoc.id, created: contractId });
         for (const amendment of amendments) {
@@ -209,6 +288,7 @@ export class IntakeReplicateService {
       ...relationship.replicated,
       project_id: projectId,
       ...(contractId ? { contract_id: contractId } : {}),
+      pending_agreement: contractId ? null : pendingAgreement,
       replicated_at: new Date().toISOString(),
     };
     const allDone =
@@ -236,7 +316,182 @@ export class IntakeReplicateService {
           .eq('id', batch.id);
       }
     }
-    return { project_id: projectId, contract_id: contractId, outcomes };
+    return {
+      project_id: projectId,
+      contract_id: contractId,
+      pending_agreement: contractId ? null : pendingAgreement,
+      outcomes,
+    };
+  }
+
+  /**
+   * Hold the agreement for a counterparty without an account and invite them
+   * to the project. The invite's note says what they are asked to confirm, so
+   * the one email is both the invitation and the attestation request.
+   * Idempotent: an agreement already held keeps its invite.
+   */
+  private async holdAgreement(
+    callerId: string,
+    importerCapacity: 'consultant' | 'client',
+    relationship: IntakeRelationshipRow,
+    projectId: string,
+    contractDoc: IntakeDocumentRow,
+    amendments: IntakeDocumentRow[],
+    existing: PendingAgreement | null,
+  ): Promise<PendingAgreement> {
+    const email = relationship.counterparty_email?.trim().toLowerCase();
+    if (!email) {
+      throw new BadRequestException(
+        `${relationship.counterparty_name ?? 'The other party'} has no Proyekto account. Add their email so they can be invited to confirm the agreement.`,
+      );
+    }
+    // Decision 2: when the importer holds the consultant seat, they must be a
+    // verified team owner. Checked now so nothing is held that cannot record.
+    if (importerCapacity === 'consultant') {
+      await this.contracts.assertAdoptionHolder(callerId);
+    }
+    if (existing && existing.email === email) return existing;
+
+    const name = relationship.counterparty_name;
+    const invite = (await this.projects.inviteByEmail(projectId, callerId, {
+      email,
+      message: `This invitation is also a request to confirm our agreement. Once you join, you will see the recorded agreement${amendments.length ? ` and its ${amendments.length} amendment${amendments.length === 1 ? '' : 's'}` : ''} and be asked to attest that it matches what we signed.`,
+    } as never)) as { id?: string } | null;
+    return {
+      email,
+      name,
+      invite_id: invite?.id ?? null,
+      importer_id: callerId,
+      contract_document_id: contractDoc.id,
+      amendment_document_ids: amendments.map((doc) => doc.id),
+      since: new Date().toISOString(),
+      last_error: null,
+    };
+  }
+
+  /**
+   * The counterparty joined (accepted the project invite): record every
+   * agreement held for this project against them and send it to attest.
+   * Never throws into the invite flow; a failure stays on the relationship.
+   */
+  async completePendingAgreements(
+    userId: string,
+    projectId: string,
+  ): Promise<void> {
+    const { data, error } = await this.supabase
+      .from('intake_relationships')
+      .select('*')
+      .eq('project_id', projectId)
+      .not('replicated->pending_agreement', 'is', null);
+    if (error) {
+      this.logger.warn(`Pending agreements lookup failed: ${error.message}`);
+      return;
+    }
+    const { data: profile } = await this.supabase
+      .from('profiles')
+      .select('email')
+      .eq('id', userId)
+      .maybeSingle();
+    const joinedEmail = (profile as { email: string | null } | null)?.email
+      ?.trim()
+      .toLowerCase();
+    for (const relationship of (data ?? []) as IntakeRelationshipRow[]) {
+      const pending = relationship.replicated
+        .pending_agreement as PendingAgreement | null;
+      if (!pending || (joinedEmail && pending.email !== joinedEmail)) continue;
+      try {
+        await this.recordHeldAgreement(userId, relationship, pending);
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err);
+        this.logger.warn(
+          `Recording the held agreement for ${relationship.id} failed: ${message}`,
+        );
+        await this.supabase
+          .from('intake_relationships')
+          .update({
+            counterparty_user_id: userId,
+            replicated: {
+              ...relationship.replicated,
+              pending_agreement: { ...pending, last_error: message },
+            },
+            updated_at: new Date().toISOString(),
+          })
+          .eq('id', relationship.id);
+      }
+    }
+  }
+
+  private async recordHeldAgreement(
+    userId: string,
+    relationship: IntakeRelationshipRow,
+    pending: PendingAgreement,
+  ): Promise<void> {
+    const joined = { ...relationship, counterparty_user_id: userId };
+    const { data: batchRow } = await this.supabase
+      .from('intake_batches')
+      .select('importer_capacity')
+      .eq('id', relationship.batch_id)
+      .maybeSingle();
+    const importerCapacity =
+      (batchRow as { importer_capacity: 'consultant' | 'client' } | null)
+        ?.importer_capacity ?? 'consultant';
+    const documents = await this.intake.batchDocuments(relationship.batch_id);
+    const byId = new Map(documents.map((doc) => [doc.id, doc]));
+    const contractDoc = byId.get(pending.contract_document_id);
+    if (!contractDoc) throw new Error('The held contract document is gone.');
+    const amendments = pending.amendment_document_ids
+      .map((id) => byId.get(id))
+      .filter((doc): doc is IntakeDocumentRow => Boolean(doc));
+    const financeDocs = new Map<string, string>();
+    for (const doc of [contractDoc, ...amendments]) {
+      const financeId = doc.replicated_record?.finance_document_id as
+        | string
+        | undefined;
+      if (financeId) financeDocs.set(doc.id, financeId);
+    }
+    const projectId = relationship.project_id as string;
+    const contractId = await this.recordAgreement(
+      pending.importer_id,
+      importerCapacity,
+      joined,
+      projectId,
+      contractDoc,
+      amendments,
+      financeDocs.get(contractDoc.id) as string,
+      financeDocs,
+    );
+    for (const doc of [contractDoc, ...amendments]) {
+      await this.intake.patchDocument(doc.id, {
+        status: 'replicated',
+        replicated_record: {
+          record_id: contractId,
+          finance_document_id: financeDocs.get(doc.id),
+          project_id: projectId,
+        },
+      });
+    }
+    const stillOpen = documents.some(
+      (doc) =>
+        doc.relationship_id === relationship.id &&
+        doc.id !== contractDoc.id &&
+        !pending.amendment_document_ids.includes(doc.id) &&
+        doc.status !== 'replicated' &&
+        doc.status !== 'skipped',
+    );
+    await this.supabase
+      .from('intake_relationships')
+      .update({
+        counterparty_user_id: userId,
+        replicated: {
+          ...relationship.replicated,
+          contract_id: contractId,
+          pending_agreement: null,
+          joined_at: new Date().toISOString(),
+        },
+        status: stillOpen ? 'confirmed' : 'replicated',
+        updated_at: new Date().toISOString(),
+      })
+      .eq('id', relationship.id);
   }
 
   private async ensureProject(
@@ -332,34 +587,66 @@ export class IntakeReplicateService {
     contractDoc: IntakeDocumentRow,
     amendments: IntakeDocumentRow[],
     financeDocumentId: string,
+    financeDocs: Map<string, string> = new Map(),
   ): Promise<string> {
     if (!relationship.counterparty_user_id) {
       throw new BadRequestException(
         `${relationship.counterparty_name ?? 'The other party'} has no Proyekto account yet, so the agreement cannot be recorded against them. Ask them to sign up with ${relationship.counterparty_email ?? 'their email'}, then import again.`,
       );
     }
+    // Decision 2: the consultant seat on a recorded agreement is held by a
+    // verified team owner: the importer when they are the consultant, else
+    // the consultant they are importing against.
+    await this.contracts.assertAdoptionHolder(
+      importerCapacity === 'consultant'
+        ? callerId
+        : relationship.counterparty_user_id,
+    );
+    // Decision 4: the original is recorded as it was signed. Each amendment
+    // becomes its own version, back-dated to its effective date, once the
+    // version before it is attested.
     const terms = contractTermsFromIntake(
       contractDoc.fields,
       contractDoc.extraction.clauses ?? [],
-      amendments.map((doc) => doc.fields),
+      [],
     );
+    const chain = amendmentChainFromIntake(
+      contractDoc.fields,
+      amendments.map((doc) => ({ id: doc.id, fields: doc.fields })),
+    );
+    const undated = amendments.length - chain.length;
+    if (undated > 0) {
+      throw new BadRequestException(
+        `${undated} amendment${undated === 1 ? ' has' : 's have'} no effective date. Add it in review so each amendment can take effect on its own date.`,
+      );
+    }
     if (!terms.external_agreed_at) {
       throw new BadRequestException(
         'The contract needs the date it was signed before it can be recorded.',
       );
     }
     const { clauses, external_agreed_at, ...rest } = terms;
-    const recorded = await this.contracts.recordExternalAgreement(callerId, {
-      ...rest,
-      project_id: projectId,
-      scope_mode: 'project_specific',
-      relationship_kind: relationship.relationship_kind,
-      counterparty_user_id: relationship.counterparty_user_id,
-      author_capacity: importerCapacity,
-      external_agreed_at,
-      external_document_id: financeDocumentId,
-      ...(clauses.length ? { clauses } : {}),
-    });
+    const queue = chain.map((entry) => ({
+      effective_from: entry.effective_from,
+      agreed_at: entry.agreed_at,
+      document_id: financeDocs.get(entry.id) ?? financeDocumentId,
+      terms: entry.terms,
+    }));
+    const recorded = await this.contracts.recordExternalAgreement(
+      callerId,
+      {
+        ...rest,
+        project_id: projectId,
+        scope_mode: 'project_specific',
+        relationship_kind: relationship.relationship_kind,
+        counterparty_user_id: relationship.counterparty_user_id,
+        author_capacity: importerCapacity,
+        external_agreed_at,
+        external_document_id: financeDocumentId,
+        ...(clauses.length ? { clauses } : {}),
+      },
+      queue,
+    );
     await this.contracts.sendContract(callerId, recorded.id);
     return recorded.id;
   }
