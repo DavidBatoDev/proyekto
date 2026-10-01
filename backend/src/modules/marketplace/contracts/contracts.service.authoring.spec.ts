@@ -1100,3 +1100,59 @@ describe('ContractsService: past amendments of recorded agreements', () => {
     ).resolves.toBeNull();
   });
 });
+
+describe('ContractsService: a contract is sent only once it can be signed', () => {
+  it('refuses to send a draft with no start date or term, and says what is missing', async () => {
+    const contract = contractFixture({
+      status: 'draft',
+      created_by: 'consultant-1',
+      service_start_date: null,
+      term_count: null,
+      term_unit: null,
+      service_end_date: null,
+      contract_end_date: null,
+    });
+    const assertCountedLimit = jest.fn();
+    const { service, calls } = build({
+      contract,
+      entitlements: { assertCountedLimit, assertFeature: jest.fn() },
+    });
+
+    await expect(
+      service.sendContract('consultant-1', contract.id),
+    ).rejects.toBeInstanceOf(BadRequestException);
+    await expect(
+      service.sendContract('consultant-1', contract.id),
+    ).rejects.toThrow(
+      'Add the service start date and the term (how long the service runs)',
+    );
+    expect(
+      calls.some((call) => call.table === 'contracts' && call.op === 'update'),
+    ).toBe(false);
+    expect(assertCountedLimit).not.toHaveBeenCalled();
+  });
+
+  it('sends the same draft once the start date and term are set', async () => {
+    const contract = contractFixture({
+      status: 'draft',
+      created_by: 'consultant-1',
+      workspace_id: 'ws-1',
+    });
+    const { service } = build({
+      contract,
+      reply: (call) =>
+        call.table === 'contracts' &&
+        call.op === 'select' &&
+        call.filters.some((f) => f[0] === 'in')
+          ? { data: [], error: null }
+          : undefined,
+      entitlements: {
+        assertCountedLimit: jest.fn(),
+        assertFeature: jest.fn(),
+      },
+    });
+    await expect(
+      service.sendContract('consultant-1', contract.id),
+    ).resolves.toMatchObject({ status: 'sent' });
+  });
+});

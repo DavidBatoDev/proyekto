@@ -32,6 +32,7 @@ import {
   PublicSignContractDto,
 } from './dto/contract-signature-links.dto';
 import { QaFixturePolicyService } from '../../shared/qa-fixtures/qa-fixture-policy.service';
+import { sendBlockedMessage } from './contract-send-readiness';
 
 interface SignatureLinkRow {
   id: string;
@@ -218,11 +219,9 @@ export class ContractSignatureLinksService {
         'The client has already signed this contract.',
       );
     }
-    if (!contract.service_start_date || !contract.service_end_date) {
-      throw new BadRequestException(
-        'Set the service start date and term before sending the contract to sign.',
-      );
-    }
+    // The same readiness as Send: a link is another way of sending it.
+    const notReady = sendBlockedMessage(contract);
+    if (notReady) throw new BadRequestException(notReady);
 
     await this.revokeActive(contractId);
 

@@ -35,6 +35,7 @@ import {
   defaultContractClauses,
 } from './contract-clause-template';
 import { computeContractTerm } from './contract-term';
+import { sendBlockedMessage } from './contract-send-readiness';
 import {
   TEAM_OWNER_TEMPLATE,
   teamOwnerAgreementClauses,
@@ -2231,6 +2232,9 @@ export class ContractsService {
     if (existing.status !== 'draft') {
       throw new BadRequestException('Only a draft can be sent.');
     }
+    // Decision 2026-10-01: a contract goes out only once it can be signed.
+    const notReady = sendBlockedMessage(existing);
+    if (notReady) throw new BadRequestException(notReady);
     // A contract drafted by the client or talent names a consultant who may
     // still be in vetting. It stays a draft until they are verified.
     if (

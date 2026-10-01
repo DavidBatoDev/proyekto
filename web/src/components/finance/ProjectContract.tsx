@@ -76,7 +76,10 @@ import {
 	formatPeriodRange,
 	type InvoiceCadence,
 } from "@/lib/contract-term";
-import { contractSendBlockedReason } from "@/lib/contractSendGate";
+import {
+	contractMissingForSend,
+	contractSendBlockedReason,
+} from "@/lib/contractSendGate";
 import { CURRENCIES } from "@/lib/currency";
 import {
 	financeStatusBadgeClass,
@@ -364,6 +367,7 @@ export function ProjectContract({
 		if (confirmed) deleteMutation.mutate();
 	};
 
+	const missingForSend = contract ? contractMissingForSend(contract) : [];
 	const sendMutation = useMutation({
 		mutationFn: () => contractHistoryService.send(contractId),
 		onSuccess: () => {
@@ -533,15 +537,32 @@ export function ProjectContract({
 								{contractSendBlockedReason(contract)}
 							</span>
 						)}
+					{isAuthor &&
+						contract.status === "draft" &&
+						!contractSendBlockedReason(contract) &&
+						missingForSend.length > 0 && (
+							<span
+								className="max-w-[16rem] truncate text-xs font-medium text-amber-700 dark:text-amber-300"
+								title={`To send, add: ${missingForSend.join(", ")}`}
+							>
+								To send, add: {missingForSend.join(", ")}
+							</span>
+						)}
 					{isAuthor && contract.status === "draft" && (
 						<button
 							type="button"
 							onClick={() => sendMutation.mutate()}
 							disabled={
 								sendMutation.isPending ||
-								Boolean(contractSendBlockedReason(contract))
+								Boolean(contractSendBlockedReason(contract)) ||
+								missingForSend.length > 0
 							}
-							title={contractSendBlockedReason(contract) ?? undefined}
+							title={
+								contractSendBlockedReason(contract) ??
+								(missingForSend.length
+									? `To send, add: ${missingForSend.join(", ")}`
+									: undefined)
+							}
 							className="inline-flex items-center gap-1.5 rounded-md border border-primary/40 px-2.5 py-1.5 text-xs font-semibold text-primary hover:bg-primary/10 disabled:opacity-50"
 						>
 							<Send className="h-3.5 w-3.5" />
