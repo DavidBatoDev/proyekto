@@ -1311,6 +1311,14 @@ export class TeamsService {
       const inviteMessage = `${inviterName || 'A team owner'} invited you to join ${teamName}${positionText}.${noteText}`;
 
       try {
+        // A resend (or a refreshed invite) replaces the earlier notification:
+        // only the current invite is shown, never an expired one beside it.
+        await this.notifications.clearForSubject(
+          matchedUserId,
+          'team_invite_received',
+          'team_id',
+          teamId,
+        );
         await this.notifications.createNotification({
           user_id: matchedUserId,
           project_id: undefined,

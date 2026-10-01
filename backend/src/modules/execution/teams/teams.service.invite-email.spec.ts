@@ -19,7 +19,10 @@ describe('TeamsService — invitation email', () => {
 
   function build(opts: { hasAccount: boolean; suppressed: boolean }) {
     const mailer = { send: jest.fn().mockResolvedValue({ sent: true }) };
-    const notifications = { createNotification: jest.fn() };
+    const notifications = {
+      createNotification: jest.fn(),
+      clearForSubject: jest.fn().mockResolvedValue(0),
+    };
 
     /**
      * A chain-shape-agnostic query stub: every builder method returns itself,

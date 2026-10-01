@@ -197,6 +197,41 @@ export class NotificationsService {
   }
 
   /**
+   * Remove a user's notifications of one type about one subject (a
+   * `content` key such as team_id), so a replacement is the only one shown.
+   * Returns how many were removed. Never throws: a stale notification left
+   * behind must not fail the action that supersedes it.
+   */
+  async clearForSubject(
+    userId: string,
+    typeName: string,
+    contentKey: string,
+    contentValue: string,
+  ): Promise<number> {
+    const { data: type } = await this.supabase
+      .from('notification_types')
+      .select('id')
+      .eq('name', typeName)
+      .maybeSingle();
+    const typeId = (type as { id: string } | null)?.id;
+    if (!typeId) return 0;
+    const { data, error } = await this.supabase
+      .from('notifications')
+      .delete()
+      .eq('user_id', userId)
+      .eq('type_id', typeId)
+      .eq(`content->>${contentKey}`, contentValue)
+      .select('id');
+    if (error) {
+      this.logger.warn(
+        `Failed to clear ${typeName} notifications for ${contentKey}=${contentValue}: ${error.message}`,
+      );
+      return 0;
+    }
+    return ((data ?? []) as unknown[]).length;
+  }
+
+  /**
    * `skipPush` is a second argument rather than a DTO field on purpose: the
    * global ValidationPipe runs whitelist + forbidNonWhitelisted, which makes
    * every DTO field part of a public request contract. This one is internal.
