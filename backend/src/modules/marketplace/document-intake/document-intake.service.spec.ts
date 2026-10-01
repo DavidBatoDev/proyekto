@@ -668,3 +668,122 @@ describe('IntakeReplicateService', () => {
     );
   });
 });
+
+describe('DocumentIntakeService: the counterparty name is the person’s to edit', () => {
+  const relationship: IntakeRelationshipRow = {
+    id: 'rel-1',
+    batch_id: 'batch-1',
+    counterparty_name: 'PRODIGITALITY',
+    counterparty_email: null,
+    counterparty_user_id: null,
+    relationship_kind: 'client_services',
+    project_id: null,
+    project_title: null,
+    status: 'proposed',
+    replicated: {},
+    created_at: '2026-09-30T00:00:00Z',
+    updated_at: '2026-09-30T00:00:00Z',
+  };
+  const invoice = (id: string, relationshipId: string | null) =>
+    documentRow({
+      id,
+      doc_type: 'invoice',
+      status: 'extracted',
+      relationship_id: relationshipId,
+      fields: reviewFieldsFromExtraction({
+        issuer: { value: 'PRODIGITALITY', confidence: 1 },
+        recipient: { value: 'First Nations Action Network', confidence: 1 },
+      }),
+    });
+
+  it('saves the edited name, tidied, and refuses a blank one', async () => {
+    const { service, calls } = build({
+      reply: (call) =>
+        call.table === 'intake_relationships'
+          ? call.op === 'update'
+            ? {
+                data: { ...relationship, ...(call.payload as object) },
+                error: null,
+              }
+            : {
+                data: { ...relationship, batch: BATCH },
+                error: null,
+              }
+          : undefined,
+    });
+    const saved = await service.updateRelationship('user-1', 'rel-1', {
+      counterparty_name: '  First Nations   Action Network ',
+    });
+    expect(saved.counterparty_name).toBe('First Nations Action Network');
+    expect(
+      calls.find(
+        (call) => call.table === 'intake_relationships' && call.op === 'update',
+      )?.payload,
+    ).toMatchObject({ counterparty_name: 'First Nations Action Network' });
+    await expect(
+      service.updateRelationship('user-1', 'rel-1', {
+        counterparty_name: '   ',
+      }),
+    ).rejects.toThrow('Name the other party.');
+  });
+
+  it('regrouping keeps documents in the group the person renamed', async () => {
+    const renamed = { ...relationship, counterparty_name: 'FNAN' };
+    const { service, calls } = build({
+      reply: (call) => {
+        if (call.table === 'intake_documents' && call.op === 'select') {
+          return {
+            data: [invoice('i1', 'rel-1'), invoice('i2', null)],
+            error: null,
+          };
+        }
+        if (call.table === 'intake_relationships' && call.op === 'select') {
+          return { data: [renamed], error: null };
+        }
+        if (call.table === 'teams') {
+          return {
+            data: [{ name: 'JC Studio', legal_name: null }],
+            error: null,
+          };
+        }
+        return undefined;
+      },
+    });
+    await service.group('user-1', 'batch-1');
+    expect(
+      calls.some(
+        (call) => call.table === 'intake_relationships' && call.op === 'insert',
+      ),
+    ).toBe(false);
+    const assign = calls.find(
+      (call) => call.table === 'intake_documents' && call.op === 'update',
+    );
+    expect(assign?.payload).toEqual({ relationship_id: 'rel-1' });
+  });
+
+  it('suggests the team name when the paper names the importer differently', async () => {
+    const { service } = build({
+      reply: (call) => {
+        if (call.table === 'intake_documents' && call.op === 'select') {
+          return { data: [invoice('i1', 'rel-1')], error: null };
+        }
+        if (call.table === 'intake_relationships' && call.op === 'select') {
+          return { data: [relationship], error: null };
+        }
+        if (call.table === 'teams') {
+          return {
+            data: [{ name: 'JC Studio', legal_name: null }],
+            error: null,
+          };
+        }
+        return undefined;
+      },
+    });
+    const batch = await service.getBatch('user-1', 'batch-1');
+    expect(batch.relationships[0].party_check).toEqual({
+      read_name: 'PRODIGITALITY',
+      team_name: 'JC Studio',
+      matches: false,
+    });
+  });
+});

@@ -182,42 +182,96 @@ export interface GroupableDocument {
   fields: ReviewFields;
 }
 
+export type ImporterCapacity = 'consultant' | 'client';
+
+/**
+ * The two parties a document names, as [provider side, client side]: the
+ * contract's provider and client, the invoice's issuer and recipient, the
+ * payment's payee and payer.
+ */
+export function partySides(
+  doc: GroupableDocument,
+): Array<{ name: string | null; email: string | null }> {
+  const v = (key: string) => doc.fields[key]?.value ?? null;
+  return doc.doc_type === 'contract' || doc.doc_type === 'amendment'
+    ? [
+        { name: v('provider_name'), email: v('provider_email') },
+        { name: v('client_name'), email: v('client_email') },
+      ]
+    : doc.doc_type === 'invoice'
+      ? [
+          { name: v('issuer'), email: null },
+          { name: v('recipient'), email: null },
+        ]
+      : doc.doc_type === 'receipt' || doc.doc_type === 'proof_of_payment'
+        ? [
+            { name: v('payee'), email: null },
+            { name: v('payer'), email: null },
+          ]
+        : [];
+}
+
+function namesMatch(name: string | null, importerNames: string[]): boolean {
+  const n = normalizePartyName(name);
+  if (!n) return false;
+  return importerNames
+    .map(normalizePartyName)
+    .filter(Boolean)
+    .some((m) => n === m || n.includes(m) || m.includes(n));
+}
+
 /**
  * The counterparty a document names: whichever side is not the importer.
- * `importerNames` are the importer's own names (profile, teams), normalized.
+ * `importerNames` are the importer's own names (profile, teams). When the
+ * paper names the importer differently from any of those (a trading name,
+ * "PRODIGITALITY" for team "JC Studio"), the importer's capacity decides: a
+ * consultant is the provider side, so the counterparty is the client side.
  */
 export function counterpartyOf(
   doc: GroupableDocument,
   importerNames: string[],
+  capacity?: ImporterCapacity,
 ): { name: string | null; email: string | null } {
-  const v = (key: string) => doc.fields[key]?.value ?? null;
-  const sides: Array<{ name: string | null; email: string | null }> =
-    doc.doc_type === 'contract' || doc.doc_type === 'amendment'
-      ? [
-          { name: v('provider_name'), email: v('provider_email') },
-          { name: v('client_name'), email: v('client_email') },
-        ]
-      : doc.doc_type === 'invoice'
-        ? [
-            { name: v('issuer'), email: null },
-            { name: v('recipient'), email: null },
-          ]
-        : doc.doc_type === 'receipt' || doc.doc_type === 'proof_of_payment'
-          ? [
-              { name: v('payer'), email: null },
-              { name: v('payee'), email: null },
-            ]
-          : [];
-  const mine = new Set(importerNames.map(normalizePartyName).filter(Boolean));
-  const isMine = (name: string | null) => {
-    const n = normalizePartyName(name);
-    return (
-      Boolean(n) &&
-      [...mine].some((m) => n === m || n.includes(m) || m.includes(n))
-    );
-  };
-  const other = sides.find((side) => side.name && !isMine(side.name));
+  const sides = partySides(doc);
+  if (sides.length === 0) return { name: null, email: null };
+  const named = sides.filter((side) => side.name);
+  const mine = named.filter((side) => namesMatch(side.name, importerNames));
+  if (mine.length === 0 && capacity && named.length === 2) {
+    return capacity === 'consultant' ? sides[1] : sides[0];
+  }
+  const other = named.find((side) => !namesMatch(side.name, importerNames));
   return other ?? { name: null, email: null };
+}
+
+/**
+ * How the importer is named on a group's documents, checked against their
+ * own names. When no document names them as they are known here, the review
+ * says so and suggests the team name the records will carry.
+ */
+export function importerSideCheck(
+  docs: GroupableDocument[],
+  importerNames: string[],
+  capacity: ImporterCapacity,
+): { read_name: string | null; matches: boolean } {
+  const counts = new Map<string, { name: string; count: number }>();
+  let matched = false;
+  for (const doc of docs) {
+    const sides = partySides(doc);
+    if (sides.length !== 2) continue;
+    if (sides.some((side) => namesMatch(side.name, importerNames))) {
+      matched = true;
+      continue;
+    }
+    const own = capacity === 'consultant' ? sides[0] : sides[1];
+    const key = normalizePartyName(own.name);
+    if (!key) continue;
+    const entry = counts.get(key) ?? { name: own.name as string, count: 0 };
+    entry.count += 1;
+    counts.set(key, entry);
+  }
+  const top = [...counts.values()].sort((a, b) => b.count - a.count)[0];
+  if (matched || !top) return { read_name: null, matches: true };
+  return { read_name: top.name, matches: false };
 }
 
 /**
@@ -228,13 +282,14 @@ export function counterpartyOf(
 export function groupByCounterparty(
   docs: GroupableDocument[],
   importerNames: string[],
+  capacity?: ImporterCapacity,
 ): Map<string, { name: string; email: string | null; ids: string[] }> {
   const groups = new Map<
     string,
     { name: string; email: string | null; ids: string[] }
   >();
   for (const doc of docs) {
-    const party = counterpartyOf(doc, importerNames);
+    const party = counterpartyOf(doc, importerNames, capacity);
     const key = normalizePartyName(party.name);
     if (!key) continue;
     const match =

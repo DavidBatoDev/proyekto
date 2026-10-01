@@ -7,6 +7,7 @@ import {
   correctField,
   counterpartyOf,
   groupByCounterparty,
+  importerSideCheck,
   invoiceTotalFlags,
   markNotInDocument,
   matchPaymentToInvoice,
@@ -94,6 +95,40 @@ describe('grouping', () => {
       name: 'Yachatdac Pty Ltd',
       email: 'ap@yachatdac.com',
     });
+  });
+
+  it('reads a trading name the importer is not known by from their capacity', () => {
+    // Team "JC Studio" invoicing as PRODIGITALITY: neither side matches, so a
+    // consultant is the issuer and the recipient is the counterparty.
+    const invoice = {
+      id: 'i1',
+      doc_type: 'invoice' as const,
+      fields: fields({
+        issuer: 'PRODIGITALITY',
+        recipient: 'First Nations Action Network',
+      }),
+    };
+    expect(counterpartyOf(invoice, ['JC Studio'], 'consultant').name).toBe(
+      'First Nations Action Network',
+    );
+    expect(counterpartyOf(invoice, ['JC Studio'], 'client').name).toBe(
+      'PRODIGITALITY',
+    );
+    expect(importerSideCheck([invoice], ['JC Studio'], 'consultant')).toEqual({
+      read_name: 'PRODIGITALITY',
+      matches: false,
+    });
+  });
+
+  it('a group that names the importer as they are known needs no suggestion', () => {
+    const invoice = {
+      id: 'i1',
+      doc_type: 'invoice' as const,
+      fields: fields({ issuer: 'JC Studio Digital Inc.', recipient: 'Acme' }),
+    };
+    expect(
+      importerSideCheck([invoice], ['JC Studio Digital Inc.'], 'consultant'),
+    ).toEqual({ read_name: null, matches: true });
   });
 
   it('groups a contract and invoices with the same counterparty, legal suffixes aside', () => {

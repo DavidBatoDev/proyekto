@@ -34,10 +34,12 @@ import {
   correctField,
   type ExtractedFieldInput,
   groupByCounterparty,
+  importerSideCheck,
   type IntakeDocType,
   invoiceTotalFlags,
   markNotInDocument,
   matchPaymentToInvoice,
+  normalizePartyName,
   pagesOf,
   type ReviewFields,
   reviewFieldsFromExtraction,
@@ -207,12 +209,47 @@ export class DocumentIntakeService {
       this.batchDocuments(batch.id),
       this.batchRelationships(batch.id),
     ]);
+    const importer = await this.importerIdentity(batch.created_by);
     return {
       ...batch,
       documents,
-      relationships,
+      relationships: relationships.map((relationship) => ({
+        ...relationship,
+        party_check: this.partyCheck(
+          relationship,
+          documents,
+          importer,
+          batch.importer_capacity,
+        ),
+      })),
       pages: pagesOf(documents),
     };
+  }
+
+  /**
+   * How the importer is named on a group's documents. When the paper names
+   * them differently from their team (a trading name), the review suggests
+   * the team name the records are created under.
+   */
+  private partyCheck(
+    relationship: IntakeRelationshipRow,
+    documents: IntakeDocumentRow[],
+    importer: { names: string[]; teamName: string | null },
+    capacity: 'consultant' | 'client',
+  ): { read_name: string | null; team_name: string | null; matches: boolean } {
+    const mine = documents.filter(
+      (doc) => doc.relationship_id === relationship.id,
+    );
+    const check = importerSideCheck(
+      mine.map((doc) => ({
+        id: doc.id,
+        doc_type: doc.doc_type,
+        fields: doc.fields,
+      })),
+      importer.names,
+      capacity,
+    );
+    return { ...check, team_name: importer.teamName };
   }
 
   // ─── upload ────────────────────────────────────────────────────────────────
@@ -748,14 +785,23 @@ export class DocumentIntakeService {
         fields: doc.fields,
       })),
       importerNames,
+      batch.importer_capacity,
     );
     const existing = await this.batchRelationships(batch.id);
     for (const group of groups.values()) {
-      let relationship = existing.find(
-        (row) =>
-          row.counterparty_name &&
-          row.counterparty_name.toLowerCase() === group.name.toLowerCase(),
-      );
+      // A group the person renamed keeps its documents: it is found by the
+      // documents already in it, then by its (edited) name.
+      const assigned = documents.find(
+        (doc) => group.ids.includes(doc.id) && doc.relationship_id,
+      )?.relationship_id;
+      const key = normalizePartyName(group.name);
+      let relationship =
+        existing.find((row) => row.id === assigned) ??
+        existing.find(
+          (row) =>
+            row.counterparty_name &&
+            normalizePartyName(row.counterparty_name) === key,
+        );
       if (!relationship) {
         const { data, error } = await this.supabase
           .from('intake_relationships')
@@ -839,7 +885,13 @@ export class DocumentIntakeService {
       updated_at: new Date().toISOString(),
     };
     if (dto.counterparty_name !== undefined) {
-      patch.counterparty_name = dto.counterparty_name;
+      // The name read from the paper is only a default; the person's edit is
+      // what grouping, the new project and the recorded agreement use.
+      const name = dto.counterparty_name.replace(/\s+/g, ' ').trim();
+      if (!name) {
+        throw new BadRequestException('Name the other party.');
+      }
+      patch.counterparty_name = name;
     }
     if (dto.relationship_kind) patch.relationship_kind = dto.relationship_kind;
     if (dto.project_title !== undefined)
@@ -1107,6 +1159,28 @@ export class DocumentIntakeService {
       'document_intake_pages_monthly',
       { used: charge.used, adding: charge.adding, context: 'write' },
     );
+  }
+
+  /** The importer's names, and the team name their records are created under. */
+  private async importerIdentity(
+    callerId: string,
+  ): Promise<{ names: string[]; teamName: string | null }> {
+    const [names, { data: teams }] = await Promise.all([
+      this.importerNames(callerId),
+      this.supabase
+        .from('teams')
+        .select('name, legal_name')
+        .eq('owner_id', callerId)
+        .order('created_at', { ascending: true })
+        .limit(1),
+    ]);
+    const team = (
+      (teams ?? []) as Array<{
+        name: string;
+        legal_name: string | null;
+      }>
+    )[0];
+    return { names, teamName: team ? team.legal_name || team.name : null };
   }
 
   private async importerNames(callerId: string): Promise<string[]> {

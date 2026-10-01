@@ -82,6 +82,15 @@ export interface IntakeRelationship {
 	project_id: string | null;
 	project_title: string | null;
 	status: "proposed" | "confirmed" | "replicated";
+	/**
+	 * How the importer is named on this group's documents. `matches` false:
+	 * the paper names them `read_name`, not their team `team_name`.
+	 */
+	party_check?: {
+		read_name: string | null;
+		team_name: string | null;
+		matches: boolean;
+	};
 	replicated: {
 		contract_id?: string;
 		project_id?: string;

@@ -23,6 +23,7 @@ import {
 	type ReplicateResult,
 } from "@/services/intake.service";
 import { IntakeReviewPanel } from "./IntakeReviewPanel";
+import { heldAgreementLabel, importerSideHint } from "./intakeHints";
 
 const STATUS_LABEL: Record<IntakeDocument["status"], string> = {
 	uploaded: "Uploaded",
@@ -410,6 +411,7 @@ function RelationshipCard({
 	onChanged: () => void;
 }) {
 	const toast = useToast();
+	const [name, setName] = useState(relationship.counterparty_name ?? "");
 	const [email, setEmail] = useState(relationship.counterparty_email ?? "");
 	const [projectTitle, setProjectTitle] = useState(
 		relationship.project_title ?? "",
@@ -419,6 +421,7 @@ function RelationshipCard({
 	const saveMutation = useMutation({
 		mutationFn: (confirm: boolean) =>
 			intakeService.updateRelationship(relationship.id, {
+				counterparty_name: name.trim() || undefined,
 				counterparty_email: email || undefined,
 				project_title: projectTitle || undefined,
 				relationship_kind: kind,
@@ -428,7 +431,17 @@ function RelationshipCard({
 		onError: (error: Error) => toast.error(error.message),
 	});
 	const replicateMutation = useMutation({
-		mutationFn: () => intakeService.replicate(relationship.id),
+		mutationFn: async () => {
+			// Unsaved edits (the other party's name above all) are what the
+			// records are created with, so they are saved first.
+			const dirty =
+				name.trim() !== (relationship.counterparty_name ?? "") ||
+				email !== (relationship.counterparty_email ?? "") ||
+				projectTitle !== (relationship.project_title ?? "") ||
+				kind !== relationship.relationship_kind;
+			if (dirty) await saveMutation.mutateAsync(false);
+			return intakeService.replicate(relationship.id);
+		},
 		onSuccess: (next) => {
 			setResult(next);
 			onChanged();
@@ -450,12 +463,13 @@ function RelationshipCard({
 		(doc) => doc.status === "replicated",
 	).length;
 	const heldAgreement = relationship.replicated.pending_agreement ?? null;
+	const partyHint = importerSideHint(relationship.party_check);
 	const locked = relationship.status === "replicated";
 	return (
 		<div className="rounded-lg border border-border p-3">
 			<div className="flex flex-wrap items-center justify-between gap-2">
 				<p className="text-sm font-semibold text-foreground">
-					{relationship.counterparty_name ?? "Unnamed party"}
+					{name.trim() || relationship.counterparty_name || "Unnamed party"}
 					<span className="ml-2 text-xs font-normal text-muted-foreground">
 						{documents.length} document{documents.length === 1 ? "" : "s"},{" "}
 						{confirmed} confirmed
@@ -470,6 +484,22 @@ function RelationshipCard({
 							: "Proposed"}
 				</span>
 			</div>
+			<label className="mt-2 block text-[11px] font-medium text-muted-foreground">
+				The other party
+				<input
+					value={name}
+					disabled={locked}
+					onChange={(event) => setName(event.target.value)}
+					placeholder="Their name, as it should appear on the records"
+					aria-label="The other party's name"
+					className="mt-1 h-8 w-full rounded-md border border-input bg-background px-2 text-xs text-foreground"
+				/>
+			</label>
+			{!locked && partyHint && (
+				<p className="mt-1 text-[11px] text-amber-700 dark:text-amber-300">
+					{partyHint}
+				</p>
+			)}
 			<div className="mt-2 grid gap-2 text-xs sm:grid-cols-3">
 				<input
 					value={email}
@@ -564,16 +594,4 @@ function RelationshipCard({
 			)}
 		</div>
 	);
-}
-
-/** "Waiting for <name> to join", plus why it could not record if it tried. */
-export function heldAgreementLabel(held: {
-	email: string;
-	name: string | null;
-	last_error?: string | null;
-}): string {
-	const who = held.name ?? held.email;
-	return held.last_error
-		? `${who} joined, but the agreement could not be recorded: ${held.last_error}`
-		: `Waiting for ${who} to join. The agreement is recorded and sent to them to confirm when they accept the invite sent to ${held.email}.`;
 }
