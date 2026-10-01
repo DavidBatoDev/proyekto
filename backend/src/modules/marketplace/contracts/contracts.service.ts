@@ -1998,6 +1998,20 @@ export class ContractsService {
       await this.financeAccess.assertProject(callerId, createDto.project_id);
     }
 
+    // When the caller is the one who would hold the consultant seat, say so
+    // up front: otherwise an unverified caller is read as a client author and
+    // told their counterparty "is not a consultant", which hides the real fix.
+    const capacity = createDto.author_capacity;
+    if (
+      capacity === 'consultant' ||
+      (!capacity &&
+        !(
+          createDto.counterparty_user_id &&
+          (await this.hasConsultantEnrollment(createDto.counterparty_user_id))
+        ))
+    ) {
+      await this.assertAdoptionHolder(callerId);
+    }
     const created = await this.createContract(callerId, {
       ...createDto,
       scope_mode: 'project_specific',
