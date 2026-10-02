@@ -174,6 +174,24 @@ interface TeamRateLookupRow {
   overtime_requires_approval: boolean | null;
 }
 
+const RUNNING_TIMER_MESSAGE =
+  'You already have a running timer. Stop it before starting a new one.';
+
+/**
+ * The database allows one running timer per person
+ * (uq_time_entries_one_running_per_member). Two concurrent starts, or
+ * re-opening a stopped log while another runs, now hit that index instead of
+ * creating a second timer; report it as the same 400 the app-level check gives.
+ */
+export function isRunningTimerConflict(
+  error: { code?: string; message?: string } | null | undefined,
+): boolean {
+  return (
+    error?.code === '23505' &&
+    (error.message ?? '').includes('uq_time_entries_one_running_per_member')
+  );
+}
+
 /**
  * Fail closed on the exact team selected to own a new or rerouted time log.
  * An enabled contributor team must not authorize a log that resolves to a
@@ -380,9 +398,7 @@ export class TeamTimeService {
     }
     const running = (runningRows ?? []) as Array<{ id: string }>;
     if (running.length > 0) {
-      throw new BadRequestException(
-        'You already have a running timer. Stop it before starting a new one.',
-      );
+      throw new BadRequestException(RUNNING_TIMER_MESSAGE);
     }
 
     const rate = await this.resolveTeamRate(dto.project_id, callerId);
@@ -416,6 +432,9 @@ export class TeamTimeService {
       })
       .select(TIME_LOG_SELECT)
       .single();
+    if (isRunningTimerConflict(error)) {
+      throw new BadRequestException(RUNNING_TIMER_MESSAGE);
+    }
     if (error || !data) {
       throw new Error(error?.message ?? 'Failed to start timer');
     }
@@ -770,6 +789,9 @@ export class TeamTimeService {
       .eq('id', logId)
       .select(TIME_LOG_SELECT)
       .single();
+    if (isRunningTimerConflict(res.error)) {
+      throw new BadRequestException(RUNNING_TIMER_MESSAGE);
+    }
     if (res.error || !res.data) {
       throw new Error(res.error?.message ?? 'Failed to update log');
     }

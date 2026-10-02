@@ -1,6 +1,7 @@
 import { ForbiddenException } from '@nestjs/common';
 import {
   assertResolvedTeamTimeTrackingEnabled,
+  isRunningTimerConflict,
   ResolvedTeamRate,
   TeamTimeService,
 } from './team-time.service';
@@ -68,5 +69,30 @@ describe('healOrphanedTeamIds (retired)', () => {
 
     expect(service.healOrphanedTeamIds()).toEqual({ scanned: 0, healed: 0 });
     expect(from).not.toHaveBeenCalled();
+  });
+});
+
+describe('isRunningTimerConflict', () => {
+  it('recognises the one-running-timer index violation', () => {
+    expect(
+      isRunningTimerConflict({
+        code: '23505',
+        message:
+          'duplicate key value violates unique constraint "uq_time_entries_one_running_per_member"',
+      }),
+    ).toBe(true);
+  });
+
+  it('ignores other unique violations and other errors', () => {
+    expect(
+      isRunningTimerConflict({
+        code: '23505',
+        message: 'duplicate key value violates unique constraint "other_key"',
+      }),
+    ).toBe(false);
+    expect(isRunningTimerConflict({ code: '42501', message: 'denied' })).toBe(
+      false,
+    );
+    expect(isRunningTimerConflict(null)).toBe(false);
   });
 });
