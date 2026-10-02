@@ -2,6 +2,7 @@ import { ForbiddenException } from '@nestjs/common';
 import {
   assertResolvedTeamTimeTrackingEnabled,
   ResolvedTeamRate,
+  TeamTimeService,
 } from './team-time.service';
 
 function resolvedRate(
@@ -48,5 +49,24 @@ describe('assertResolvedTeamTimeTrackingEnabled', () => {
     expect(() => assertResolvedTeamTimeTrackingEnabled(null)).toThrow(
       /No delivery team could be resolved/,
     );
+  });
+});
+
+describe('healOrphanedTeamIds (retired)', () => {
+  it('reports nothing healed and never touches the database', () => {
+    const from = jest.fn(() => {
+      throw new Error('heal must not query task_time_logs');
+    });
+    const service = new TeamTimeService(
+      { from } as never,
+      {} as never,
+      {} as never,
+      {} as never,
+      {} as never,
+      {} as never,
+    );
+
+    expect(service.healOrphanedTeamIds()).toEqual({ scanned: 0, healed: 0 });
+    expect(from).not.toHaveBeenCalled();
   });
 });

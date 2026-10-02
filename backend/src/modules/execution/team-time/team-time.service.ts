@@ -322,80 +322,17 @@ export class TeamTimeService {
   // ─── maintenance ──────────────────────────────────────────────────────
 
   /**
-   * Scheduler-triggered repair pass for task_time_logs rows whose team_id is
-   * NULL: re-resolves the member's team rate for the log's project (the same
-   * lookup startLog uses) and backfills it. Used to run automatically on
-   * every process boot via OnModuleInit (the only one in the backend),
-   * awaited before app.listen() — moved to an external-trigger endpoint to
-   * match the rest of the codebase's periodic-work convention (see
-   * InvoiceSchedulerService, KnowledgeIngestService), since an in-process
-   * boot hook re-runs this scan redundantly on every Cloud Run instance
-   * start and was blocking dev-server startup.
+   * Retired repair pass. It used to re-resolve a team for task_time_logs rows
+   * whose team_id was NULL and write it back. The time management rebuild
+   * (docs/13-proposals/time-management/) gives every entry an explicit
+   * logging context and never guesses a team, and its M1 migration labels a
+   * team-less row as "personal". Rewriting team_id on such a row after M1
+   * would contradict its context, so this is now a no-op. Prod had 0
+   * team-less rows when it was retired (2026-10-02). The route stays so a
+   * scheduler that still calls it gets a 200, not a 404.
    */
-  async healOrphanedTeamIds(): Promise<{ scanned: number; healed: number }> {
-    const { data: nullLogs, error } = await this.supabase
-      .from('task_time_logs')
-      .select('id, project_id, member_user_id')
-      .is('team_id', null);
-    if (error) throw new Error(error.message);
-
-    const rows = (nullLogs ?? []) as Array<{
-      id: string;
-      project_id: string;
-      member_user_id: string;
-    }>;
-    if (rows.length === 0) return { scanned: 0, healed: 0 };
-
-    // Resolve each unique (project, member) pair's team rate once, in
-    // parallel — same pattern as attachLimitContextBatch — instead of one
-    // sequential resolveTeamRate() call per orphaned row (N+1).
-    const rateCache = new Map<string, ResolvedTeamRate | null>();
-    const uniquePairs = [
-      ...new Set(rows.map((r) => `${r.project_id}|${r.member_user_id}`)),
-    ];
-    await Promise.all(
-      uniquePairs.map(async (key) => {
-        const sep = key.indexOf('|');
-        const rate = await this.resolveTeamRate(
-          key.slice(0, sep),
-          key.slice(sep + 1),
-        );
-        rateCache.set(key, rate);
-      }),
-    );
-
-    // Group logs by resolved team_id so each team gets ONE bulk
-    // UPDATE ... WHERE id IN (...) instead of one UPDATE per row.
-    const idsByTeam = new Map<string, string[]>();
-    for (const row of rows) {
-      const rate = rateCache.get(`${row.project_id}|${row.member_user_id}`);
-      if (!rate?.team_id) continue;
-      const ids = idsByTeam.get(rate.team_id) ?? [];
-      ids.push(row.id);
-      idsByTeam.set(rate.team_id, ids);
-    }
-
-    let healed = 0;
-    for (const [teamId, ids] of idsByTeam) {
-      const { error: updateError } = await this.supabase
-        .from('task_time_logs')
-        .update({ team_id: teamId })
-        .in('id', ids);
-      if (updateError) {
-        this.logger.warn(
-          `Failed self-healing ${ids.length} log(s) to team_id ${teamId}: ${updateError.message}`,
-        );
-        continue;
-      }
-      healed += ids.length;
-    }
-
-    if (healed > 0) {
-      this.logger.log(
-        `Self-healed ${healed} of ${rows.length} orphaned time log(s).`,
-      );
-    }
-    return { scanned: rows.length, healed };
+  healOrphanedTeamIds(): { scanned: number; healed: number } {
+    return { scanned: 0, healed: 0 };
   }
 
   // ─── plan gate ───────────────────────────────────────────────────────

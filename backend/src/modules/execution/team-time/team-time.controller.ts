@@ -44,10 +44,10 @@ export class TeamTimeController {
   constructor(private readonly service: TeamTimeService) {}
 
   /**
-   * Scheduler-triggered (no user session): repair task_time_logs rows whose
-   * team_id is NULL. Auth is the shared cron secret; @Public skips the
-   * Supabase JWT guard, matching POST /api/invoices/cron/run (reuses
-   * MEETINGS_CRON_SECRET rather than minting a new one).
+   * Scheduler-triggered (no user session). Retired: always answers
+   * { scanned: 0, healed: 0 } (see TeamTimeService.healOrphanedTeamIds).
+   * Auth is still the shared cron secret; @Public skips the Supabase JWT
+   * guard, matching POST /api/invoices/cron/run.
    */
   @Post('cron/heal-orphaned-logs')
   @Public()
