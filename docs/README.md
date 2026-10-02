@@ -40,7 +40,7 @@ site, so links are relative filesystem paths. Every page carries a
 | 10 | [Infrastructure & Deployment](./10-infra-deploy/README.md) | CI/CD, Cloud Run, Terraform, Cloudflare | **current** |
 | 11 | [Feature Domains](./11-domains/README.md) | Workspaces, participant positions, delivery lifecycle, collaboration, and platform-experience deep dives | **current** |
 | 12 | [Runbooks & Ops](./12-runbooks/README.md) | Secret rotation, cache purge, vetting, benchmarks | **current** |
-| 13 | [Proposals](./13-proposals/README.md) | Reviewed designs that are **not yet built** — client access handover, services & multi-roadmap, the delivery tree, identity & enrollment, pricing tiers | **draft** |
+| 13 | [Proposals](./13-proposals/README.md) | Reviewed designs that are **not yet built** — client access handover, services & multi-roadmap, the delivery tree, identity & enrollment, pricing tiers, time management | **draft** |
 | 14 | [Engagements](./14-engagement/README.md) | P4b tables, the integration surface, scenarios, lifecycle rules, commercial time, and privacy boundaries | **current** |
 
 > **⚠️ Section 13 is the exception to the current-state rule.** Everything in `00`–`12`

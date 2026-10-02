@@ -1,6 +1,6 @@
 # Engagements
 
-> **Last updated:** 2026-08-28 · **Status:** current
+> **Last updated:** 2026-10-02 · **Status:** current
 
 > **⚠️ Activation is live; the consuming runtime is not.** All three migrations are
 > applied in production —
@@ -26,6 +26,11 @@
 > **"deals" / "deals center"**. Not decided. Until it is, code, routes, tables, and these
 > docs keep saying "engagement"; a rename would be a full-stack sweep like the
 > freelancer → talent rename (`0c27508f`), not a label change.
+
+> **Proposed change (2026-10-02):** the [time management proposal](../13-proposals/time-management/README.md)
+> replaces the unused `engagement_time_approvals` / `_items` tables (0 rows in prod) with generic
+> per-person, per-scope, per-period `timesheets`, and builds the assignment writer that contract time
+> needs. Until it ships, this section still describes the live schema.
 
 An engagement is the durable answer to **who hired whom**. It connects a signed
 marketplace agreement to the projects and workers that perform the work without making
