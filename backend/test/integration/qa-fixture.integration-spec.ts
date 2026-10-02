@@ -58,6 +58,9 @@ describe('production QA fixture registry', () => {
       is_primary: false,
       attached_by: consultant.id,
     });
+    // The worker logs time below. Since the time rebuild's M1 migration, the
+    // database refuses a time log from someone with no access to the project.
+    await h.grantAccess(projectId, worker.id, 'editor');
     await insert('contracts', {
       id: contractId,
       project_id: projectId,

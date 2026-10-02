@@ -563,6 +563,35 @@ async function seed() {
 		`project_teams?select=team_id&project_id=eq.${project.id}`,
 	);
 	const teamId = teamRows[0]?.team_id ?? null;
+	// The database refuses a time log from someone with no access to the
+	// project, and a team log from someone outside that team (time rebuild
+	// M1). The talent only hold signed contracts, so give each of them editor
+	// access and, when the project has a team, membership of it.
+	for (const person of talent) {
+		await rest("project_access?on_conflict=project_id,user_id", {
+			method: "POST",
+			headers: { Prefer: "resolution=ignore-duplicates,return=minimal" },
+			body: JSON.stringify({
+				project_id: project.id,
+				user_id: ids[person.key],
+				role: "editor",
+				origin: "direct",
+				has_direct_grant: true,
+				granted_by: consultant.userId,
+			}),
+		});
+		if (teamId) {
+			await rest("team_members?on_conflict=team_id,user_id", {
+				method: "POST",
+				headers: { Prefer: "resolution=ignore-duplicates,return=minimal" },
+				body: JSON.stringify({
+					team_id: teamId,
+					user_id: ids[person.key],
+					role: "member",
+				}),
+			});
+		}
+	}
 	const logs = [];
 	for (let m = 5; m >= 0; m--) {
 		for (const person of talent) {

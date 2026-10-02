@@ -137,6 +137,22 @@ async function seedCore(db) {
 		 where not exists (select 1 from project_access where project_id = $1 and user_id = $2)`,
 		[PROJECT, OWNER],
 	);
+	// Mika logs time below. The database refuses a time log from someone with
+	// no access to the project (time rebuild M1), so grant it and curate Mika
+	// onto the team for this project.
+	await db.query(
+		`insert into project_access (project_id, user_id, role, origin, has_direct_grant, granted_by)
+		 select $1, $2, 'editor', 'direct', true, $3
+		 where not exists (select 1 from project_access where project_id = $1 and user_id = $2)`,
+		[PROJECT, MIKA, OWNER],
+	);
+	await db.query(
+		`insert into project_team_members (project_id, team_id, user_id, added_by)
+		 select $1, $2, $3, $4
+		 where exists (select 1 from team_members where team_id = $2 and user_id = $3)
+		 on conflict do nothing`,
+		[PROJECT, TEAM, MIKA, OWNER],
+	);
 
 	// A signed monthly retainer: PHP 85,000 for 40 hours, PHP 2,400/h overage.
 	await db.query(
