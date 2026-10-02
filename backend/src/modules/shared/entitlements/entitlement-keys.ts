@@ -98,6 +98,15 @@ export const ENTITLEMENT_KEYS = {
     scope: 'workspace',
     enforced: true,
   },
+  // Time management rebuild (docs/13-proposals/time-management/), seeded by
+  // 20261003090000_time_plan_keys. Registered but not yet enforced: the
+  // rebuilt time module (backend PR-1) is the first code that checks them.
+  time_billable_invoices: { kind: 'feature', enforced: false },
+  time_team_rules: { kind: 'feature', enforced: false, plural: true },
+  time_payouts: { kind: 'feature', enforced: false, plural: true },
+  time_reports_export: { kind: 'feature', enforced: false, plural: true },
+  time_approval_chains: { kind: 'feature', enforced: false, plural: true },
+  time_audit_export: { kind: 'feature', enforced: false },
 } as const satisfies Record<string, EntitlementKeyDef>;
 
 export type EntitlementKey = keyof typeof ENTITLEMENT_KEYS;
@@ -118,7 +127,13 @@ export type FeatureKey =
   | 'activity_export'
   | 'mcp_server'
   | 'saml_scim'
-  | 'contract_counterparty_authoring';
+  | 'contract_counterparty_authoring'
+  | 'time_billable_invoices'
+  | 'time_team_rules'
+  | 'time_payouts'
+  | 'time_reports_export'
+  | 'time_approval_chains'
+  | 'time_audit_export';
 
 /** The numeric keys getLimit answers. */
 export type NumericLimitKey =

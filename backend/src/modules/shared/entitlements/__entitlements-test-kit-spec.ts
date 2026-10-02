@@ -141,7 +141,8 @@ export const SEED_KEYS: SeedKey[] = [
   {
     key: 'time_tracking',
     kind: 'feature',
-    label: 'Time tracking and timesheets',
+    // Relabelled by 20261003090000_time_plan_keys.
+    label: 'Timesheets and approvals',
     unit: null,
     group: 'team',
     values: [false, true, true, true],
@@ -228,6 +229,55 @@ export const SEED_KEYS: SeedKey[] = [
     unit: 'pages',
     group: 'ai',
     values: [200, 200, 200, 200],
+  },
+  // 20261003090000_time_plan_keys (time management rebuild, M0).
+  {
+    key: 'time_billable_invoices',
+    kind: 'feature',
+    label: 'Billable hours on invoices',
+    unit: null,
+    group: 'team',
+    values: [false, true, true, true],
+  },
+  {
+    key: 'time_team_rules',
+    kind: 'feature',
+    label: 'Team approvers and time rules',
+    unit: null,
+    group: 'team',
+    values: [false, false, true, true],
+  },
+  {
+    key: 'time_payouts',
+    kind: 'feature',
+    label: 'Payouts',
+    unit: null,
+    group: 'team',
+    values: [false, false, true, true],
+  },
+  {
+    key: 'time_reports_export',
+    kind: 'feature',
+    label: 'Workspace time reports and export',
+    unit: null,
+    group: 'team',
+    values: [false, false, true, true],
+  },
+  {
+    key: 'time_approval_chains',
+    kind: 'feature',
+    label: 'Custom approval chains',
+    unit: null,
+    group: 'team',
+    values: [false, false, false, true],
+  },
+  {
+    key: 'time_audit_export',
+    kind: 'feature',
+    label: 'Time audit export',
+    unit: null,
+    group: 'team',
+    values: [false, false, false, true],
   },
 ];
 
