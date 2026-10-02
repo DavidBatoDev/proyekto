@@ -1,6 +1,6 @@
 # Finance Books
 
-> **Last updated:** 2026-09-24 · **Status:** current
+> **Last updated:** 2026-10-02 · **Status:** current
 
 Finance used to be one page gated to verified consultants (`ConsultantOnlyGuard` on
 `/api/finance/*`). **Books** replace that wall with a created surface any execution user can
@@ -124,8 +124,9 @@ work already recorded. The owner's dial lives on the add-ons page.
 team. It is a sibling of `ConsultantOnlyGuard`, deliberately *not* a layer inside
 `resolvePermissions` — see
 [Authorization axes](../../03-backend/authorization-axes.md#6-entitlement--has-the-team-enabled-the-module).
-Today it reads `teams.time_tracking_enabled` and everything is free; a billing table can
-replace the resolver without touching call sites. Surface:
+It reads only `teams.time_tracking_enabled`. The workspace plan gate (`time_tracking`, resolved
+on the team's workspace) is enforced separately in `TeamTimeService.assertTimeTrackingPlan`
+and when the team turns time on. Surface:
 `/engagements/finance/team/$teamId/addons`.
 
 ## Web surface

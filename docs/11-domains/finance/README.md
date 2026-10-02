@@ -1,6 +1,6 @@
 # Payments, Payouts & Invoices
 
-> **Last updated:** 2026-08-28 · **Status:** current
+> **Last updated:** 2026-10-02 · **Status:** current
 
 Money in Proyekto flows through the **payouts** and **invoices** modules. The dead
 payments/escrow backend surface was removed in Phase 3. `wallets` remains as
@@ -46,7 +46,7 @@ PDF.
 | --- | --- |
 | `contracts` | Commercial agreement with a durable consultant seat and immutable terminal party/project-title snapshots |
 | `invoices` | Invoice header (`status` = draft \| issued \| sent \| paid \| void) |
-| `invoice_line_items` | Lines (`source_type` = manual \| time_log) |
+| `invoice_line_items` | Lines (`source_type` = manual \| time_log \| retainer \| overage) |
 | `invoice_documents` | Generated PDFs (storage path) |
 
 HTTP: create, get/update, `POST /invoices/:id/issue`, `POST /invoices/:id/generate-pdf`.

@@ -1,6 +1,6 @@
 # Authorization Axes
 
-> **Last updated:** 2026-09-24 · **Status:** current
+> **Last updated:** 2026-10-02 · **Status:** current
 
 Proyekto answers six *different* authorization questions with six *different* pieces of
 state. They are independent by design. This page names all six in one place, states which
@@ -118,19 +118,23 @@ deliberately *not* a fourth layer inside `resolvePermissions`: permissions answe
 role do this here", entitlement answers "has this team enabled the module". The route must
 carry a `teamId` param — that is the billing subject; a route without one is not gated.
 
-Today the resolver reads `teams.time_tracking_enabled` and everything is free. When billing
-ships, the resolver swaps to an entitlements table without touching call sites. Refusal is
-the typed `ADDON_NOT_ENABLED`.
+The guard reads only `teams.time_tracking_enabled`; refusal is the typed `ADDON_NOT_ENABLED`.
+It is not the plan check. The workspace plan gate is separate:
+`TeamTimeService.assertTimeTrackingPlan` resolves the **team's** workspace and asserts the
+`time_tracking` plan feature on start, manual create, edit, delete and comment. Pause,
+resume, stop, review and reads are never plan-gated. Turning time on for a team is
+plan-checked too, by `TeamsService.assertTimeTrackingAllowed`.
 
 ## How the axes compose
 
 Two worked examples, because the combinations are where testing goes wrong.
 
-**A talent member starting a timer** is checked on four axes in turn:
+**A talent member starting a timer** is checked on five axes in turn:
 
 ```text
-project role      project_access >= editor        ── else no project entry at all
+project role      project_access >= viewer        ── else no project entry at all
 entitlement       teams.time_tracking_enabled     ── else ADDON_NOT_ENABLED
+plan              team workspace has time_tracking ── else the plan-limit refusal
 eligibility       engaged | grandfathered         ── else depends on the dial below
 enforcement dial  teams.contract_enforcement
                     off     -> log freely
