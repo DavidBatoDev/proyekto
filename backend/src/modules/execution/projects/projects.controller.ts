@@ -110,8 +110,10 @@ export class ProjectsController {
     return this.projectsService.createProjectFromRoadmap(user.id, dto);
   }
 
-  // The viewer decides the roster mask: a placed talent worker reads
-  // "Delivery team member" to anyone who is not a provider-side party (L22).
+  // The viewer decides access and the roster mask: a caller without a
+  // project_access row (guests included, by their own profile id) gets 404,
+  // and a placed talent worker reads "Delivery team member" to anyone who is
+  // not a provider-side party (L22).
   @Get(':id')
   getProject(@Param('id') id: string, @CurrentUser() user: AuthenticatedUser) {
     return this.projectsService.getProject(id, user.id);

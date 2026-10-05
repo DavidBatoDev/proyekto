@@ -5,7 +5,14 @@ import { EntitlementsCoreModule } from '../../shared/entitlements/entitlements-c
 import { NotificationsModule } from '../../shared/notifications/notifications.module';
 import { AuthorizationModule } from '../projects/authorization/authorization.module';
 import { WorkspacesModule } from '../workspaces/workspaces.module';
+import { TeamTimeLegacyController } from './controllers/team-time-legacy.controller';
+import { TimeCronController } from './controllers/time-cron.controller';
+import { TimeEntriesController } from './controllers/time-entries.controller';
+import { TimePoliciesController } from './controllers/time-policies.controller';
+import { TimeReportsController } from './controllers/time-reports.controller';
+import { TimesheetsController } from './controllers/timesheets.controller';
 import { TimeGuestGuard } from './guards/time-guest.guard';
+import { TeamTimeLegacyService } from './legacy/team-time-legacy.service';
 import { LoggingContextService } from './logging-context.service';
 import { TimeAuthorityService } from './time-authority.service';
 import { TimeCacheService } from './time-cache';
@@ -19,12 +26,17 @@ import { TimeReportsService } from './time-reports.service';
 import { TimesheetsService } from './timesheets.service';
 
 /**
- * Time tracking: entries, timesheets, policies, the For resolver and the /api/team-time alias.
+ * Time tracking: entries, timesheets, policies, reports, the hourly cron, the For resolver and the
+ * `/api/team-time` alias that keeps the deployed web and old OTA bundles working until the web PR.
  *
- * Skeleton (P03, providers only); P17 adds the controllers and the alias telemetry interceptor and wires the
- * module into AppModule. It imports EngagementsCoreModule, never EngagementsModule (D25): ProjectsModule,
- * TeamsModule, PayoutsModule, InvoicesModule and EngagementsModule import TimeModule, and TimeModule imports
- * none of them, so there is no cycle. UPSTASH_REDIS_CLIENT (TimeCacheService) is global.
+ * It imports EngagementsCoreModule, never EngagementsModule (D25): ProjectsModule, TeamsModule, PayoutsModule,
+ * InvoicesModule, FinanceModule, AccountModule and EngagementsModule import TimeModule, and TimeModule imports
+ * none of them, so there is no cycle. UPSTASH_REDIS_CLIENT (TimeCacheService) and ConfigService (CronSecretGuard)
+ * are global.
+ *
+ * The alias telemetry interceptor is not a provider (D74): `@UseInterceptors(AliasTelemetryInterceptor)` on
+ * TeamTimeLegacyController makes Nest create it as this module's injectable, and that instance does the counting
+ * and receives the shutdown flush. Listing it here too would only add a second, idle instance.
  */
 @Module({
   imports: [
@@ -35,7 +47,14 @@ import { TimesheetsService } from './timesheets.service';
     EntitlementsCoreModule,
     EngagementsCoreModule,
   ],
-  controllers: [],
+  controllers: [
+    TimeEntriesController,
+    TimesheetsController,
+    TimeReportsController,
+    TimePoliciesController,
+    TimeCronController,
+    TeamTimeLegacyController,
+  ],
   providers: [
     TimeCacheService,
     TimeGuestGuard,
@@ -49,6 +68,7 @@ import { TimesheetsService } from './timesheets.service';
     TimeCronService,
     TimeReportsService,
     TimeProjectsFacade,
+    TeamTimeLegacyService,
   ],
   exports: [
     TimeCacheService,

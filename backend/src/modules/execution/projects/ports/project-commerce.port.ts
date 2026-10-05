@@ -18,8 +18,8 @@
  *
  * An event bus was considered and rejected: two of these are transactionally
  * meaningful (a veto that must block, and a cascade ordered against
- * `stopRunningLogsForProject`), and fire-and-forget would turn both into a
- * correctness regression dressed up as decoupling.
+ * `TimeProjectsFacade.stopRunningForProject`), and fire-and-forget would turn
+ * both into a correctness regression dressed up as decoupling.
  */
 export const PROJECT_COMMERCE_PORT = Symbol('PROJECT_COMMERCE_PORT');
 
@@ -33,7 +33,8 @@ export interface ProjectCommercePort {
   /**
    * Throw if the project still has commercial records that forbid deletion.
    * Kept separate from the cascade so the veto's failure mode stays
-   * unambiguous and its ordering relative to team-time is explicit.
+   * unambiguous and its ordering relative to stopping the project's running
+   * timers (`TimeProjectsFacade.stopRunningForProject`) is explicit.
    */
   assertProjectDeletable(projectId: string): Promise<void>;
 

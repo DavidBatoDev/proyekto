@@ -56,7 +56,7 @@ export function registerResources(server: McpServer, deps: McpToolDeps) {
       requireScope(deps.caller, 'projects:read');
       const id = String(projectId);
       const permissions = await assertProjectViewer(deps, id);
-      const project = await deps.s.projects.getProject(id);
+      const project = await deps.s.projects.getProject(id, uid);
       return json(uri.href, { project, my_permissions: permissions });
     },
   );

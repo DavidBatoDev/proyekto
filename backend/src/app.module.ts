@@ -43,7 +43,7 @@ import { TeamsModule } from './modules/execution/teams/teams.module';
 import { WorkspacesModule } from './modules/execution/workspaces/workspaces.module';
 import { PlatformBillingModule } from './modules/shared/platform-billing/platform-billing.module';
 import { EntitlementsModule } from './modules/shared/entitlements/entitlements.module';
-import { TeamTimeModule } from './modules/execution/team-time/team-time.module';
+import { TimeModule } from './modules/execution/time/time.module';
 import { MeetingsModule } from './modules/execution/meetings/meetings.module';
 import { FinanceImportsModule } from './modules/marketplace/finance-imports/finance-imports.module';
 import { DocumentIntakeModule } from './modules/marketplace/document-intake/document-intake.module';
@@ -119,7 +119,7 @@ import { AppController } from './app.controller';
     WorkspacesModule,
     PlatformBillingModule,
     EntitlementsModule,
-    TeamTimeModule,
+    TimeModule,
     MeetingsModule,
     FinanceImportsModule,
     DocumentIntakeModule,

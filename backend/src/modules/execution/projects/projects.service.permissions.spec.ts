@@ -737,18 +737,32 @@ describe('ProjectsService (permissions)', () => {
       members: [ownerRow, talentRow],
     });
 
+    // getProject 404s a malformed id and a caller without project_access
+    // (D78), so its cases use a uuid and a viewer who holds a role.
+    const PROJECT_UUID = '3c1f9a52-7d4e-4b8a-9f60-2e5d8c7b1a04';
+    const viewerAccess = {
+      getUserProjectRole: jest.fn().mockResolvedValue('owner'),
+    };
+
     it('masks a placed talent worker in the project payload for this viewer', async () => {
       timeFacade.maskedWorkerIds.mockResolvedValueOnce(new Set(['talent-1']));
-      const service = buildService({
-        findById: jest.fn().mockResolvedValue(projectWithRoster()),
-      });
+      const service = buildService(
+        {
+          findById: jest.fn().mockResolvedValue(projectWithRoster()),
+        },
+        viewerAccess,
+      );
 
-      const project = (await service.getProject('project-1', 'client-1')) as {
+      const project = (await service.getProject(PROJECT_UUID, 'client-1')) as {
         members: Array<Record<string, any>>;
       };
 
+      expect(viewerAccess.getUserProjectRole).toHaveBeenCalledWith(
+        'client-1',
+        PROJECT_UUID,
+      );
       expect(timeFacade.maskedWorkerIds).toHaveBeenCalledWith(
-        'project-1',
+        PROJECT_UUID,
         'client-1',
       );
       expect(project.members[0]).toEqual(ownerRow);
@@ -765,16 +779,36 @@ describe('ProjectsService (permissions)', () => {
       expect(JSON.stringify(project)).not.toMatch(/Rico|rico@|talent-1/);
     });
 
-    it('returns the payload unmasked for internal callers with no viewer', async () => {
-      const service = buildService({
-        findById: jest.fn().mockResolvedValue(projectWithRoster()),
-      });
+    it('returns the payload unmasked when the viewer may see every worker', async () => {
+      const service = buildService(
+        {
+          findById: jest.fn().mockResolvedValue(projectWithRoster()),
+        },
+        viewerAccess,
+      );
 
-      const project = (await service.getProject('project-1')) as {
+      const project = (await service.getProject(
+        PROJECT_UUID,
+        'consultant-1',
+      )) as {
         members: unknown[];
       };
 
+      expect(timeFacade.maskedWorkerIds).toHaveBeenCalledWith(
+        PROJECT_UUID,
+        'consultant-1',
+      );
       expect(project.members[1]).toEqual(talentRow);
+    });
+
+    it('404s a viewer without project access before the roster is read or masked', async () => {
+      const findById = jest.fn().mockResolvedValue(projectWithRoster());
+      const service = buildService({ findById });
+
+      await expect(
+        service.getProject(PROJECT_UUID, 'outsider-1'),
+      ).rejects.toThrow('Project not found');
+      expect(findById).not.toHaveBeenCalled();
       expect(timeFacade.maskedWorkerIds).not.toHaveBeenCalled();
     });
 

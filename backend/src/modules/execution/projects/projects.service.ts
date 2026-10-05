@@ -111,6 +111,13 @@ type RoadmapForProjectConversion = {
  */
 const MENTION_INVITE_FLAG_TTL_MS = 60_000;
 
+/**
+ * Project ids are uuids. Anything else is a miss: sent to Postgres it fails the
+ * uuid cast (22P02), and that would surface as a 500 carrying Postgres text.
+ */
+const PROJECT_ID_SHAPE =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
 @Injectable()
 export class ProjectsService {
   /** See isMentionInviteEnabled(). */
@@ -740,15 +747,31 @@ export class ProjectsService {
   }
 
   /**
-   * The project payload. With a viewer, every member row whose user is the
-   * worker of a talent assignment on the project the viewer is not a
-   * provider-side party for reads "Delivery team member" (L22, E35, D57).
-   * Without one (internal callers) the payload is returned unmasked.
+   * One project with its owner and full member roster (profiles included), for a
+   * caller who can view it.
+   *
+   * "Can view" is the rule every other project read applies: the caller holds a
+   * `project_access` row on the project, at any role — the `projects` SELECT
+   * policy (`projects_select_via_shares`), chat's `isProjectMember`, and the
+   * roadmap view check all say the same thing. The row is read through the
+   * service-role client, so without this check RLS never runs and any signed-in
+   * caller, guest sessions included, could read any project and every member's
+   * email. A caller who cannot view gets the same 404 as a missing id, so the
+   * response never confirms that a project exists. A malformed id is the same
+   * 404, answered before any query runs.
+   *
+   * Then the roster mask: every member row whose user is the worker of a talent
+   * assignment on the project the viewer is not a provider-side party for reads
+   * "Delivery team member" (L22, E35, D57).
    */
-  async getProject(id: string, viewerId?: string) {
+  async getProject(id: string, viewerId: string) {
+    if (!PROJECT_ID_SHAPE.test(id)) {
+      throw new NotFoundException('Project not found');
+    }
+    const role = await this.authorization.getUserProjectRole(viewerId, id);
+    if (!role) throw new NotFoundException('Project not found');
     const project = await this.projectsRepo.findById(id);
     if (!project) throw new NotFoundException('Project not found');
-    if (!viewerId) return project;
     const masked = await this.time.maskedWorkerIds(id, viewerId);
     return maskProjectRoster(project, masked);
   }
