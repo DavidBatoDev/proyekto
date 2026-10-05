@@ -81,6 +81,15 @@ export interface AliasHitCount {
   count: number;
 }
 
+/** One logging-for cache read (D56). */
+export interface LoggingForCacheRead {
+  /** null on a miss or a Redis error. */
+  value: LoggingForResult | null;
+  /** The epoch this read used. Pass it back to setLoggingFor so a bump during the compute never stores a
+   *  stale result under the new epoch. null = no Redis or a Redis error: the write is skipped. */
+  epoch: string | null;
+}
+
 @Injectable()
 export class TimeCacheService {
   constructor(
@@ -92,38 +101,37 @@ export class TimeCacheService {
     return raw === null || raw === undefined ? '0' : String(raw);
   }
 
-  /** null on miss/error */
+  /** Reads the epoch once, then the key under it. value null on a miss; both null on no Redis or an error. */
   async getLoggingFor(
     userId: string,
     projectId: string,
-  ): Promise<LoggingForResult | null> {
-    if (!this.redis) return null;
+  ): Promise<LoggingForCacheRead> {
+    if (!this.redis) return { value: null, epoch: null };
     try {
-      const key = loggingForKey(
-        await this.epoch(this.redis),
-        userId,
-        projectId,
-      );
-      return decodeLoggingFor(await this.redis.get(key));
+      const epoch = await this.epoch(this.redis);
+      const raw = await this.redis.get(loggingForKey(epoch, userId, projectId));
+      return { value: decodeLoggingFor(raw), epoch };
     } catch (error) {
       warnThrottled('read', error);
-      return null;
+      return { value: null, epoch: null };
     }
   }
 
+  /** Writes under `epoch`, the one getLoggingFor returned before the compute (D56), never a re-read epoch:
+   *  if a writer bumped meanwhile, this lands under the old epoch, which no new read uses. null = skip. */
   async setLoggingFor(
     userId: string,
     projectId: string,
     value: LoggingForResult,
+    epoch: string | null,
   ): Promise<void> {
-    if (!this.redis) return;
+    if (!this.redis || epoch === null) return;
     try {
-      const key = loggingForKey(
-        await this.epoch(this.redis),
-        userId,
-        projectId,
+      await this.redis.set(
+        loggingForKey(epoch, userId, projectId),
+        JSON.stringify(value),
+        { ex: LF_TTL_SECONDS },
       );
-      await this.redis.set(key, JSON.stringify(value), { ex: LF_TTL_SECONDS });
     } catch (error) {
       warnThrottled('write', error);
     }

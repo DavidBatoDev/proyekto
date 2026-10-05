@@ -205,6 +205,15 @@ class PartyLookup {
     return pending;
   }
 
+  /** D57 + CHANGE-7: may this viewer name the assignment's worker? Only placed talent (an assignment with a
+   *  talent engagement) is ever masked, and then only from viewers who are not provider-side: the worker, the
+   *  talent engagement's hirer and provider, the client engagement's provider. A consultant's own client time
+   *  (client engagement only) always shows the consultant: the client hirer sees their own counterparty. */
+  async workerVisible(a: AssignmentContext): Promise<boolean> {
+    if (!a.talent_engagement_id) return true;
+    return this.providerSide(a);
+  }
+
   /** CHANGE-7: the worker, the talent engagement's hirer and provider, the client engagement's provider. */
   async providerSide(a: AssignmentContext): Promise<boolean> {
     if (a.worker_user_id === this.viewerId) return true;
@@ -383,9 +392,11 @@ export class TimeAuthorityService {
 
   /**
    * Entry ids whose person the viewer may see. Team, workspace and personal entries show their person to
-   * whoever can view them; an assignment entry shows its worker only to the worker and the provider-side parties
-   * (talent hirer and provider, client provider). Everyone else, the client hirer included, reads
-   * "Delivery team" (CHANGE-7, E35).
+   * whoever can view them. D57: an assignment entry is masked only when its assignment has a talent engagement
+   * (placed talent); then its worker shows only to the worker and the provider-side parties (talent hirer and
+   * provider, client provider), and everyone else, the client hirer included, reads "Delivery team"
+   * (CHANGE-7, E35). A client-only assignment (a consultant's own client time) always shows its worker.
+   * An assignment that can no longer be read fails closed: masked.
    */
   async identityVisible(
     viewerId: string,
@@ -409,7 +420,7 @@ export class TimeAuthorityService {
         const id = assignmentIdOf(r);
         const a = id ? contexts.get(id) : undefined;
         // A severed or unknown assignment fails closed: masked.
-        if (a && (await parties.providerSide(a))) visible.add(r.id);
+        if (a && (await parties.workerVisible(a))) visible.add(r.id);
       }),
     );
     return visible;
@@ -636,7 +647,8 @@ export class TimeAuthorityService {
     );
   }
 
-  /** Workers of assignments on the project under an engagement where the viewer is not a provider-side party. */
+  /** Workers of talent assignments (D57: those with a talent engagement) on the project where the viewer is not a
+   *  provider-side party. A client-only assignment's worker is never masked. */
   async maskedWorkerIds(
     projectId: string,
     viewerId: string,
@@ -647,7 +659,7 @@ export class TimeAuthorityService {
     const known = new Set<string>();
     await Promise.all(
       assignments.map(async (a) => {
-        if (await parties.providerSide(a)) known.add(a.worker_user_id);
+        if (await parties.workerVisible(a)) known.add(a.worker_user_id);
         else masked.add(a.worker_user_id);
       }),
     );

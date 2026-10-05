@@ -42,6 +42,7 @@ const OWNER_OF_P1 = uid(50);
 const P1 = uid(100);
 const P2 = uid(101);
 const P3 = uid(102);
+const P4 = uid(103); // the consultant works there under both a talent and a client-only assignment
 const WS_BIZ = uid(110); // has time_team_rules
 const WS_FREE = uid(111); // does not
 const T_RATES = uid(120);
@@ -52,6 +53,9 @@ const CLIENT_ENG = uid(131);
 const CLIENT_ENG_2 = uid(132);
 const A_TALENT = uid(140);
 const A_CLIENT = uid(141);
+const A_TALENT_P4 = uid(142);
+const A_CLIENT_P4 = uid(143);
+const A_SEVERED = uid(144); // no longer readable
 const S_OPEN = uid(150);
 const S_SUBMITTED = uid(151);
 const S_FOREIGN = uid(152);
@@ -70,6 +74,7 @@ const E_LEGACY = uid(210);
 const E_FROZEN = uid(211);
 const E_SUBMITTED = uid(212);
 const E_GONE = uid(213); // authorised, then deleted before hydration
+const E_SEVERED = uid(214); // an assignment entry whose assignment cannot be read
 
 type Row = Record<string, unknown>;
 
@@ -368,6 +373,40 @@ const ASSIGNMENTS: AssignmentContext[] = [
     created_at: '2026-09-01T00:00:00Z',
     hirer_label: 'Acme',
   },
+  {
+    id: A_TALENT_P4,
+    project_id: P4,
+    worker_user_id: CONSULTANT,
+    talent_engagement_id: TALENT_ENG,
+    client_engagement_id: CLIENT_ENG,
+    governing_engagement_id: TALENT_ENG,
+    governing_kind: 'talent_services',
+    governing_status: 'active',
+    team_id: null,
+    role_title: null,
+    status: 'active',
+    started_at: '2026-09-01T00:00:00Z',
+    ended_at: null,
+    created_at: '2026-09-01T00:00:00Z',
+    hirer_label: 'Pixel',
+  },
+  {
+    id: A_CLIENT_P4,
+    project_id: P4,
+    worker_user_id: CONSULTANT,
+    talent_engagement_id: null,
+    client_engagement_id: CLIENT_ENG_2,
+    governing_engagement_id: CLIENT_ENG_2,
+    governing_kind: 'client_services',
+    governing_status: 'active',
+    team_id: null,
+    role_title: null,
+    status: 'active',
+    started_at: '2026-09-01T00:00:00Z',
+    ended_at: null,
+    created_at: '2026-09-01T00:00:00Z',
+    hirer_label: 'Acme',
+  },
 ];
 
 const PARTIES: Record<string, Record<string, EngagementPosition>> = {
@@ -579,6 +618,44 @@ describe('identityVisible: the E35 matrix', () => {
     });
   }
 
+  // D57: a consultant's own client time (client engagement only) is never masked.
+  const clientOnly: Array<[string, string]> = [
+    ['client hirer', CLIENT_HIRER],
+    ['team manager', MANAGER],
+    ['workspace admin', WS_ADMIN],
+    ['talent hirer', TALENT_HIRER],
+    ['outsider', OUTSIDER],
+  ];
+  for (const [label, viewer] of clientOnly) {
+    it(`D57: ${label} sees the worker of a client-only assignment`, async () => {
+      const { service } = await build();
+      const set = await service.identityVisible(viewer, [authRow(E_CLIENT)]);
+      expect(set.has(E_CLIENT)).toBe(true);
+    });
+  }
+
+  it('D57: in one list the client hirer sees their consultant but not the placed talent', async () => {
+    const { service } = await build();
+    const set = await service.identityVisible(CLIENT_HIRER, [
+      authRow(E_TALENT),
+      authRow(E_CLIENT),
+    ]);
+    expect([...set]).toEqual([E_CLIENT]);
+  });
+
+  it('an assignment that can no longer be read fails closed: masked', async () => {
+    const { service, engagements } = await build();
+    const severed: EntryAuthRow = {
+      ...authRow(E_TALENT),
+      id: E_SEVERED,
+      context_ref: A_SEVERED,
+      engagement_assignment_id: A_SEVERED,
+    };
+    const set = await service.identityVisible(OUTSIDER, [severed]);
+    expect(set.size).toBe(0);
+    expect(engagements.getAssignment).toHaveBeenCalledWith(A_SEVERED);
+  });
+
   it('team, workspace and personal entries always show their person', async () => {
     const { service, engagements } = await build();
     const set = await service.identityVisible(
@@ -708,6 +785,23 @@ describe('hydrate', () => {
       project_id: P2,
     });
     expect(HIDDEN_CONTENT_LABEL).toBe("A project you can't open");
+  });
+
+  it('D57: hydrate shows the consultant on client-only time to the client hirer, masks placed talent', async () => {
+    const { service, db } = await build();
+    const [talent, client] = await service.hydrate(
+      CLIENT_HIRER,
+      [E_TALENT, E_CLIENT].map(authRow),
+    );
+    expect(talent).toMatchObject({ identity: 'masked', member_user_id: null });
+    expect(client).toMatchObject({
+      identity: 'visible',
+      member_user_id: CONSULTANT,
+      member_label: null,
+    });
+    expect(
+      entryCalls(db.calls, ENTRY_IDENTITY_SELECT).map((c) => c.in.id),
+    ).toEqual([[E_CLIENT]]);
   });
 
   it('email only with withEmail', async () => {
@@ -1074,31 +1168,37 @@ describe('clientHoursLevel', () => {
 
 // ── maskedWorkerIds ─────────────────────────────────────────────────────────
 describe('maskedWorkerIds', () => {
-  it('the client hirer sees every assignment worker masked', async () => {
+  it('D57: the client hirer sees placed talent masked and their own consultant named', async () => {
     const { service } = await build();
-    expect(
-      [...(await service.maskedWorkerIds(P1, CLIENT_HIRER))].sort(),
-    ).toEqual([MEMBER, CONSULTANT].sort());
+    expect([...(await service.maskedWorkerIds(P1, CLIENT_HIRER))]).toEqual([
+      MEMBER,
+    ]);
   });
 
-  it('a provider-side party names their own workers only', async () => {
+  it('D57: a client-only worker is masked from nobody; talent only from non-provider-side viewers', async () => {
     const { service } = await build();
-    expect([...(await service.maskedWorkerIds(P1, TALENT_HIRER))]).toEqual([
-      CONSULTANT,
-    ]);
-    expect([...(await service.maskedWorkerIds(P1, CLIENT_PROVIDER))]).toEqual([
-      CONSULTANT,
-    ]);
+    for (const viewer of [OUTSIDER, MANAGER, WS_ADMIN]) {
+      expect([...(await service.maskedWorkerIds(P1, viewer))]).toEqual([
+        MEMBER,
+      ]);
+    }
+    expect((await service.maskedWorkerIds(P1, TALENT_HIRER)).size).toBe(0);
+    expect((await service.maskedWorkerIds(P1, TALENT_PROVIDER)).size).toBe(0);
+    expect((await service.maskedWorkerIds(P1, CLIENT_PROVIDER)).size).toBe(0);
   });
 
   it('never masks the viewer themself', async () => {
     const { service } = await build();
-    expect([...(await service.maskedWorkerIds(P1, MEMBER))]).toEqual([
-      CONSULTANT,
-    ]);
+    expect((await service.maskedWorkerIds(P1, MEMBER)).size).toBe(0);
     expect([...(await service.maskedWorkerIds(P1, CONSULTANT))]).toEqual([
       MEMBER,
     ]);
+  });
+
+  it('a worker the viewer can already name through a client-only assignment is not masked', async () => {
+    const { service } = await build();
+    // P4: the consultant is placed talent (masked from the client hirer) and also works client-only time.
+    expect((await service.maskedWorkerIds(P4, CLIENT_HIRER)).size).toBe(0);
   });
 
   it('a project without assignments masks nobody', async () => {

@@ -146,6 +146,8 @@ interface Scenario {
   policies?: Record<string, Partial<ResolvedTimePolicy>>;
   defaultRow?: Row | null;
   cached?: LoggingForResult | null;
+  /** The epoch the cache read returns (default '7'); null = Redis unavailable. */
+  cacheEpoch?: string | null;
 }
 
 function basePolicy(
@@ -328,7 +330,12 @@ async function build(s: Scenario = {}) {
   };
 
   const cache = {
-    getLoggingFor: jest.fn(() => Promise.resolve(s.cached ?? null)),
+    getLoggingFor: jest.fn(() =>
+      Promise.resolve({
+        value: s.cached ?? null,
+        epoch: s.cacheEpoch === undefined ? '7' : s.cacheEpoch,
+      }),
+    ),
     setLoggingFor: jest.fn(() => Promise.resolve()),
     bumpEpoch: jest.fn(() => Promise.resolve()),
   };
@@ -800,6 +807,138 @@ describe('step 2: assignments', () => {
     });
     expect(kinds(r)).toEqual([`assignment:${ASSIGN_1}`, `team:${TEAM_B}`]);
   });
+
+  const unavailableSuppressors: Array<{
+    label: string;
+    extra: Partial<AssignmentContext>;
+    /** tracking_mode in force; null = no settings row; absent = 'optional'. */
+    mode?: string | null;
+    reason: UnavailableReason;
+  }> = [
+    { label: 'no_settings', extra: {}, mode: null, reason: 'no_settings' },
+    {
+      label: 'contract_disabled',
+      extra: {},
+      mode: 'disabled',
+      reason: 'contract_disabled',
+    },
+    {
+      label: 'engagement_inactive',
+      extra: { governing_status: 'ended' },
+      reason: 'engagement_inactive',
+    },
+  ];
+  for (const c of unavailableSuppressors) {
+    it(`D59: an unavailable assignment (${c.label}) never removes the team option`, async () => {
+      const { service } = await build({
+        teams: [
+          { id: TEAM_A, name: 'Assignment team', teamScope: true },
+          { id: HIRER_TEAM, name: 'Hirer team', teamScope: true },
+        ],
+        assignments: [
+          {
+            id: ASSIGN_1,
+            talent_engagement_id: TALENT_ENG,
+            team_id: TEAM_A,
+            ...c.extra,
+          },
+        ],
+        hirerTeams: { [TALENT_ENG]: HIRER_TEAM },
+        settings: c.mode === undefined ? {} : { [TALENT_ENG]: c.mode },
+      });
+      const r = await service.resolve(ME, PROJECT, {
+        at: NOW(),
+        purpose: 'read',
+      });
+      expect(kinds(r)).toEqual([`team:${TEAM_A}`, `team:${HIRER_TEAM}`]);
+      expect(r.unavailable).toEqual([
+        { kind: 'assignment', id: ASSIGN_1, label: 'Acme', reason: c.reason },
+      ]);
+      expect(r.personal_reason).toBeUndefined();
+    });
+  }
+
+  it('D59: the set-up consultant keeps their team when the client agreement has no settings in force (Q3)', async () => {
+    const { service } = await build({
+      teams: [{ id: TEAM_A, name: 'Provider team' }],
+      assignments: [
+        { id: ASSIGN_1, client_engagement_id: CLIENT_ENG, team_id: TEAM_A },
+      ],
+      settings: { [CLIENT_ENG]: null },
+    });
+    const choice = await service.select(ME, PROJECT, {
+      at: NOW(),
+      purpose: 'alias',
+    });
+    expect(choice).toMatchObject({ kind: 'team', id: TEAM_A });
+  });
+
+  it('D59: an available assignment still suppresses, an unavailable one beside it does not', async () => {
+    const { service } = await build({
+      teams: [
+        { id: TEAM_A, name: 'Live agreement team', teamScope: true },
+        { id: TEAM_B, name: 'Ended agreement team', teamScope: true },
+      ],
+      assignments: [
+        { id: ASSIGN_1, talent_engagement_id: TALENT_ENG, team_id: TEAM_A },
+        {
+          id: ASSIGN_2,
+          talent_engagement_id: TALENT_ENG_2,
+          team_id: TEAM_B,
+          governing_status: 'ended',
+        },
+      ],
+    });
+    const r = await service.resolve(ME, PROJECT, {
+      at: NOW(),
+      purpose: 'read',
+    });
+    expect(kinds(r)).toEqual([`assignment:${ASSIGN_1}`, `team:${TEAM_B}`]);
+    expect(r.unavailable.map((u) => u.id)).toEqual([ASSIGN_2]);
+  });
+
+  it('D59: a requested suppressed team is 422; with the agreement unavailable it is selectable', async () => {
+    const live = await build({
+      teams: [{ id: TEAM_A, name: 'Assignment team', teamScope: true }],
+      assignments: [
+        { id: ASSIGN_1, talent_engagement_id: TALENT_ENG, team_id: TEAM_A },
+      ],
+    });
+    const e = await caught(
+      live.service.select(ME, PROJECT, {
+        at: NOW(),
+        purpose: 'manual',
+        requested: { kind: 'team', id: TEAM_A },
+      }),
+    );
+    expect(body(e).code).toBe('LOGGING_FOR_INVALID');
+
+    const off = await build({
+      teams: [{ id: TEAM_A, name: 'Assignment team', teamScope: true }],
+      assignments: [
+        { id: ASSIGN_1, talent_engagement_id: TALENT_ENG, team_id: TEAM_A },
+      ],
+      settings: { [TALENT_ENG]: null },
+    });
+    const choice = await off.service.select(ME, PROJECT, {
+      at: NOW(),
+      purpose: 'manual',
+      requested: { kind: 'team', id: TEAM_A },
+    });
+    expect(choice.id).toBe(TEAM_A);
+  });
+
+  it('looks up each talent engagement hirer team once', async () => {
+    const { service, engagements } = await build({
+      assignments: [
+        { id: ASSIGN_1, talent_engagement_id: TALENT_ENG },
+        { id: ASSIGN_2, talent_engagement_id: TALENT_ENG },
+      ],
+    });
+    await service.resolve(ME, PROJECT, { at: NOW(), purpose: 'read' });
+    expect(engagements.hirerPartyTeamId).toHaveBeenCalledTimes(1);
+    expect(engagements.hirerPartyTeamId).toHaveBeenCalledWith(TALENT_ENG);
+  });
 });
 
 // ── step 5 and 6 ────────────────────────────────────────────────────────────
@@ -881,6 +1020,67 @@ describe('step 7: collapse, prefill, errors', () => {
       requested: { kind: 'team', id: TEAM_B },
     });
     expect(choice.id).toBe(TEAM_B);
+  });
+
+  it('D60: two teams with their own rate cards on one sheet never collapse', async () => {
+    const { service } = await build({
+      teams: [
+        { id: TEAM_A, name: 'Rates A', member_rates_enabled: true },
+        { id: TEAM_B, name: 'Rates B', member_rates_enabled: true },
+      ],
+    });
+    const r = await service.resolve(ME, PROJECT, {
+      at: NOW(),
+      purpose: 'read',
+    });
+    // Both on the workspace sheet, both team_member_rates: still two options.
+    expect(r.options.map((o) => o.sheet_scope)).toEqual([
+      { kind: 'workspace', ref: WS },
+      { kind: 'workspace', ref: WS },
+    ]);
+    expect(r.options.map((o) => o.rate_source)).toEqual([
+      'team_member_rates',
+      'team_member_rates',
+    ]);
+    expect(kinds(r)).toEqual([`team:${TEAM_A}`, `team:${TEAM_B}`]);
+    expect(r.selected).toBeNull();
+    expect(r.reason).toBe('required');
+  });
+
+  it('D60: a rates team and a plain team on one sheet stay apart; two plain teams still collapse', async () => {
+    const { service } = await build({
+      teams: [
+        { id: TEAM_A, name: 'Plain A' },
+        { id: TEAM_B, name: 'Rates', member_rates_enabled: true },
+        { id: TEAM_C, name: 'Plain C' },
+      ],
+    });
+    const r = await service.resolve(ME, PROJECT, {
+      at: NOW(),
+      purpose: 'read',
+    });
+    expect(kinds(r)).toEqual([`team:${TEAM_A}`, `team:${TEAM_B}`]);
+  });
+
+  it('D60: a remembered rates team is the prefill for itself, not for the other rates team', async () => {
+    const { service } = await build({
+      teams: [
+        { id: TEAM_A, name: 'Rates A', member_rates_enabled: true },
+        { id: TEAM_B, name: 'Rates B', member_rates_enabled: true },
+      ],
+      defaultRow: {
+        context_kind: 'team',
+        team_id: TEAM_B,
+        workspace_id: null,
+        engagement_assignment_id: null,
+      },
+    });
+    const r = await service.resolve(ME, PROJECT, {
+      at: NOW(),
+      purpose: 'read',
+    });
+    expect(r.prefill?.id).toBe(TEAM_B);
+    expect(r.reason).toBe('confirm');
   });
 
   it('several differing options without a default: reason required, write 409 with {options, prefill:null}', async () => {
@@ -1081,13 +1281,46 @@ describe('caching (L60)', () => {
     expect(projectAuth.resolvePermissions).not.toHaveBeenCalled();
   });
 
-  it('a read miss is computed and stored', async () => {
+  it('a read miss is computed and stored under the epoch read before the compute (D56)', async () => {
     const { service, cache } = await build({ workspaceMember: true });
     const r = await service.resolve(ME, PROJECT, {
       at: NOW(),
       purpose: 'read',
     });
-    expect(cache.setLoggingFor).toHaveBeenCalledWith(ME, PROJECT, r);
+    expect(cache.getLoggingFor).toHaveBeenCalledTimes(1);
+    expect(cache.setLoggingFor).toHaveBeenCalledWith(ME, PROJECT, r, '7');
+  });
+
+  it('a bump during the compute does not move the write to the new epoch (D56)', async () => {
+    const { service, cache, policy } = await build({ workspaceMember: true });
+    // A writer bumps while the resolver is reading: the cache read already captured epoch '7'.
+    policy.resolve.mockImplementation(async () => {
+      await cache.bumpEpoch();
+      return basePolicy();
+    });
+    await service.resolve(ME, PROJECT, { at: NOW(), purpose: 'read' });
+    expect(cache.bumpEpoch).toHaveBeenCalled();
+    expect(cache.getLoggingFor).toHaveBeenCalledTimes(1);
+    expect(cache.setLoggingFor).toHaveBeenCalledTimes(1);
+    expect(cache.setLoggingFor.mock.calls[0]).toEqual([
+      ME,
+      PROJECT,
+      expect.anything(),
+      '7',
+    ]);
+  });
+
+  it('no epoch (Redis down or absent) computes and skips the write', async () => {
+    const { service, cache } = await build({
+      workspaceMember: true,
+      cacheEpoch: null,
+    });
+    const r = await service.resolve(ME, PROJECT, {
+      at: NOW(),
+      purpose: 'read',
+    });
+    expect(kinds(r)).toEqual([`workspace:${WS}`]);
+    expect(cache.setLoggingFor).not.toHaveBeenCalled();
   });
 
   it('a dated read (manual entry for last week) is never cached', async () => {

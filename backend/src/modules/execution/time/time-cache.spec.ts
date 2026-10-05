@@ -120,9 +120,12 @@ describe('time-cache', () => {
     const svc = new TimeCacheService(null);
 
     it('is a no-op everywhere', async () => {
-      await expect(svc.getLoggingFor('u1', 'p1')).resolves.toBeNull();
+      await expect(svc.getLoggingFor('u1', 'p1')).resolves.toEqual({
+        value: null,
+        epoch: null,
+      });
       await expect(
-        svc.setLoggingFor('u1', 'p1', RESULT),
+        svc.setLoggingFor('u1', 'p1', RESULT, '0'),
       ).resolves.toBeUndefined();
       await expect(svc.bumpEpoch()).resolves.toBeUndefined();
       await expect(svc.incrAliasHit('logs.start')).resolves.toBeUndefined();
@@ -136,16 +139,62 @@ describe('time-cache', () => {
   });
 
   describe('the logging-for cache', () => {
-    it('round-trips a result under the current epoch with a 30 s TTL', async () => {
+    it('round-trips a result under the epoch the read returned, with a 30 s TTL', async () => {
       const redis = fakeRedis();
       const svc = new TimeCacheService(redis as never);
-      await svc.setLoggingFor('u1', 'p1', RESULT);
+      const miss = await svc.getLoggingFor('u1', 'p1');
+      expect(miss).toEqual({ value: null, epoch: '0' });
+      await svc.setLoggingFor('u1', 'p1', RESULT, miss.epoch);
       expect(redis.set).toHaveBeenCalledWith(
         'time:lf:0:u1:p1',
         JSON.stringify(RESULT),
         { ex: LF_TTL_SECONDS },
       );
-      await expect(svc.getLoggingFor('u1', 'p1')).resolves.toEqual(RESULT);
+      await expect(svc.getLoggingFor('u1', 'p1')).resolves.toEqual({
+        value: RESULT,
+        epoch: '0',
+      });
+    });
+
+    it('reads the epoch once per get and never re-reads it on set (D56)', async () => {
+      const redis = fakeRedis();
+      redis.store.set(LF_EPOCH_KEY, 4);
+      const svc = new TimeCacheService(redis as never);
+      const read = await svc.getLoggingFor('u1', 'p1');
+      expect(read.epoch).toBe('4');
+      expect(
+        redis.get.mock.calls.filter(([k]) => k === LF_EPOCH_KEY),
+      ).toHaveLength(1);
+      redis.get.mockClear();
+      await svc.setLoggingFor('u1', 'p1', RESULT, read.epoch);
+      expect(redis.get).not.toHaveBeenCalled();
+      expect(redis.set).toHaveBeenCalledWith(
+        'time:lf:4:u1:p1',
+        JSON.stringify(RESULT),
+        { ex: LF_TTL_SECONDS },
+      );
+    });
+
+    it('a bump during the compute never stores the stale result under the new epoch (D56)', async () => {
+      const redis = fakeRedis();
+      const svc = new TimeCacheService(redis as never);
+      const read = await svc.getLoggingFor('u1', 'p1'); // epoch 0, miss
+      await svc.bumpEpoch(); // a policy write or assignment end lands mid-compute
+      await svc.setLoggingFor('u1', 'p1', RESULT, read.epoch);
+      expect(redis.store.has('time:lf:1:u1:p1')).toBe(false);
+      expect(redis.store.has('time:lf:0:u1:p1')).toBe(true);
+      // The next read uses epoch 1 and misses, so it computes fresh.
+      await expect(svc.getLoggingFor('u1', 'p1')).resolves.toEqual({
+        value: null,
+        epoch: '1',
+      });
+    });
+
+    it('a null epoch skips the write', async () => {
+      const redis = fakeRedis();
+      const svc = new TimeCacheService(redis as never);
+      await svc.setLoggingFor('u1', 'p1', RESULT, null);
+      expect(redis.set).not.toHaveBeenCalled();
     });
 
     it('decodes a value Upstash already deserialised', async () => {
@@ -153,25 +202,32 @@ describe('time-cache', () => {
       redis.store.set('time:lf:0:u1:p1', RESULT);
       await expect(
         new TimeCacheService(redis as never).getLoggingFor('u1', 'p1'),
-      ).resolves.toEqual(RESULT);
+      ).resolves.toEqual({ value: RESULT, epoch: '0' });
     });
 
-    it('misses on an unknown key and on garbage', async () => {
+    it('misses on an unknown key and on garbage, still returning the epoch', async () => {
       const redis = fakeRedis();
       const svc = new TimeCacheService(redis as never);
-      await expect(svc.getLoggingFor('u1', 'p1')).resolves.toBeNull();
+      await expect(svc.getLoggingFor('u1', 'p1')).resolves.toEqual({
+        value: null,
+        epoch: '0',
+      });
       redis.store.set('time:lf:0:u1:p1', '{not json');
-      await expect(svc.getLoggingFor('u1', 'p1')).resolves.toBeNull();
+      await expect(svc.getLoggingFor('u1', 'p1')).resolves.toEqual({
+        value: null,
+        epoch: '0',
+      });
     });
 
     it('an epoch bump changes the key, so old entries miss', async () => {
       const redis = fakeRedis();
       const svc = new TimeCacheService(redis as never);
-      await svc.setLoggingFor('u1', 'p1', RESULT);
+      await svc.setLoggingFor('u1', 'p1', RESULT, '0');
       await svc.bumpEpoch();
       expect(redis.incr).toHaveBeenCalledWith(LF_EPOCH_KEY);
-      await expect(svc.getLoggingFor('u1', 'p1')).resolves.toBeNull();
-      await svc.setLoggingFor('u1', 'p1', RESULT);
+      const after = await svc.getLoggingFor('u1', 'p1');
+      expect(after).toEqual({ value: null, epoch: '1' });
+      await svc.setLoggingFor('u1', 'p1', RESULT, after.epoch);
       expect(redis.set).toHaveBeenLastCalledWith(
         'time:lf:1:u1:p1',
         JSON.stringify(RESULT),
@@ -236,9 +292,12 @@ describe('time-cache', () => {
   describe('Redis errors', () => {
     it('are swallowed by every method', async () => {
       const svc = new TimeCacheService(failingRedis() as never);
-      await expect(svc.getLoggingFor('u1', 'p1')).resolves.toBeNull();
+      await expect(svc.getLoggingFor('u1', 'p1')).resolves.toEqual({
+        value: null,
+        epoch: null,
+      });
       await expect(
-        svc.setLoggingFor('u1', 'p1', RESULT),
+        svc.setLoggingFor('u1', 'p1', RESULT, '0'),
       ).resolves.toBeUndefined();
       await expect(svc.bumpEpoch()).resolves.toBeUndefined();
       await expect(svc.incrAliasHit('logs.start')).resolves.toBeUndefined();

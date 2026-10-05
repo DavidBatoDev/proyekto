@@ -4,6 +4,8 @@ import {
   ForbiddenException,
   GoneException,
   HttpException,
+  InternalServerErrorException,
+  Logger,
   NotFoundException,
   UnprocessableEntityException,
 } from '@nestjs/common';
@@ -16,6 +18,8 @@ import {
   throwTimeDb,
   TIME_ERROR_MESSAGE,
   TIME_ERROR_STATUS,
+  TIME_INTERNAL_CODE,
+  TIME_INTERNAL_MESSAGE,
   timeError,
   timeNotFound,
   type PgErrorLike,
@@ -72,6 +76,7 @@ describe('time-errors', () => {
         ALIAS_LOCKED_MESSAGE(false),
         ALIAS_REVIEW_GONE_MESSAGE(true),
         ALIAS_REVIEW_GONE_MESSAGE(false),
+        TIME_INTERNAL_MESSAGE,
       ]) {
         expect(message).not.toMatch(/prodigy/i);
       }
@@ -536,16 +541,89 @@ describe('time-errors', () => {
       ).toThrow(ConflictException);
     });
 
-    it('throws a plain Error (a logged 500) otherwise', () => {
-      let thrown: unknown;
-      try {
-        throwTimeDb({ code: '42P01', message: 'relation "x" does not exist' });
-      } catch (e) {
-        thrown = e;
+    describe('an unmapped error (D55)', () => {
+      const PG: PgErrorLike = {
+        code: '23502',
+        message:
+          'null value in column "secret_col" of relation "time_entries" violates not-null constraint',
+        details: 'Failing row contains (secret-row).',
+        hint: 'secret hint',
+      };
+      let logged: jest.SpyInstance;
+
+      beforeEach(() => {
+        logged = jest
+          .spyOn(Logger.prototype, 'error')
+          .mockImplementation(() => undefined);
+      });
+      afterEach(() => logged.mockRestore());
+
+      function thrownBy(err: PgErrorLike): unknown {
+        try {
+          throwTimeDb(err);
+        } catch (e) {
+          return e;
+        }
+        throw new Error('expected throwTimeDb to throw');
       }
-      expect(thrown).toBeInstanceOf(Error);
-      expect(thrown).not.toBeInstanceOf(HttpException);
-      expect((thrown as Error).message).toBe('relation "x" does not exist');
+
+      it('is a 500 TIME_INTERNAL with Proyekto copy and no Postgres text', () => {
+        const thrown = thrownBy(PG);
+        expect(thrown).toBeInstanceOf(InternalServerErrorException);
+        const e = thrown as HttpException;
+        expect(e.getStatus()).toBe(500);
+        expect(e.getResponse()).toEqual({
+          code: TIME_INTERNAL_CODE,
+          message: TIME_INTERNAL_MESSAGE,
+        });
+        expect(TIME_INTERNAL_CODE).toBe('TIME_INTERNAL');
+        expect(TIME_INTERNAL_MESSAGE).toBe(
+          "Proyekto couldn't save this time. Try again.",
+        );
+        const wire = JSON.stringify(e.getResponse()) + e.message;
+        for (const leak of ['secret', 'time_entries', '23502', 'violates']) {
+          expect(wire).not.toContain(leak);
+        }
+      });
+
+      it('logs code, message, detail and hint at error level', () => {
+        thrownBy(PG);
+        expect(logged).toHaveBeenCalledTimes(1);
+        const line = String(logged.mock.calls[0][0]);
+        expect(line).toContain('"code":"23502"');
+        expect(line).toContain('secret_col');
+        expect(line).toContain('"detail":"Failing row contains (secret-row)."');
+        expect(line).toContain('"hint":"secret hint"');
+      });
+
+      it('covers non-sentinel messages, a 23505 on another index and TIMESHEET_ENSURE_FAILED', () => {
+        for (const err of [
+          { code: '42P01', message: 'relation "x" does not exist' },
+          {
+            code: '23505',
+            message:
+              'duplicate key value violates unique constraint "time_entries_pkey"',
+          },
+          raised('TIMESHEET_ENSURE_FAILED', { entry_id: 'e1' }),
+          raised('ENGAGEMENT_ASSIGNMENT_NOT_ACTIVE'),
+          {},
+        ] as PgErrorLike[]) {
+          const thrown = thrownBy(err);
+          expect(thrown).toBeInstanceOf(InternalServerErrorException);
+          expect((thrown as HttpException).getResponse()).toEqual({
+            code: TIME_INTERNAL_CODE,
+            message: TIME_INTERNAL_MESSAGE,
+          });
+        }
+        expect(logged).toHaveBeenCalledTimes(5);
+      });
+
+      it('a mapped sentinel is not logged as unmapped', () => {
+        expect(() => throwTimeDb(raised('TIMESHEET_NOT_FOUND'))).toThrow(
+          NotFoundException,
+        );
+        expect(logged).not.toHaveBeenCalled();
+      });
     });
 
     it('passes the alias context through', () => {

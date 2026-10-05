@@ -102,12 +102,22 @@ function matches(option: LoggingOption, requested: LoggingForRequest): boolean {
   return option.kind === 'personal' || sameId(option.id, requested.id);
 }
 
-/** Step 7b key: same sheet scope and rate source → the same approver and rate either way. */
+/** Step 7b key: same sheet scope and rate source → the same approver and rate either way. D60: a team that pays
+ *  member rates also keys on its id, since two teams' rate cards differ (never one option for both). */
 function collapseKey(option: LoggingOption): string {
   const scope = option.sheet_scope
     ? `${option.sheet_scope.kind}:${option.sheet_scope.ref.toLowerCase()}`
     : 'personal';
-  return `${scope}|${option.rate_source}`;
+  const rateCard =
+    option.rate_source === 'team_member_rates'
+      ? (option.id ?? '').toLowerCase()
+      : '';
+  return `${scope}|${option.rate_source}|${rateCard}`;
+}
+
+/** A listed assignment that is a real option (not unavailable, not without a sheet scope). */
+function isAvailable(c: Candidate | UnavailableOption | null): c is Candidate {
+  return c !== null && !('reason' in c);
 }
 
 function personalOption(): LoggingOption {
@@ -173,9 +183,13 @@ export class LoggingContextService {
       o.purpose === 'read' &&
       !o.requested &&
       Math.abs(o.at.getTime() - Date.now()) <= CACHE_NOW_TOLERANCE_MS;
+    // D56: the epoch is read once, before the compute, and the write goes under it. A bump while computing
+    // (assignment end, policy write, remember) then strands this result under the old epoch, never the new one.
+    let epoch: string | null = null;
     if (cacheable) {
       const hit = await this.cache.getLoggingFor(callerId, projectId);
-      if (hit) return hit;
+      if (hit.value) return hit.value;
+      epoch = hit.epoch;
     }
     const { result } = await this.compute(
       callerId,
@@ -184,7 +198,9 @@ export class LoggingContextService {
       o.purpose,
       o.requested,
     );
-    if (cacheable) await this.cache.setLoggingFor(callerId, projectId, result);
+    if (cacheable && epoch !== null) {
+      await this.cache.setLoggingFor(callerId, projectId, result, epoch);
+    }
     return result;
   }
 
@@ -383,20 +399,31 @@ export class LoggingContextService {
     // Steps 2 and 3 read in parallel; placement keeps the resolver order (assignments, then teams).
     // Step 3: curated teams, ordered is_primary DESC, attached_at, team_id (L1). L35: a team equal to an
     // assignment's team or its talent engagement's hirer team is suppressed, but still counts as present.
-    const suppressed = await this.suppressedTeamIds(assignments);
-    const [assignmentCandidates, teamCandidates] = await Promise.all([
-      Promise.all(
-        assignments.map((a) => this.assignmentCandidate(a, projectId, at)),
-      ),
-      Promise.all(
-        curated
-          .filter((team) => !suppressed.has(team.id.toLowerCase()))
-          .map((team) => this.teamCandidate(team, projectId, at)),
-      ),
-    ]);
-    for (const c of [...assignmentCandidates, ...teamCandidates]) {
+    // D59: only an assignment that is itself available suppresses; an unavailable one (no_settings,
+    // contract_disabled, engagement_inactive) never removes the team option. Teams are evaluated alongside
+    // the assignments (no added latency) and a suppressed team's result is dropped.
+    const [assignmentCandidates, suppressionSets, teamCandidates] =
+      await Promise.all([
+        Promise.all(
+          assignments.map((a) => this.assignmentCandidate(a, projectId, at)),
+        ),
+        this.suppressionSets(assignments),
+        Promise.all(
+          curated.map((team) => this.teamCandidate(team, projectId, at)),
+        ),
+      ]);
+    const suppressed = new Set<string>();
+    assignmentCandidates.forEach((c, i) => {
+      if (!isAvailable(c)) return;
+      for (const teamId of suppressionSets[i]) suppressed.add(teamId);
+    });
+    for (const c of assignmentCandidates) {
       this.place(c, candidates, unavailable);
     }
+    curated.forEach((team, i) => {
+      if (suppressed.has(team.id.toLowerCase())) return;
+      this.place(teamCandidates[i], candidates, unavailable);
+    });
 
     // Step 4: the workspace, only when step 3 found no team at all (L34: an unavailable team blocks it too).
     if (curated.length === 0 && project.workspace_id) {
@@ -685,28 +712,28 @@ export class LoggingContextService {
       .filter((t): t is TeamRow => t !== undefined);
   }
 
-  /** L35: each assignment's own team and its talent engagement's hirer party team. */
-  private async suppressedTeamIds(
+  /** L35, per assignment (aligned with `assignments`): its own team and its talent engagement's hirer party
+   *  team, lower-cased. Each talent engagement is looked up once. */
+  private async suppressionSets(
     assignments: AssignmentContext[],
-  ): Promise<Set<string>> {
-    const out = new Set<string>();
+  ): Promise<string[][]> {
+    const hirerTeam = new Map<string, Promise<string | null>>();
     for (const a of assignments) {
-      if (a.team_id) out.add(a.team_id.toLowerCase());
+      const talentId = a.talent_engagement_id;
+      if (talentId && !hirerTeam.has(talentId)) {
+        hirerTeam.set(talentId, this.engagements.hirerPartyTeamId(talentId));
+      }
     }
-    const talentIds = [
-      ...new Set(
-        assignments
-          .map((a) => a.talent_engagement_id)
-          .filter((id): id is string => typeof id === 'string'),
-      ),
-    ];
-    const hirerTeams = await Promise.all(
-      talentIds.map((id) => this.engagements.hirerPartyTeamId(id)),
+    return Promise.all(
+      assignments.map(async (a) => {
+        const out: string[] = [];
+        if (a.team_id) out.push(a.team_id.toLowerCase());
+        const talentId = a.talent_engagement_id;
+        const teamId = talentId ? await hirerTeam.get(talentId) : null;
+        if (teamId) out.push(teamId.toLowerCase());
+        return out;
+      }),
     );
-    for (const teamId of hirerTeams) {
-      if (teamId) out.add(teamId.toLowerCase());
-    }
-    return out;
   }
 
   /** Workspace option labels (the workspace name) and the L57 tag on options governed by another workspace. */

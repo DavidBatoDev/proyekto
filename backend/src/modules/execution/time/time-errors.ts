@@ -5,6 +5,8 @@ import {
   ForbiddenException,
   GoneException,
   HttpException,
+  InternalServerErrorException,
+  Logger,
   NotFoundException,
   UnprocessableEntityException,
 } from '@nestjs/common';
@@ -404,11 +406,33 @@ export function mapTimeDbError(
   return null;
 }
 
-/** mapTimeDbError, else `new Error(err.message)` (a genuine 500 that the filter logs). */
+/** The body code of an unmapped database failure (D55). Not a TimeErrorCode: it is always a 500. */
+export const TIME_INTERNAL_CODE = 'TIME_INTERNAL';
+export const TIME_INTERNAL_MESSAGE =
+  "Proyekto couldn't save this time. Try again.";
+
+const dbLogger = new Logger('TimeDb');
+
+/**
+ * mapTimeDbError, else a logged 500 (D55). The Postgres code, message, detail and hint go to the log at error
+ * level and never into the response: the body is { code: 'TIME_INTERNAL', message: TIME_INTERNAL_MESSAGE }.
+ * (A plain `Error` would reach HttpExceptionFilter, which puts `exception.message` into the body.)
+ */
 export function throwTimeDb(err: PgErrorLike, ctx?: MapContext): never {
   const mapped = mapTimeDbError(err, ctx);
   if (mapped) throw mapped;
-  throw new Error(err?.message ?? 'Database error');
+  dbLogger.error(
+    `Unmapped database error: ${JSON.stringify({
+      code: err?.code ?? null,
+      message: err?.message ?? null,
+      detail: err?.details ?? null,
+      hint: err?.hint ?? null,
+    })}`,
+  );
+  throw new InternalServerErrorException({
+    code: TIME_INTERNAL_CODE,
+    message: TIME_INTERNAL_MESSAGE,
+  });
 }
 
 /** True for Postgres deadlock (40P01) — callers retry the statement once. */
