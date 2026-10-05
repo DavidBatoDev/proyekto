@@ -1,6 +1,9 @@
 import { readFileSync, readdirSync } from 'node:fs';
 import { join } from 'node:path';
-import { EMAILABLE_NOTIFICATION_TYPES } from './notification-email-registry';
+import {
+  EMAILABLE_NOTIFICATION_TYPES,
+  canRenderNotificationEmail,
+} from './notification-email-registry';
 
 /**
  * Whether a type emails is decided in two places that must agree:
@@ -33,7 +36,7 @@ describe('notification email switch parity', () => {
     expect(migration).not.toMatch(/SET\s+email_eligible\s*=\s*true/i);
   });
 
-  it('renders exactly the mention types, DMs, mention invites, and application verdicts', () => {
+  it('renders exactly the mention types, DMs, mention invites, application verdicts, and the four time types', () => {
     // Anything else showing up here means scope crept without a decision.
     expect([...EMAILABLE_NOTIFICATION_TYPES].sort()).toEqual([
       'chat_dm_received',
@@ -44,7 +47,46 @@ describe('notification email switch parity', () => {
       'feature_comment_mention',
       'roadmap_mention_invite',
       'task_comment_mention',
+      'time_payout_recorded',
+      'timesheet_reminder',
+      'timesheet_returned',
+      'timesheet_submitted',
     ]);
+  });
+
+  it('renders every time type M1 made email-eligible, and no other time type', () => {
+    // M1 inserts the time types with email_eligible already set, so they start
+    // mailing the moment this build deploys (D41). In that migration the two
+    // switches must agree: an eligible type with no template mails nothing, and
+    // a template for a type that is not eligible is scope nobody decided on.
+    const sql = readFileSync(
+      join(migrationsDir, '20261003090100_time_entries_expand.sql'),
+      'utf8',
+    );
+    const rows = [
+      ...sql.matchAll(
+        /\(\s*'([a-z_]+)',\s*'[a-z_]+',\s*'[a-z_]+',\s*(true|false),\s*\d+\s*\)/g,
+      ),
+    ].map(([, name, eligible]) => ({ name, eligible: eligible === 'true' }));
+
+    expect(rows.map((r) => r.name).sort()).toEqual([
+      'time_payout_recorded',
+      'timer_auto_stopped',
+      'timer_running_long',
+      'timesheet_approved',
+      'timesheet_reminder',
+      'timesheet_reopen_requested',
+      'timesheet_reopened',
+      'timesheet_returned',
+      'timesheet_submitted',
+      'timesheets_imported',
+    ]);
+    for (const { name, eligible } of rows) {
+      expect({ name, renders: canRenderNotificationEmail(name) }).toEqual({
+        name,
+        renders: eligible,
+      });
+    }
   });
 
   it('keeps roadmap_mention_invite out of the enqueue trigger', () => {

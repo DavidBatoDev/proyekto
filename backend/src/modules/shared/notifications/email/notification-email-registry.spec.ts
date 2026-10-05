@@ -165,8 +165,7 @@ describe('notification email registry', () => {
         // come from the producer AND be asserted below.
         excerpt: 'the client hated the third screen',
       },
-      linkUrl:
-        '/auth/signup?redirect=%2Finvites&email=alice%40example.com',
+      linkUrl: '/auth/signup?redirect=%2Finvites&email=alice%40example.com',
     };
 
     it('sends them to signup, not to a comment they cannot open', () => {
@@ -206,6 +205,136 @@ describe('notification email registry', () => {
 
       expect(email?.html).not.toContain('the client hated the third screen');
       expect(email?.html).not.toContain('white-space:pre-wrap');
+    });
+  });
+
+  describe('time emails (activated by M1)', () => {
+    const TIME_EMAIL_TYPES = [
+      'timesheet_submitted',
+      'timesheet_returned',
+      'timesheet_reminder',
+      'time_payout_recorded',
+    ] as const;
+
+    const sheetCtx = (
+      message: string,
+      extra: Record<string, unknown> = {},
+    ): NotificationEmailContext => ({
+      ...ctx,
+      content: {
+        timesheet_id: 'sheet-1',
+        scope_kind: 'team',
+        team_id: 'team-1',
+        period_start: '2026-09-22',
+        period_end: '2026-09-28',
+        total_seconds: 137700,
+        context_title: 'Acme Team',
+        message,
+        ...extra,
+      },
+      linkUrl: '/time/timesheets/sheet-1',
+    });
+
+    it('can render all four', () => {
+      for (const type of TIME_EMAIL_TYPES) {
+        expect(canRenderNotificationEmail(type)).toBe(true);
+      }
+    });
+
+    it('leads with content.message and links back to the timesheet', () => {
+      const email = renderNotificationEmail(
+        'timesheet_submitted',
+        sheetCtx('Maria sent 38h 15m for Acme Team · Sep 22–28', {
+          actor_name: 'Maria',
+        }),
+      );
+
+      expect(email?.subject).toBe('Maria sent a timesheet to review');
+      expect(email?.html).toContain('Timesheet to review');
+      expect(email?.html).toContain(
+        'Maria sent 38h 15m for Acme Team · Sep 22–28.',
+      );
+      expect(email?.html).toContain('Review timesheet');
+      expect(email?.html).toContain(
+        'https://www.proyekto.test/time/timesheets/sheet-1',
+      );
+      expect(email?.text).toContain(
+        'Review timesheet: https://www.proyekto.test/time/timesheets/sheet-1',
+      );
+      expect(email?.html).toContain('you approve time on Proyekto');
+    });
+
+    it('returned and reminder emails speak to the person who tracks the time', () => {
+      const returned = renderNotificationEmail(
+        'timesheet_returned',
+        sheetCtx('Ana returned Sep 22–28 for Acme Team: "Split Thursday"'),
+      );
+      expect(returned?.subject).toBe('Your timesheet was returned');
+      expect(returned?.html).toContain('Split Thursday');
+      expect(returned?.html).toContain('you track time on Proyekto');
+
+      const reminder = renderNotificationEmail(
+        'timesheet_reminder',
+        sheetCtx('Your Acme Team timesheet for Sep 22–28 is ready to submit'),
+      );
+      expect(reminder?.subject).toBe('Time to submit your timesheet');
+      expect(reminder?.text).toContain(
+        'Your Acme Team timesheet for Sep 22–28 is ready to submit.',
+      );
+    });
+
+    it('the payout email names no amount and no currency (CHANGE-19)', () => {
+      // A producer bug that put figures into other content keys must still not
+      // reach the inbox: only `message` is rendered, and the time spec pins it.
+      const email = renderNotificationEmail('time_payout_recorded', {
+        ...ctx,
+        content: {
+          payout_id: 'payout-1',
+          entry_count: 3,
+          message: 'A payment was recorded for your time',
+          total_amount: 4321.99,
+          currency: 'USD',
+        },
+        linkUrl: '/teams/team-1/time/my-logs',
+      });
+
+      expect(email?.subject).toBe('A payment was recorded for your time');
+      for (const part of [email?.subject, email?.html, email?.text]) {
+        expect(part).not.toContain('4321');
+        expect(part).not.toContain('USD');
+        expect(part).not.toMatch(/[$€£¥₱]/);
+      }
+    });
+
+    it('degrades to a sentence when the content blob is bare', () => {
+      for (const type of TIME_EMAIL_TYPES) {
+        const email = renderNotificationEmail(type, {
+          ...ctx,
+          content: {},
+          linkUrl: null,
+        });
+        expect(email?.subject.length).toBeGreaterThan(0);
+        expect(email?.html).not.toContain('undefined');
+        expect(email?.html).not.toContain('null');
+        expect(email?.text).toContain('https://www.proyekto.test');
+      }
+      expect(
+        renderNotificationEmail('timesheet_submitted', {
+          ...ctx,
+          content: {},
+        })?.subject,
+      ).toBe('A timesheet is waiting for your review');
+    });
+
+    it('escapes markup arriving through the message', () => {
+      // The message embeds a decision note and display names, both user-authored.
+      const email = renderNotificationEmail(
+        'timesheet_returned',
+        sheetCtx('Ana returned Sep 22–28: "<script>alert(1)</script>"'),
+      );
+
+      expect(email?.html).not.toContain('<script>');
+      expect(email?.html).toContain('&lt;script&gt;');
     });
   });
 

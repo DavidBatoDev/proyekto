@@ -124,6 +124,90 @@ describe('buildPushMessage', () => {
     expect(msg.body).toBe('Someone sent you a message');
   });
 
+  describe('time types', () => {
+    // Exact copy from the time-management proposal (backend.md › Notifications).
+    const TIME_TITLES: Record<string, string> = {
+      timesheet_submitted: 'Timesheet to review',
+      timesheet_returned: 'Timesheet returned',
+      timesheet_approved: 'Timesheet approved',
+      timesheet_reopened: 'Timesheet reopened',
+      timesheet_reopen_requested: 'Reopen requested',
+      timesheet_reminder: 'Time to submit',
+      timer_running_long: 'Timer still running',
+      timer_auto_stopped: 'Timer stopped',
+      time_payout_recorded: 'Payment recorded',
+      timesheets_imported: 'Timesheets waiting',
+      time_log_comment_added: 'New comment on your time',
+    };
+
+    it.each(Object.entries(TIME_TITLES))('titles %s as "%s"', (type, title) => {
+      const msg = buildPushMessage({
+        notificationId: 'n-t',
+        typeName: type,
+        content: { message: 'A payment was recorded for your time' },
+      });
+
+      expect(msg.title).toBe(title);
+      expect(msg.body).toBe('A payment was recorded for your time');
+    });
+
+    it('keeps titles for the historical per-entry review types', () => {
+      // No longer emitted, but rows created before the timesheet rebuild stay
+      // in the bell; a re-push must not fall back to the brand title.
+      const historical: Record<string, string> = {
+        time_log_approval_requested: 'Time log needs approval',
+        time_log_approved: 'Time log approved',
+        time_log_rejected: 'Time log rejected',
+        time_log_pending: 'Time log reset to pending',
+        time_log_day_rejected: 'Time logs rejected',
+      };
+      for (const [type, title] of Object.entries(historical)) {
+        expect(
+          buildPushMessage({ notificationId: 'n-h', typeName: type }).title,
+        ).toBe(title);
+      }
+    });
+
+    it('no longer titles the phantom time_log_marked_* types', () => {
+      // Nothing ever emitted these; the entries were dead weight.
+      for (const type of ['time_log_marked_paid', 'time_log_marked_rejected']) {
+        expect(
+          buildPushMessage({ notificationId: 'n-p', typeName: type }).title,
+        ).toBe('Proyekto');
+      }
+    });
+
+    it('routes a timesheet tap by its ids and keeps prose out of data', () => {
+      const msg = buildPushMessage({
+        notificationId: 'n-s',
+        typeName: 'timesheet_submitted',
+        content: {
+          timesheet_id: 'sheet-1',
+          scope_kind: 'team',
+          team_id: 'team-1',
+          period_start: '2026-09-22',
+          period_end: '2026-09-28',
+          total_seconds: 137700,
+          message: 'Maria sent 38h 15m for Acme Team · Sep 22–28',
+          actor_name: 'Maria',
+          context_title: 'Acme Team',
+        },
+        linkUrl: '/time/timesheets/sheet-1',
+      });
+
+      expect(msg.data).toMatchObject({
+        type: 'timesheet_submitted',
+        link_url: '/time/timesheets/sheet-1',
+        timesheet_id: 'sheet-1',
+        team_id: 'team-1',
+        total_seconds: '137700',
+      });
+      expect(msg.data).not.toHaveProperty('actor_name');
+      expect(msg.data).not.toHaveProperty('context_title');
+      expect(msg.data).not.toHaveProperty('message');
+    });
+  });
+
   it('drops non-scalar content values', () => {
     const msg = buildPushMessage({
       ...base,

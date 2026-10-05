@@ -151,6 +151,65 @@ const DM_FOOTER =
 const VERDICT_FOOTER =
   'You received this email because you applied to become a consultant on Proyekto.';
 
+const TIME_APPROVER_FOOTER =
+  'You received this email because you approve time on Proyekto.';
+
+const TIME_TRACKER_FOOTER =
+  'You received this email because you track time on Proyekto.';
+
+/**
+ * The shared shape of the time emails: one sentence saying what happened and
+ * one button back to the timesheet.
+ *
+ * The lead is `content.message`, the same sentence the bell and the push body
+ * show, so the three surfaces cannot drift apart. TimeNotificationsService
+ * builds it and its spec asserts it never carries an amount or a currency
+ * (CHANGE-19); nothing here adds a figure of its own. `fallbackLead` covers a
+ * bare content blob, which must still read as a sentence.
+ */
+function buildTimeEmail(
+  ctx: NotificationEmailContext,
+  copy: {
+    subject: string;
+    title: string;
+    fallbackLead: string;
+    ctaLabel: string;
+    footerNote: string;
+  },
+): RenderedEmail {
+  const message = str(ctx.content, 'message');
+  const lead = message ? ensureSentence(message) : copy.fallbackLead;
+  const href = absolute(ctx.appUrl, ctx.linkUrl);
+  const greeting = firstNameGreeting(ctx.recipientName);
+
+  return {
+    subject: copy.subject,
+    html: renderEmailLayout({
+      preheader: lead,
+      title: copy.title,
+      greeting,
+      bodyHtml: renderParagraph(escapeHtml(lead)),
+      cta: { label: copy.ctaLabel, href },
+      footerNote: copy.footerNote,
+      unsubscribeHref: ctx.unsubscribeUrl,
+    }),
+    text: renderTextEmail([
+      greeting,
+      greeting ? '' : null,
+      lead,
+      '',
+      `${copy.ctaLabel}: ${href}`,
+      '',
+      copy.footerNote,
+    ]),
+  };
+}
+
+/** Bell copy has no closing stop; an email sentence does. */
+function ensureSentence(text: string): string {
+  return /[.!?"”]$/.test(text) ? text : `${text}.`;
+}
+
 const REGISTRY: Record<string, Renderer> = {
   task_comment_mention: (ctx) =>
     buildMentionStyleEmail(ctx, {
@@ -317,6 +376,52 @@ const REGISTRY: Record<string, Renderer> = {
       ]),
     };
   },
+
+  // ── Time ───────────────────────────────────────────────────────────────────
+  // Activated by M1 (email_eligible = true). None of these names a figure:
+  // no amount, no rate, no currency (CHANGE-19). Hours and dates may appear in
+  // the lead, because they are part of `content.message`.
+
+  timesheet_submitted: (ctx) => {
+    const actor = str(ctx.content, 'actor_name');
+    return buildTimeEmail(ctx, {
+      subject: actor
+        ? `${actor} sent a timesheet to review`
+        : 'A timesheet is waiting for your review',
+      title: 'Timesheet to review',
+      fallbackLead: 'A timesheet was sent to you for review.',
+      ctaLabel: 'Review timesheet',
+      footerNote: TIME_APPROVER_FOOTER,
+    });
+  },
+
+  timesheet_returned: (ctx) =>
+    buildTimeEmail(ctx, {
+      subject: 'Your timesheet was returned',
+      title: 'Timesheet returned',
+      fallbackLead:
+        'Your timesheet was returned. Make the changes and send it again.',
+      ctaLabel: 'Open timesheet',
+      footerNote: TIME_TRACKER_FOOTER,
+    }),
+
+  timesheet_reminder: (ctx) =>
+    buildTimeEmail(ctx, {
+      subject: 'Time to submit your timesheet',
+      title: 'Time to submit',
+      fallbackLead: 'Your timesheet is ready to submit.',
+      ctaLabel: 'Open timesheet',
+      footerNote: TIME_TRACKER_FOOTER,
+    }),
+
+  time_payout_recorded: (ctx) =>
+    buildTimeEmail(ctx, {
+      subject: 'A payment was recorded for your time',
+      title: 'Payment recorded',
+      fallbackLead: 'A payment was recorded for your time.',
+      ctaLabel: 'View your time',
+      footerNote: TIME_TRACKER_FOOTER,
+    }),
 };
 
 /** Every type this build can render. The database must not exceed this set. */
