@@ -971,6 +971,38 @@ describe('TimesheetsService.approveBulk', () => {
     expect(notifications.sheetDecided).toHaveBeenCalledTimes(2);
   });
 
+  it('decisions never consult the plan, so a downgraded workspace can still approve, return and bulk-approve (E11)', async () => {
+    const mocks = defaultMocks();
+    mocks.entitlements.hasFeature.mockImplementation(() =>
+      Promise.resolve(false),
+    );
+    const { service, db } = await setup(
+      {
+        timesheets: [sheet({ id: S1 }), sheet({ id: S2, revision: 7 })],
+        time_entries: [
+          entry({ id: E1, timesheet_id: S1 }),
+          entry({ id: E2, timesheet_id: S2 }),
+        ],
+      },
+      transitionReturning([sheet({ id: S1, status: 'approved' })]),
+      mocks,
+    );
+
+    await service.act(DECIDER, 'approve', [S1], [3]);
+    await service.act(DECIDER, 'return', [S1], [3], { note: 'Fix Tuesday' });
+    await service.approveBulk(DECIDER, {
+      ids: [S1, S2],
+      expected_revisions: [3, 7],
+    });
+
+    expect(transitionCalls(db).map((c) => c.p_action)).toEqual([
+      'approve',
+      'return',
+      'approve',
+    ]);
+    expect(mocks.entitlements.hasFeature).not.toHaveBeenCalled();
+  });
+
   it('ids and revisions of different lengths are a 400', async () => {
     const { service, db } = await setup({ timesheets: [] });
     await expect(

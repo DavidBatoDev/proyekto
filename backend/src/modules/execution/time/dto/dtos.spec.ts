@@ -516,7 +516,7 @@ describe('time DTOs', () => {
   });
 
   describe('legacy team-time DTOs (byte-compatible with old clients)', () => {
-    // Frozen from team-time/dto/team-time.dto.ts at 91d227aa: an old body must never meet forbidNonWhitelisted.
+    // Frozen from the pre-PR-1 time-log DTOs at 91d227aa: an old body must never meet forbidNonWhitelisted.
     it.each<[string, Ctor<object>, string[]]>([
       ['StartTimeLogDto', StartTimeLogDto, ['project_id', 'task_id']],
       ['StopTimeLogDto', StopTimeLogDto, ['break_minutes', 'ended_at']],

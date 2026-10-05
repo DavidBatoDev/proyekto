@@ -621,6 +621,8 @@ describe('wind-down and reads never consult the plan', () => {
         b.service.mySummary(USER, { from: '2026-10-05', to: '2026-10-11' }),
     ],
     ['remove', (b) => b.service.remove(USER, ENTRY)],
+    ['addComment', (b) => b.service.addComment(USER, ENTRY, 'Checked')],
+    ['stopRunningForProject', (b) => b.service.stopRunningForProject(PROJECT)],
   ];
 
   it.each(RUN)('%s on a downgraded team', async (_name, run) => {
