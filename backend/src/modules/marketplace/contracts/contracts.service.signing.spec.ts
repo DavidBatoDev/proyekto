@@ -4,6 +4,7 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import type { SupabaseClient } from '@supabase/supabase-js';
+import { PlanLimitException } from '../../shared/entitlements/plan-limit.exception';
 import {
   ContractsService,
   type ContractPosition,
@@ -43,11 +44,16 @@ function harness(options: {
   rpcData?: ContractRow | null;
   rpcError?: { message: string } | null;
   positions?: ContractPosition[];
+  entitlements?: Record<string, jest.Mock>;
+  projectWorkspaceId?: string | null;
 }) {
   const contract = options.contract ?? contractFixture();
   const contracts = queryResult({ data: contract, error: null });
   const projects = queryResult({
-    data: { owner_id: options.ownerId ?? 'client-owner' },
+    data: {
+      owner_id: options.ownerId ?? 'client-owner',
+      workspace_id: options.projectWorkspaceId ?? null,
+    },
     error: null,
   });
   const enrollment = queryResult({
@@ -86,7 +92,8 @@ function harness(options: {
     notifications as never,
     projectAuth as never,
     // Initials are not exercised by these specs.
-    { listForContract: async () => [] } as never,
+    { listForContract: () => Promise.resolve([]) } as never,
+    options.entitlements as never,
   );
   return { service, rpc, financeAccess, notifications, positions };
 }
@@ -402,5 +409,164 @@ describe('ContractsService transactional signing', () => {
     // The consultant identity check now fails closed before any project-access
     // lookup, so a non-consultant caller never reaches financeAccess.
     expect(financeAccess.assertProject).not.toHaveBeenCalled();
+  });
+});
+
+/**
+ * BILLING_HOURS_REQUIRES_PLAN at signing (D26, L13): the provider's signature on an hourly client contract
+ * needs `time_billable_invoices` on the contract's workspace. The client's signature — in the app or through a
+ * signature link — never checks it.
+ */
+describe('ContractsService billable-hours plan gate on signing', () => {
+  const hourly = (overrides: Partial<ContractRow> = {}) =>
+    contractFixture({
+      billing_mode: 'time_based',
+      client_hourly_rate: 100,
+      workspace_id: 'ws-1',
+      ...overrides,
+    });
+  const allow = () => ({
+    assertFeature: jest.fn().mockResolvedValue(undefined),
+    assertCountedLimit: jest.fn().mockResolvedValue(undefined),
+  });
+  const refuse = () => ({
+    assertFeature: jest.fn().mockRejectedValue(
+      new PlanLimitException({
+        code: 'plan_limit',
+        kind: 'feature',
+        limit_key: 'time_billable_invoices',
+        label: 'Billable hours on invoices',
+        limit: null,
+        used: null,
+        plan: 'free',
+        upgrade_plan: 'pro',
+        workspace_id: 'ws-1',
+        workspace_slug: null,
+        context: 'write',
+        message: 'Billing hours on invoices is part of Pro.',
+      }),
+    ),
+    assertCountedLimit: jest.fn().mockResolvedValue(undefined),
+  });
+
+  it('checks the plan before the provider signs an hourly client contract', async () => {
+    const gates = allow();
+    const { service, rpc } = harness({
+      contract: hourly(),
+      entitlements: gates,
+    });
+
+    await service.signContract('consultant-1', 'contract-1', {
+      party: 'consultant',
+      revision: 1,
+      signer_name: 'Consultant One',
+    });
+
+    expect(gates.assertFeature).toHaveBeenCalledWith(
+      { workspaceId: 'ws-1', exempt: false },
+      'time_billable_invoices',
+      { context: 'write' },
+    );
+    expect(gates.assertFeature.mock.invocationCallOrder[0]).toBeLessThan(
+      rpc.mock.invocationCallOrder[0],
+    );
+  });
+
+  it('refuses the provider signature with the PlanLimitException and never reaches the RPC', async () => {
+    const { service, rpc } = harness({
+      contract: hourly({ billing_mode: 'hybrid', recurring_fee: 500 }),
+      entitlements: refuse(),
+    });
+
+    await expect(
+      service.signContract('consultant-1', 'contract-1', {
+        party: 'consultant',
+        revision: 1,
+        signer_name: 'Consultant One',
+      }),
+    ).rejects.toBeInstanceOf(PlanLimitException);
+    expect(rpc).not.toHaveBeenCalled();
+  });
+
+  it("uses the project's workspace when contracts.workspace_id is NULL", async () => {
+    const gates = allow();
+    const { service } = harness({
+      contract: hourly({ workspace_id: null }),
+      entitlements: gates,
+      projectWorkspaceId: 'ws-project',
+    });
+
+    await service.signContract('consultant-1', 'contract-1', {
+      party: 'consultant',
+      revision: 1,
+      signer_name: 'Consultant One',
+    });
+
+    expect(gates.assertFeature).toHaveBeenCalledWith(
+      { workspaceId: 'ws-project', exempt: false },
+      'time_billable_invoices',
+      { context: 'write' },
+    );
+  });
+
+  it('never checks the client signature in the app', async () => {
+    const gates = refuse();
+    const { service, rpc } = harness({
+      contract: hourly({ client_user_id: null }),
+      ownerId: 'client-owner',
+      entitlements: gates,
+    });
+
+    await service.signContract('client-owner', 'contract-1', {
+      party: 'client',
+      revision: 1,
+      signer_name: 'Client Owner',
+    });
+
+    expect(gates.assertFeature).not.toHaveBeenCalled();
+    expect(rpc).toHaveBeenCalledTimes(1);
+  });
+
+  it('never checks a signature-link (token bearer) signature', async () => {
+    const gates = refuse();
+    const contract = hourly();
+    const { service, rpc } = harness({ contract, entitlements: gates });
+
+    await service.signAsTokenBearer(contract, {
+      party: 'client',
+      revision: 1,
+      signer_name: 'Client One',
+    });
+
+    expect(gates.assertFeature).not.toHaveBeenCalled();
+    expect(rpc).toHaveBeenCalledTimes(1);
+  });
+
+  it.each([
+    ['a retainer', { billing_mode: 'retainer' as const, recurring_fee: 500 }],
+    [
+      'a fixed-fee contract',
+      { billing_mode: 'fixed' as const, fixed_fee: 900 },
+    ],
+    [
+      'an hourly talent contract',
+      { relationship_kind: 'talent_services' as const },
+    ],
+  ])('never checks %s', async (_label, overrides) => {
+    const gates = refuse();
+    const { service } = harness({
+      contract: hourly(overrides),
+      entitlements: gates,
+    });
+
+    await service
+      .signContract('consultant-1', 'contract-1', {
+        party: 'consultant',
+        revision: 1,
+        signer_name: 'Consultant One',
+      })
+      .catch(() => undefined);
+
+    expect(gates.assertFeature).not.toHaveBeenCalled();
   });
 });

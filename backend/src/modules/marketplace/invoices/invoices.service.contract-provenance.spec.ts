@@ -98,7 +98,12 @@ function harness(invoice = invoiceFixture()) {
     getContractById: jest.fn(),
     getSignedContract: jest.fn(),
   };
-  const composition = { composeForContract: jest.fn() };
+  const composition = {
+    composeForContract: jest.fn(),
+    releaseReservations: jest.fn().mockResolvedValue(undefined),
+    verifyReservations: jest.fn().mockResolvedValue(undefined),
+    moveReservations: jest.fn().mockResolvedValue(0),
+  };
   const qaFixtures = {
     isFixtureProject: jest.fn().mockResolvedValue(false),
     assertProjectSideEffectAllowed: jest.fn().mockResolvedValue(undefined),
@@ -161,16 +166,17 @@ describe('InvoicesService contract provenance', () => {
 
     expect(contracts.getContractById).toHaveBeenCalledWith('contract-v1');
     expect(contracts.getSignedContract).not.toHaveBeenCalled();
+    // hours_to still asks for a recompose, but hours bill by the invoice's own period (D38), under its id.
     expect(composition.composeForContract).toHaveBeenCalledWith(
       contract,
-      '2026-08-01',
-      '2026-08-30',
+      'invoice-1',
+      { start: '2026-08-01', end: '2026-08-31' },
       'summary',
     );
   });
 
   it('preserves stored generated pricing when only manual lines change', async () => {
-    const { service, contracts, replace } = harness();
+    const { service, contracts, replace, composition } = harness();
     contracts.getContractById.mockResolvedValue(null);
 
     await service.updateInvoice('consultant-1', 'invoice-1', {
@@ -193,10 +199,12 @@ describe('InvoicesService contract provenance', () => {
         }),
       ]),
     );
+    // Hours stay attached, so the stored hour lines keep their reservations.
+    expect(composition.releaseReservations).not.toHaveBeenCalled();
   });
 
   it('rejects regeneration when the stored pricing contract is missing', async () => {
-    const { service, contracts, replace } = harness();
+    const { service, contracts, replace, composition } = harness();
     contracts.getContractById.mockResolvedValue(null);
 
     await expect(
@@ -205,6 +213,8 @@ describe('InvoicesService contract provenance', () => {
       }),
     ).rejects.toBeInstanceOf(ConflictException);
     expect(replace).not.toHaveBeenCalled();
+    // The preserved hour lines keep their reservations.
+    expect(composition.releaseReservations).not.toHaveBeenCalled();
   });
 
   it('reads a severed invoice through its contract seat', async () => {

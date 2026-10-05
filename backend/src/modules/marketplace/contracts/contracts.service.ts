@@ -865,6 +865,13 @@ export class ContractsService {
       (projectId
         ? await this.projectWorkspaceId(projectId)
         : await this.defaultWorkspaceId(callerId));
+    // Every create path (consultant and counterparty authoring) lands here, so createContract is gated
+    // through this one check.
+    await this.assertBillableHoursPlan(
+      { relationship_kind: relationshipKind, billing_mode: terms.billing_mode },
+      workspaceId,
+      'create',
+    );
     // The Team Owner Agreement: the author is the team owner, on whichever
     // seat they hold; the variant is named by the counterparty's capacity.
     const template =
@@ -1575,6 +1582,14 @@ export class ContractsService {
     const position = await this.resolveSignaturePosition(existing, dto);
     await this.assertCanSign(callerId, existing, position);
     await this.assertChangesReviewed(callerId, existing);
+    // The provider's signature commits to billing hours; the client's (here or by link) never checks the plan.
+    if (position === 'provider') {
+      await this.assertBillableHoursPlan(
+        existing,
+        await this.contractPlanWorkspaceId(existing),
+        'write',
+      );
+    }
     return this.stampSignature(existing, { ...dto, position }, callerId);
   }
 
@@ -2844,13 +2859,7 @@ export class ContractsService {
     contract: ContractRow,
   ): Promise<void> {
     if (!this.entitlements) return;
-    const workspaceId =
-      contract.workspace_id ??
-      (contract.project_id
-        ? await this.projectWorkspaceId(contract.project_id)
-        : await this.defaultWorkspaceId(
-            this.authorOf(contract) ?? contract.consultant_user_id ?? '',
-          ));
+    const workspaceId = await this.contractPlanWorkspaceId(contract);
     const { data, error } = await this.supabase
       .from('contracts')
       .select('id, contract_family_id')
@@ -2871,6 +2880,54 @@ export class ContractsService {
         adding: families.has(family) ? 0 : 1,
         context: 'write',
       },
+    );
+  }
+
+  /**
+   * Whose plan a contract counts against: `contracts.workspace_id`, else (older rows with no workspace) the
+   * project's, else the author's default workspace.
+   */
+  private async contractPlanWorkspaceId(
+    contract: ContractRow,
+  ): Promise<string | null> {
+    return (
+      contract.workspace_id ??
+      (contract.project_id
+        ? await this.projectWorkspaceId(contract.project_id)
+        : await this.defaultWorkspaceId(
+            this.authorOf(contract) ?? contract.consultant_user_id ?? '',
+          ))
+    );
+  }
+
+  /**
+   * BILLING_HOURS_REQUIRES_PLAN (D26, L13, E59): billing approved hours on client invoices is the
+   * `time_billable_invoices` feature. Checked only when an hourly (`time_based`/`hybrid`) client contract is
+   * created or the provider signs one — never when its invoices are composed, issued, recomposed or voided,
+   * so a downgrade never zeroes a signed contract's drafts. A retainer or fixed-fee contract, and every talent
+   * contract (a cost agreement, never invoiced to a client), is never gated. The refusal is the ordinary
+   * PlanLimitException, so the web shows its upgrade prompt.
+   */
+  private async assertBillableHoursPlan(
+    contract: {
+      relationship_kind?: ContractRelationshipKind | null;
+      billing_mode?: BillingMode | null;
+    },
+    workspaceId: string | null,
+    context: 'create' | 'write',
+  ): Promise<void> {
+    if (!this.entitlements) return;
+    if ((contract.relationship_kind ?? 'client_services') !== 'client_services')
+      return;
+    if (
+      contract.billing_mode !== 'time_based' &&
+      contract.billing_mode !== 'hybrid'
+    )
+      return;
+    await this.entitlements.assertFeature(
+      { workspaceId, exempt: false },
+      'time_billable_invoices',
+      { context },
     );
   }
 

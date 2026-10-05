@@ -3,6 +3,7 @@ import {
   ConflictException,
   Inject,
   Injectable,
+  Logger,
   NotFoundException,
 } from '@nestjs/common';
 import { SupabaseClient } from '@supabase/supabase-js';
@@ -226,13 +227,18 @@ function invoicePdfPath(
 interface ComposeLinesInput {
   line_items?: InvoiceLineItemInputDto[];
   attach_hours: boolean;
-  hours_from?: string;
-  hours_to?: string;
+  /**
+   * The invoice's own billing period: hours are billed by period_start/period_end. The DTOs still accept
+   * `hours_from`/`hours_to`/`hours_member_user_id` (old clients send them) but they are ignored (D38).
+   */
+  period: { start: string | null; end: string | null };
   hours_detail_level: HoursDetailLevel;
 }
 
 @Injectable()
 export class InvoicesService {
+  private readonly logger = new Logger(InvoicesService.name);
+
   constructor(
     @Inject(SUPABASE_ADMIN) private readonly supabase: SupabaseClient,
     // The either/or facade (consultant+owner OR project finance capability),
@@ -364,13 +370,19 @@ export class InvoicesService {
     }
 
     const invoice = data as InvoiceRow;
-    const lines = await this.composeInvoiceLines(invoice, contract, {
-      line_items: dto.line_items,
-      attach_hours: attachHours,
-      hours_from: dto.hours_from ?? dto.period_start,
-      hours_to: dto.hours_to ?? dto.period_end,
-      hours_detail_level: detail,
-    });
+    let lines: ComposedLine[];
+    try {
+      lines = await this.composeInvoiceLines(invoice, contract, {
+        line_items: dto.line_items,
+        attach_hours: attachHours,
+        period: { start: invoice.period_start, end: invoice.period_end },
+        hours_detail_level: detail,
+      });
+    } catch (error) {
+      // A refused composition (no period, LEGACY_CONTRACT_AMBIGUOUS, …) must not leave an empty draft behind.
+      await this.discardDraft(invoice.id);
+      throw error;
+    }
     await this.replaceInvoiceLineItems(invoice.id, lines);
     await this.refreshTotals(invoice.id);
     await this.recordEvent(invoice.id, 'created', callerId, {
@@ -444,12 +456,19 @@ export class InvoicesService {
     if (!data) return null;
 
     const invoice = data as InvoiceRow;
-    const { lines } = await this.composition.composeForContract(
-      contract,
-      periodStart,
-      periodEnd,
-      detail,
-    );
+    let lines: ComposedLine[];
+    try {
+      ({ lines } = await this.composition.composeForContract(
+        contract,
+        invoice.id,
+        { start: periodStart, end: periodEnd },
+        detail,
+      ));
+    } catch (error) {
+      // Otherwise the unique period index would suppress every retry and the period would never be billed.
+      await this.discardDraft(invoice.id);
+      throw error;
+    }
     await this.replaceInvoiceLineItems(invoice.id, lines);
     await this.refreshTotals(invoice.id);
     await this.recordEvent(invoice.id, 'created', contract.created_by, {
@@ -549,19 +568,34 @@ export class InvoicesService {
       if (error) throw new BadRequestException(error.message);
     }
 
+    const attachHours = dto.attach_hours ?? existing.attach_hours;
+    // Hours are billed by the invoice's own period (D38), so moving the period of a draft with hours
+    // recomposes them. hours_from/hours_to/hours_member_user_id still ask for a recompose; their values are
+    // ignored.
     const shouldRebuildLines =
       dto.line_items !== undefined ||
       dto.attach_hours !== undefined ||
       dto.hours_from !== undefined ||
       dto.hours_to !== undefined ||
       dto.hours_detail_level !== undefined ||
-      dto.hours_member_user_id !== undefined;
+      dto.hours_member_user_id !== undefined ||
+      (attachHours &&
+        (dto.period_start !== undefined || dto.period_end !== undefined));
 
     if (shouldRebuildLines) {
       const contract = existing.contract_id
         ? await this.contracts.getContractById(existing.contract_id)
         : null;
-      const attachHours = dto.attach_hours ?? existing.attach_hours;
+      const period = {
+        start:
+          dto.period_start !== undefined
+            ? this.normalizeDate(dto.period_start)
+            : existing.period_start,
+        end:
+          dto.period_end !== undefined
+            ? this.normalizeDate(dto.period_end)
+            : existing.period_end,
+      };
       const existingManualLines = existing.line_items
         .filter((line) => line.source_type === 'manual')
         .map((line) => ({
@@ -586,9 +620,12 @@ export class InvoicesService {
         rebuilt = await this.composeInvoiceLines(existing, null, {
           line_items: dto.line_items ?? existingManualLines,
           attach_hours: false,
+          period,
           hours_detail_level:
             dto.hours_detail_level ?? existing.hours_detail_level ?? 'summary',
         });
+        // The stored hour lines stay only while hours stay attached; their reservations go with them.
+        if (!attachHours) await this.composition.releaseReservations(invoiceId);
         if (attachHours) {
           rebuilt.push(
             ...existing.line_items
@@ -607,11 +644,13 @@ export class InvoicesService {
           rebuilt = rebuilt.map((line, position) => ({ ...line, position }));
         }
       } else {
+        // Recompose (E37): composeForContract releases this draft's reservations before reserving again;
+        // without hours the old reservations are released here.
+        if (!attachHours) await this.composition.releaseReservations(invoiceId);
         rebuilt = await this.composeInvoiceLines(existing, contract, {
           line_items: dto.line_items ?? existingManualLines,
           attach_hours: attachHours,
-          hours_from: dto.hours_from ?? existing.period_start ?? undefined,
-          hours_to: dto.hours_to ?? existing.period_end ?? undefined,
+          period,
           hours_detail_level:
             dto.hours_detail_level ?? existing.hours_detail_level ?? 'summary',
         });
@@ -642,7 +681,8 @@ export class InvoicesService {
       );
     }
 
-    // Line items and documents cascade from the invoice row.
+    // Line items, documents and time reservations cascade from the invoice row; deleting a draft releases
+    // the hours it reserved (E37).
     const { error } = await this.supabase
       .from('invoices')
       .delete()
@@ -677,6 +717,9 @@ export class InvoicesService {
     // a linked client account, a client email on the contract, or a real
     // client on the project. Otherwise "issue" would be a no-op.
     this.assertInvoiceHasClient(invoice);
+    // The reserved hours must still be approved and add up to the hour lines (E37), before anything is
+    // rendered or locked.
+    await this.composition.verifyReservations(invoiceId, invoice.line_items);
 
     const now = new Date().toISOString();
     const issueDate = invoice.issue_date ?? now.slice(0, 10);
@@ -1077,6 +1120,12 @@ export class InvoicesService {
       })),
     );
     await this.refreshTotals(String((replacement as InvoiceRow).id));
+    // The replacement bills the same hours, so it takes over their reservations (E37) before the original
+    // is voided; a void without a replacement would delete them instead.
+    await this.composition.moveReservations(
+      invoiceId,
+      String((replacement as InvoiceRow).id),
+    );
     const { error: voidErr } = await this.supabase
       .from('invoices')
       .update({
@@ -1717,8 +1766,9 @@ export class InvoicesService {
    * Builds the line items for an invoice.
    *
    * Manual lines are taken verbatim. Hour-based lines ALWAYS come from
-   * InvoiceCompositionService, which prices them at the contract's client rate
-   * — never at `task_time_logs.rate_snapshot`, the member's internal cost rate.
+   * InvoiceCompositionService, which prices them at the client's price
+   * — never at an entry's `rate_snapshot`, the member's internal cost rate —
+   * and reserves the hours they bill under this invoice.
    * Without a contract there is no client rate to bill at, so attaching hours
    * is refused rather than silently billed at team cost (the previous
    * behaviour, and the bug this replaces).
@@ -1762,16 +1812,23 @@ export class InvoicesService {
           'The contract has no client hourly rate, so logged hours cannot be priced. Set it on the contract first.',
         );
       }
-      if (!input.hours_from || !input.hours_to) {
+      const start = this.normalizeDate(input.period.start ?? undefined);
+      const end = this.normalizeDate(input.period.end ?? undefined);
+      if (!start || !end) {
         throw new BadRequestException(
           'Attaching hours needs a billing period (from and to dates).',
+        );
+      }
+      if (start > end) {
+        throw new BadRequestException(
+          'The billing period ends before it starts.',
         );
       }
 
       const { lines: composed } = await this.composition.composeForContract(
         contract,
-        this.normalizeDate(input.hours_from) as string,
-        this.normalizeDate(input.hours_to) as string,
+        invoice.id,
+        { start, end },
         input.hours_detail_level,
       );
       for (const line of composed) {
@@ -1802,6 +1859,31 @@ export class InvoicesService {
       tin: contract.provider_tin,
       email: contract.provider_email,
     };
+  }
+
+  /**
+   * Best-effort removal of a draft this request just created, when its composition was refused. Its lines,
+   * events and reservations cascade. Never throws: the composition error is what the caller sees.
+   */
+  private async discardDraft(invoiceId: string): Promise<void> {
+    try {
+      const { error } = await this.supabase
+        .from('invoices')
+        .delete()
+        .eq('id', invoiceId)
+        .eq('status', 'draft');
+      if (error) {
+        this.logger.warn(
+          `Could not remove draft ${invoiceId} after a refused composition: ${error.message}`,
+        );
+      }
+    } catch (error) {
+      this.logger.warn(
+        `Could not remove draft ${invoiceId} after a refused composition: ${
+          error instanceof Error ? error.message : String(error)
+        }`,
+      );
+    }
   }
 
   private async replaceInvoiceLineItems(

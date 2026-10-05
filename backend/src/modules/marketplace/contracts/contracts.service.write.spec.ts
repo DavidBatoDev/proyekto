@@ -1,4 +1,5 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
+import { PlanLimitException } from '../../shared/entitlements/plan-limit.exception';
 import { ContractsService, type ContractRow } from './contracts.service';
 import { contractFixture } from './contracts.service.test-fixtures';
 import type { AmendContractDto } from './dto/contracts.dto';
@@ -14,7 +15,9 @@ function awaitable(data: unknown) {
   return builder;
 }
 
-function writeHarness(options: { ownerId?: string } = {}) {
+function writeHarness(
+  options: { ownerId?: string; entitlements?: Record<string, jest.Mock> } = {},
+) {
   const ownerId = options.ownerId ?? 'client-1';
   let inserted: Record<string, unknown> | null = null;
   const insertedRow = contractFixture();
@@ -45,7 +48,11 @@ function writeHarness(options: { ownerId?: string } = {}) {
         });
       }
       if (table === 'projects') {
-        return awaitable({ owner_id: ownerId, title: 'Project One' });
+        return awaitable({
+          owner_id: ownerId,
+          title: 'Project One',
+          workspace_id: 'ws-1',
+        });
       }
       if (table === 'contract_positions') {
         return {
@@ -62,7 +69,8 @@ function writeHarness(options: { ownerId?: string } = {}) {
     {} as never,
     {} as never,
     // Initials are not exercised by these specs.
-    { listForContract: async () => [] } as never,
+    { listForContract: () => Promise.resolve([]) } as never,
+    options.entitlements as never,
   );
   return { service, inserted: () => inserted };
 }
@@ -178,5 +186,111 @@ describe('ContractsService client counterparty rules', () => {
         relationship_kind: 'talent_services',
       }),
     ).rejects.toThrow('Choose a Talent account before creating this contract.');
+  });
+});
+
+/**
+ * BILLING_HOURS_REQUIRES_PLAN (D26, L13, E59): an hourly client contract needs `time_billable_invoices` on the
+ * contract's workspace when it is created. Every create path (createContract, counterparty authoring) goes
+ * through createContractInternal, so the check lives there once.
+ */
+describe('ContractsService billable-hours plan gate on create', () => {
+  const planLimit = () =>
+    new PlanLimitException({
+      code: 'plan_limit',
+      kind: 'feature',
+      limit_key: 'time_billable_invoices',
+      label: 'Billable hours on invoices',
+      limit: null,
+      used: null,
+      plan: 'free',
+      upgrade_plan: 'pro',
+      workspace_id: 'ws-1',
+      workspace_slug: null,
+      context: 'create',
+      message: 'Billing hours on invoices is part of Pro.',
+    });
+
+  it.each(['time_based', 'hybrid'] as const)(
+    'checks time_billable_invoices on the workspace for a %s client contract',
+    async (billingMode) => {
+      const gates = { assertFeature: jest.fn().mockResolvedValue(undefined) };
+      const { service, inserted } = writeHarness({
+        ownerId: 'consultant-1',
+        entitlements: gates,
+      });
+
+      await service.createContractInternal('consultant-1', {
+        project_id: 'project-1',
+        relationship_kind: 'client_services',
+        counterparty_user_id: 'client-1',
+        billing_mode: billingMode,
+      });
+
+      expect(gates.assertFeature).toHaveBeenCalledWith(
+        { workspaceId: 'ws-1', exempt: false },
+        'time_billable_invoices',
+        { context: 'create' },
+      );
+      expect(inserted()).toEqual(
+        expect.objectContaining({ workspace_id: 'ws-1' }),
+      );
+    },
+  );
+
+  it('refuses with the PlanLimitException before anything is written', async () => {
+    const gates = { assertFeature: jest.fn().mockRejectedValue(planLimit()) };
+    const { service, inserted } = writeHarness({
+      ownerId: 'consultant-1',
+      entitlements: gates,
+    });
+
+    await expect(
+      service.createContractInternal('consultant-1', {
+        project_id: 'project-1',
+        relationship_kind: 'client_services',
+        counterparty_user_id: 'client-1',
+        compensation_mode: 'hourly',
+      }),
+    ).rejects.toBeInstanceOf(PlanLimitException);
+    expect(inserted()).toBeNull();
+  });
+
+  it.each([
+    ['a retainer', { billing_mode: 'retainer' as const }],
+    ['a fixed-fee contract', { billing_mode: 'fixed' as const }],
+    ['the default (retainer) terms', {}],
+  ])('never checks it for %s', async (_label, terms) => {
+    const gates = { assertFeature: jest.fn().mockResolvedValue(undefined) };
+    const { service } = writeHarness({
+      ownerId: 'consultant-1',
+      entitlements: gates,
+    });
+
+    await service.createContractInternal('consultant-1', {
+      project_id: 'project-1',
+      relationship_kind: 'client_services',
+      counterparty_user_id: 'client-1',
+      ...terms,
+    });
+
+    expect(gates.assertFeature).not.toHaveBeenCalled();
+  });
+
+  it('never checks it for an hourly talent contract (a cost agreement)', async () => {
+    const gates = { assertFeature: jest.fn().mockResolvedValue(undefined) };
+    const { service } = writeHarness({
+      ownerId: 'client-1',
+      entitlements: gates,
+    });
+
+    await service.createContractInternal('consultant-1', {
+      project_id: 'project-1',
+      relationship_kind: 'talent_services',
+      counterparty_user_id: 'talent-1',
+      billing_mode: 'time_based',
+    });
+
+    expect(gates.assertFeature).not.toHaveBeenCalled();
   });
 });
