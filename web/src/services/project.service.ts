@@ -1,3 +1,4 @@
+import { ApiError } from "@/lib/apiErrors";
 import { extractApiErrorMessage } from "@/lib/permissionErrors";
 import {
 	notifyPlanLimit,
@@ -480,7 +481,12 @@ class ProjectService {
 
 		if (!response.ok) {
 			const error = await response.json();
-			throw new Error(extractApiErrorMessage(error, "Failed to fetch project"));
+			// Keep the status: a 404 ("not yours" or missing) is an answer, and the
+			// query client's retryUnlessAccessDenied must not retry it.
+			throw new ApiError(
+				extractApiErrorMessage(error, "Failed to fetch project"),
+				response.status,
+			);
 		}
 
 		const result = await response.json();
