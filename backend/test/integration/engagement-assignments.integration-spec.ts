@@ -15,7 +15,8 @@
  * project links and assignments raise *_DELETE_FORBIDDEN or are immutable),
  * so each run cancels its two engagements and leaves them, their activating
  * contracts and their assignments (severed from the deleted projects) in
- * place. The parties pin the fixture profiles, so those stay too.
+ * place. The parties pin the fixture profiles and the provider team (with its
+ * memberships), so those stay too.
  */
 import request from 'supertest';
 import { randomUUID } from 'crypto';
@@ -76,7 +77,9 @@ describeDevOnly('engagement assignments (real DB)', () => {
           o.kind === 'client_services'
             ? 'none'
             : 'provider_submit_hirer_approve',
-        client_hours_detail_level: 'summary',
+        // Talent agreements never show the hirer's client hours (TALENT_TIME_POLICY_INVALID).
+        client_hours_detail_level:
+          o.kind === 'client_services' ? 'summary' : 'none',
       })
       .select('id')
       .single();
@@ -117,6 +120,15 @@ describeDevOnly('engagement assignments (real DB)', () => {
     }
 
     for (const position of ['provider', 'hirer'] as const) {
+      // The RPC refuses a stale revision (20261001100000); each signature bumps it.
+      const { data: current, error: revisionError } = await h.admin
+        .from('contracts')
+        .select('revision')
+        .eq('id', contractId)
+        .single();
+      if (revisionError) {
+        throw new Error(`read revision: ${revisionError.message}`);
+      }
       const { error: signError } = await h.admin.rpc(
         'sign_contract_position_and_activate',
         {
@@ -128,6 +140,7 @@ describeDevOnly('engagement assignments (real DB)', () => {
           p_offset_x: 0,
           p_offset_y: 0,
           p_signed_at: SIGNED_AT,
+          p_expected_revision: (current as { revision: number }).revision,
         },
       );
       if (signError) throw new Error(`sign ${position}: ${signError.message}`);
@@ -172,6 +185,14 @@ describeDevOnly('engagement assignments (real DB)', () => {
       );
 
     teamId = await h.createTeam(consultant.id, null, 'itest asg team');
+    // TeamsService.create adds the owner as a member, and no trigger does: the link curates the
+    // consultant onto the project (project_team_members FK to team_members) and the time-entry trigger
+    // checks team_members. The harness leaves the owner row out, so insert it here (it cascades with
+    // the team, which the engagement parties pin; see the header).
+    const { error: ownerError } = await h.admin
+      .from('team_members')
+      .insert({ team_id: teamId, user_id: consultant.id, role: 'owner' });
+    if (ownerError) throw new Error(`owner membership: ${ownerError.message}`);
     projectId = await h.createProject(consultant.id, 'itest assignments');
     await h.grantAccess(projectId, consultant.id, 'owner');
     otherProjectId = await h.createProject(

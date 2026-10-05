@@ -7,9 +7,9 @@
  *   - a reserved entry's sheet cannot be reopened (`TIMESHEET_HAS_SETTLED_ENTRIES {reason:'billed'}`);
  *   - issue-time verification passes on a freshly composed draft;
  *   - detaching hours releases, a recompose re-reserves, void-and-replace moves the rows (E37);
- *   - a retainer never reserves (E73);
- *   - a second live hourly legacy contract (hybrid counts) is `LEGACY_CONTRACT_AMBIGUOUS` and leaves no draft
- *     behind (E17);
+ *   - a retainer never reserves, even with approved hours on its project (E73);
+ *   - a second live hourly legacy contract (E17) cannot arise: the database allows one signed client contract
+ *     per project, so the composition's `LEGACY_CONTRACT_AMBIGUOUS {reason:'contracts'}` check is a backstop;
  *   - an engagement contract bills the provider party team's entries on its linked project only, at the
  *     engagement's billing rate (E16 b, E62).
  *
@@ -20,7 +20,8 @@
  *
  * ⚠️ Not fully self-cleaning: the activated engagement graph is append-only (see
  * engagement-activation.integration-spec.ts), so the engagement is cancelled and left with its activating
- * contract; everything else is removed.
+ * contract. Its provider party pins the consultant's team (the teams FK's SET NULL is refused with
+ * ENGAGEMENT_PARTY_IMMUTABLE), so that team and its owner membership stay too; everything else is removed.
  */
 import { randomUUID } from 'crypto';
 import { Harness, describeDevOnly } from './harness';
@@ -61,11 +62,13 @@ describeDevOnly('invoice billable hours (real DB)', () => {
   let otherTeamId: string;
   let projectId: string;
   let engagementProjectId: string;
+  let retainerProjectId: string;
 
   let legacyEntries: string[] = [];
   let engagementEntries: string[] = [];
   let foreignEntry: string;
   let workspaceEntry: string;
+  let retainerEntry: string;
   let consultantSheet: SheetRow;
   let period: { start: string; end: string };
   let legacyContractId: string;
@@ -174,15 +177,16 @@ describeDevOnly('invoice billable hours (real DB)', () => {
     }
   }
 
-  /** A signed client contract with no engagement (the pre-engagement shape). */
+  /** A signed client contract with no engagement (the pre-engagement shape), by default on `projectId`. */
   async function legacyContract(o: {
     billingMode: 'time_based' | 'hybrid' | 'retainer';
     providerTeamId?: string | null;
+    project?: string;
   }): Promise<string> {
     const { data, error } = await h.admin
       .from('contracts')
       .insert({
-        project_id: projectId,
+        project_id: o.project ?? projectId,
         workspace_id: workspaceId,
         created_by: consultant.id,
         consultant_user_id: consultant.id,
@@ -275,6 +279,15 @@ describeDevOnly('invoice billable hours (real DB)', () => {
       team_id: teamId,
     });
     for (const position of ['provider', 'hirer'] as const) {
+      // The RPC refuses a stale revision (20261001100000); each signature bumps it.
+      const { data: current, error: revisionError } = await h.admin
+        .from('contracts')
+        .select('revision')
+        .eq('id', id)
+        .single();
+      if (revisionError) {
+        throw new Error(`read revision: ${revisionError.message}`);
+      }
       const { error: signError } = await h.admin.rpc(
         'sign_contract_position_and_activate',
         {
@@ -286,6 +299,7 @@ describeDevOnly('invoice billable hours (real DB)', () => {
           p_offset_x: 0,
           p_offset_y: 0,
           p_signed_at: '2026-03-01T00:00:00.000Z',
+          p_expected_revision: (current as { revision: number }).revision,
         },
       );
       if (signError) throw new Error(`sign ${position}: ${signError.message}`);
@@ -358,6 +372,12 @@ describeDevOnly('invoice billable hours (real DB)', () => {
     // The consultant is the sole owner of the workspace and of its team, so their sheet routes to self.
     workspaceId = await h.createWorkspace(consultant.id, 'inv');
     teamId = await h.createTeam(consultant.id, workspaceId, 'itest inv team');
+    // TeamsService.create adds the owner as a member; the time-entry trigger checks team_members.
+    await insertRow('team_members', {
+      team_id: teamId,
+      user_id: consultant.id,
+      role: 'owner',
+    });
     await h.setTeamTime(teamId, { time_tracking_enabled: true });
     // Another team in the same workspace that the consultant also works for: its entries share the
     // consultant's workspace sheet (so they are approved with it) but belong to no provider seat.
@@ -382,6 +402,16 @@ describeDevOnly('invoice billable hours (real DB)', () => {
     await h.setProjectWorkspace(engagementProjectId, workspaceId);
     await h.grantAccess(engagementProjectId, consultant.id, 'owner');
     await h.attachTeam(engagementProjectId, teamId, true);
+
+    // uq_contracts_signed_client_services_per_project: one signed client contract per project, so the
+    // retainer (E73) gets its own project, with the same provider team and approved hours of its own.
+    retainerProjectId = await h.createProject(
+      consultant.id,
+      'itest invoice hours retainer',
+    );
+    await h.setProjectWorkspace(retainerProjectId, workspaceId);
+    await h.grantAccess(retainerProjectId, consultant.id, 'owner');
+    await h.attachTeam(retainerProjectId, teamId, true);
 
     // All of the consultant's entries land on one workspace sheet; log them all before it is approved.
     const a = await logEntry({
@@ -414,12 +444,21 @@ describeDevOnly('invoice billable hours (real DB)', () => {
       teamId: otherTeamId,
       index: 4,
     });
+    const retained = await logEntry({
+      user: consultant,
+      project: retainerProjectId,
+      teamId,
+      index: 5,
+    });
     legacyEntries = [a.id, b.id].sort();
     engagementEntries = [c.id];
     workspaceEntry = ws.id;
     foreignEntry = foreign.id;
+    retainerEntry = retained.id;
     expect(
-      new Set([a, b, ws, c, foreign].map((logged) => logged.timesheet_id)).size,
+      new Set(
+        [a, b, ws, c, foreign, retained].map((logged) => logged.timesheet_id),
+      ).size,
     ).toBe(1);
 
     await approveBySubmit(a.timesheet_id, consultant);
@@ -506,7 +545,12 @@ describeDevOnly('invoice billable hours (real DB)', () => {
     const { data: everyReservation } = await h.admin
       .from('invoice_time_entries')
       .select('entry_id')
-      .in('entry_id', [foreignEntry, workspaceEntry, ...engagementEntries]);
+      .in('entry_id', [
+        foreignEntry,
+        workspaceEntry,
+        retainerEntry,
+        ...engagementEntries,
+      ]);
     expect(everyReservation ?? []).toEqual([]);
 
     const hourLine = first.line_items.find((l) => l.source_type === 'time_log');
@@ -582,38 +626,51 @@ describeDevOnly('invoice billable hours (real DB)', () => {
   });
 
   it('never reserves for a retainer, even with hours attached (E73)', async () => {
-    const retainerId = await legacyContract({ billingMode: 'retainer' });
-    const draft = await createDraft(retainerId);
+    const retainerId = await legacyContract({
+      billingMode: 'retainer',
+      providerTeamId: teamId,
+      project: retainerProjectId,
+    });
+    const draft = await createDraft(retainerId, retainerProjectId);
     expect(draft.line_items.map((l) => l.source_type)).toEqual(['retainer']);
     expect(await reservedBy(draft.id)).toEqual([]);
+    // The provider team's approved entry on the retainer project stays unreserved.
+    const { data: held } = await h.admin
+      .from('invoice_time_entries')
+      .select('entry_id')
+      .eq('entry_id', retainerEntry);
+    expect(held ?? []).toEqual([]);
   });
 
-  it('refuses a second live hourly legacy contract on the project and leaves no draft (E17)', async () => {
-    const hybridId = await legacyContract({
-      billingMode: 'hybrid',
-      providerTeamId: teamId,
-    });
-    try {
-      const { count: before } = await h.admin
-        .from('invoices')
-        .select('id', { count: 'exact', head: true })
-        .eq('project_id', projectId);
-      await expect(createDraft(legacyContractId)).rejects.toMatchObject({
-        response: expect.objectContaining({
-          code: 'LEGACY_CONTRACT_AMBIGUOUS',
-        }),
-      });
-      const { count: after } = await h.admin
-        .from('invoices')
-        .select('id', { count: 'exact', head: true })
-        .eq('project_id', projectId);
-      expect(after).toBe(before);
-    } finally {
-      await h.admin
-        .from('contracts')
-        .update({ status: 'ended' })
-        .eq('id', hybridId);
-    }
+  it('refuses a second signed client contract on the project, so no second live hourly legacy contract exists (E17)', async () => {
+    // uq_contracts_signed_client_services_per_project allows one signed client_services contract per
+    // project, so the ambiguity E17 describes cannot be set up: the composition's
+    // LEGACY_CONTRACT_AMBIGUOUS {reason:'contracts'} check (assertOnlyLegacyHourlyContract) is a backstop
+    // the database never lets fire. Its refusal is unit-tested in invoice-composition.service.spec.ts.
+    const { count: before } = await h.admin
+      .from('invoices')
+      .select('id', { count: 'exact', head: true })
+      .eq('project_id', projectId);
+    await expect(
+      legacyContract({ billingMode: 'hybrid', providerTeamId: teamId }),
+    ).rejects.toThrow(/uq_contracts_signed_client_services_per_project/);
+
+    // Nothing was left behind: the project still has exactly its one signed client contract and no new invoice.
+    const { data: live, error } = await h.admin
+      .from('contracts')
+      .select('id')
+      .eq('project_id', projectId)
+      .eq('status', 'signed')
+      .eq('relationship_kind', 'client_services');
+    expect(error).toBeNull();
+    expect((live ?? []).map((row) => row.id as string)).toEqual([
+      legacyContractId,
+    ]);
+    const { count: after } = await h.admin
+      .from('invoices')
+      .select('id', { count: 'exact', head: true })
+      .eq('project_id', projectId);
+    expect(after).toBe(before);
   });
 
   it("bills an engagement's provider team on its linked project, at the engagement rate (E16 b, E62)", async () => {
