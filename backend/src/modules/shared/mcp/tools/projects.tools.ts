@@ -64,7 +64,10 @@ export function registerProjectTools(server: McpServer, deps: McpToolDeps) {
       runTool(async () => {
         requireScope(deps.caller, 'projects:read');
         const permissions = await assertProjectViewer(deps, project_id);
-        const project = await deps.s.projects.getProject(project_id);
+        const project = await deps.s.projects.getProject(
+          project_id,
+          deps.caller.userId,
+        );
         return { project, my_permissions: permissions };
       }),
   );

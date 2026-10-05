@@ -111,8 +111,8 @@ export class ProjectsController {
   }
 
   @Get(':id')
-  getProject(@Param('id') id: string) {
-    return this.projectsService.getProject(id);
+  getProject(@Param('id') id: string, @CurrentUser() user: AuthenticatedUser) {
+    return this.projectsService.getProject(id, user.id);
   }
 
   @Patch(':id')
