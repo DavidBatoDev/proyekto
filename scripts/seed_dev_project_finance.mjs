@@ -19,7 +19,9 @@
  *
  * DEV ONLY. Reads backend/.env.development.local and web/.env.development.local
  * and refuses unless SUPABASE_URL is the dev project. Every row has a fixed id
- * and is upserted, so re-running converges instead of duplicating. Documents
+ * and is upserted (time entries: inserted only when missing, so an approved
+ * week is never written again), so re-running converges instead of
+ * duplicating. Documents
  * are matched by file name. If the backend (http://localhost:8001 by default,
  * override with SEED_API_URL) is not running, documents and the imported
  * invoice are skipped with a warning.
@@ -30,6 +32,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 const DEV_REF = "vyiedlwasdwmjbztqznl";
+const DEV_HOST = `${DEV_REF}.supabase.co`;
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const require = createRequire(path.join(root, "backend", "package.json"));
 const { Client } = require("pg");
@@ -49,13 +52,24 @@ function readEnv(file) {
 	);
 }
 
+/** The URL's host, "" when it does not parse (so the guard refuses it). */
+function hostOf(url) {
+	try {
+		return new URL(url).hostname;
+	} catch {
+		return "";
+	}
+}
+
 const backendEnv = readEnv(path.join(root, "backend", ".env.development.local"));
 const webEnv = readEnv(path.join(root, "web", ".env.development.local"));
-if (!backendEnv.SUPABASE_URL?.includes(DEV_REF)) {
+// The pg login below is pinned to postgres.<DEV_REF>; both env files must name exactly the dev host too (the
+// documents step signs in through the web one). An exact match, so a look-alike host never passes.
+if (hostOf(backendEnv.SUPABASE_URL) !== DEV_HOST) {
 	console.error("REFUSING: backend/.env.development.local is not the DEV project");
 	process.exit(2);
 }
-if (!webEnv.VITE_SUPABASE_URL?.includes(DEV_REF)) {
+if (hostOf(webEnv.VITE_SUPABASE_URL) !== DEV_HOST) {
 	console.error("REFUSING: web/.env.development.local is not the DEV project");
 	process.exit(2);
 }
@@ -258,10 +272,18 @@ async function seedCore(db) {
 	// Three weeks of time: weekdays, owner and Mika, team context (time_entries,
 	// M3). The entry never carries a status: trg_30 files it on the member's
 	// timesheet, and the older weeks are approved below through the one path
-	// that changes a sheet, time_timesheet_transition. A re-run leaves existing
-	// entries alone: an approved week is locked.
+	// that changes a sheet, time_timesheet_transition.
+	//
+	// A re-run inserts only the ids that are missing. `on conflict do nothing`
+	// is not enough: BEFORE INSERT triggers fire before the conflict check, so
+	// trg_30 would file the proposed (today-relative) row on its sheet anyway,
+	// creating that sheet, and raise TIME_PERIOD_LOCKED inside an approved week,
+	// which would roll back the whole seed. Existing entries keep their dates;
+	// the ones older than a week still count for the approval pass (idempotent:
+	// an approved sheet is left as it is). A missing entry whose week is already
+	// locked is skipped with a warning.
+	const planned = [];
 	let logIndex = 0;
-	const olderWeekEntries = new Map(); // entry id -> member id
 	for (let day = -21; day <= -1; day += 1) {
 		const weekday = new Date(`${isoDate(day)}T00:00:00Z`).getUTCDay();
 		if (weekday === 0 || weekday === 6) continue;
@@ -270,17 +292,45 @@ async function seedCore(db) {
 			[MIKA, "Mika Villanueva", 5, 650],
 		]) {
 			logIndex += 1;
-			const entryId = id(`7${String(logIndex).padStart(3, "0")}`);
+			planned.push({ entryId: id(`7${String(logIndex).padStart(3, "0")}`), day, userId, name, hours, rate });
+		}
+	}
+	const { rows: existingEntries } = await db.query(
+		"select id, member_user_id, started_at from time_entries where id = any($1::uuid[])",
+		[planned.map((entry) => entry.entryId)],
+	);
+	const existing = new Map(existingEntries.map((row) => [row.id, row]));
+	const olderThan = new Date(`${isoDate(-7)}T00:00:00Z`).getTime();
+	const olderWeekEntries = new Map(); // entry id -> member id
+	let skippedLocked = 0;
+	for (const { entryId, day, userId, name, hours, rate } of planned) {
+		const found = existing.get(entryId);
+		if (found) {
+			if (found.member_user_id && new Date(found.started_at).getTime() < olderThan) {
+				olderWeekEntries.set(entryId, found.member_user_id);
+			}
+			continue;
+		}
+		await db.query("savepoint seed_entry");
+		try {
 			await db.query(
 				`insert into time_entries (id, project_id, context_kind, context_ref, team_id, work_item,
 				   member_user_id, member_display_name_snapshot, started_at, ended_at, duration_seconds, source,
 				   rate_snapshot, currency_snapshot, rate_type_snapshot, work_type_snapshot)
-				 values ($1, $2, 'team', $3, $3, 'other', $4, $5, $6, $7, $8, 'timer', $9, $10, 'hourly', 'real_work')
-				 on conflict (id) do nothing`,
+				 values ($1, $2, 'team', $3, $3, 'other', $4, $5, $6, $7, $8, 'timer', $9, $10, 'hourly', 'real_work')`,
 				[entryId, PROJECT, TEAM, userId, name, isoAt(day, 1), isoAt(day, 1 + hours), hours * 3600, rate, CURRENCY],
 			);
-			if (day < -7) olderWeekEntries.set(entryId, userId);
+			await db.query("release savepoint seed_entry");
+		} catch (error) {
+			await db.query("rollback to savepoint seed_entry");
+			if (!String(error.message).includes("TIME_PERIOD_LOCKED")) throw error;
+			skippedLocked += 1;
+			continue;
 		}
+		if (day < -7) olderWeekEntries.set(entryId, userId);
+	}
+	if (skippedLocked > 0) {
+		console.warn(`  ${skippedLocked} time entr${skippedLocked === 1 ? "y" : "ies"} skipped: the week is already submitted or approved`);
 	}
 	await approveOlderWeeks(db, olderWeekEntries);
 
@@ -308,6 +358,8 @@ async function seedCore(db) {
  * freeze the backend would send: payable = logged, the stored rate, amount =
  * round(payable / 3600 x rate, 2). Best effort: a sheet the seed cannot move
  * (a decider rule, a policy that refuses) is left as it is, with a warning.
+ * A sheet that also holds the member's time on another project is never
+ * touched: approving it would freeze and approve real dev time too.
  */
 async function approveOlderWeeks(db, entryMembers) {
 	if (entryMembers.size === 0) return;
@@ -318,6 +370,15 @@ async function approveOlderWeeks(db, entryMembers) {
 		[[...entryMembers.keys()]],
 	);
 	for (const sheet of sheets) {
+		const { rows: [{ others }] } = await db.query(
+			`select count(*)::int as others from time_entries
+			  where timesheet_id = $1 and project_id is distinct from $2`,
+			[sheet.id, PROJECT],
+		);
+		if (others > 0) {
+			console.warn(`  timesheet ${sheet.id} left as it is: it also holds ${others} entr${others === 1 ? "y" : "ies"} from other projects`);
+			continue;
+		}
 		// The seed runs in one transaction: a refused transition must not abort it.
 		await db.query("savepoint seed_timesheet");
 		try {

@@ -26,6 +26,15 @@
  * SUPABASE_URL / SUPABASE_SERVICE_ROLE_KEY / SUPABASE_ANON_KEY plus the
  * consultant's own login as SEED_CONSULTANT_EMAIL / SEED_CONSULTANT_PASSWORD
  * (PLAYWRIGHT_EMAIL / PLAYWRIGHT_PASSWORD are accepted as a fallback).
+ *
+ * DEV ONLY: refuses to run unless the SUPABASE_URL host is exactly the dev
+ * project (vyiedlwasdwmjbztqznl.supabase.co), both keys belong to it, and
+ * SEED_API_URL is a local backend.
+ *
+ * TIME: the talent's hours are logged for the consultant's team (SEED_TEAM_ID,
+ * else the consultant's first owned team, attached to the project as primary).
+ * Without a team the hours are the talent's own ("Just me") time, which is
+ * never delivery cost.
  */
 
 import fs from "node:fs";
@@ -40,6 +49,10 @@ const DEMO_EMAIL_DOMAIN = "demo.proyekto.test";
 const DEMO_PASSWORD = "DemoSeed!2026";
 
 /* ── env ──────────────────────────────────────────────────────────────────── */
+
+/** Where each loaded value came from (a file path); values already in the shell are absent. */
+const ENV_SOURCE = {};
+const sourceOf = (name) => ENV_SOURCE[name] ?? "the shell";
 
 function loadEnvFile(file) {
 	if (!fs.existsSync(file)) return;
@@ -57,7 +70,10 @@ function loadEnvFile(file) {
 			value = value.slice(1, -1);
 		}
 		// First value wins, matching the other repo scripts.
-		if (process.env[key] === undefined) process.env[key] = value;
+		if (process.env[key] === undefined) {
+			process.env[key] = value;
+			ENV_SOURCE[key] = file;
+		}
 	}
 }
 
@@ -71,9 +87,43 @@ for (const file of [
 }
 
 const SUPABASE_URL = must("SUPABASE_URL");
+
+/* DEV ONLY. The env chain above can resolve backend/.env, which points at
+ * production, so refuse any Supabase host that is not exactly the dev project.
+ * Both the seed and --teardown write through this URL. */
+const DEV_REF = "vyiedlwasdwmjbztqznl";
+const DEV_HOST = `${DEV_REF}.supabase.co`;
+const SUPABASE_HOST = hostOf(SUPABASE_URL);
+if (SUPABASE_HOST !== DEV_HOST) {
+	refuse(
+		`SUPABASE_URL host "${SUPABASE_HOST || "(unreadable)"}" is not the DEV project (${DEV_HOST}). ` +
+			"Set the dev SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY and SUPABASE_ANON_KEY in scripts/.env or the shell.",
+	);
+}
+
 const SERVICE_KEY = must("SUPABASE_SERVICE_ROLE_KEY");
 const ANON_KEY = must("SUPABASE_ANON_KEY");
+/* The keys must be dev's too: a dev URL with a key that fell through to
+ * backend/.env would send a production secret to the dev host. A JWT key
+ * names its project (`ref`); a newer non-JWT key (sb_…) does not, so it must
+ * come from the same place as SUPABASE_URL. No value is ever printed. */
+for (const [name, key] of [
+	["SUPABASE_SERVICE_ROLE_KEY", SERVICE_KEY],
+	["SUPABASE_ANON_KEY", ANON_KEY],
+]) {
+	const ref = jwtRef(key);
+	if (ref === DEV_REF) continue;
+	if (ref === undefined && sourceOf(name) === sourceOf("SUPABASE_URL")) continue;
+	refuse(
+		ref === undefined
+			? `${name} (from ${sourceOf(name)}) does not come from where SUPABASE_URL does (${sourceOf("SUPABASE_URL")}).`
+			: `${name} (from ${sourceOf(name)}) belongs to another project, not ${DEV_REF}.`,
+	);
+}
 const API = process.env.SEED_API_URL ?? "http://localhost:8000";
+if (!["localhost", "127.0.0.1", "::1", "[::1]"].includes(hostOf(API))) {
+	refuse(`SEED_API_URL host "${hostOf(API) || "(unreadable)"}" is not a local backend.`);
+}
 const CONSULTANT_EMAIL =
 	process.env.SEED_CONSULTANT_EMAIL ?? process.env.PLAYWRIGHT_EMAIL;
 const CONSULTANT_PASSWORD =
@@ -96,6 +146,31 @@ function must(name) {
 		process.exit(1);
 	}
 	return value;
+}
+
+function hostOf(url) {
+	try {
+		return new URL(url).hostname;
+	} catch {
+		return "";
+	}
+}
+
+function refuse(message) {
+	console.error(`REFUSING: ${message}`);
+	process.exit(2);
+}
+
+/** A JWT key's project ref; null for a JWT without one; undefined when the key is not a JWT. */
+function jwtRef(key) {
+	const parts = String(key).split(".");
+	if (parts.length !== 3) return undefined;
+	try {
+		const claims = JSON.parse(Buffer.from(parts[1], "base64url").toString("utf8"));
+		return typeof claims?.ref === "string" ? claims.ref : null;
+	} catch {
+		return null;
+	}
 }
 
 /* ── tiny clients ─────────────────────────────────────────────────────────── */
@@ -288,78 +363,132 @@ async function teardown() {
 	log("Teardown complete.");
 }
 
+/** One time_timesheet_transition call on one sheet; returns the sheet as it now reads. */
+async function transitionSheet(sheet, actor, action, { note = null, freeze } = {}) {
+	const rows = await rest("rpc/time_timesheet_transition", {
+		method: "POST",
+		body: JSON.stringify({
+			p_ids: [sheet.id],
+			p_actor: actor,
+			p_action: action,
+			p_expected_revisions: [sheet.revision],
+			p_note: note,
+			...(freeze ? { p_freeze: freeze } : {}),
+		}),
+	});
+	return Array.isArray(rows) && rows[0] ? rows[0] : sheet;
+}
+
 /**
  * Teardown of one demo project's time. Approved and submitted weeks are
- * locked, so each sheet is first reopened (decider, back to `returned`) or
- * withdrawn (member, back to `open`) through the one RPC that changes a
- * timesheet; then the entries go, then the sheets they leave empty.
+ * locked, so each sheet is first brought back to `open` through the one RPC
+ * that changes a timesheet:
+ *   - approved by the member's own route (`auto`/`self`): the member reopens it;
+ *   - approved by a decider: the decider reopens it (`returned`);
+ *   - submitted: the member withdraws it;
+ *   - returned: the member resubmits it without a freeze (so it never chains
+ *     to approved) and withdraws it, because an emptied sheet can no longer
+ *     be submitted and only an open, empty sheet can be deleted.
+ * Then the entries go (one by one if the bulk delete is refused, so a sheet
+ * that stays locked never stops the teardown), then the sheets left empty.
  */
 async function clearDemoTime(projectId) {
 	const entries = await rest(
-		`time_entries?select=id,timesheet_id,member_user_id&project_id=eq.${projectId}`,
+		`time_entries?select=id,timesheet_id&project_id=eq.${projectId}`,
 	);
 	const sheetIds = [...new Set(entries.map((e) => e.timesheet_id).filter(Boolean))];
-	const members = [...new Set(entries.map((e) => e.member_user_id).filter(Boolean))];
 	for (const sheetId of sheetIds) {
-		const [sheet] = await rest(
-			`timesheets?select=id,status,revision,member_user_id,decided_by&id=eq.${sheetId}`,
+		let [sheet] = await rest(
+			`timesheets?select=id,status,revision,member_user_id,decided_by,approver_scope&id=eq.${sheetId}`,
 		);
 		if (!sheet) continue;
-		const move =
-			sheet.status === "approved" && sheet.decided_by
-				? { p_actor: sheet.decided_by, p_action: "reopen", p_note: "Demo teardown" }
-				: sheet.status === "submitted"
-					? { p_actor: sheet.member_user_id, p_action: "withdraw", p_note: null }
-					: null;
-		if (!move) continue;
 		try {
-			await rest("rpc/time_timesheet_transition", {
-				method: "POST",
-				body: JSON.stringify({
-					p_ids: [sheetId],
-					p_expected_revisions: [sheet.revision],
-					...move,
-				}),
-			});
+			if (sheet.status === "approved") {
+				if (["auto", "self"].includes(sheet.approver_scope)) {
+					sheet = await transitionSheet(sheet, sheet.member_user_id, "reopen");
+				} else if (sheet.decided_by) {
+					sheet = await transitionSheet(sheet, sheet.decided_by, "reopen", {
+						note: "Demo teardown",
+					});
+				}
+			}
+			if (sheet.status === "returned") {
+				sheet = await transitionSheet(sheet, sheet.member_user_id, "submit");
+			}
+			if (sheet.status === "submitted") {
+				sheet = await transitionSheet(sheet, sheet.member_user_id, "withdraw");
+			}
+			if (sheet.status !== "open") log(`  timesheet ${sheetId} stays ${sheet.status}`);
 		} catch (error) {
 			log(`  timesheet ${sheetId} stays locked: ${error.message}`);
 		}
 	}
-	await rest(`time_entries?project_id=eq.${projectId}`, { method: "DELETE" });
-	// Open sheets left empty can go; a returned one stays (a sheet that was
-	// decided keeps its history) and its member is deleted below.
-	if (members.length > 0 && sheetIds.length > 0) {
-		await rest(
-			`timesheets?status=eq.open&id=in.(${sheetIds.join(",")})`,
-			{ method: "DELETE" },
-		).catch((error) => log(`  empty timesheets kept: ${error.message}`));
+	try {
+		await rest(`time_entries?project_id=eq.${projectId}`, { method: "DELETE" });
+	} catch (error) {
+		log(`  bulk entry delete refused, deleting one by one: ${error.message}`);
+		let locked = 0;
+		for (const entry of entries) {
+			await rest(`time_entries?id=eq.${entry.id}`, { method: "DELETE" }).catch(() => {
+				locked += 1;
+			});
+		}
+		if (locked > 0) log(`  ${locked} locked time entr${locked === 1 ? "y" : "ies"} kept`);
 	}
+	// Open sheets left empty can go, one by one: a sheet that still holds a
+	// locked entry (or is not open) refuses, and must not take the others with it.
+	let keptSheets = 0;
+	for (const sheetId of sheetIds) {
+		await rest(`timesheets?status=eq.open&id=eq.${sheetId}`, { method: "DELETE" }).catch(() => {
+			keptSheets += 1;
+		});
+	}
+	if (keptSheets > 0) log(`  ${keptSheets} open timesheet(s) kept: they still hold an entry`);
 }
 
-/** Submit as each talent, approve as the consultant; returns how many sheets ended approved. */
-async function approveDemoTimesheets(inserted, consultant, sessions, ids) {
-	const tokenByUser = new Map(
-		Object.entries(ids).map(([key, userId]) => [userId, sessions[key]?.token]),
-	);
+/**
+ * Submit as each talent, approve as the consultant (or the talent on a `self`
+ * route), through time_timesheet_transition with the freeze the backend would
+ * send, carrying the talent's agreed rate: payable = logged, amount =
+ * round(payable / 3600 x rate, 2) (the same path as seed_dev_project_finance).
+ * The API's own approve re-resolves the rate from the team's rate card, which
+ * is 0 unless the team has member rates on, its workspace plan has
+ * time_team_rules and a team_member_rates row is in force, so the demo's
+ * delivery cost would read 0. Returns how many sheets ended approved.
+ */
+async function approveDemoTimesheets(inserted, consultant) {
 	const sheetIds = [...new Set(inserted.map((e) => e.timesheet_id).filter(Boolean))];
 	let approved = 0;
 	for (const sheetId of sheetIds) {
 		try {
 			let [sheet] = await rest(
-				`timesheets?select=id,status,revision,member_user_id&id=eq.${sheetId}`,
+				`timesheets?select=id,status,revision,member_user_id,approver_scope&id=eq.${sheetId}`,
 			);
-			const memberToken = tokenByUser.get(sheet.member_user_id);
-			if ((sheet.status === "open" || sheet.status === "returned") && memberToken) {
-				await api(memberToken, "POST", `/api/time/timesheets/${sheetId}/submit`, {
-					expected_revision: sheet.revision,
-				});
-				[sheet] = await rest(`timesheets?select=id,status,revision,member_user_id&id=eq.${sheetId}`);
+			const entries = await rest(
+				`time_entries?select=id,duration_seconds,rate_snapshot,rate_type_snapshot,currency_snapshot&timesheet_id=eq.${sheetId}`,
+			);
+			const sheetFreeze = {};
+			for (const e of entries) {
+				const payable = Math.max(0, Number(e.duration_seconds ?? 0));
+				const rate = Number(e.rate_snapshot ?? 0);
+				const hourly = e.rate_type_snapshot !== "fixed";
+				sheetFreeze[e.id] = {
+					payable_seconds: payable,
+					rate_snapshot: rate,
+					rate_type_snapshot: hourly ? "hourly" : "fixed",
+					currency_snapshot: e.currency_snapshot ?? "PHP",
+					amount_snapshot: hourly ? Math.round((payable / 3600) * rate * 100) / 100 : null,
+				};
+			}
+			const freeze = { [sheetId]: sheetFreeze };
+			// An auto/self route chains straight to approved on submit (with the freeze).
+			if (sheet.status === "open" || sheet.status === "returned") {
+				sheet = await transitionSheet(sheet, sheet.member_user_id, "submit", { freeze });
 			}
 			if (sheet.status === "submitted") {
-				await api(consultant.token, "POST", `/api/time/timesheets/${sheetId}/approve`, {
-					expected_revision: sheet.revision,
-				});
-				[sheet] = await rest(`timesheets?select=id,status&id=eq.${sheetId}`);
+				const actor =
+					sheet.approver_scope === "self" ? sheet.member_user_id : consultant.userId;
+				sheet = await transitionSheet(sheet, actor, "approve", { freeze });
 			}
 			if (sheet.status === "approved") approved += 1;
 		} catch (error) {
@@ -367,6 +496,29 @@ async function approveDemoTimesheets(inserted, consultant, sessions, ids) {
 		}
 	}
 	return approved;
+}
+
+/**
+ * The team the demo time is logged for: SEED_TEAM_ID, else the consultant's
+ * first owned team (a named team before the personal one). Null when the
+ * consultant owns none.
+ */
+async function pickDemoTeam(consultantId) {
+	const requested = process.env.SEED_TEAM_ID?.trim();
+	if (requested) {
+		const [team] = await rest(
+			`teams?select=id,name,owner_id&id=eq.${encodeURIComponent(requested)}`,
+		);
+		if (!team) throw new Error(`SEED_TEAM_ID ${requested} is not a team.`);
+		if (team.owner_id !== consultantId) {
+			throw new Error(`SEED_TEAM_ID ${requested} is not owned by the consultant.`);
+		}
+		return team;
+	}
+	const owned = await rest(
+		`teams?select=id,name&owner_id=eq.${consultantId}&order=is_personal.asc,created_at.asc&limit=1`,
+	);
+	return owned[0] ?? null;
 }
 
 /* ── seed ─────────────────────────────────────────────────────────────────── */
@@ -467,6 +619,14 @@ async function seed() {
 	);
 
 	log("3/7  Creating the project…");
+	// The talent's hours are logged for this team, so they land on timesheets
+	// and count as delivery cost (personal time never does).
+	const demoTeam = await pickDemoTeam(consultant.userId);
+	log(
+		demoTeam
+			? `     team → ${demoTeam.name} (${demoTeam.id})`
+			: "     ! the consultant owns no team: the talent's hours will be personal and never count as cost (set SEED_TEAM_ID)",
+	);
 	// Consultant mode only accepts `draft` at creation; activation is a
 	// separate transition, so the seed makes it the same way a person would.
 	const created = await api(consultant.token, "POST", "/api/projects", {
@@ -475,6 +635,7 @@ async function seed() {
 		description:
 			"Demo scenario: one client engagement funding two talent engagements.",
 		currency: "PHP",
+		...(demoTeam ? { primary_team_id: demoTeam.id } : {}),
 	});
 	// This endpoint nests its payload one level deeper than the rest.
 	const project = created.project ?? created;
@@ -644,6 +805,11 @@ async function seed() {
 		`project_teams?select=team_id&project_id=eq.${project.id}`,
 	);
 	const teamId = teamRows[0]?.team_id ?? null;
+	if (!teamId) {
+		log(
+			"     ! the project has no team: the talent's hours are their own (\"Just me\") time, which is never delivery cost",
+		);
+	}
 	// The database refuses a time log from someone with no access to the
 	// project, and a team log from someone outside that team (time rebuild
 	// M1). The talent only hold signed contracts, so give each of them editor
@@ -710,11 +876,16 @@ async function seed() {
 		body: JSON.stringify(logs),
 	});
 	log(`     ${inserted.length} time entries`);
-	// Approval happens per timesheet, through the API, the way people do it:
-	// the talent submits, the consultant approves. A sheet the API refuses
-	// (the current period is too early to submit, a policy rule) stays as it is.
-	const approved = await approveDemoTimesheets(inserted, consultant, sessions, ids);
-	log(`     ${approved} timesheet(s) approved`);
+	// Approval happens per timesheet: the talent submits, the consultant
+	// approves, with the talent's agreed rate frozen (approveDemoTimesheets). A
+	// sheet the database refuses (the current period is too early to submit,
+	// a decider rule) stays as it is.
+	const approved = await approveDemoTimesheets(inserted, consultant);
+	const costRows = await rest(
+		`time_entries?select=amount_snapshot&project_id=eq.${project.id}&context_kind=neq.personal&amount_snapshot=not.is.null`,
+	);
+	const cost = costRows.reduce((sum, row) => sum + Number(row.amount_snapshot ?? 0), 0);
+	log(`     ${approved} timesheet(s) approved · delivery cost PHP ${cost.toFixed(2)}`);
 
 	log("7/7  Six months of client invoices, with real payment history…");
 	const invoices = [];
