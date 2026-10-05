@@ -13,6 +13,7 @@ import { ProjectsService } from '../../execution/projects/projects.service';
 import { ProjectTeamsService } from '../../execution/teams/project-teams.service';
 import { FinanceBooksService } from '../finance/books/finance-books.service';
 import type { SetUpEngagementProjectDto } from './dto/engagements.dto';
+import { EngagementAssignmentsService } from './engagement-assignments.service';
 
 interface EngagementContext {
   engagementId: string;
@@ -61,8 +62,10 @@ export interface EngagementProjectResult {
  * was signed for, or links one it already owns; the team is attached to the
  * project, the engagement gains an `operational_assignment` link to it, and —
  * when the team keeps finance books — the project's book opens under the team
- * book. Nothing here grants the client (or anyone) project access: that stays
- * advisory, per docs/14-engagement/action-surface.md.
+ * book. The consultant also gets their own assignment on the project under the
+ * engagement (`ensureProviderAssignment`), so their time can be logged for the
+ * agreement. Nothing here grants the client (or anyone) project access: that
+ * stays advisory, per docs/14-engagement/action-surface.md.
  *
  * Only client-services engagements: a talent engagement is placed on work by
  * assignment, not by creating the project it works on.
@@ -77,6 +80,7 @@ export class EngagementProjectService {
     private readonly projectTeams: ProjectTeamsService,
     private readonly projectAuth: ProjectAuthorizationService,
     private readonly financeBooks: FinanceBooksService,
+    private readonly assignments: EngagementAssignmentsService,
   ) {}
 
   async defaults(
@@ -92,9 +96,11 @@ export class EngagementProjectService {
       .eq('user_id', callerId)
       .eq('role', 'owner');
     if (error) throw new Error(error.message);
-    const projects = ((data ?? []) as unknown as Array<{
-      project: { id: string; title: string } | null;
-    }>)
+    const projects = (
+      (data ?? []) as unknown as Array<{
+        project: { id: string; title: string } | null;
+      }>
+    )
       .map((row) => row.project)
       .filter((project): project is { id: string; title: string } =>
         Boolean(project),
@@ -188,6 +194,7 @@ export class EngagementProjectService {
     // IS the point, so make sure it landed (and attach it when linking).
     await this.ensureTeamAttached(callerId, projectId, team.id);
     await this.linkEngagement(callerId, engagementId, projectId, projectTitle);
+    await this.ensureProviderAssignment(callerId, engagementId, projectId);
     const books = await this.openFinanceBook(callerId, team.id, projectId);
 
     return {
@@ -364,6 +371,32 @@ export class EngagementProjectService {
     // Already linked (unique active link): the call is idempotent.
     if (error && error.code !== '23505') {
       throw new BadRequestException(error.message);
+    }
+  }
+
+  /**
+   * The consultant's own assignment under the engagement (backend.md ›
+   * Assignment Creation, auto-hook). Best-effort like the finance book: the
+   * project and the link are the commitment, and a missing assignment can be
+   * created later from the engagement page (`POST :id/assignments`).
+   */
+  private async ensureProviderAssignment(
+    callerId: string,
+    engagementId: string,
+    projectId: string,
+  ): Promise<void> {
+    try {
+      await this.assignments.ensureProviderAssignment(
+        engagementId,
+        projectId,
+        callerId,
+      );
+    } catch (error) {
+      this.logger.warn(
+        `Provider assignment not created for engagement ${engagementId} on ${projectId}: ${
+          error instanceof Error ? error.message : String(error)
+        }`,
+      );
     }
   }
 

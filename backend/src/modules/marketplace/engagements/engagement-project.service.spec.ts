@@ -51,6 +51,7 @@ function harness(options: {
   projectRole?: string | null;
   teamBook?: boolean;
   addProjectBook?: jest.Mock;
+  ensureProviderAssignment?: jest.Mock;
 }) {
   const linkInserts: unknown[] = [];
   const seatTeam =
@@ -90,7 +91,10 @@ function harness(options: {
       },
       error: null,
     })),
-    engagement_project_links: table(() => ({ data: [], error: null }), linkInserts),
+    engagement_project_links: table(
+      () => ({ data: [], error: null }),
+      linkInserts,
+    ),
     teams: table(() => ({ data: options.ownedTeams ?? [], error: null })),
     project_teams: table(() => ({
       data: [{ team_id: 'team-1', is_primary: true }],
@@ -102,7 +106,10 @@ function harness(options: {
     })),
     finance_books: table((filters) =>
       filters.kind === 'team'
-        ? { data: options.teamBook === false ? null : { id: 'book-team' }, error: null }
+        ? {
+            data: options.teamBook === false ? null : { id: 'book-team' },
+            error: null,
+          }
         : { data: { id: 'book-existing' }, error: null },
     ),
   };
@@ -116,11 +123,19 @@ function harness(options: {
   };
   const projectTeams = { attach: jest.fn() };
   const projectAuth = {
-    getUserProjectRole: jest.fn().mockResolvedValue(options.projectRole ?? 'owner'),
+    getUserProjectRole: jest
+      .fn()
+      .mockResolvedValue(options.projectRole ?? 'owner'),
   };
   const financeBooks = {
     addProjectBook:
-      options.addProjectBook ?? jest.fn().mockResolvedValue({ id: 'book-project' }),
+      options.addProjectBook ??
+      jest.fn().mockResolvedValue({ id: 'book-project' }),
+  };
+  const assignments = {
+    ensureProviderAssignment:
+      options.ensureProviderAssignment ??
+      jest.fn().mockResolvedValue(undefined),
   };
   const service = new EngagementProjectService(
     supabase,
@@ -128,8 +143,16 @@ function harness(options: {
     projectTeams as never,
     projectAuth as never,
     financeBooks as never,
+    assignments as never,
   );
-  return { service, projects, projectTeams, financeBooks, linkInserts };
+  return {
+    service,
+    projects,
+    projectTeams,
+    financeBooks,
+    linkInserts,
+    assignments,
+  };
 }
 
 describe('EngagementProjectService.setUp', () => {
@@ -218,7 +241,10 @@ describe('EngagementProjectService.setUp', () => {
       title: 'x',
     });
     expect(financeBooks.addProjectBook).not.toHaveBeenCalled();
-    expect(result).toMatchObject({ finance_book_id: null, team_book_exists: false });
+    expect(result).toMatchObject({
+      finance_book_id: null,
+      team_book_exists: false,
+    });
   });
 
   it('returns the existing book when the project already has one', async () => {
@@ -230,5 +256,64 @@ describe('EngagementProjectService.setUp', () => {
       title: 'x',
     });
     expect(result.finance_book_id).toBe('book-existing');
+  });
+
+  it('gives the consultant their own assignment once the engagement is linked', async () => {
+    const { service, assignments, linkInserts } = harness({});
+
+    await service.setUp('consultant-1', 'eng-1', {
+      mode: 'create',
+      title: 'Aurora — loyalty',
+    });
+
+    expect(assignments.ensureProviderAssignment).toHaveBeenCalledTimes(1);
+    expect(assignments.ensureProviderAssignment).toHaveBeenCalledWith(
+      'eng-1',
+      'project-new',
+      'consultant-1',
+    );
+    // After the link: the DB guard needs the engagement on the project.
+    expect(linkInserts).toHaveLength(1);
+  });
+
+  it('calls the hook for a linked project too', async () => {
+    const { service, assignments } = harness({});
+
+    await service.setUp('consultant-1', 'eng-1', {
+      mode: 'link',
+      project_id: '00000000-0000-0000-0000-000000000009',
+    });
+
+    expect(assignments.ensureProviderAssignment).toHaveBeenCalledWith(
+      'eng-1',
+      'project-9',
+      'consultant-1',
+    );
+  });
+
+  it('still sets the project up when the provider assignment fails', async () => {
+    const { service } = harness({
+      ensureProviderAssignment: jest
+        .fn()
+        .mockRejectedValue(new Error('guard said no')),
+    });
+
+    const result = await service.setUp('consultant-1', 'eng-1', {
+      mode: 'create',
+      title: 'x',
+    });
+
+    expect(result).toMatchObject({
+      project_id: 'project-new',
+      team_id: 'team-1',
+    });
+  });
+
+  it('never calls the hook when the set-up is refused', async () => {
+    const { service, assignments } = harness({ capacity: 'client' });
+    await expect(
+      service.setUp('client-1', 'eng-1', { mode: 'create', title: 'x' }),
+    ).rejects.toBeInstanceOf(NotFoundException);
+    expect(assignments.ensureProviderAssignment).not.toHaveBeenCalled();
   });
 });

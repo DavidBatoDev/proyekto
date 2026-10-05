@@ -2,6 +2,7 @@ import {
   Body,
   Controller,
   Get,
+  HttpCode,
   Param,
   ParseUUIDPipe,
   Post,
@@ -12,9 +13,12 @@ import { CurrentUser } from '../../../common/decorators/current-user.decorator';
 import { SupabaseAuthGuard } from '../../../common/guards/supabase-auth.guard';
 import type { AuthenticatedUser } from '../../../common/interfaces/authenticated-request.interface';
 import {
+  CreateAssignmentDto,
+  EndAssignmentDto,
   EngagementListQueryDto,
   SetUpEngagementProjectDto,
 } from './dto/engagements.dto';
+import { EngagementAssignmentsService } from './engagement-assignments.service';
 import { EngagementProjectService } from './engagement-project.service';
 import { EngagementsService } from './engagements.service';
 
@@ -31,6 +35,7 @@ export class EngagementsController {
   constructor(
     private readonly engagements: EngagementsService,
     private readonly engagementProjects: EngagementProjectService,
+    private readonly assignments: EngagementAssignmentsService,
   ) {}
 
   @Get()
@@ -76,5 +81,40 @@ export class EngagementsController {
     @Body() dto: SetUpEngagementProjectDto,
   ) {
     return this.engagementProjects.setUp(user.id, id, dto);
+  }
+
+  /**
+   * Who works on which project under this engagement, any status. Parties
+   * only (404 otherwise); the worker is named to provider-side parties only.
+   */
+  @Get(':id/assignments')
+  listAssignments(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('id', new ParseUUIDPipe({ errorHttpStatusCode: 404 })) id: string,
+  ) {
+    return this.assignments.list(user.id, id);
+  }
+
+  /** Assign the engagement's worker to a project (talent: hirer; client: the consultant themselves). */
+  @Post(':id/assignments')
+  createAssignment(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('id', new ParseUUIDPipe({ errorHttpStatusCode: 404 })) id: string,
+    @Body() dto: CreateAssignmentDto,
+  ) {
+    return this.assignments.create(user.id, id, dto);
+  }
+
+  /** End an active assignment; a running timer under it stops at the end. */
+  @Post(':id/assignments/:aid/end')
+  @HttpCode(200)
+  endAssignment(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('id', new ParseUUIDPipe({ errorHttpStatusCode: 404 })) id: string,
+    @Param('aid', new ParseUUIDPipe({ errorHttpStatusCode: 404 }))
+    assignmentId: string,
+    @Body() dto: EndAssignmentDto,
+  ) {
+    return this.assignments.end(user.id, id, assignmentId, dto);
   }
 }
