@@ -1,6 +1,6 @@
 # Time Management Rebuild
 
-> **⚠️ Partly built (2026-10-06).** M0 and M1 are applied on dev and prod and PR-0 is deployed. Backend PR-1 (`TimeModule`, the `/api/team-time` alias) is built and **held unmerged**; M2 and M3 are written but **not applied anywhere**. The web PR is not started. Live state per step: [Rollout Status](./migrations-and-rollout.md#rollout-status). Where PR-1 settled a question differently from this page, the page is corrected and the decision is tagged (D-numbers from the PR-1 build plan; the full list is in [backend › As Built in PR-1](./backend.md#as-built-in-pr-1)).
+> **⚠️ Partly built (2026-10-06).** M0 and M1 are applied on dev and prod and PR-0 is deployed. Backend PR-1 (`TimeModule`, the `/api/team-time` alias) is built and **held unmerged**; M2 and M3 are **applied to dev only** (2026-10-06, fully verified); prod waits for the go/no-go. The web PR is not started. Live state per step: [Rollout Status](./migrations-and-rollout.md#rollout-status). Where PR-1 settled a question differently from this page, the page is corrected and the decision is tagged (D-numbers from the PR-1 build plan; the full list is in [backend › As Built in PR-1](./backend.md#as-built-in-pr-1)).
 
 > **Last updated:** 2026-10-06 · **Status:** draft
 

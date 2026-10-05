@@ -1,6 +1,6 @@
 # Data Model
 
-> **⚠️ Partly built.** M0 and M1 are applied on dev and prod. M2 and M3 are written (untracked in `supabase/migrations/`) and dry-run on dev, but **not applied anywhere**. Where the files differ from this design, [As Built in M2 and M3](#as-built-in-m2-and-m3) records it and the sections below are corrected.
+> **⚠️ Partly built.** M0 and M1 are applied on dev and prod. M2 and M3 are written (untracked in `supabase/migrations/` until prod applies them) and **applied to dev only** (2026-10-06). Where the files differ from this design, [As Built in M2 and M3](#as-built-in-m2-and-m3) records it and the sections below are corrected.
 
 > **Last updated:** 2026-10-06 · **Status:** draft
 
