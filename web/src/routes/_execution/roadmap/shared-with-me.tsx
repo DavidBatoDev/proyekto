@@ -77,7 +77,7 @@ function SharedWithMePage() {
 							When someone shares a roadmap with you, it will appear here.
 						</p>
 						<Link
-							to="/"
+							to="/dashboard"
 							className="inline-flex items-center gap-2 px-6 py-3 bg-primary text-white rounded-lg hover:bg-primary/90 transition-colors"
 						>
 							Go to Home
