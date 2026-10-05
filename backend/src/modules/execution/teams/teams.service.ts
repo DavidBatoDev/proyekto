@@ -5,9 +5,11 @@ import {
   Injectable,
   Logger,
   NotFoundException,
+  Optional,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { SupabaseClient } from '@supabase/supabase-js';
+import type { Redis } from '@upstash/redis';
 import {
   MailerService,
   type SendMailResult,
@@ -16,8 +18,12 @@ import {
   fetchRoadmapSummaries,
   type ProjectRoadmapSummary,
 } from '../../../common/roadmap/roadmap-summary';
+import { UPSTASH_REDIS_CLIENT } from '../../../config/redis.tokens';
 import { SUPABASE_ADMIN } from '../../../config/supabase.module';
+import type { EntitlementRef } from '../../shared/entitlements/entitlement-keys';
 import { EntitlementsService } from '../../shared/entitlements/entitlements.service';
+import { bumpLoggingForEpoch } from '../time/time-cache';
+import { TimePolicyService } from '../time/time-policy.service';
 import { isEmailSuppressed } from '../../shared/notifications/email/email-suppression';
 import { NotificationsService } from '../../shared/notifications/notifications.service';
 import { buildTeamInviteEmail } from './team-invite-email.template';
@@ -184,14 +190,15 @@ void TEAM_SHARED_UPDATE_FIELDS;
  *    signed contracts and invoices, so an admin must not be able to change who
  *    gets paid.
  *  - retroactive_log_days / default_currency / pay_period_config drive payout
- *    windows and amounts.
+ *    windows and amounts. retroactive_log_days is also written through to the
+ *    team's time policy (D28), which is what the time module reads.
  *  - member_rates_enabled decides whether hours carry an internal cost at all,
  *    and payouts_enabled whether the team settles them here. An admin turning
  *    either on would be committing the team to paying people; turning them off
  *    would hide the rate card the owner set.
- *  - contract_enforcement decides whether a member without a signed contract
- *    may start a timer at all — that is the owner's commercial policy, and an
- *    admin loosening it would let uncontracted hours accrue against the team.
+ *  - contract_enforcement is deprecated: no effect since the time rebuild;
+ *    dropped in M5. It stays owner-only and is still stored, because the
+ *    current web sends it and a rollback to the old backend reads it.
  */
 const TEAM_OWNER_ONLY_UPDATE_FIELDS = [
   'legal_name',
@@ -306,6 +313,14 @@ export class TeamsService {
     private readonly config: ConfigService,
     private readonly workspaces: WorkspacesService,
     private readonly entitlements: EntitlementsService,
+    // Appended and optional so the positional spec harnesses keep compiling.
+    // TimeModule always provides it at runtime; absent, the D28 write-through
+    // is skipped.
+    @Optional() private readonly timePolicy?: TimePolicyService,
+    // Global and nullable (no Upstash credentials): the epoch bump is a no-op.
+    @Optional()
+    @Inject(UPSTASH_REDIS_CLIENT)
+    private readonly redis?: Redis | null,
   ) {}
 
   /**
@@ -638,22 +653,44 @@ export class TeamsService {
       patch.payouts_enabled = dto.payouts_enabled;
     }
     if (dto.contract_enforcement !== undefined) {
-      // The "no contract -> no timer" rollout dial (off | warn | enforce);
-      // owner-only like the rest of this patch, enforced in team-time.
+      // Deprecated: no effect since the time rebuild; dropped in M5. Still
+      // stored (owner-only) because today's web sends it and a rollback to the
+      // old backend reads it, but nothing in the time module consults it.
       patch.contract_enforcement = dto.contract_enforcement;
     }
     if (dto.retroactive_log_days !== undefined) {
+      // Kept on the team row for rollback safety until M5 (GET unchanged); the
+      // time module reads time_policies.retroactive_days, written through
+      // below once every check has passed (D28).
       patch.retroactive_log_days = dto.retroactive_log_days;
     }
     if (dto.default_currency !== undefined) {
       patch.default_currency = dto.default_currency;
     }
     if (dto.pay_period_config !== undefined) {
-      // `null` clears the config (falls back to the client default).
+      // `null` clears the config (falls back to the client default). Clearing
+      // is never a plan question, like switching tracking off: a downgraded
+      // team can always remove its custom cut-offs.
+      if (dto.pay_period_config !== null) {
+        await this.assertPayPeriodEditorAllowed(team);
+      }
       patch.pay_period_config =
         dto.pay_period_config === null
           ? null
           : this.validatePayPeriodConfig(dto.pay_period_config);
+    }
+
+    // D28 write-through, before the team row: the policy row is what the time
+    // module enforces, so if it fails nothing has changed anywhere and the
+    // caller can retry. 0 (or null) clears an existing override's value and
+    // never creates a row. setTeamRetroactiveDays does no authorisation; the
+    // owner-only check above is what guards it.
+    if (dto.retroactive_log_days !== undefined && this.timePolicy) {
+      await this.timePolicy.setTeamRetroactiveDays(
+        teamId,
+        dto.retroactive_log_days,
+        userId,
+      );
     }
 
     const { data, error } = await this.supabase
@@ -664,6 +701,20 @@ export class TeamsService {
       .single<TeamRow>();
     if (error || !data) {
       throw new Error(error?.message ?? 'Failed to update team');
+    }
+
+    // The For resolver caches its options for 30 s under an epoch. Turning
+    // tracking on or off adds or removes the team option; turning member rates
+    // on or off changes the option's rate_source and its routing hint. Curation
+    // and membership changes ride the 30 s TTL instead (accepted, CC17).
+    const trackingChanged =
+      dto.time_tracking_enabled !== undefined &&
+      dto.time_tracking_enabled !== team.time_tracking_enabled;
+    const ratesChanged =
+      dto.member_rates_enabled !== undefined &&
+      dto.member_rates_enabled !== team.member_rates_enabled;
+    if (trackingChanged || ratesChanged) {
+      await bumpLoggingForEpoch(this.redis ?? null);
     }
     return data;
   }
@@ -1125,12 +1176,39 @@ export class TeamsService {
    * is asked only in that rare case.
    */
   private async assertTimeTrackingAllowed(team: TeamRow): Promise<void> {
-    const ref =
-      team.workspace_id ??
-      (await this.entitlements.resolveScopeForTeam(team.id));
+    const ref = await this.planRefForTeam(team);
     await this.entitlements.assertFeature(ref, 'time_tracking', {
       context: 'enable',
     });
+  }
+
+  /**
+   * "Billing and pay cut-offs" (L14, E60): the cut-off schedule serves both
+   * hourly invoices and payouts, so either plan feature unlocks the editor
+   * (D39). Neither → the time_billable_invoices PlanLimitException, so the web
+   * shows its standard upgrade prompt.
+   */
+  private async assertPayPeriodEditorAllowed(team: TeamRow): Promise<void> {
+    const ref = await this.planRefForTeam(team);
+    const [invoices, payouts] = await Promise.all([
+      this.entitlements.hasFeature(ref, 'time_billable_invoices'),
+      this.entitlements.hasFeature(ref, 'time_payouts'),
+    ]);
+    if (invoices || payouts) return;
+    await this.entitlements.assertFeature(ref, 'time_billable_invoices');
+  }
+
+  /**
+   * The team's plan subject (D26), the same rule as
+   * TimePolicyService.planRefForTeam: its own workspace, else the team scope
+   * lookup. Never a raw null, which EntitlementsService reads as exempt.
+   */
+  private async planRefForTeam(team: TeamRow): Promise<EntitlementRef> {
+    if (this.timePolicy) return this.timePolicy.planRefForTeam(team);
+    return (
+      team.workspace_id ??
+      (await this.entitlements.resolveScopeForTeam(team.id))
+    );
   }
 
   async fetchTeamOrThrow(teamId: string): Promise<TeamRow> {
@@ -1179,6 +1257,11 @@ export class TeamsService {
   /**
    * Owner or admin. `action` only shapes the message, so existing callers keep
    * the exact string they raised before.
+   *
+   * The same predicate as team-authority.ts `isTeamManager` (rpc
+   * can_manage_team: owner_id, or a team_members role of owner/admin), which
+   * the time module and payouts use. This one stays because callers need the
+   * role back (owner-only fields); the update-permissions spec pins the parity.
    */
   async assertCanManageTeam(
     team: TeamRow,

@@ -6,6 +6,7 @@ import {
   InternalServerErrorException,
   Logger,
   NotFoundException,
+  Optional,
 } from '@nestjs/common';
 import { SupabaseClient } from '@supabase/supabase-js';
 import { RevokedUsersService } from '../../../common/auth/revoked-users.service';
@@ -13,6 +14,10 @@ import { RedisCacheInvalidationService } from '../../../common/cache/redis-cache
 import { RedisDataCacheService } from '../../../common/cache/redis-data-cache.service';
 import { REDIS_CACHE_KEYS } from '../../../common/cache/redis-cache.keys';
 import { SUPABASE_ADMIN } from '../../../config/supabase.module';
+import { TimeAuthorityService } from '../../execution/time/time-authority.service';
+import { TIMESHEET_SELECT } from '../../execution/time/time-entry.select';
+import { TimeNotificationsService } from '../../execution/time/time-notifications.service';
+import type { TimesheetRow } from '../../execution/time/time.types';
 import { AccountReauthService } from './account-reauth.service';
 import { AccountStorageService } from './account-storage.service';
 import {
@@ -81,6 +86,20 @@ const DELETION_ERRORS: Record<
     status: 'conflict',
     message: 'This team is referenced by a test fixture and cannot be deleted.',
   },
+  // Raised by the preflight blockers and the purge functions while a submitted
+  // timesheet or approved-but-unpaid time is open on the container (L39, E8).
+  // Temporary: they clear once the time is decided and paid. Neither key is a
+  // substring of another (translate matches by `includes`).
+  TEAM_HAS_OPEN_TIME: {
+    status: 'conflict',
+    message:
+      'This team has time waiting for approval or payment. Hand it to another member instead of deleting it.',
+  },
+  WORKSPACE_HAS_OPEN_TIME: {
+    status: 'conflict',
+    message:
+      'This workspace has time waiting for approval or payment. Hand it to another member instead of deleting it.',
+  },
   AUTH_SCRUB_FAILED: {
     status: 'conflict',
     message:
@@ -104,6 +123,10 @@ export class AccountService {
     private readonly revokedUsers: RevokedUsersService,
     private readonly cache: RedisDataCacheService,
     private readonly cacheInvalidation: RedisCacheInvalidationService,
+    // Appended and optional so the positional spec harnesses keep compiling;
+    // TimeModule provides both at runtime. Absent, the D54 notices are skipped.
+    @Optional() private readonly timeNotifications?: TimeNotificationsService,
+    @Optional() private readonly timeAuthority?: TimeAuthorityService,
   ) {}
 
   /** What deleting this account would do. Safe to call repeatedly. */
@@ -201,6 +224,12 @@ export class AccountService {
       );
     }
 
+    // delete_account sends the user's open and returned timesheets to their
+    // deciders in SQL, which cannot notify anyone (D54). Never throws.
+    await this.safely('timesheet notices', () =>
+      this.notifyOnDeletionSheets(userId),
+    );
+
     // Public directory caches are query-hash keyed, so without this the
     // deleted person keeps appearing on public marketplace pages until TTL.
     await this.safely('cache invalidation', async () => {
@@ -235,6 +264,46 @@ export class AccountService {
         `Storage sweep for deleted user ${userId} finished ${sweep.status}: ${sweep.error ?? 'unknown'}`,
       );
     }
+  }
+
+  /**
+   * `timesheet_submitted` to the deciders of each sheet `delete_account` just
+   * submitted (`submission_kind = 'on_deletion'`). Sheets routed to `auto` or
+   * `self` have no one to tell (cron job 4 finishes them). The member is a
+   * tombstone now, and TimeNotificationsService skips tombstones and the
+   * member, so only live deciders hear about it. One sheet's failure never
+   * stops the others.
+   */
+  private async notifyOnDeletionSheets(userId: string): Promise<void> {
+    const notifications = this.timeNotifications;
+    const authority = this.timeAuthority;
+    if (!notifications || !authority) return;
+
+    const { data, error } = await this.supabase
+      .from('timesheets')
+      .select(TIMESHEET_SELECT)
+      .eq('member_user_id', userId)
+      .eq('submission_kind', 'on_deletion')
+      .eq('status', 'submitted')
+      .not('approver_scope', 'in', '(auto,self)')
+      .order('id', { ascending: true });
+    if (error) throw new Error(error.message);
+    const sheets = (data ?? []) as unknown as TimesheetRow[];
+
+    await Promise.all(
+      sheets.map(async (sheet) => {
+        try {
+          const deciders = await authority.approversFor(sheet.id);
+          await notifications.sheetSubmitted(sheet, deciders, null);
+        } catch (err) {
+          this.logger.warn(
+            `Deletion notice for timesheet ${sheet.id} failed: ${
+              err instanceof Error ? err.message : String(err)
+            }`,
+          );
+        }
+      }),
+    );
   }
 
   private async safely(label: string, fn: () => Promise<void>): Promise<void> {

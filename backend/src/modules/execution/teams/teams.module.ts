@@ -5,6 +5,7 @@ import { ProjectAccessSyncModule } from '../projects/access-sync/access-sync.mod
 import { NotificationsModule } from '../../shared/notifications/notifications.module';
 import { EntitlementsCoreModule } from '../../shared/entitlements/entitlements-core.module';
 import { WorkspacesModule } from '../workspaces/workspaces.module';
+import { TimeModule } from '../time/time.module';
 import { TeamsController } from './teams.controller';
 import { TeamsService } from './teams.service';
 import { ProjectTeamsService } from './project-teams.service';
@@ -27,6 +28,9 @@ import {
     NotificationsModule,
     WorkspacesModule,
     EntitlementsCoreModule,
+    // TimePolicyService for the D28 retroactive write-through. TimeModule
+    // imports no teams or projects module, so there is no cycle (D25).
+    TimeModule,
   ],
   controllers: [
     TeamsController,

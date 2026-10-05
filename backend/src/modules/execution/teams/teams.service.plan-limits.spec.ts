@@ -16,13 +16,17 @@ import { PlanLimitException } from '../../shared/entitlements/plan-limit.excepti
 import { TeamsService } from './teams.service';
 
 /**
- * The two plan checks TeamsService owns:
+ * The plan checks TeamsService owns, and the time settings that ride on them:
  *   - createTeam counts against the workspace's team limit (through
  *     WorkspacesService.resolveWorkspaceForCreate), while the personal team
  *     provisioned after vetting never does;
  *   - switching time tracking ON is a Pro feature. Switching it off, or
  *     re-sending true, is never gated, so a downgraded team can always wind
- *     tracking down.
+ *     tracking down;
+ *   - the cut-off editor (pay_period_config) needs time_billable_invoices or
+ *     time_payouts (D39, E60); clearing it never does;
+ *   - retroactive_log_days is written through to the team time policy (D28),
+ *     and the tracking / member-rates toggles bump the logging-for epoch.
  */
 describe('TeamsService — plan limits', () => {
   const OWNER = 'user-owner';
@@ -52,9 +56,17 @@ describe('TeamsService — plan limits', () => {
       workspaces?: Record<string, jest.Mock>;
       viewerRole?: 'admin' | 'member' | null;
       personalTeam?: Record<string, unknown> | null;
+      /** Appended optional collaborators (D28 write-through, epoch bump). */
+      timePolicy?: Record<string, jest.Mock>;
+      redis?: { incr: jest.Mock } | null;
+      /** What the teams UPDATE ... .single() answers. */
+      updateResult?: { data: unknown; error: unknown };
+      /** Shared with the timePolicy mock so a spec can assert write order. */
+      order?: string[];
     } = {},
   ) {
     const team = { ...TEAM, ...options.team };
+    const order = options.order ?? [];
     const captured: {
       inserts: Array<{ table: string; payload: unknown }>;
       update?: Record<string, unknown>;
@@ -70,7 +82,10 @@ describe('TeamsService — plan limits', () => {
         return c;
       };
       c.update = (payload: Record<string, unknown>) => {
-        if (table === 'teams') captured.update = payload;
+        if (table === 'teams') {
+          captured.update = payload;
+          order.push('teams');
+        }
         return c;
       };
       c.delete = () => c;
@@ -95,7 +110,7 @@ describe('TeamsService — plan limits', () => {
                     : team,
                 error: null,
               },
-              single: { data: team, error: null },
+              single: options.updateResult ?? { data: team, error: null },
             },
             table,
           );
@@ -128,8 +143,10 @@ describe('TeamsService — plan limits', () => {
       { get: jest.fn() } as any,
       workspaces as any,
       entitlements,
+      options.timePolicy as any,
+      options.redis as any,
     );
-    return { service, captured, workspaces, entitlements };
+    return { service, captured, workspaces, entitlements, order };
   }
 
   describe('createTeam', () => {
@@ -374,6 +391,443 @@ describe('TeamsService — plan limits', () => {
         context: 'enable',
       });
       expect(captured.update).toBeUndefined();
+    });
+  });
+
+  /** A real EntitlementsService over the seeded matrix, every workspace on Free. */
+  function realFreeEntitlements(): EntitlementsService {
+    const repo = {
+      listLimitKeys: jest.fn(() => Promise.resolve(buildSeedKeyRows())),
+      listLimits: jest.fn(() => Promise.resolve(buildSeedLimitRows())),
+      getPlanStates: jest.fn(() => Promise.resolve([])),
+      getUsageCounts: jest.fn(() => Promise.resolve([])),
+      getLargestRoadmaps: jest.fn(() => Promise.resolve([])),
+      resolveSubject: jest.fn(() => Promise.resolve(null)),
+      countRoadmapNodes: jest.fn(() => Promise.resolve(new Map())),
+      listMemberWorkspaceIds: jest.fn(() => Promise.resolve([])),
+    };
+    const cache = {
+      rememberJson: jest.fn(
+        (_key: string, _ttl: number, load: () => Promise<unknown>) => load(),
+      ),
+      del: jest.fn(() => Promise.resolve()),
+    };
+    return new EntitlementsService(
+      repo as never,
+      cache as never,
+      { purgePaths: jest.fn(() => Promise.resolve()) } as never,
+    );
+  }
+
+  /**
+   * "Billing and pay cut-offs" (L14, E60, D39): the schedule serves both hourly
+   * invoices and payouts, so either feature opens the owner's editor.
+   */
+  describe('updateTeam — billing and pay cut-offs', () => {
+    const CONFIG = {
+      cadence: 'monthly',
+      periods: [
+        {
+          id: 'first-half',
+          label: '1st–15th',
+          start_day: 1,
+          end_day: 15,
+          pay_day: 20,
+          pay_month_offset: 0,
+        },
+        {
+          id: 'second-half',
+          label: '16th–end',
+          start_day: 16,
+          end_day: 'EOM',
+          pay_day: 5,
+          pay_month_offset: 1,
+        },
+      ],
+    };
+
+    function cutOffsDenied(): EntitlementsMock {
+      return denyingEntitlements({
+        kind: 'feature',
+        limit_key: 'time_billable_invoices',
+        label: 'Billable hours on invoices',
+        limit: null,
+        used: null,
+        context: 'write',
+        message: 'Billable hours on invoices are available on Pro and above.',
+      });
+    }
+
+    it('refuses a schedule when the plan has neither feature, and writes nothing', async () => {
+      const entitlements = cutOffsDenied();
+      const { service, captured } = build({ entitlements });
+
+      await expect(
+        service.updateTeam('team-1', OWNER, {
+          pay_period_config: CONFIG,
+        } as any),
+      ).rejects.toBeInstanceOf(PlanLimitException);
+      expect(entitlements.hasFeature).toHaveBeenCalledWith(
+        'ws-1',
+        'time_billable_invoices',
+      );
+      expect(entitlements.hasFeature).toHaveBeenCalledWith(
+        'ws-1',
+        'time_payouts',
+      );
+      // The exception names time_billable_invoices, so the upgrade prompt says
+      // Pro (the cheaper of the two ways in).
+      expect(entitlements.assertFeature).toHaveBeenCalledWith(
+        'ws-1',
+        'time_billable_invoices',
+      );
+      expect(captured.update).toBeUndefined();
+    });
+
+    it.each(['time_billable_invoices', 'time_payouts'])(
+      'opens the editor with %s alone',
+      async (key) => {
+        const entitlements = allowAllEntitlements();
+        entitlements.hasFeature.mockImplementation((_ref, k) =>
+          Promise.resolve(k === key),
+        );
+        const { service, captured } = build({ entitlements });
+
+        await service.updateTeam('team-1', OWNER, {
+          pay_period_config: CONFIG,
+        } as any);
+        expect(entitlements.assertFeature).not.toHaveBeenCalled();
+        expect(captured.update).toMatchObject({
+          pay_period_config: {
+            cadence: 'monthly',
+            periods: [
+              expect.objectContaining({ id: 'first-half', end_day: 15 }),
+              expect.objectContaining({ id: 'second-half', end_day: 'EOM' }),
+            ],
+          },
+        });
+      },
+    );
+
+    /** Like switching tracking off: a downgraded team can always fall back. */
+    it('never gates clearing the schedule', async () => {
+      const entitlements = cutOffsDenied();
+      const { service, captured } = build({ entitlements });
+
+      await service.updateTeam('team-1', OWNER, {
+        pay_period_config: null,
+      } as any);
+      expect(entitlements.hasFeature).not.toHaveBeenCalled();
+      expect(entitlements.assertFeature).not.toHaveBeenCalled();
+      expect(captured.update).toMatchObject({ pay_period_config: null });
+    });
+
+    it('answers the plan before the schedule shape', async () => {
+      const { service } = build({ entitlements: cutOffsDenied() });
+      await expect(
+        service.updateTeam('team-1', OWNER, {
+          pay_period_config: { cadence: 'weekly', periods: [] },
+        } as any),
+      ).rejects.toBeInstanceOf(PlanLimitException);
+    });
+
+    it('still validates the schedule once the plan allows it', async () => {
+      const { service, captured } = build();
+      await expect(
+        service.updateTeam('team-1', OWNER, {
+          pay_period_config: { cadence: 'weekly', periods: [] },
+        } as any),
+      ).rejects.toThrow(/cadence/);
+      expect(captured.update).toBeUndefined();
+    });
+
+    /** Owner-only first: an admin gets the 403, never a plan answer. */
+    it('refuses an admin before consulting the plan', async () => {
+      const entitlements = cutOffsDenied();
+      const { service } = build({ entitlements, viewerRole: 'admin' });
+
+      await expect(
+        service.updateTeam('team-1', 'user-admin', {
+          pay_period_config: CONFIG,
+        } as any),
+      ).rejects.toBeInstanceOf(ForbiddenException);
+      expect(entitlements.hasFeature).not.toHaveBeenCalled();
+    });
+
+    it('judges a team with no workspace through its team scope, never a raw null', async () => {
+      const entitlements = cutOffsDenied();
+      const scope = { workspaceId: null, exempt: false };
+      entitlements.resolveScopeForTeam.mockResolvedValue(scope);
+      const { service } = build({ entitlements, team: { workspace_id: null } });
+
+      await expect(
+        service.updateTeam('team-1', OWNER, {
+          pay_period_config: CONFIG,
+        } as any),
+      ).rejects.toBeInstanceOf(PlanLimitException);
+      expect(entitlements.resolveScopeForTeam).toHaveBeenCalledWith('team-1');
+      expect(entitlements.hasFeature).toHaveBeenCalledWith(
+        scope,
+        'time_payouts',
+      );
+      expect(entitlements.assertFeature).toHaveBeenCalledWith(
+        scope,
+        'time_billable_invoices',
+      );
+    });
+
+    it("uses the time module's plan subject when it is wired", async () => {
+      const entitlements = allowAllEntitlements();
+      const timePolicy = {
+        planRefForTeam: jest.fn().mockResolvedValue('ws-plan'),
+        setTeamRetroactiveDays: jest.fn(),
+      };
+      const { service } = build({ entitlements, timePolicy });
+
+      await service.updateTeam('team-1', OWNER, {
+        pay_period_config: CONFIG,
+      } as any);
+      expect(timePolicy.planRefForTeam).toHaveBeenCalledWith(
+        expect.objectContaining({ id: 'team-1', workspace_id: 'ws-1' }),
+      );
+      expect(entitlements.hasFeature).toHaveBeenCalledWith(
+        'ws-plan',
+        'time_billable_invoices',
+      );
+    });
+
+    it('carries the standard feature payload from a real EntitlementsService on Free', async () => {
+      const { service, captured } = build({
+        entitlements: realFreeEntitlements(),
+      });
+
+      const error = await service
+        .updateTeam('team-1', OWNER, { pay_period_config: CONFIG } as any)
+        .then(
+          () => null,
+          (err: unknown) => err,
+        );
+
+      expect(error).toBeInstanceOf(PlanLimitException);
+      expect((error as PlanLimitException).payload).toMatchObject({
+        kind: 'feature',
+        limit_key: 'time_billable_invoices',
+        plan: 'free',
+        upgrade_plan: 'pro',
+        workspace_id: 'ws-1',
+      });
+      expect(captured.update).toBeUndefined();
+    });
+  });
+
+  /**
+   * D28: teams.retroactive_log_days stays on the row (rollback safety until
+   * M5), and is written through to the team's time policy, which is what the
+   * time module enforces.
+   */
+  describe('updateTeam — retroactive days write-through', () => {
+    function policy(order: string[] = []) {
+      return {
+        planRefForTeam: jest.fn().mockResolvedValue('ws-1'),
+        setTeamRetroactiveDays: jest.fn(() => {
+          order.push('policy');
+          return Promise.resolve();
+        }),
+      };
+    }
+
+    it('writes n > 0 to the policy and keeps the team column', async () => {
+      const order: string[] = [];
+      const timePolicy = policy(order);
+      const { service, captured } = build({ timePolicy, order });
+
+      await service.updateTeam('team-1', OWNER, {
+        retroactive_log_days: 14,
+      } as any);
+      expect(timePolicy.setTeamRetroactiveDays).toHaveBeenCalledWith(
+        'team-1',
+        14,
+        OWNER,
+      );
+      expect(captured.update).toMatchObject({ retroactive_log_days: 14 });
+      // Policy first: if it fails, nothing has changed anywhere.
+      expect(order).toEqual(['policy', 'teams']);
+    });
+
+    it.each([0, null])(
+      'passes %p through, which clears an override and never creates one',
+      async (days) => {
+        const timePolicy = policy();
+        const { service, captured } = build({ timePolicy });
+
+        await service.updateTeam('team-1', OWNER, {
+          retroactive_log_days: days,
+        } as any);
+        expect(timePolicy.setTeamRetroactiveDays).toHaveBeenCalledWith(
+          'team-1',
+          days,
+          OWNER,
+        );
+        expect(captured.update).toMatchObject({ retroactive_log_days: days });
+      },
+    );
+
+    it('leaves the policy alone when the field is not sent', async () => {
+      const timePolicy = policy();
+      const { service } = build({ timePolicy });
+
+      await service.updateTeam('team-1', OWNER, { name: 'Renamed' } as any);
+      expect(timePolicy.setTeamRetroactiveDays).not.toHaveBeenCalled();
+    });
+
+    it('writes nothing to the team row when the policy write fails', async () => {
+      const timePolicy = policy();
+      timePolicy.setTeamRetroactiveDays.mockRejectedValue(
+        new Error('policy write failed'),
+      );
+      const { service, captured } = build({ timePolicy });
+
+      await expect(
+        service.updateTeam('team-1', OWNER, {
+          retroactive_log_days: 7,
+        } as any),
+      ).rejects.toThrow('policy write failed');
+      expect(captured.update).toBeUndefined();
+    });
+
+    /** The write-through does no authorisation of its own. */
+    it('never reaches the policy for an admin', async () => {
+      const timePolicy = policy();
+      const { service } = build({ timePolicy, viewerRole: 'admin' });
+
+      await expect(
+        service.updateTeam('team-1', 'user-admin', {
+          retroactive_log_days: 30,
+        } as any),
+      ).rejects.toBeInstanceOf(ForbiddenException);
+      expect(timePolicy.setTeamRetroactiveDays).not.toHaveBeenCalled();
+    });
+
+    it('never reaches the policy when another check in the patch fails', async () => {
+      const timePolicy = policy();
+      const { service } = build({ timePolicy });
+
+      await expect(
+        service.updateTeam('team-1', OWNER, {
+          retroactive_log_days: 30,
+          payouts_enabled: true,
+        } as any),
+      ).rejects.toThrow(/member rates/i);
+      expect(timePolicy.setTeamRetroactiveDays).not.toHaveBeenCalled();
+    });
+
+    it('still saves the team column when the time module is not wired', async () => {
+      const { service, captured } = build();
+      await service.updateTeam('team-1', OWNER, {
+        retroactive_log_days: 14,
+      } as any);
+      expect(captured.update).toMatchObject({ retroactive_log_days: 14 });
+    });
+
+    it('keeps storing contract_enforcement, which no longer has any effect', async () => {
+      const timePolicy = policy();
+      const { service, captured } = build({ timePolicy });
+
+      await service.updateTeam('team-1', OWNER, {
+        contract_enforcement: 'enforce',
+      } as any);
+      expect(captured.update).toMatchObject({
+        contract_enforcement: 'enforce',
+      });
+      expect(timePolicy.setTeamRetroactiveDays).not.toHaveBeenCalled();
+    });
+  });
+
+  /**
+   * The For resolver caches options for 30 s under `time:lf:epoch`. Tracking
+   * adds or removes the team option and member rates change its rate source,
+   * so either toggle bumps the epoch (CC17).
+   */
+  describe('updateTeam — logging-for epoch', () => {
+    /** [field, patch, the team's current values] */
+    const TOGGLES: Array<
+      [string, Record<string, unknown>, Record<string, unknown>]
+    > = [
+      ['time_tracking_enabled', { time_tracking_enabled: true }, {}],
+      [
+        'time_tracking_enabled',
+        { time_tracking_enabled: false },
+        { time_tracking_enabled: true },
+      ],
+      ['member_rates_enabled', { member_rates_enabled: true }, {}],
+      [
+        'member_rates_enabled',
+        { member_rates_enabled: false },
+        { member_rates_enabled: true },
+      ],
+    ];
+
+    it.each(TOGGLES)(
+      'bumps it when %s changes',
+      async (_field, patch, current) => {
+        const redis = { incr: jest.fn().mockResolvedValue(2) };
+        const { service } = build({ redis, team: current });
+
+        await service.updateTeam('team-1', OWNER, patch as any);
+        expect(redis.incr).toHaveBeenCalledTimes(1);
+        expect(redis.incr).toHaveBeenCalledWith('time:lf:epoch');
+      },
+    );
+
+    it('does not bump it for a re-sent value or an unrelated field', async () => {
+      const redis = { incr: jest.fn().mockResolvedValue(2) };
+      const { service } = build({
+        redis,
+        team: { time_tracking_enabled: true, member_rates_enabled: true },
+      });
+
+      await service.updateTeam('team-1', OWNER, {
+        time_tracking_enabled: true,
+        member_rates_enabled: true,
+        name: 'Renamed',
+      } as any);
+      expect(redis.incr).not.toHaveBeenCalled();
+    });
+
+    it('bumps only after the team row is saved', async () => {
+      const redis = { incr: jest.fn().mockResolvedValue(2) };
+      const { service } = build({
+        redis,
+        updateResult: { data: null, error: { message: 'boom' } },
+      });
+
+      await expect(
+        service.updateTeam('team-1', OWNER, {
+          time_tracking_enabled: true,
+        } as any),
+      ).rejects.toThrow();
+      expect(redis.incr).not.toHaveBeenCalled();
+    });
+
+    it('never fails the update when Redis does', async () => {
+      const redis = { incr: jest.fn().mockRejectedValue(new Error('down')) };
+      const { service, captured } = build({ redis });
+
+      await expect(
+        service.updateTeam('team-1', OWNER, {
+          member_rates_enabled: true,
+        } as any),
+      ).resolves.toBeDefined();
+      expect(captured.update).toMatchObject({ member_rates_enabled: true });
+    });
+
+    it('is a no-op without Redis', async () => {
+      const { service } = build({ redis: null });
+      await expect(
+        service.updateTeam('team-1', OWNER, {
+          time_tracking_enabled: true,
+        } as any),
+      ).resolves.toBeDefined();
     });
   });
 });

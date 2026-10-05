@@ -110,10 +110,22 @@ export class CreatePayoutDto {
   @IsUUID()
   member_user_id!: string;
 
+  /**
+   * The time entries to pay. Exactly one of entry_ids / log_ids is required;
+   * the service refuses both or neither with a 400 (D37).
+   */
+  @IsOptional()
   @IsArray()
   @ArrayMinSize(1)
   @IsUUID('4', { each: true })
-  log_ids!: string[];
+  entry_ids?: string[];
+
+  /** Deprecated synonym of entry_ids, still sent by today's web (D37). */
+  @IsOptional()
+  @IsArray()
+  @ArrayMinSize(1)
+  @IsUUID('4', { each: true })
+  log_ids?: string[];
 
   @IsOptional()
   @IsUUID()

@@ -8,7 +8,22 @@ import {
 } from '@nestjs/common';
 import { SupabaseClient } from '@supabase/supabase-js';
 import { SUPABASE_ADMIN } from '../../../config/supabase.module';
-import { NotificationsService } from '../../shared/notifications/notifications.service';
+import { isTeamManager } from '../../execution/teams/team-authority';
+import {
+  mapTimeDbError,
+  type PgErrorLike,
+  throwTimeDb,
+  timeError,
+  timeNotFound,
+} from '../../execution/time/time-errors';
+import { TimeNotificationsService } from '../../execution/time/time-notifications.service';
+import {
+  addDays,
+  localDate,
+  localRangeToUtc,
+} from '../../execution/time/time-periods';
+import { TimePolicyService } from '../../execution/time/time-policy.service';
+import { EntitlementsService } from '../../shared/entitlements/entitlements.service';
 import { UploadsService } from '../../shared/uploads/uploads.controller';
 import {
   CreatePayoutDto,
@@ -16,8 +31,6 @@ import {
   UpdatePayoutMethodDto,
 } from './dto/payouts.dto';
 import { QaFixturePolicyService } from '../../shared/qa-fixtures/qa-fixture-policy.service';
-import { teamTimePath } from '../../execution/workspaces/workspace-paths';
-import { WorkspacesService } from '../../execution/workspaces/workspaces.service';
 
 const PAYOUT_METHOD_SELECT = `
   id, user_id, method_type, label, account_name, account_identifier,
@@ -74,16 +87,95 @@ export interface PayoutRow {
   updated_at: string;
 }
 
+/**
+ * The pre-check's view of an entry: who and what it belongs to, and whether it
+ * is Owed. Never `status` (it drops in M5; owed-ness is payable_seconds +
+ * payout_id + legacy_status, CHANGE-5).
+ */
+const PAYABLE_CHECK_SELECT =
+  'id, team_id, member_user_id, context_kind, payout_id, legacy_status, ' +
+  'payable_seconds, rate_type_snapshot, currency_snapshot';
+
+/** Owed rows. Column hints only: time-table FK names rename in M5. */
+const OWED_SELECT =
+  'id, member_user_id, currency_snapshot, payable_seconds, rate_snapshot, ' +
+  'member:profiles!member_user_id(id, display_name, avatar_url, first_name, last_name, email)';
+
+/** A payout's entries (`logs` and `entries` in GET /payouts/:id). */
+const PAYOUT_ENTRY_SELECT =
+  'id, project_id, task_id, started_at, ended_at, duration_seconds, payable_seconds, ' +
+  'rate_snapshot, rate_type_snapshot, currency_snapshot, ' +
+  'task:roadmap_tasks!task_id(id, title), project:projects!project_id(id, title)';
+
+/** Owed is read in pages; PostgREST caps a response at 1000 rows. */
+const OWED_PAGE = 1000;
+
+const LOCAL_DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
+
+/** Copy for refusals the payout RPCs raise as plain text (never echoed: D55). */
+const PAYOUT_NOT_PAYABLE_MESSAGE =
+  "Some of this time can't be paid any more. Reload and try again.";
+const PAYOUT_ALREADY_VOID_MESSAGE = 'This payment is already void.';
+const PAYOUT_VOID_REFUSED_MESSAGE =
+  "Proyekto couldn't void this payment. Reload and try again.";
+
+interface PayableEntryRow {
+  id: string;
+  team_id: string | null;
+  member_user_id: string | null;
+  context_kind: string;
+  payout_id: string | null;
+  legacy_status: string | null;
+  payable_seconds: number | null;
+  rate_type_snapshot: string;
+  currency_snapshot: string;
+}
+
+interface TeamGateRow {
+  id: string;
+  owner_id: string;
+  workspace_id: string | null;
+  time_tracking_enabled: boolean;
+  payouts_enabled: boolean;
+}
+
+export interface OwedMember {
+  id: string;
+  display_name: string | null;
+  avatar_url: string | null;
+  first_name: string | null;
+  last_name: string | null;
+  email: string | null;
+}
+
+export interface OwedRow {
+  member_user_id: string;
+  member: OwedMember | null;
+  currency: string;
+  /** Kept for today's callers (D37); always equals entry_count. */
+  log_count: number;
+  entry_count: number;
+  hours: number;
+  amount: number;
+}
+
+export interface PayoutDetail extends PayoutRow {
+  /** Kept for today's web (D37); the same rows as `entries`. */
+  logs: unknown[];
+  entries: unknown[];
+}
+
 @Injectable()
 export class PayoutsService {
   private readonly logger = new Logger(PayoutsService.name);
 
   constructor(
     @Inject(SUPABASE_ADMIN) private readonly supabase: SupabaseClient,
-    private readonly notifications: NotificationsService,
     private readonly uploads: UploadsService,
     private readonly qaFixtures: QaFixturePolicyService,
-    private readonly workspaces: WorkspacesService,
+    private readonly entitlements: EntitlementsService,
+    private readonly timePolicy: TimePolicyService,
+    private readonly timeNotifications: TimeNotificationsService,
   ) {}
 
   // ─── payout methods (owner-scoped) ───────────────────────────────────
@@ -209,7 +301,7 @@ export class PayoutsService {
     teamId: string,
     memberId: string,
   ): Promise<PayoutMethodRow[]> {
-    await this.assertTeamApprover(callerId, teamId);
+    await this.assertTeamPayer(callerId, teamId);
     await this.assertMemberOfTeam(memberId, teamId);
     const { data, error } = await this.supabase
       .from('payout_methods')
@@ -224,61 +316,30 @@ export class PayoutsService {
 
   // ─── payouts ──────────────────────────────────────────────────────────
 
+  /**
+   * Records a payment for Owed team entries (approved, team context, no payout,
+   * no legacy marker; CHANGE-5) of one member and one currency. The RPC still
+   * takes `p_log_ids` and recomputes the authoritative total
+   * (round(Σ payable_seconds/3600 × rate_snapshot, 2), once); the checks here
+   * give the caller a precise refusal before it runs.
+   */
   async createPayout(
     callerId: string,
     dto: CreatePayoutDto,
   ): Promise<PayoutRow> {
-    await this.assertTeamApprover(callerId, dto.team_id);
+    const entryIds = this.requestedEntryIds(dto);
+    await this.assertCanSettle(callerId, dto.team_id);
     await this.qaFixtures.assertTeamSideEffectAllowed(
       dto.team_id,
       'Payout creation',
     );
+    // Also refused by the RPC; checked first so the caller gets the 403
+    // without any entry being read.
     if (callerId === dto.member_user_id) {
-      throw new ForbiddenException('You cannot pay your own time logs.');
+      throw timeError('PAYOUT_SELF_NOT_ALLOWED');
     }
 
-    const { data, error } = await this.supabase
-      .from('task_time_logs')
-      .select(
-        'id, team_id, member_user_id, status, payout_id, currency_snapshot',
-      )
-      .in('id', dto.log_ids);
-    if (error) throw new Error(error.message);
-    const logs = (data ?? []) as Array<{
-      id: string;
-      team_id: string | null;
-      member_user_id: string;
-      status: string;
-      payout_id: string | null;
-      currency_snapshot: string;
-    }>;
-
-    if (logs.length !== dto.log_ids.length) {
-      throw new NotFoundException('One or more logs were not found.');
-    }
-    for (const log of logs) {
-      if (
-        log.team_id !== dto.team_id ||
-        log.member_user_id !== dto.member_user_id
-      ) {
-        throw new BadRequestException(
-          'All logs must belong to the same member and team.',
-        );
-      }
-      if (log.status !== 'approved') {
-        throw new BadRequestException('Only approved logs can be paid.');
-      }
-      if (log.payout_id) {
-        throw new BadRequestException('One or more logs are already paid.');
-      }
-    }
-    const currencies = new Set(logs.map((l) => l.currency_snapshot));
-    if (currencies.size !== 1) {
-      throw new BadRequestException(
-        'A payout must cover logs of a single currency.',
-      );
-    }
-    const currency = logs[0].currency_snapshot;
+    const currency = await this.assertEntriesPayable(dto, entryIds);
 
     if (dto.payout_method_id) {
       // Confirm the chosen method belongs to the member being paid.
@@ -288,7 +349,7 @@ export class PayoutsService {
         .eq('id', dto.payout_method_id)
         .eq('user_id', dto.member_user_id)
         .maybeSingle();
-      if (methodErr) throw new Error(methodErr.message);
+      if (methodErr) throwTimeDb(methodErr as PgErrorLike);
       if (!method) {
         throw new BadRequestException(
           'Selected payout method does not belong to this member.',
@@ -296,14 +357,15 @@ export class PayoutsService {
       }
     }
 
-    const { data: created, error: rpcErr } = await this.supabase.rpc(
+    const { data: created, error: rpcErr } = (await this.supabase.rpc(
       'create_payout_and_mark_paid',
       {
         p_team_id: dto.team_id,
         p_member_user_id: dto.member_user_id,
         p_created_by: callerId,
         p_currency: currency,
-        p_log_ids: dto.log_ids,
+        // The RPC keeps its parameter name (L15); the values are entry ids.
+        p_log_ids: entryIds,
         p_payout_method_id: dto.payout_method_id ?? null,
         p_reference_number: dto.reference_number ?? null,
         p_proof_path: dto.proof_path ?? null,
@@ -311,11 +373,21 @@ export class PayoutsService {
         p_paid_at: dto.paid_at ?? new Date().toISOString(),
         p_source: dto.source ?? 'batch',
       },
-    );
-    if (rpcErr) throw new BadRequestException(rpcErr.message);
-    const payout = created as unknown as PayoutRow;
+    )) as { data: unknown; error: PgErrorLike | null };
+    if (rpcErr) this.payoutRpcError(rpcErr, 'create');
+    const payout = created as PayoutRow;
 
-    await this.notifyPaid(payout, callerId, dto.log_ids.length);
+    // Awaited, never detached (Cloud Run freezes CPU after the response), and
+    // it never throws (D51). The notice carries no amount (CHANGE-19).
+    await this.timeNotifications.payoutRecorded(
+      {
+        id: payout.id,
+        member_user_id: payout.member_user_id,
+        team_id: payout.team_id,
+      },
+      entryIds.length,
+      callerId,
+    );
     return payout;
   }
 
@@ -324,7 +396,7 @@ export class PayoutsService {
     teamId: string,
     memberId?: string,
   ): Promise<PayoutRow[]> {
-    await this.assertTeamApprover(callerId, teamId);
+    await this.assertTeamPayer(callerId, teamId);
     let q = this.supabase
       .from('payouts')
       .select(PAYOUT_SELECT)
@@ -332,80 +404,67 @@ export class PayoutsService {
       .order('paid_at', { ascending: false });
     if (memberId) q = q.eq('member_user_id', memberId);
     const { data, error } = await q;
-    if (error) throw new Error(error.message);
+    if (error) throwTimeDb(error as PgErrorLike);
     return (data ?? []) as unknown as PayoutRow[];
   }
 
   /**
-   * Outstanding balances owed to members: approved (⟹ unpaid) logs grouped by
-   * (member, currency), summed with the same fee formula the payout RPC uses.
-   * Drives the Payouts page "To pay" section. Optional from/to scopes it to a
-   * cut-off window. A member can appear once per currency they have logs in.
+   * Outstanding balances: Owed team entries (approved, team context, no
+   * payout, no legacy marker; fixed-rate time excluded, since it is paid
+   * manually) grouped by (member, currency). `from` / `until` are local dates
+   * in the team's policy timezone (L65), turned into UTC instants; never a raw
+   * comparison on started_at. Each bucket's amount is
+   * round(Σ payable_seconds/3600 × rate_snapshot, 2), rounded once, which is
+   * what the payout RPC would record for the same entries. `pay_period_config`
+   * only suggests `until`; the web picks it.
    */
   async listTeamOwed(
     callerId: string,
     teamId: string,
-    from?: string,
-    to?: string,
-  ): Promise<
-    Array<{
-      member_user_id: string;
-      member: {
-        id: string;
-        display_name: string | null;
-        avatar_url: string | null;
-        first_name: string | null;
-        last_name: string | null;
-        email: string | null;
-      } | null;
-      currency: string;
-      log_count: number;
-      hours: number;
-      amount: number;
-    }>
-  > {
-    await this.assertTeamApprover(callerId, teamId);
-    const PAGE = 1000;
-    type Bucket = {
-      member_user_id: string;
-      member: {
-        id: string;
-        display_name: string | null;
-        avatar_url: string | null;
-        first_name: string | null;
-        last_name: string | null;
-        email: string | null;
-      } | null;
-      currency: string;
-      log_count: number;
+    range: { from?: string; until?: string } = {},
+  ): Promise<OwedRow[]> {
+    await this.assertCanSettle(callerId, teamId);
+    const tz = await this.timePolicy.teamTimezone(teamId);
+    const fromDate = this.owedDateBound(range.from, tz, 'from');
+    const untilDate = this.owedDateBound(range.until, tz, 'until');
+    const fromIso = fromDate
+      ? localRangeToUtc({ start: fromDate, end: fromDate }, tz).fromIso
+      : null;
+    const untilExclusiveIso = untilDate
+      ? localRangeToUtc({ start: untilDate, end: untilDate }, tz).toExclusiveIso
+      : null;
+
+    type Bucket = Omit<OwedRow, 'hours' | 'amount'> & {
       seconds: number;
-      amount: number;
+      raw: number;
     };
     const map = new Map<string, Bucket>();
 
-    for (let offset = 0; ; offset += PAGE) {
+    for (let offset = 0; ; offset += OWED_PAGE) {
       let q = this.supabase
-        .from('task_time_logs')
-        .select(
-          `member_user_id, currency_snapshot, duration_seconds, rate_snapshot,
-           member:profiles!task_time_logs_member_user_id_fkey(id, display_name, avatar_url, first_name, last_name, email)`,
-        )
+        .from('time_entries')
+        .select(OWED_SELECT)
         .eq('team_id', teamId)
-        .eq('status', 'approved')
+        .eq('context_kind', 'team')
+        .not('payable_seconds', 'is', null)
         .is('payout_id', null)
-        .order('started_at', { ascending: false })
-        .range(offset, offset + PAGE - 1);
-      if (from) q = q.gte('started_at', from);
-      if (to) q = q.lte('started_at', to);
+        .is('legacy_status', null)
+        .neq('rate_type_snapshot', 'fixed');
+      if (fromIso) q = q.gte('started_at', fromIso);
+      if (untilExclusiveIso) q = q.lt('started_at', untilExclusiveIso);
 
-      const { data, error } = await q;
-      if (error) throw new Error(error.message);
+      const { data, error } = await q
+        .order('started_at', { ascending: false })
+        .order('id', { ascending: true })
+        .range(offset, offset + OWED_PAGE - 1);
+      if (error) throwTimeDb(error as PgErrorLike);
       const rows = (data ?? []) as unknown as Array<{
+        id: string;
         member_user_id: string;
         currency_snapshot: string | null;
-        duration_seconds: number | null;
+        payable_seconds: number | null;
         rate_snapshot: number | string | null;
-        member: Bucket['member'];
+        member: OwedMember | OwedMember[] | null;
       }>;
       for (const row of rows) {
         const currency = row.currency_snapshot || 'USD';
@@ -414,66 +473,77 @@ export class PayoutsService {
         if (!bucket) {
           bucket = {
             member_user_id: row.member_user_id,
-            member: row.member ?? null,
+            member: Array.isArray(row.member)
+              ? (row.member[0] ?? null)
+              : (row.member ?? null),
             currency,
             log_count: 0,
+            entry_count: 0,
             seconds: 0,
-            amount: 0,
+            raw: 0,
           };
           map.set(key, bucket);
         }
-        const seconds = row.duration_seconds ?? 0;
+        const seconds = Math.max(0, row.payable_seconds ?? 0);
         const rate = Number(row.rate_snapshot ?? 0);
         bucket.log_count += 1;
-        if (seconds > 0) bucket.seconds += seconds;
-        if (Number.isFinite(rate) && rate > 0 && seconds > 0) {
-          bucket.amount += (seconds / 3600) * rate;
+        bucket.entry_count += 1;
+        bucket.seconds += seconds;
+        if (Number.isFinite(rate) && rate > 0) {
+          bucket.raw += (seconds / 3600) * rate;
         }
       }
-      if (rows.length < PAGE) break;
+      if (rows.length < OWED_PAGE) break;
     }
 
     return Array.from(map.values())
-      .map((b) => ({
-        member_user_id: b.member_user_id,
-        member: b.member,
-        currency: b.currency,
-        log_count: b.log_count,
-        hours: b.seconds / 3600,
-        amount: Math.round(b.amount * 100) / 100,
-      }))
+      .map(
+        (b): OwedRow => ({
+          member_user_id: b.member_user_id,
+          member: b.member,
+          currency: b.currency,
+          log_count: b.log_count,
+          entry_count: b.entry_count,
+          hours: b.seconds / 3600,
+          // Once per (member, currency), never per entry (L63).
+          amount: Math.round(b.raw * 100) / 100,
+        }),
+      )
       .sort((a, b) => b.amount - a.amount);
   }
 
-  async getPayout(
-    callerId: string,
-    payoutId: string,
-  ): Promise<PayoutRow & { logs: unknown[] }> {
+  /**
+   * A payout and the entries it paid. `logs` is kept for today's web (D37)
+   * and `entries` carries the same rows. Each row says `status: 'paid'`, as
+   * the old per-log status did, without reading time_entries.status: every
+   * entry still pointing at this payout is paid by it.
+   */
+  async getPayout(callerId: string, payoutId: string): Promise<PayoutDetail> {
     const payout = await this.fetchPayoutOrThrow(payoutId);
     await this.assertCanViewPayout(callerId, payout);
-    const { data: logs, error } = await this.supabase
-      .from('task_time_logs')
-      .select(
-        `id, project_id, task_id, started_at, ended_at, duration_seconds,
-         rate_snapshot, currency_snapshot, status,
-         task:roadmap_tasks!task_time_logs_task_id_fkey(id, title),
-         project:projects!task_time_logs_project_id_fkey(id, title)`,
-      )
+    const { data, error } = await this.supabase
+      .from('time_entries')
+      .select(PAYOUT_ENTRY_SELECT)
       .eq('payout_id', payoutId)
-      .order('started_at', { ascending: true });
-    if (error) throw new Error(error.message);
-    return { ...payout, logs: (logs ?? []) as unknown[] };
+      .order('started_at', { ascending: true })
+      .order('id', { ascending: true });
+    if (error) throwTimeDb(error as PgErrorLike);
+    const entries = ((data ?? []) as unknown as Record<string, unknown>[]).map(
+      (row) => ({ ...row, status: 'paid' }),
+    );
+    return { ...payout, logs: entries, entries };
   }
 
+  /** Never plan-gated: a team on a lower plan can always undo a payment. */
   async voidPayout(callerId: string, payoutId: string): Promise<PayoutRow> {
     const payout = await this.fetchPayoutOrThrow(payoutId);
-    await this.assertTeamApprover(callerId, payout.team_id);
-    const { data, error } = await this.supabase.rpc('void_payout_and_revert', {
+    await this.assertTeamPayer(callerId, payout.team_id);
+    const { data, error } = (await this.supabase.rpc('void_payout_and_revert', {
       p_payout_id: payoutId,
       p_actor: callerId,
-    });
-    if (error) throw new BadRequestException(error.message);
-    return data as unknown as PayoutRow;
+    })) as { data: unknown; error: PgErrorLike | null };
+    if (error) this.payoutRpcError(error, 'void');
+    return data as PayoutRow;
   }
 
   async getProofUrl(
@@ -549,37 +619,47 @@ export class PayoutsService {
       .select(PAYOUT_SELECT)
       .eq('id', payoutId)
       .maybeSingle();
-    if (error) throw new Error(error.message);
+    if (error) throwTimeDb(error as PgErrorLike);
     if (!data) throw new NotFoundException('Payout not found.');
     return data as unknown as PayoutRow;
   }
 
+  /** The member reads their own payouts with no other check (never gated). */
   private async assertCanViewPayout(
     callerId: string,
     payout: PayoutRow,
   ): Promise<void> {
     if (payout.member_user_id === callerId) return;
-    await this.assertTeamApprover(callerId, payout.team_id);
+    await this.assertTeamPayer(callerId, payout.team_id);
   }
 
-  /** Caller is the team owner or a team admin. Mirrors TeamTimeService. */
-  private async assertTeamApprover(
+  /**
+   * A team manager (isTeamManager: owner_id, or a team_members role of
+   * owner/admin) of a team that tracks time and records payouts here. Flags
+   * are checked after the manager check, so someone outside the team learns
+   * nothing about its settings. No plan check: listing, viewing and voiding
+   * stay open on any plan (only create and owed need time_payouts).
+   */
+  private async assertTeamPayer(
     callerId: string,
     teamId: string,
-  ): Promise<void> {
-    const { data: team, error } = await this.supabase
+  ): Promise<TeamGateRow> {
+    const { data, error } = await this.supabase
       .from('teams')
-      .select('owner_id, time_tracking_enabled, payouts_enabled')
+      .select(
+        'id, owner_id, workspace_id, time_tracking_enabled, payouts_enabled',
+      )
       .eq('id', teamId)
       .maybeSingle();
-    if (error) throw new Error(error.message);
-    if (!team) throw new NotFoundException('Team not found.');
-    const t = team as {
-      owner_id: string;
-      time_tracking_enabled: boolean;
-      payouts_enabled: boolean;
-    };
-    if (!t.time_tracking_enabled) {
+    if (error) throwTimeDb(error as PgErrorLike);
+    if (!data) throw new NotFoundException('Team not found.');
+    const team = data as TeamGateRow;
+    if (!(await isTeamManager(this.supabase, teamId, callerId))) {
+      throw new ForbiddenException(
+        'Only the team owner or team admins can manage payouts.',
+      );
+    }
+    if (!team.time_tracking_enabled) {
       throw new ForbiddenException(
         'Time tracking is not enabled for this team.',
       );
@@ -587,23 +667,142 @@ export class PayoutsService {
     // Payouts is its own switch, nested under member rates: a team can price
     // its hours without settling them here. The DB CHECK guarantees this flag
     // is false whenever rates are, so testing it alone is sufficient.
-    if (!t.payouts_enabled) {
+    if (!team.payouts_enabled) {
       throw new ForbiddenException('Payouts are disabled for this team.');
     }
-    if (t.owner_id === callerId) return;
+    return team;
+  }
 
-    const { data: member, error: memErr } = await this.supabase
-      .from('team_members')
-      .select('role')
-      .eq('team_id', teamId)
-      .eq('user_id', callerId)
-      .maybeSingle();
-    if (memErr) throw new Error(memErr.message);
-    if (!member || (member.role !== 'owner' && member.role !== 'admin')) {
-      throw new ForbiddenException(
-        'Only the team owner or team admins can manage payouts.',
+  /**
+   * assertTeamPayer plus the time_payouts plan key on the team's plan subject
+   * (D26: its workspace, else the team scope; never a raw null). Create and
+   * owed only. A PlanLimitException (403), so the web shows its upgrade
+   * prompt.
+   */
+  private async assertCanSettle(
+    callerId: string,
+    teamId: string,
+  ): Promise<TeamGateRow> {
+    const team = await this.assertTeamPayer(callerId, teamId);
+    await this.entitlements.assertFeature(
+      await this.timePolicy.planRefForTeam(team),
+      'time_payouts',
+    );
+    return team;
+  }
+
+  /** Exactly one of entry_ids / log_ids (D37), deduplicated in order. */
+  private requestedEntryIds(dto: CreatePayoutDto): string[] {
+    const entryIds = dto.entry_ids ?? [];
+    const logIds = dto.log_ids ?? [];
+    if (entryIds.length > 0 && logIds.length > 0) {
+      throw new BadRequestException(
+        'Send entry_ids or log_ids, not both. log_ids is the old name for entry_ids.',
       );
     }
+    const ids = entryIds.length > 0 ? entryIds : logIds;
+    if (ids.length === 0) {
+      throw new BadRequestException('Choose the time to pay (entry_ids).');
+    }
+    return Array.from(new Set(ids));
+  }
+
+  /**
+   * Every requested entry is Owed team time of this member on this team, none
+   * is fixed-rate, and all share one currency, which is returned. Entries
+   * that do not exist, or belong to another team, are a 404 (never confirming
+   * that someone else's entry exists).
+   */
+  private async assertEntriesPayable(
+    dto: CreatePayoutDto,
+    entryIds: string[],
+  ): Promise<string> {
+    const { data, error } = await this.supabase
+      .from('time_entries')
+      .select(PAYABLE_CHECK_SELECT)
+      .in('id', entryIds);
+    if (error) throwTimeDb(error as PgErrorLike);
+    const rows = ((data ?? []) as unknown as PayableEntryRow[]).filter(
+      (row) => row.team_id === dto.team_id,
+    );
+    if (rows.length !== entryIds.length) throw timeNotFound('entry');
+
+    if (rows.some((row) => row.member_user_id !== dto.member_user_id)) {
+      throw new BadRequestException(
+        'All of this time must belong to the member being paid.',
+      );
+    }
+    // Fixed pay is a manual payment (L9/L62, E61); also refused by the RPC.
+    if (rows.some((row) => row.rate_type_snapshot === 'fixed')) {
+      throw timeError('FIXED_RATE_NOT_PAYABLE_BY_ENTRY');
+    }
+    if (rows.some((row) => row.payout_id !== null)) {
+      throw new BadRequestException('Some of this time is already paid.');
+    }
+    if (
+      rows.some(
+        (row) =>
+          row.context_kind !== 'team' ||
+          row.payable_seconds === null ||
+          row.legacy_status !== null,
+      )
+    ) {
+      throw new BadRequestException(
+        'Only approved team time that is not paid yet can be paid.',
+      );
+    }
+    const currencies = new Set(rows.map((row) => row.currency_snapshot));
+    if (currencies.size !== 1) {
+      throw new BadRequestException(
+        'A payment must cover time in a single currency.',
+      );
+    }
+    return rows[0].currency_snapshot;
+  }
+
+  /**
+   * A local date bound for owed: YYYY-MM-DD as is, or an instant (the old
+   * `from`/`to` took timestamps) read as its local date in the team timezone.
+   */
+  private owedDateBound(
+    raw: string | undefined,
+    tz: string,
+    field: 'from' | 'until',
+  ): string | null {
+    const value = raw?.trim();
+    if (!value) return null;
+    try {
+      if (LOCAL_DATE_RE.test(value)) return addDays(value, 0);
+      if (!Number.isNaN(Date.parse(value))) return localDate(value, tz);
+    } catch {
+      // falls through to the 400
+    }
+    throw new BadRequestException(`${field} must be a date (YYYY-MM-DD).`);
+  }
+
+  /**
+   * Payout RPC failures: time sentinels map through mapTimeDbError
+   * (PAYOUT_SELF_NOT_ALLOWED 403, FIXED_RATE_NOT_PAYABLE_BY_ENTRY 422); the
+   * RPCs' plain-text refusals (a race with another payment or a reopen) are a
+   * 400 with fixed copy, the Postgres text going to the log only (D55).
+   */
+  private payoutRpcError(error: PgErrorLike, op: 'create' | 'void'): never {
+    const mapped = mapTimeDbError(error);
+    if (mapped) throw mapped;
+    if (error.code === 'P0001') {
+      this.logger.warn(
+        `Payout ${op} refused by the database: ${error.message ?? ''}`,
+      );
+      if (op === 'create') {
+        throw new BadRequestException(PAYOUT_NOT_PAYABLE_MESSAGE);
+      }
+      throw new BadRequestException(
+        /already void/i.test(error.message ?? '')
+          ? PAYOUT_ALREADY_VOID_MESSAGE
+          : PAYOUT_VOID_REFUSED_MESSAGE,
+      );
+    }
+    throwTimeDb(error);
   }
 
   private async assertMemberOfTeam(
@@ -624,38 +823,6 @@ export class PayoutsService {
     if (error) throw new Error(error.message);
     if (!count) {
       throw new BadRequestException('That member is not on this team.');
-    }
-  }
-
-  private async notifyPaid(
-    payout: PayoutRow,
-    actorId: string,
-    logCount: number,
-  ): Promise<void> {
-    if (payout.member_user_id === actorId) return;
-    try {
-      await this.notifications.createNotification({
-        user_id: payout.member_user_id,
-        actor_id: actorId,
-        type_name: 'time_log_approved',
-        content: {
-          payout_id: payout.id,
-          status: 'paid',
-          total_amount: payout.total_amount,
-          currency: payout.currency,
-          log_count: logCount,
-          message: `You were paid ${payout.total_amount} ${payout.currency} for ${logCount} time log(s).`,
-        },
-        link_url: teamTimePath(
-          await this.workspaces.findSlugForTeam(payout.team_id),
-          payout.team_id,
-          'my-logs',
-        ),
-      });
-    } catch (err) {
-      this.logger.warn(
-        `Failed to send payout notification: ${(err as Error).message}`,
-      );
     }
   }
 }

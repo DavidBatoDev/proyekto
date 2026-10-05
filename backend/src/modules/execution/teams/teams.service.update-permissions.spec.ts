@@ -1,4 +1,6 @@
 import { ForbiddenException } from '@nestjs/common';
+import type { SupabaseClient } from '@supabase/supabase-js';
+import { isTeamManager } from './team-authority';
 import { TeamsService } from './teams.service';
 import { allowAllEntitlements } from '../../shared/entitlements/__entitlements-test-kit-spec';
 
@@ -37,7 +39,10 @@ describe('TeamsService — updateTeam permissions', () => {
    * resolveViewerRole decides admin vs member vs nothing. The owner never
    * reaches that query (owner_id short-circuits it).
    */
-  function build(viewerRole: 'admin' | 'member' | null) {
+  function build(
+    viewerRole: 'admin' | 'member' | null,
+    timePolicy?: Record<string, jest.Mock>,
+  ) {
     const captured: { update?: Record<string, unknown> } = {};
 
     const chain = (terminal: any, table: string) => {
@@ -87,10 +92,26 @@ describe('TeamsService — updateTeam permissions', () => {
         resolveWorkspaceForCreate: jest.fn().mockResolvedValue('ws-1'),
       } as any,
       allowAllEntitlements(),
+      timePolicy as any,
     );
 
     return { service, captured };
   }
+
+  /** A schedule the validator accepts (the owner-only cut-off editor, D39). */
+  const PAY_PERIOD_CONFIG = {
+    cadence: 'monthly',
+    periods: [
+      {
+        id: 'month',
+        label: 'Whole month',
+        start_day: 1,
+        end_day: 'EOM',
+        pay_day: 5,
+        pay_month_offset: 1,
+      },
+    ],
+  };
 
   /** Money and legal identity. An admin must be refused every one of these. */
   const OWNER_ONLY_PATCHES: Array<[string, Record<string, unknown>]> = [
@@ -108,6 +129,11 @@ describe('TeamsService — updateTeam permissions', () => {
     ['retroactive_log_days', { retroactive_log_days: 90 }],
     ['default_currency', { default_currency: 'PHP' }],
     ['pay_period_config', { pay_period_config: null }],
+    // A real schedule as well as a clear: setting one is also plan-gated
+    // (D39), which must never turn the admin's 403 into a plan answer.
+    ['pay_period_config', { pay_period_config: PAY_PERIOD_CONFIG }],
+    // Deprecated (no effect since the time rebuild) but still owner-only.
+    ['contract_enforcement', { contract_enforcement: 'enforce' }],
   ];
 
   /**
@@ -267,6 +293,145 @@ describe('TeamsService — updateTeam permissions', () => {
       await expect(service.getTeam('team-1', OWNER)).resolves.toMatchObject({
         viewer_role: 'owner',
       });
+    });
+  });
+
+  /**
+   * D28: the owner's retroactive_log_days reaches the team time policy; the
+   * write-through itself does no authorisation, so the admin's 403 must come
+   * first.
+   */
+  describe('retroactive days write-through', () => {
+    function timePolicy() {
+      return {
+        planRefForTeam: jest.fn().mockResolvedValue('ws-1'),
+        setTeamRetroactiveDays: jest.fn().mockResolvedValue(undefined),
+      };
+    }
+
+    it('runs for the owner', async () => {
+      const policy = timePolicy();
+      const { service } = build(null, policy);
+      await service.updateTeam('team-1', OWNER, {
+        retroactive_log_days: 90,
+      } as any);
+      expect(policy.setTeamRetroactiveDays).toHaveBeenCalledWith(
+        'team-1',
+        90,
+        OWNER,
+      );
+    });
+
+    it('never runs for an admin', async () => {
+      const policy = timePolicy();
+      const { service } = build('admin', policy);
+      await expect(
+        service.updateTeam('team-1', ADMIN, {
+          retroactive_log_days: 90,
+        } as any),
+      ).rejects.toBeInstanceOf(ForbiddenException);
+      expect(policy.setTeamRetroactiveDays).not.toHaveBeenCalled();
+    });
+  });
+
+  /**
+   * assertCanManageTeam keeps its own body because callers need the role back,
+   * but it must agree with team-authority.ts isTeamManager (rpc
+   * can_manage_team), which the time module and payouts use. Both read the
+   * same two facts: teams.owner_id, and a team_members role of owner/admin.
+   */
+  describe('parity with isTeamManager', () => {
+    const MEMBERSHIPS: Record<string, 'owner' | 'admin' | 'member'> = {
+      'user-admin': 'admin',
+      'user-co-owner': 'owner',
+      'user-member': 'member',
+    };
+
+    /** The M1 can_manage_team body over the same fixture rows. */
+    function canManageTeam(teamId: string, userId: string): boolean {
+      if (teamId !== TEAM.id) return false;
+      if (TEAM.owner_id === userId) return true;
+      const role = MEMBERSHIPS[userId];
+      return role === 'owner' || role === 'admin';
+    }
+
+    function buildParity() {
+      const supabase = {
+        from: (table: string) => {
+          const filters: Record<string, unknown> = {};
+          const c: Record<string, unknown> = {};
+          for (const method of ['select', 'order', 'limit']) {
+            c[method] = () => c;
+          }
+          c.eq = (column: string, value: unknown) => {
+            filters[column] = value;
+            return c;
+          };
+          c.maybeSingle = () => {
+            if (table === 'teams') {
+              return Promise.resolve({ data: TEAM, error: null });
+            }
+            const role = MEMBERSHIPS[filters.user_id as string];
+            return Promise.resolve({
+              data: role ? { role } : null,
+              error: null,
+            });
+          };
+          return c;
+        },
+        rpc: (fn: string, args: { p_team_id: string; p_user_id: string }) =>
+          Promise.resolve(
+            fn === 'can_manage_team'
+              ? {
+                  data: canManageTeam(args.p_team_id, args.p_user_id),
+                  error: null,
+                }
+              : { data: null, error: { message: `unexpected rpc ${fn}` } },
+          ),
+      };
+      const service = new TeamsService(
+        supabase as any,
+        { createNotification: jest.fn() } as any,
+        { send: jest.fn() } as any,
+        { get: jest.fn() } as any,
+        {} as any,
+        allowAllEntitlements(),
+      );
+      return { service, supabase: supabase as unknown as SupabaseClient };
+    }
+
+    it.each([
+      [OWNER, true],
+      ['user-co-owner', true],
+      [ADMIN, true],
+      [MEMBER, false],
+      [STRANGER, false],
+    ])('%s: same verdict (%s)', async (userId, expected) => {
+      const { service, supabase } = buildParity();
+      const team = await service.fetchTeamOrThrow('team-1');
+
+      const viaTeams = await service.assertCanManageTeam(team, userId).then(
+        () => true,
+        (err: unknown) => {
+          expect(err).toBeInstanceOf(ForbiddenException);
+          return false;
+        },
+      );
+      const viaAuthority = await isTeamManager(supabase, 'team-1', userId);
+
+      expect(viaTeams).toBe(expected);
+      expect(viaAuthority).toBe(expected);
+    });
+
+    it('returns the role the owner-only checks need', async () => {
+      const { service } = buildParity();
+      const team = await service.fetchTeamOrThrow('team-1');
+      await expect(service.assertCanManageTeam(team, OWNER)).resolves.toBe(
+        'owner',
+      );
+      await expect(service.assertCanManageTeam(team, ADMIN)).resolves.toBe(
+        'admin',
+      );
     });
   });
 });
