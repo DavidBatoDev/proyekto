@@ -4,6 +4,7 @@ import {
   forwardRef,
   Inject,
   Injectable,
+  InternalServerErrorException,
   Logger,
   NotFoundException,
   Optional,
@@ -62,7 +63,13 @@ import { Project } from '../../../common/entities';
 import { NotificationsService } from '../../shared/notifications/notifications.service';
 import { ChatService } from '../chat/chat.service';
 import { ProjectAccessSyncService } from './access-sync/access-sync.service';
-import { TeamTimeService } from '../team-time/team-time.service';
+import {
+  TimeProjectsFacade,
+  emptyDashboardTime,
+  maskProjectRoster,
+  maskRosterMembers,
+} from '../time/time-projects.facade';
+import type { ClientHoursLevel, TimesheetStatus } from '../time/time.types';
 import { WorkspacesService } from '../workspaces/workspaces.service';
 import {
   type PermissionPath,
@@ -127,7 +134,7 @@ export class ProjectsService {
     private readonly chatService: ChatService,
     private readonly mailer: MailerService,
     private readonly audit: AuditService,
-    private readonly teamTime: TeamTimeService,
+    private readonly time: TimeProjectsFacade,
     private readonly workspaces: WorkspacesService,
     // Optional so execution boots without marketplace: absent the binding, the
     // no-op applies and nothing forbids deletion or reports invoices.
@@ -492,7 +499,10 @@ export class ProjectsService {
   }
 
   async listUserProjects(userId: string): Promise<Project[]> {
-    return this.projectsRepo.findByUser(userId);
+    return this.maskProjectRosters(
+      userId,
+      await this.projectsRepo.findByUser(userId),
+    );
   }
 
   /**
@@ -547,7 +557,13 @@ export class ProjectsService {
     return this.cache.rememberJson(
       REDIS_CACHE_KEYS.projectsDashboardByUser(userId),
       this.cache.getDashboardTtlSeconds(),
-      async () => this.projectsRepo.findDashboardByUser(userId),
+      // Masked inside the loader: the key is per user, so the cached payload is
+      // this viewer's view (L22). A new assignment shows within the TTL.
+      async () =>
+        this.maskProjectRosters(
+          userId,
+          await this.projectsRepo.findDashboardByUser(userId),
+        ),
       {
         onStatus: options?.onCacheStatus,
         indexKey: REDIS_CACHE_KEYS.projectsDashboardIndex,
@@ -571,6 +587,7 @@ export class ProjectsService {
       total_seconds: number;
       total_hours: number;
       status_counts: Record<string, number>;
+      sheet_status_counts: Record<TimesheetStatus | 'personal', number>;
       total_fees: number;
     };
     overtime: {
@@ -583,7 +600,6 @@ export class ProjectsService {
       status_counts: Record<string, number>;
     };
   }> {
-    const feeVisibleProjectIds = new Set<string>();
     // Invoice totals cover the projects the caller OWNS — their own book, the
     // set the personal finance surfaces list (see ConsultantFinanceAccessService).
     //
@@ -593,6 +609,10 @@ export class ProjectsService {
     // showed them nothing: a card reading "120,000 · 11 invoices" above a
     // portfolio with no invoices in it. Someone else's billing is theirs to
     // total, not the admin's; the admin still reads it inside that project.
+    //
+    // Time fees no longer follow `time.view_team_logs` either: the time block
+    // sums `amount_snapshot` only over entries the caller is costVisible for
+    // (TimeProjectsFacade.dashboardTime, backend.md "Cost and Content Redaction").
     const ownedProjectIds = new Set<string>();
     if (query.project_id) {
       const role = await this.authorization.assertRole(
@@ -600,13 +620,6 @@ export class ProjectsService {
         query.project_id,
         'viewer',
       );
-      const permissions = await this.authorization.resolvePermissions(
-        userId,
-        query.project_id,
-      );
-      if (permissions?.time.view_team_logs) {
-        feeVisibleProjectIds.add(query.project_id);
-      }
       if (role === 'owner') {
         ownedProjectIds.add(query.project_id);
       }
@@ -617,7 +630,7 @@ export class ProjectsService {
         .select('id, owner_id')
         .eq('id', query.team_id)
         .maybeSingle();
-      if (teamErr) throw new Error(teamErr.message);
+      if (teamErr) this.failDashboardRead('teams', teamErr);
       if (!team) throw new NotFoundException('Team not found');
       if (team.owner_id !== userId) {
         const { count, error: memberErr } = await this.supabase
@@ -625,7 +638,7 @@ export class ProjectsService {
           .select('*', { count: 'exact', head: true })
           .eq('team_id', query.team_id)
           .eq('user_id', userId);
-        if (memberErr) throw new Error(memberErr.message);
+        if (memberErr) this.failDashboardRead('team_members', memberErr);
         if (!count) {
           throw new MissingPermissionException({
             path: null,
@@ -641,19 +654,13 @@ export class ProjectsService {
     } else {
       const { data: accessRows, error: accessErr } = await this.supabase
         .from('project_access')
-        .select('project_id, role, origin, capabilities')
+        .select('project_id, role')
         .eq('user_id', userId);
-      if (accessErr) throw new Error(accessErr.message);
+      if (accessErr) this.failDashboardRead('project_access', accessErr);
       for (const row of (accessRows ?? []) as Array<{
         project_id: string;
         role: ProjectRole;
-        origin: string | null;
-        capabilities: Record<string, unknown> | null;
       }>) {
-        const permissions = resolvePermissions(row.role, row.capabilities);
-        if (permissions.time.view_team_logs) {
-          feeVisibleProjectIds.add(row.project_id);
-        }
         if (row.role === 'owner') {
           ownedProjectIds.add(row.project_id);
         }
@@ -667,31 +674,20 @@ export class ProjectsService {
       );
     }
 
+    const filters = {
+      from: query.from ?? null,
+      to: query.to ?? null,
+      project_id: query.project_id ?? null,
+      team_id: query.team_id ?? null,
+      member_user_id: query.member_user_id ?? null,
+    };
+
     if (projectIds.length === 0) {
+      const empty = emptyDashboardTime();
       return {
-        filters: {
-          from: query.from ?? null,
-          to: query.to ?? null,
-          project_id: query.project_id ?? null,
-          team_id: query.team_id ?? null,
-          member_user_id: query.member_user_id ?? null,
-        },
-        time: {
-          total_logs: 0,
-          total_seconds: 0,
-          total_hours: 0,
-          status_counts: {
-            pending: 0,
-            approved: 0,
-            paid: 0,
-            rejected: 0,
-          },
-          total_fees: 0,
-        },
-        overtime: {
-          over_limit_windows: 0,
-          overage_hours_total: 0,
-        },
+        filters,
+        time: empty.time,
+        overtime: empty.overtime,
         invoices: {
           total_count: 0,
           total_amount: 0,
@@ -706,181 +702,23 @@ export class ProjectsService {
       };
     }
 
-    let logsQuery = this.supabase
-      .from('task_time_logs')
-      .select(
-        'id, project_id, team_id, member_user_id, started_at, duration_seconds, status, rate_snapshot',
-      )
-      .in('project_id', projectIds);
-    if (query.from) logsQuery = logsQuery.gte('started_at', query.from);
-    if (query.to) logsQuery = logsQuery.lte('started_at', query.to);
-    if (query.team_id) logsQuery = logsQuery.eq('team_id', query.team_id);
-    if (query.member_user_id) {
-      logsQuery = logsQuery.eq('member_user_id', query.member_user_id);
-    }
-
-    const { data: logRows, error: logsErr } = await logsQuery;
-    if (logsErr) throw new Error(logsErr.message);
-    const logs = (logRows ?? []) as Array<{
-      id: string;
-      project_id: string;
-      team_id: string | null;
-      member_user_id: string;
-      started_at: string;
-      duration_seconds: number | null;
-      status: 'pending' | 'approved' | 'paid' | 'rejected';
-      rate_snapshot: number | null;
-    }>;
-
-    const statusCounts: Record<string, number> = {
-      pending: 0,
-      approved: 0,
-      paid: 0,
-      rejected: 0,
-    };
-    let totalSeconds = 0;
-    let totalFees = 0;
-    for (const row of logs) {
-      statusCounts[row.status] = (statusCounts[row.status] ?? 0) + 1;
-      const seconds = Math.max(0, Number(row.duration_seconds ?? 0));
-      totalSeconds += seconds;
-      if (feeVisibleProjectIds.has(row.project_id)) {
-        totalFees += (seconds / 3600) * Number(row.rate_snapshot ?? 0);
-      }
-    }
-
-    const rateKeys = Array.from(
-      new Set(
-        logs
-          .filter((row) => row.team_id)
-          .map(
-            (row) => `${row.team_id}|${row.project_id}|${row.member_user_id}`,
-          ),
-      ),
-    );
-    const rateMap = new Map<
-      string,
-      { weekly: number | null; monthly: number | null }
-    >();
-    if (rateKeys.length > 0) {
-      const teamIds = Array.from(
-        new Set(rateKeys.map((key) => key.split('|')[0]).filter(Boolean)),
-      );
-      const memberIds = Array.from(
-        new Set(rateKeys.map((key) => key.split('|')[2])),
-      );
-      let rateQuery = this.supabase
-        .from('team_member_rates')
-        .select(
-          'team_id, project_id, user_id, weekly_limit_hours, monthly_limit_hours',
-        )
-        .is('end_date', null)
-        .in('team_id', teamIds)
-        .in('user_id', memberIds);
-      if (query.project_id)
-        rateQuery = rateQuery.eq('project_id', query.project_id);
-      const { data: rateRows, error: ratesErr } = await rateQuery;
-      if (ratesErr) throw new Error(ratesErr.message);
-      for (const row of (rateRows ?? []) as Array<{
-        team_id: string;
-        project_id: string;
-        user_id: string;
-        weekly_limit_hours: number | null;
-        monthly_limit_hours: number | null;
-      }>) {
-        rateMap.set(`${row.team_id}|${row.project_id}|${row.user_id}`, {
-          weekly:
-            row.weekly_limit_hours === null ||
-            row.weekly_limit_hours === undefined
-              ? null
-              : Number(row.weekly_limit_hours),
-          monthly:
-            row.monthly_limit_hours === null ||
-            row.monthly_limit_hours === undefined
-              ? null
-              : Number(row.monthly_limit_hours),
-        });
-      }
-    }
-
-    const weeklyTotals = new Map<string, number>();
-    const monthlyTotals = new Map<string, number>();
-    for (const row of logs) {
-      if (!row.team_id || row.status === 'rejected') continue;
-      const rateKey = `${row.team_id}|${row.project_id}|${row.member_user_id}`;
-      if (!rateMap.has(rateKey)) continue;
-      const startedAt = new Date(row.started_at);
-      if (Number.isNaN(startedAt.getTime())) continue;
-      const seconds = Math.max(0, Number(row.duration_seconds ?? 0));
-      const hours = seconds / 3600;
-
-      const day = startedAt.getUTCDay();
-      const diffToMonday = (day + 6) % 7;
-      const weekStart = new Date(
-        Date.UTC(
-          startedAt.getUTCFullYear(),
-          startedAt.getUTCMonth(),
-          startedAt.getUTCDate(),
-        ),
-      );
-      weekStart.setUTCDate(weekStart.getUTCDate() - diffToMonday);
-      const weekKey = `${rateKey}|w|${weekStart.toISOString().slice(0, 10)}`;
-      weeklyTotals.set(weekKey, (weeklyTotals.get(weekKey) ?? 0) + hours);
-
-      const monthKey = `${rateKey}|m|${startedAt.getUTCFullYear()}-${String(
-        startedAt.getUTCMonth() + 1,
-      ).padStart(2, '0')}`;
-      monthlyTotals.set(monthKey, (monthlyTotals.get(monthKey) ?? 0) + hours);
-    }
-
-    let overLimitWindows = 0;
-    let overageHoursTotal = 0;
-    for (const [key, hours] of weeklyTotals.entries()) {
-      const rateKey = key.split('|w|')[0];
-      const rate = rateMap.get(rateKey);
-      const limit = rate?.weekly ?? null;
-      if (limit !== null && hours > limit) {
-        overLimitWindows += 1;
-        overageHoursTotal += hours - limit;
-      }
-    }
-    for (const [key, hours] of monthlyTotals.entries()) {
-      const rateKey = key.split('|m|')[0];
-      const rate = rateMap.get(rateKey);
-      const limit = rate?.monthly ?? null;
-      if (limit !== null && hours > limit) {
-        overLimitWindows += 1;
-        overageHoursTotal += hours - limit;
-      }
-    }
-
-    const invoiceSummary = await this.commerce.getInvoiceSummary(
-      [...ownedProjectIds],
-      {
+    const [timeBlock, invoiceSummary] = await Promise.all([
+      this.time.dashboardTime(userId, projectIds, {
         from: query.from,
         to: query.to,
-      },
-    );
+        team_id: query.team_id,
+        member_user_id: query.member_user_id,
+      }),
+      this.commerce.getInvoiceSummary([...ownedProjectIds], {
+        from: query.from,
+        to: query.to,
+      }),
+    ]);
 
     return {
-      filters: {
-        from: query.from ?? null,
-        to: query.to ?? null,
-        project_id: query.project_id ?? null,
-        team_id: query.team_id ?? null,
-        member_user_id: query.member_user_id ?? null,
-      },
-      time: {
-        total_logs: logs.length,
-        total_seconds: totalSeconds,
-        total_hours: totalSeconds / 3600,
-        status_counts: statusCounts,
-        total_fees: invoiceRound(totalFees),
-      },
-      overtime: {
-        over_limit_windows: overLimitWindows,
-        overage_hours_total: invoiceRound(overageHoursTotal),
-      },
+      filters,
+      time: timeBlock.time,
+      overtime: timeBlock.overtime,
       invoices: {
         total_count: invoiceSummary.total_count,
         // Rounding stays here rather than in the adapter: it is a presentation
@@ -891,10 +729,67 @@ export class ProjectsService {
     };
   }
 
-  async getProject(id: string) {
+  /** A dashboard pre-check read failed: log the Postgres text, answer fixed copy (never the raw message). */
+  private failDashboardRead(table: string, error: { message?: string }): never {
+    this.logger.error(
+      `getDashboardSummary: ${table} read failed: ${error.message ?? 'unknown error'}`,
+    );
+    throw new InternalServerErrorException(
+      "Proyekto couldn't load the dashboard summary. Try again.",
+    );
+  }
+
+  /**
+   * The project payload. With a viewer, every member row whose user is the
+   * worker of a talent assignment on the project the viewer is not a
+   * provider-side party for reads "Delivery team member" (L22, E35, D57).
+   * Without one (internal callers) the payload is returned unmasked.
+   */
+  async getProject(id: string, viewerId?: string) {
     const project = await this.projectsRepo.findById(id);
     if (!project) throw new NotFoundException('Project not found');
-    return project;
+    if (!viewerId) return project;
+    const masked = await this.time.maskedWorkerIds(id, viewerId);
+    return maskProjectRoster(project, masked);
+  }
+
+  /**
+   * Roster masking for project lists (findByUser, findDashboardByUser): one
+   * facade call for the whole list; projects with no engagement assignment
+   * cost nothing beyond the facade's probe.
+   */
+  private async maskProjectRosters<T extends { id: string }>(
+    viewerId: string,
+    projects: T[],
+  ): Promise<T[]> {
+    const withMembers = projects.filter((project) => {
+      const members = (project as { members?: unknown }).members;
+      return Array.isArray(members) && members.length > 0;
+    });
+    if (withMembers.length === 0) return projects;
+    const masks = await this.time.maskedWorkerIdsByProject(
+      withMembers.map((project) => project.id),
+      viewerId,
+    );
+    if (masks.size === 0) return projects;
+    return projects.map((project) => {
+      const masked = masks.get(project.id);
+      return masked ? maskProjectRoster(project, masked) : project;
+    });
+  }
+
+  /** One member row returned by a member write, masked like the roster read. */
+  private async maskMemberResult<T>(
+    projectId: string,
+    viewerId: string,
+    member: T,
+  ): Promise<T> {
+    if (!member || typeof member !== 'object') return member;
+    if (typeof (member as { user_id?: unknown }).user_id !== 'string') {
+      return member;
+    }
+    const masked = await this.time.maskedWorkerIds(projectId, viewerId);
+    return maskRosterMembers(projectId, [member], masked)[0];
   }
 
   async createProject(
@@ -1314,7 +1209,7 @@ export class ProjectsService {
     // exists, then clear drafts.
     await this.commerce.assertProjectDeletable(id);
 
-    await this.teamTime.stopRunningLogsForProject(id);
+    await this.time.stopRunningForProject(id);
 
     await this.commerce.purgeDraftCommerce(id);
 
@@ -1864,7 +1759,7 @@ export class ProjectsService {
       memberId,
     );
     await this.invalidateDashboardCache();
-    return updatedMember;
+    return this.maskMemberResult(projectId, callerId, updatedMember);
   }
 
   async removeMember(
@@ -1998,7 +1893,9 @@ export class ProjectsService {
   async getMyPermissions(
     projectId: string,
     userId: string,
-  ): Promise<ProjectPermissions> {
+  ): Promise<
+    ProjectPermissions & { time_client_hours_level: ClientHoursLevel }
+  > {
     await this.getProjectOrThrow(projectId);
     const target = await this.projectsRepo.getMemberByProjectAndUserId(
       projectId,
@@ -2028,11 +1925,22 @@ export class ProjectsService {
     // role; that is gone, but the role comparison is what ships and matches the
     // server, so switching this to `members.manage` is a deliberate change to
     // verify against the guard, not a cleanup.
-    permissions.mentions.invite_by_email =
-      roleSatisfies((target.role as ProjectRole) ?? 'viewer', 'admin') &&
-      (await this.isMentionInviteEnabled());
+    //
+    // `time_client_hours_level` (L22): least(client_hours_detail_level) over the
+    // caller's active client-engagement hirer seats linked to this project;
+    // 'none' without one. The project Time nav shows on `time.log` OR
+    // `time.view_team_logs` OR a level other than 'none'.
+    const isAdmin = roleSatisfies(
+      (target.role as ProjectRole) ?? 'viewer',
+      'admin',
+    );
+    const [mentionInviteEnabled, timeClientHoursLevel] = await Promise.all([
+      isAdmin ? this.isMentionInviteEnabled() : Promise.resolve(false),
+      this.time.clientHoursLevel(userId, projectId),
+    ]);
+    permissions.mentions.invite_by_email = isAdmin && mentionInviteEnabled;
 
-    return permissions;
+    return { ...permissions, time_client_hours_level: timeClientHoursLevel };
   }
 
   /**
@@ -2155,6 +2063,18 @@ export class ProjectsService {
       }
     }
 
+    // D64: turning `access.time` off also turns `time.log` off in the same
+    // write. The deployed web's permission editor predates `time.log` and
+    // round-trips it from GET (`time: { log: true, ... }`), so without this an
+    // admin unticking "Time" for an editor would get permission_dependency_unmet
+    // for a box that editor never shows.
+    const incomingAccess = (
+      dto as unknown as { access?: Record<string, unknown> }
+    ).access;
+    if (incomingAccess?.time === false) {
+      setPermission(desired, 'time.log', false);
+    }
+
     // Dependency validation runs against the *post-merge* permission set
     // (deps may be satisfied by role/origin or by the same patch).
     const validation = validateDependencies(desired);
@@ -2190,7 +2110,7 @@ export class ProjectsService {
         newCapabilities,
       );
       await this.invalidateDashboardCache();
-      return fallbackResult;
+      return this.maskMemberResult(projectId, callerId, fallbackResult);
     }
     const member = await this.projectsRepo.getMemberById(projectId, memberId);
     // Sensitive: a per-member capability override changes what that person can
@@ -2203,7 +2123,7 @@ export class ProjectsService {
       memberId,
     );
     await this.invalidateDashboardCache();
-    return member;
+    return this.maskMemberResult(projectId, callerId, member);
   }
 
   /**
@@ -2243,7 +2163,7 @@ export class ProjectsService {
       trimmed.length === 0 ? null : trimmed,
     );
     await this.invalidateDashboardCache();
-    return updatedMember;
+    return this.maskMemberResult(projectId, callerId, updatedMember);
   }
 }
 

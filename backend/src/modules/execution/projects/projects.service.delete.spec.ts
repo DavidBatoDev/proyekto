@@ -14,7 +14,9 @@ import { ProjectsService } from './projects.service';
 function buildHarness(input: { vetoWith?: Error } = {}) {
   const sequence: string[] = [];
 
-  const commerce: jest.Mocked<ProjectCommercePort> = {
+  // Plain jest.fn properties (not jest.Mocked<…> methods), so the assertions
+  // below read them without tripping @typescript-eslint/unbound-method.
+  const commerce: Record<keyof ProjectCommercePort, jest.Mock> = {
     assertProjectDeletable: jest.fn().mockImplementation(() => {
       sequence.push('veto:checked');
       return input.vetoWith
@@ -39,8 +41,9 @@ function buildHarness(input: { vetoWith?: Error } = {}) {
       return Promise.resolve();
     }),
   };
-  const teamTime = {
-    stopRunningLogsForProject: jest.fn().mockImplementation(() => {
+  // TimeProjectsFacade, the only door ProjectsService has into time (E9).
+  const time = {
+    stopRunningForProject: jest.fn().mockImplementation(() => {
       sequence.push('stop:timers');
       return Promise.resolve(2);
     }),
@@ -74,14 +77,14 @@ function buildHarness(input: { vetoWith?: Error } = {}) {
     {} as never,
     {} as never,
     {} as never,
-    teamTime as never,
+    time as never,
     {} as never,
-    commerce,
+    commerce as unknown as ProjectCommercePort,
   );
   return {
     service,
     projectsRepo,
-    teamTime,
+    time,
     cacheInvalidation,
     commerce,
     sequence,
@@ -100,7 +103,7 @@ describe('ProjectsService.deleteProject', () => {
       harness.service.deleteProject('project-1', 'owner-1'),
     ).rejects.toThrow(BadRequestException);
 
-    expect(harness.teamTime.stopRunningLogsForProject).not.toHaveBeenCalled();
+    expect(harness.time.stopRunningForProject).not.toHaveBeenCalled();
     expect(harness.commerce.purgeDraftCommerce).not.toHaveBeenCalled();
     expect(harness.projectsRepo.deleteProject).not.toHaveBeenCalled();
   });
@@ -128,6 +131,11 @@ describe('ProjectsService.deleteProject', () => {
     expect(harness.commerce.purgeDraftCommerce).toHaveBeenCalledWith(
       'project-1',
     );
+    // E9: running timers on the project stop through the time facade.
+    expect(harness.time.stopRunningForProject).toHaveBeenCalledWith(
+      'project-1',
+    );
+    expect(harness.time.stopRunningForProject).toHaveBeenCalledTimes(1);
     // Timers must stop while the project still exists, and drafts must go
     // before the row does.
     expect(harness.sequence).toEqual([
@@ -167,7 +175,7 @@ describe('ProjectsService.deleteProject', () => {
       {} as never,
       {} as never,
       {} as never,
-      { stopRunningLogsForProject: jest.fn().mockResolvedValue(0) } as never,
+      { stopRunningForProject: jest.fn().mockResolvedValue(0) } as never,
       {} as never,
     );
 

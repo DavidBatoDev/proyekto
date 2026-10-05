@@ -105,7 +105,7 @@ describe('ProjectsService — invite email honours the suppression list', () => 
       } as any,
       mailer as any,
       { log: jest.fn() } as any,
-      { stopRunningLogsForProject: jest.fn() } as any,
+      { stopRunningForProject: jest.fn() } as any,
       {} as never,
     );
 

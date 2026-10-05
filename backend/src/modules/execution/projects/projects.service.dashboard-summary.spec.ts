@@ -1,46 +1,85 @@
+import {
+  ForbiddenException,
+  InternalServerErrorException,
+  Logger,
+} from '@nestjs/common';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import {
   NoopProjectCommerce,
   type ProjectCommercePort,
 } from './ports/project-commerce.port';
 import { ProjectsService } from './projects.service';
+import {
+  type DashboardTime,
+  emptyDashboardTime,
+} from '../time/time-projects.facade';
 
 type Row = Record<string, unknown>;
 
-function resultBuilder(data: Row[]) {
+function resultBuilder(data: Row[] | Row | null, error: unknown = null) {
   const builder: Record<string, unknown> = {};
   for (const method of ['select', 'eq', 'in', 'gte', 'lte', 'is']) {
     builder[method] = jest.fn(() => builder);
   }
+  builder.maybeSingle = jest.fn(() =>
+    Promise.resolve({ data: Array.isArray(data) ? data[0] : data, error }),
+  );
   builder.then = (resolve: (value: object) => void) =>
-    Promise.resolve({ data, error: null }).then(resolve);
+    Promise.resolve({
+      data,
+      error,
+      count: Array.isArray(data) ? data.length : 0,
+    }).then(resolve);
   return builder;
+}
+
+/** What TimeProjectsFacade.dashboardTime answers: the summary passes it through untouched. */
+function timeBlock(): DashboardTime {
+  return {
+    time: {
+      total_logs: 4,
+      total_seconds: 9000,
+      total_hours: 2.5,
+      status_counts: { pending: 1, approved: 1, paid: 1, rejected: 1 },
+      sheet_status_counts: {
+        open: 1,
+        submitted: 0,
+        returned: 0,
+        approved: 2,
+        personal: 1,
+      },
+      total_fees: 12.5,
+    },
+    overtime: { over_limit_windows: 1, overage_hours_total: 5 },
+  };
 }
 
 function buildService(input: {
   accessRows?: Row[];
-  logs: Row[];
-  singleProjectCanViewFees?: boolean;
+  accessError?: { message: string };
+  role?: string;
   commerce?: Partial<ProjectCommercePort>;
+  teams?: Row[];
+  teamMembers?: Row[];
 }) {
-  const supabase = {
-    from: jest.fn((table: string) => {
-      if (table === 'project_access') {
-        return resultBuilder(input.accessRows ?? []);
-      }
-      if (table === 'task_time_logs') return resultBuilder(input.logs);
-      if (table === 'invoices') return resultBuilder([]);
-      if (table === 'team_member_rates') return resultBuilder([]);
-      return resultBuilder([]);
-    }),
-  } as unknown as SupabaseClient;
+  const from = jest.fn((table: string) => {
+    if (table === 'project_access') {
+      return resultBuilder(input.accessRows ?? [], input.accessError ?? null);
+    }
+    if (table === 'teams') return resultBuilder(input.teams ?? []);
+    if (table === 'team_members') return resultBuilder(input.teamMembers ?? []);
+    // The time block no longer reads any time table from ProjectsService.
+    throw new Error(`unexpected table ${table}`);
+  });
+  const supabase = { from } as unknown as SupabaseClient;
   const authorization = {
-    assertRole: jest.fn().mockResolvedValue('viewer'),
-    resolvePermissions: jest.fn().mockResolvedValue({
-      time: { view_team_logs: input.singleProjectCanViewFees ?? false },
-    }),
+    assertRole: jest.fn().mockResolvedValue(input.role ?? 'viewer'),
+    resolvePermissions: jest.fn(),
   };
-  return new ProjectsService(
+  const time = {
+    dashboardTime: jest.fn().mockResolvedValue(timeBlock()),
+  };
+  const service = new ProjectsService(
     {} as never,
     {} as never,
     authorization as never,
@@ -52,8 +91,8 @@ function buildService(input: {
     {} as never,
     {} as never,
     {} as never,
-    {} as never,
-    {} as never,
+    { log: jest.fn() } as never,
+    time as never,
     {} as never,
     // Object.assign, not a spread: NoopProjectCommerce's methods live on the
     // prototype, and spreading an instance copies only own properties.
@@ -62,121 +101,124 @@ function buildService(input: {
       input.commerce ?? {},
     ) as ProjectCommercePort,
   );
+  return { service, time, authorization, from };
 }
 
-const log = (projectId: string, rate: number): Row => ({
-  id: `log-${projectId}`,
-  project_id: projectId,
-  team_id: null,
-  member_user_id: 'member-1',
-  started_at: '2026-08-13T00:00:00.000Z',
-  duration_seconds: 3600,
-  status: 'approved',
-  rate_snapshot: rate,
-});
-
-describe('ProjectsService dashboard fee visibility', () => {
-  it('keeps counts and hours but zeroes fees without team-log visibility', async () => {
-    const service = buildService({
-      logs: [log('project-1', 50)],
-      singleProjectCanViewFees: false,
+describe('ProjectsService dashboard time block', () => {
+  it('delegates the time and overtime block to the time facade and passes its shape through', async () => {
+    const { service, time } = buildService({
+      accessRows: [
+        { project_id: 'project-1', role: 'editor' },
+        { project_id: 'project-2', role: 'admin' },
+        { project_id: 'project-1', role: 'editor' },
+      ],
     });
+
+    const summary = await service.getDashboardSummary('user-1', {
+      from: '2026-09-01',
+      to: '2026-09-30',
+      member_user_id: 'member-1',
+    });
+
+    expect(time.dashboardTime).toHaveBeenCalledWith(
+      'user-1',
+      ['project-1', 'project-2'],
+      {
+        from: '2026-09-01',
+        to: '2026-09-30',
+        team_id: undefined,
+        member_user_id: 'member-1',
+      },
+    );
+    expect(summary.time).toEqual(timeBlock().time);
+    expect(summary.time.sheet_status_counts).toEqual({
+      open: 1,
+      submitted: 0,
+      returned: 0,
+      approved: 2,
+      personal: 1,
+    });
+    expect(summary.overtime).toEqual(timeBlock().overtime);
+    expect(summary.filters).toEqual({
+      from: '2026-09-01',
+      to: '2026-09-30',
+      project_id: null,
+      team_id: null,
+      member_user_id: 'member-1',
+    });
+  });
+
+  // Fees used to follow `time.view_team_logs`; they are now the facade's
+  // costVisible sum, so the project ladder is not consulted at all.
+  it('takes fees from the facade, never from time.view_team_logs', async () => {
+    const { service, authorization } = buildService({ role: 'viewer' });
 
     const summary = await service.getDashboardSummary('client-1', {
       project_id: 'project-1',
     });
 
-    expect(summary.time).toEqual(
-      expect.objectContaining({
-        total_logs: 1,
-        total_hours: 1,
-        total_fees: 0,
-      }),
+    expect(summary.time.total_fees).toBe(12.5);
+    expect(authorization.assertRole).toHaveBeenCalledWith(
+      'client-1',
+      'project-1',
+      'viewer',
     );
+    expect(authorization.resolvePermissions).not.toHaveBeenCalled();
   });
 
-  it('includes fees when the single-project permission allows them', async () => {
-    const service = buildService({
-      logs: [log('project-1', 50)],
-      singleProjectCanViewFees: true,
-    });
+  it('scopes a single-project summary to that project', async () => {
+    const { service, time, from } = buildService({ role: 'admin' });
 
-    const summary = await service.getDashboardSummary('consultant-1', {
-      project_id: 'project-1',
-    });
+    await service.getDashboardSummary('user-1', { project_id: 'project-1' });
 
-    expect(summary.time.total_fees).toBe(50);
+    expect(time.dashboardTime).toHaveBeenCalledWith(
+      'user-1',
+      ['project-1'],
+      expect.any(Object),
+    );
+    expect(from).not.toHaveBeenCalledWith('project_access');
   });
 
-  // Fee visibility follows `time.view_team_logs`, which is a rung on the ladder
-  // (admin and up) or an explicit capability — never a fact about how the member
-  // joined. An editor does not hold it, so their project's fees stay out of the
-  // total even though their time logs are counted.
-  it('sums fees only for projects where the member can see team logs', async () => {
-    const service = buildService({
-      accessRows: [
-        {
-          project_id: 'editor-project',
-          role: 'editor',
-          origin: 'invited',
-          capabilities: {},
-        },
-        {
-          project_id: 'admin-project',
-          role: 'admin',
-          origin: 'invited',
-          capabilities: {},
-        },
-      ],
-      logs: [log('editor-project', 75), log('admin-project', 100)],
-    });
+  it('answers the zero shape, sheet_status_counts included, without asking the facade when there are no projects', async () => {
+    const { service, time } = buildService({ accessRows: [] });
 
     const summary = await service.getDashboardSummary('user-1', {});
 
-    expect(summary.time.total_logs).toBe(2);
-    expect(summary.time.total_hours).toBe(2);
-    expect(summary.time.total_fees).toBe(100);
+    expect(time.dashboardTime).not.toHaveBeenCalled();
+    expect(summary.time).toEqual(emptyDashboardTime().time);
+    expect(summary.overtime).toEqual(emptyDashboardTime().overtime);
+    expect(summary.invoices.total_count).toBe(0);
   });
 
-  // A capability denial withholds it from someone the ladder would have granted —
-  // the replacement for what ORIGIN_DELTAS.client used to do to client admins.
-  it('honours a capability that withholds team-log visibility', async () => {
-    const service = buildService({
-      accessRows: [
-        {
-          project_id: 'withheld-project',
-          role: 'admin',
-          origin: 'invited',
-          capabilities: { 'time.view_team_logs': false },
-        },
-      ],
-      logs: [log('withheld-project', 75)],
+  it('refuses a team filter the caller has no part in', async () => {
+    const { service, time } = buildService({
+      accessRows: [{ project_id: 'project-1', role: 'admin' }],
+      teams: [{ id: 'team-1', owner_id: 'someone-else' }],
+      teamMembers: [],
     });
 
-    const summary = await service.getDashboardSummary('user-1', {});
-
-    expect(summary.time.total_logs).toBe(1);
-    expect(summary.time.total_fees).toBe(0);
+    await expect(
+      service.getDashboardSummary('user-1', { team_id: 'team-1' }),
+    ).rejects.toBeInstanceOf(ForbiddenException);
+    expect(time.dashboardTime).not.toHaveBeenCalled();
   });
 
-  // The accepted consequence of removing the persona model: a member who joined
-  // as a "client" is now just an admin, and admins see fees.
-  it('no longer hides fees from an admin based on how they joined', async () => {
-    const service = buildService({
-      accessRows: [
-        {
-          project_id: 'client-project',
-          role: 'admin',
-          origin: 'client',
-          capabilities: {},
-        },
-      ],
-      logs: [log('client-project', 75)],
+  it('never puts Postgres text in the response when a pre-check read fails', async () => {
+    const logged = jest
+      .spyOn(Logger.prototype, 'error')
+      .mockImplementation(() => undefined);
+    const { service } = buildService({
+      accessError: { message: 'relation "project_access" secret detail' },
     });
 
-    const summary = await service.getDashboardSummary('user-1', {});
-
-    expect(summary.time.total_fees).toBe(75);
+    const failure = service.getDashboardSummary('user-1', {});
+    await expect(failure).rejects.toBeInstanceOf(InternalServerErrorException);
+    await expect(failure).rejects.not.toThrow(/secret detail/);
+    // The Postgres text goes to the log instead.
+    expect(logged).toHaveBeenCalledWith(
+      expect.stringContaining('secret detail'),
+    );
+    logged.mockRestore();
   });
 });
 
@@ -187,16 +229,8 @@ describe('ProjectsService dashboard invoice summary', () => {
       total_amount: 1200.456,
       status_counts: { draft: 1, issued: 0, sent: 1, paid: 1, void: 0 },
     });
-    const service = buildService({
-      logs: [log('project-1', 50)],
-      accessRows: [
-        {
-          project_id: 'project-1',
-          role: 'owner',
-          origin: 'invited',
-          capabilities: {},
-        },
-      ],
+    const { service } = buildService({
+      accessRows: [{ project_id: 'project-1', role: 'owner' }],
       commerce: { getInvoiceSummary },
     });
 
@@ -215,16 +249,8 @@ describe('ProjectsService dashboard invoice summary', () => {
       total_amount: 0,
       status_counts: {},
     });
-    const service = buildService({
-      logs: [],
-      accessRows: [
-        {
-          project_id: 'project-1',
-          role: 'admin',
-          origin: 'invited',
-          capabilities: {},
-        },
-      ],
+    const { service } = buildService({
+      accessRows: [{ project_id: 'project-1', role: 'admin' }],
       commerce: { getInvoiceSummary },
     });
 
@@ -248,16 +274,10 @@ describe('ProjectsService dashboard invoice summary', () => {
       total_amount: 0,
       status_counts: {},
     });
-    const service = buildService({
-      logs: [],
+    const { service } = buildService({
       accessRows: [
-        { project_id: 'mine', role: 'owner', origin: null, capabilities: {} },
-        {
-          project_id: 'theirs',
-          role: 'admin',
-          origin: 'invited',
-          capabilities: {},
-        },
+        { project_id: 'mine', role: 'owner' },
+        { project_id: 'theirs', role: 'admin' },
       ],
       commerce: { getInvoiceSummary },
     });
@@ -267,17 +287,28 @@ describe('ProjectsService dashboard invoice summary', () => {
     expect(getInvoiceSummary).toHaveBeenCalledWith(['mine'], expect.anything());
   });
 
+  it('counts a single owned project for invoices', async () => {
+    const getInvoiceSummary = jest.fn().mockResolvedValue({
+      total_count: 0,
+      total_amount: 0,
+      status_counts: {},
+    });
+    const { service } = buildService({
+      role: 'owner',
+      commerce: { getInvoiceSummary },
+    });
+
+    await service.getDashboardSummary('user-1', { project_id: 'project-1' });
+
+    expect(getInvoiceSummary).toHaveBeenCalledWith(
+      ['project-1'],
+      expect.anything(),
+    );
+  });
+
   it('reports zeroes when no commerce implementation is bound', async () => {
-    const service = buildService({
-      logs: [],
-      accessRows: [
-        {
-          project_id: 'project-1',
-          role: 'admin',
-          origin: 'invited',
-          capabilities: {},
-        },
-      ],
+    const { service } = buildService({
+      accessRows: [{ project_id: 'project-1', role: 'admin' }],
     });
 
     const summary = await service.getDashboardSummary('user-1', {});

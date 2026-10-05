@@ -29,6 +29,15 @@ describe('ProjectsService (permissions)', () => {
   const cacheInvalidation = {
     invalidateAllDashboardCache: jest.fn().mockResolvedValue(undefined),
   };
+  // TimeProjectsFacade: the client-hours level and the roster mask (L22).
+  const timeFacade = {
+    stopRunningForProject: jest.fn(),
+    clientHoursLevel: jest.fn().mockResolvedValue('none'),
+    maskedWorkerIds: jest.fn().mockResolvedValue(new Set<string>()),
+    maskedWorkerIdsByProject: jest
+      .fn()
+      .mockResolvedValue(new Map<string, Set<string>>()),
+  };
 
   // Default authorization stub: caller has no project_shares grant. Tests
   // that exercise the role-based bypass should override `getUserProjectRole`.
@@ -99,7 +108,7 @@ describe('ProjectsService (permissions)', () => {
       } as any,
       { send: jest.fn().mockResolvedValue({ sent: true }) } as any,
       { log: jest.fn() } as any, // AuditService
-      { stopRunningLogsForProject: jest.fn() } as any,
+      timeFacade as any,
       {} as never,
     );
   };
@@ -447,7 +456,6 @@ describe('ProjectsService (permissions)', () => {
   // that the target was consultant-verified, and that grant ran before revoke.
   // Ownership transfer is the surviving path and keeps its own coverage.
 
-
   // ── mention-by-email availability ─────────────────────────────────────────
   describe('mentions.invite_by_email', () => {
     /** Supabase stub serving one notification_types row. */
@@ -566,6 +574,294 @@ describe('ProjectsService (permissions)', () => {
 
       // Memoised: this endpoint is hit per project view.
       expect(db.from).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  // ── time (P16) ────────────────────────────────────────────────────────────
+  describe('time_client_hours_level (L22)', () => {
+    const memberRow = (role: string) => ({
+      id: 'm-1',
+      user_id: 'user-1',
+      role,
+      origin: null,
+      position: null,
+      capabilities: {},
+    });
+
+    it('adds the client-hours level from the time facade', async () => {
+      timeFacade.clientHoursLevel.mockResolvedValueOnce('detailed');
+      const service = buildService({
+        findById: jest.fn().mockResolvedValue(buildProject()),
+        getMemberByProjectAndUserId: jest
+          .fn()
+          .mockResolvedValue(memberRow('viewer')),
+      });
+
+      const perms = await service.getMyPermissions('project-1', 'user-1');
+
+      expect(perms.time_client_hours_level).toBe('detailed');
+      expect(timeFacade.clientHoursLevel).toHaveBeenCalledWith(
+        'user-1',
+        'project-1',
+      );
+      // The rest of the payload is unchanged, time.log included.
+      expect(perms.time.log).toBe(false);
+      expect(perms.access.time).toBe(true);
+    });
+
+    it("is 'none' without a client seat, and time.log follows the rung", async () => {
+      const service = buildService({
+        findById: jest.fn().mockResolvedValue(buildProject()),
+        getMemberByProjectAndUserId: jest
+          .fn()
+          .mockResolvedValue(memberRow('editor')),
+      });
+
+      const perms = await service.getMyPermissions('project-1', 'user-1');
+
+      expect(perms.time_client_hours_level).toBe('none');
+      expect(perms.time.log).toBe(true);
+    });
+
+    it('does not read the mention flag below admin', async () => {
+      const db = {
+        from: jest.fn(() => {
+          throw new Error('the mention flag must not be read for a viewer');
+        }),
+      };
+      const service = buildService(
+        {
+          findById: jest.fn().mockResolvedValue(buildProject()),
+          getMemberByProjectAndUserId: jest
+            .fn()
+            .mockResolvedValue(memberRow('viewer')),
+        },
+        {},
+        db,
+      );
+
+      const perms = await service.getMyPermissions('project-1', 'user-1');
+
+      expect(perms.mentions.invite_by_email).toBe(false);
+      expect(db.from).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('D64: access.time off also turns time.log off', () => {
+    const editorRepo = () => ({
+      findById: jest.fn().mockResolvedValue(buildProject()),
+      getMemberById: jest.fn().mockResolvedValue({
+        id: 'member-row-1',
+        user_id: 'member-1',
+        role: 'editor',
+        origin: 'invited',
+        position: null,
+        capabilities: {},
+      }),
+      updateMemberCapabilities: jest.fn().mockResolvedValue({ ok: true }),
+    });
+
+    it('accepts the deployed editor’s round-tripped time.log when access.time is unticked', async () => {
+      const repo = editorRepo();
+      const service = buildService(repo, {
+        assertPermission: jest.fn().mockResolvedValue({}),
+      });
+
+      // The old web posts back GET's `time: { log: true, ... }` untouched.
+      await expect(
+        service.updateMemberPermissions(
+          'project-1',
+          'member-row-1',
+          'admin-1',
+          {
+            access: { time: false },
+            time: { log: true, view_team_logs: false },
+          },
+        ),
+      ).resolves.toEqual({ ok: true });
+
+      const written = repo.updateMemberCapabilities.mock.calls[0][2];
+      expect(written).toEqual(
+        expect.objectContaining({ 'access.time': false, 'time.log': false }),
+      );
+    });
+
+    it('leaves time.log alone when access.time is not being turned off', async () => {
+      const repo = editorRepo();
+      const service = buildService(repo, {
+        assertPermission: jest.fn().mockResolvedValue({}),
+      });
+
+      await service.updateMemberPermissions(
+        'project-1',
+        'member-row-1',
+        'admin-1',
+        { access: { time: true }, time: { log: false } },
+      );
+
+      const written = repo.updateMemberCapabilities.mock.calls[0][2];
+      expect(written).toEqual(expect.objectContaining({ 'time.log': false }));
+      // An array path: 'access.time' is one flat key, not a nested path.
+      expect(written).not.toHaveProperty(['access.time']);
+    });
+  });
+
+  describe('roster masking (L22, E35, D57)', () => {
+    const talentRow = {
+      id: 'row-talent',
+      project_id: 'project-1',
+      user_id: 'talent-1',
+      role: 'editor',
+      origin: 'engagement',
+      position: null,
+      capabilities: {},
+      granted_at: '2026-09-01T00:00:00.000Z',
+      user: {
+        id: 'talent-1',
+        display_name: 'Rico Talent',
+        avatar_url: 'https://cdn/rico.png',
+        email: 'rico@example.com',
+        first_name: 'Rico',
+        last_name: 'Talent',
+      },
+    };
+    const ownerRow = {
+      id: 'row-owner',
+      project_id: 'project-1',
+      user_id: 'client-1',
+      role: 'owner',
+      user: { id: 'client-1', display_name: 'Client', email: 'c@x.com' },
+    };
+    const projectWithRoster = () => ({
+      ...buildProject(),
+      members: [ownerRow, talentRow],
+    });
+
+    it('masks a placed talent worker in the project payload for this viewer', async () => {
+      timeFacade.maskedWorkerIds.mockResolvedValueOnce(new Set(['talent-1']));
+      const service = buildService({
+        findById: jest.fn().mockResolvedValue(projectWithRoster()),
+      });
+
+      const project = (await service.getProject('project-1', 'client-1')) as {
+        members: Array<Record<string, any>>;
+      };
+
+      expect(timeFacade.maskedWorkerIds).toHaveBeenCalledWith(
+        'project-1',
+        'client-1',
+      );
+      expect(project.members[0]).toEqual(ownerRow);
+      expect(project.members[1].user).toEqual({
+        id: 'masked:row-talent',
+        display_name: 'Delivery team member',
+        avatar_url: null,
+        email: null,
+        first_name: null,
+        last_name: null,
+      });
+      expect(project.members[1].user_id).toBe('masked:row-talent');
+      expect(project.members[1].id).toBe('row-talent');
+      expect(JSON.stringify(project)).not.toMatch(/Rico|rico@|talent-1/);
+    });
+
+    it('returns the payload unmasked for internal callers with no viewer', async () => {
+      const service = buildService({
+        findById: jest.fn().mockResolvedValue(projectWithRoster()),
+      });
+
+      const project = (await service.getProject('project-1')) as {
+        members: unknown[];
+      };
+
+      expect(project.members[1]).toEqual(talentRow);
+      expect(timeFacade.maskedWorkerIds).not.toHaveBeenCalled();
+    });
+
+    it('masks the dashboard list inside the per-user cache loader', async () => {
+      timeFacade.maskedWorkerIdsByProject.mockResolvedValueOnce(
+        new Map([['project-1', new Set(['talent-1'])]]),
+      );
+      const service = buildService({
+        findDashboardByUser: jest
+          .fn()
+          .mockResolvedValue([
+            projectWithRoster(),
+            { ...buildProject({ id: 'project-2' }), members: [ownerRow] },
+          ]),
+      });
+
+      const projects = (await service.listDashboardProjects(
+        'client-1',
+      )) as unknown as Array<{ id: string; members: any[] }>;
+
+      expect(timeFacade.maskedWorkerIdsByProject).toHaveBeenCalledWith(
+        ['project-1', 'project-2'],
+        'client-1',
+      );
+      expect(projects[0].members[1].user.display_name).toBe(
+        'Delivery team member',
+      );
+      expect(projects[1].members[0]).toEqual(ownerRow);
+    });
+
+    it('masks the project list too', async () => {
+      timeFacade.maskedWorkerIdsByProject.mockResolvedValueOnce(
+        new Map([['project-1', new Set(['talent-1'])]]),
+      );
+      const service = buildService({
+        findByUser: jest.fn().mockResolvedValue([projectWithRoster()]),
+      });
+
+      const [project] = (await service.listUserProjects(
+        'client-1',
+      )) as unknown as Array<{ members: any[] }>;
+
+      expect(project.members[1].user_id).toBe('masked:row-talent');
+    });
+
+    it('skips the facade for lists with no members', async () => {
+      const service = buildService({
+        findByUser: jest.fn().mockResolvedValue([buildProject()]),
+      });
+
+      await service.listUserProjects('client-1');
+
+      expect(timeFacade.maskedWorkerIdsByProject).not.toHaveBeenCalled();
+    });
+
+    it('masks the member row a permissions write returns', async () => {
+      timeFacade.maskedWorkerIds.mockResolvedValueOnce(new Set(['talent-1']));
+      const repo = {
+        findById: jest.fn().mockResolvedValue(buildProject()),
+        getMemberById: jest.fn().mockResolvedValue(talentRow),
+      };
+      const accessSyncAware = buildService(repo, {
+        assertPermission: jest.fn().mockResolvedValue({}),
+      });
+      // The fan-out path: the share row was updated and is re-read.
+      (
+        accessSyncAware as unknown as {
+          accessSync: { setUserCapabilitiesByMemberId: jest.Mock };
+        }
+      ).accessSync.setUserCapabilitiesByMemberId.mockResolvedValueOnce(
+        'talent-1',
+      );
+
+      const member = (await accessSyncAware.updateMemberPermissions(
+        'project-1',
+        'row-talent',
+        'client-1',
+        { roadmap: { comment: true } },
+      )) as Record<string, any>;
+
+      expect(member.user_id).toBe('masked:row-talent');
+      expect(member.user.display_name).toBe('Delivery team member');
+      expect(member.user.email).toBeNull();
+      expect(timeFacade.maskedWorkerIds).toHaveBeenCalledWith(
+        'project-1',
+        'client-1',
+      );
     });
   });
 });

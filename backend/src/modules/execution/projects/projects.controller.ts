@@ -110,9 +110,11 @@ export class ProjectsController {
     return this.projectsService.createProjectFromRoadmap(user.id, dto);
   }
 
+  // The viewer decides the roster mask: a placed talent worker reads
+  // "Delivery team member" to anyone who is not a provider-side party (L22).
   @Get(':id')
-  getProject(@Param('id') id: string) {
-    return this.projectsService.getProject(id);
+  getProject(@Param('id') id: string, @CurrentUser() user: AuthenticatedUser) {
+    return this.projectsService.getProject(id, user.id);
   }
 
   @Patch(':id')
