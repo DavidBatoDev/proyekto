@@ -1,8 +1,8 @@
 # Time Management Rebuild
 
-> **⚠️ Proposed — not built.**
+> **⚠️ Partly built (2026-10-06).** M0 and M1 are applied on dev and prod and PR-0 is deployed. Backend PR-1 (`TimeModule`, the `/api/team-time` alias) is built and **held unmerged**; M2 and M3 are written but **not applied anywhere**. The web PR is not started. Live state per step: [Rollout Status](./migrations-and-rollout.md#rollout-status). Where PR-1 settled a question differently from this page, the page is corrected and the decision is tagged (D-numbers from the PR-1 build plan; the full list is in [backend › As Built in PR-1](./backend.md#as-built-in-pr-1)).
 
-> **Last updated:** 2026-10-02 · **Status:** draft
+> **Last updated:** 2026-10-06 · **Status:** draft
 
 Today time tracking belongs to teams: a log quietly picks a team, each log is reviewed alone, every period is UTC, any project viewer can start a timer, and Free turns everything off. This proposal makes a time entry a plain fact (person, project, optional task or preset, interval) logged **For** exactly one context: an agreement (engagement assignment), a team, the workspace, or "Just me" (API name `logging_for`). Approval becomes one model, a **timesheet** per person, sheet scope and period, routed to an approver fixed at submit; approval freezes payable hours and cost per entry's local date. One bare **Time** page at `/time` replaces the four team tabs, reports become filtered views of one ledger, and invoices reserve hours at composition so each entry is billed once, only by the contract it was logged under. `task_time_logs` becomes `time_entries`, the API moves to `/api/time` (alias `/api/team-time` until three retirement conditions hold), and the 414 legacy prod entries are grouped into timesheets by period without ever guessing a contract context.
 
@@ -100,15 +100,15 @@ flowchart TD
 
 | Step | Rule |
 |---|---|
-| 0 | Guests: 404 on every `TimeModule` route and the alias, overview `can_log:false`. No `project_access` row and not `projects.owner_id`: **404** (CHANGE-17). No `time.log` (editor+): `options: []`, writes 403 `NO_LOGGING_CONTEXT`. |
+| 0 | Guests: 404 on every `TimeModule` route and the alias, except `GET /time/me/overview` (the empty shape, `can_log:false`) and `GET /time/me/running` plus the alias `GET logs/me/running`, which answer `null` because every signed-in client polls them (D08). No `project_access` row and not `projects.owner_id`: **404** (CHANGE-17). No `time.log` (editor+): `options: []`, writes 403 `NO_LOGGING_CONTEXT`. |
 | 1 | Load the project (`workspace_id`, `owner_id`). |
-| 2 | Assignments: caller is worker, `started_at ≤ at < coalesce(ended_at, ∞)` (ended ones count for `purpose='manual'` inside the window); governing engagement `active` with settings in force; `tracking_mode='disabled'` → `unavailable: contract_disabled`. |
-| 3 | Teams: in `project_teams` and curated for the caller. Unavailable (`team_time_off \| plan`) still counts as **present**. Order `is_primary DESC, attached_at, team_id`. Suppress a team equal to an assignment's `team_id` or its talent engagement's hirer party team. |
-| 4 | Workspace, only with **no team present**: `workspace_members` of W, policy `tracking_enabled`, W has `time_tracking`. |
+| 2 | Assignments: caller is worker, `started_at ≤ at < coalesce(ended_at, ∞)` (ended ones count inside their window for every purpose except a timer start); governing engagement `active` with settings in force; `tracking_mode='disabled'` → `unavailable: contract_disabled`. |
+| 3 | Teams: in `project_teams` and curated for the caller. Unavailable (`team_time_off \| plan`) still counts as **present**. Order `is_primary DESC, attached_at, team_id`. Suppress a team equal to an assignment's `team_id` or its talent engagement's hirer party team, **only when that assignment option is available** (D59): an unavailable agreement never removes the team. |
+| 4 | Workspace, only when step 3 found no team curated for the caller: `workspace_members` of W, policy `tracking_enabled`, W has `time_tracking`. An editor on a project whose attached team they are not curated on therefore gets the workspace option (with a seat) or "Just me" (D58). |
 | 5 | An assignment with `tracking_mode='required'` removes all other options. |
 | 6 | "Just me" only if 2–4 left nothing **available**. |
-| 7 | `requested` must be an option (else 422 `LOGGING_FOR_INVALID {options}`). Collapse same sheet scope + rate source. One left: read-only chip. Several: 409 `LOGGING_FOR_REQUIRED {options, prefill}` (`time_logging_defaults`, one confirming tap, never silent; resend `remember: true`). None: 403 `NO_LOGGING_CONTEXT`. |
-| 8 | Alias calls: remembered default, else first option (today's `resolveTeamRate` pick). |
+| 7 | `requested` must be an option, matched before the collapse (else 422 `LOGGING_FOR_INVALID {options}`). Collapse same sheet scope + rate source, plus the team id when the rate source is `team_member_rates` (D60), so two teams with their own rate cards stay apart. One left: read-only chip. Several: 409 `LOGGING_FOR_REQUIRED {options, prefill}` (`time_logging_defaults`, one confirming tap, never silent; resend `remember: true`). None: 403 `NO_LOGGING_CONTEXT`. |
+| 8 | Alias calls (uncached): remembered default, else first option (today's `resolveTeamRate` pick); never a 409; no option → 403 `NO_LOGGING_CONTEXT` "You can't log time on this project." (D44). |
 
 - Writes resolve uncached; `GET logging-for` and pickers use a 30 s Redis cache per (user, project), evicted on policy writes and assignment create/end (L60: since writes never read the cache, a wider eviction list is unneeded). Pickers and overview never 403.
 - **Edits (L2, L58):** task changes keep the context; `context_kind`, `context_ref` and FK change only together via edit, project move (re-resolves) or bulk "Change For…", with both sheets `open`/`returned`; FK `SET NULL` never touches `context_ref`; each change re-snapshots rate, rate type, currency and label, and trg_30 moves the entry. Into an assignment only if `created_at ≥ assignment.created_at` and `started_at ≥ assignment.started_at` (`off-platform-engagement-adoption.md:153,159`).
@@ -155,7 +155,7 @@ stateDiagram-v2
 
 | `submission_kind` | When | Event |
 |---|---|---|
-| `manual` | From the period's last day; refused while running or with 0 entries | `submitted` |
+| `manual` | From the period's last local day (`too_early` before it); `auto`/`self` sheets may submit early (D13); refused while running or with 0 entries | `submitted` |
 | `auto` | Cron, `max(reminder_days,1)` days after period end, `auto`/`self` sheets without a running entry; the invoice cron no longer submits | `auto_submitted` |
 | `on_deletion` | `delete_account`, `open`/`returned` sheets, actor NULL | `submitted` |
 | `legacy` | M2 import ("Imported from per-entry review") | `legacy_import` |
@@ -172,7 +172,7 @@ Other sheets keep manual Submit, `timesheet_reminder` and the welcome-line nudge
 | 4 | `engagement`, talent-governed (always `provider_submit_hirer_approve`; `none` raises `TALENT_TIME_POLICY_INVALID`, `20260814021000:208-212`) | `hirer` | `engagement_parties.position='hirer'` (`hirerUserIdForEngagement`) |
 | 5 | `engagement`, client-governed | `auto` | none ("Confirmed") |
 | 6 | no cost money, `approval_required=false` | `auto` | none |
-| 7 | no cost money, member is the only decider | `self` | "Self-approved" on submit |
+| 7 | no cost money, member is the only decider | `self` | "Self-approved" on submit; on account deletion `auto` instead, never `self` (D14) |
 | 8 | `team` with cost money, member is the only team decider | `workspace` | workspace managers minus the member, else waits: "No one else can approve this. Add a workspace admin." |
 | 9 | `team`, team deleted (D6) | `workspace` | `can_manage_workspace(policy_workspace_id)` |
 
@@ -192,7 +192,7 @@ Other sheets keep manual Submit, `timesheet_reminder` and the welcome-line nudge
 |---|---|
 | 1. Rate | team: `team_member_rates` with `start_date ≤ d ≤ coalesce(end_date, ∞)` (0 without rates or `time_team_rules`); assignment: `ratesInForceOn` talent cost (0 client-governed); workspace: 0 |
 | 2. Round | `payable_seconds = round_to(duration_seconds, rounding_minutes)`, nearest, ties up (D14) |
-| 3. Cap (L12) | Contract `weekly_limit_minutes` per (worker, governing engagement) across projects, sheet week; team `weekly_limit_hours`/`monthly_limit_hours` per (member, team), sheet-timezone week or month. In `started_at` order, latest cut first, unless `approve_overtime: true` (`timesheets.overtime_approved`). Writes keep warning; `HOUR_CAP_EXCEEDED` blocks only where `overtime_requires_approval` does today. |
+| 3. Cap (L12) | Contract `weekly_limit_minutes` per (worker, governing engagement) across projects, sheet week — only on engagement sheets and only when the contract sets it; team `weekly_limit_hours`/`monthly_limit_hours` per (member, team), sheet-timezone week or month. In `started_at` order, latest cut first, unless `approve_overtime: true` (`timesheets.overtime_approved`). A workspace or team policy `weekly_limit_minutes` **never** cuts payable time: it is a review indicator and a write-time warning (D65). Writes keep warning; `HOUR_CAP_EXCEEDED` blocks only where `overtime_requires_approval` does today. |
 | 4. Amount | hourly `round(payable_seconds / 3600 × rate_snapshot, 2)` (display); `month`/`fixed` → `rate_type_snapshot='fixed'`, NULL; consultant client time 0, NULL |
 | 5. Totals | `total_seconds`, `payable_seconds` (rejected legacy excluded) |
 
@@ -208,9 +208,9 @@ Legacy entries freeze from the stored `rate_snapshot` (D13), never re-resolved, 
 
 **Axis 7 (CHANGE-8).** Workspace owners/admins decide `workspace`-scope sheets of their `policy_workspace_id` and see person, interval, duration and work-item kind; project/task titles and notes only with `access.time`, else "A project you can't open". Same on review, workspace report and exports, cross-workspace teams included. Attach dialog: "Time this team logs here is approved in <team workspace>. Approvers who can't open this project see hours only." No rerouting to team managers. Recorded in `docs/03-backend/authorization-axes.md`.
 
-**Reads (CHANGE-17).** `can_view_timesheet` = member, `can_decide_timesheet`, or `can_manage_team(team_id)` on `team` sheets; entries, segments, comments follow; personal is member-only; misses 404; `approve-bulk` fails the batch on any miss. `ENTRY_SELECT` has no money or `email` (email only in self and team-manager views).
+**Reads (CHANGE-17).** `can_view_timesheet` = member, `can_decide_timesheet`, or `can_manage_team(team_id)` on `team` sheets; entries, segments, comments follow, **plus** a team manager sees every team-context entry of their team even on a workspace-scope sheet (D49: every Free and Pro team has workspace-scope sheets, and the team report lists those entries); personal is member-only; misses 404; `approve-bulk` fails the batch on any miss. The base entry select has no money or `email` (email only in self and team-manager views).
 
-**Identity (CHANGE-7).** Assignment workers are visible only to themselves and provider-side parties (talent hirer and provider, client provider); others see "Delivery team". Clients see approved hours only, at `least(invoice.hours_detail_level, client_hours_detail_level)`, on invoices and Project › Time "Client hours" when not `none`; legacy contracts are `none`.
+**Identity (CHANGE-7).** Placed-talent workers (an assignment with a `talent_engagement_id`) are visible only to themselves and provider-side parties (talent hirer and provider, client provider); others see "Delivery team". A consultant's own client-only assignment time stays named, the client hirer included: the client sees their own consultant (D57). Clients see approved hours only, at `least(invoice.hours_detail_level, client_hours_detail_level)`, on invoices and Project › Time "Client hours" when not `none`; legacy contracts are `none`.
 
 ## Pricing and Plan Keys
 
@@ -235,7 +235,7 @@ Group `team`, sort 120–126, seeded by **M0** `20261003090000_time_plan_keys.sq
 | Cut-offs (L14) | `pay_period_config` stays in Team › Settings › Time as "Billing and pay cut-offs", team owner, with `time_billable_invoices` or `time_payouts`; not under Payouts (`team_config` contracts derive periods from it) |
 | SQL style | keys `ON CONFLICT (key) DO UPDATE SET label, description, …` (not `kind`); limits `ON CONFLICT (plan, limit_key) DO NOTHING` |
 | Old backend | Steps 1–7: the 6 new keys show as `unknown_to_code` drift (`enforced:false`, `entitlements.logic.ts:151-175`), old pages show the relabelled key. Cosmetic |
-| **PR-1** (backend-only, with M0) | `shared/entitlements/entitlement-keys.ts`, test-kit `buildSeedLimitRows`/`buildSeedKeyRows`, `entitlement-keys.migration-parity.spec.ts`, `workspace-usage.service.spec.ts` |
+| **PR-1** (backend-only) | `shared/entitlements/entitlement-keys.ts` (the six keys registered with M0 on `feat/time-rebuild`); PR-1 marks `time_billable_invoices`, `time_team_rules`, `time_payouts`, `time_reports_export` and `time_audit_export` `enforced: true`, `time_approval_chains` stays `false` (D40). Display effect only: the Usage page and plans matrix report them as enforced |
 | **Web PR** | `planLimits.ts`, `pricing.ts` (`:152,436`), `WorkspaceUsagePage.tsx`, `/admin/plans`, their Vitest files (`entitlements`, `planLimits`, `pricing`, `PlanLimitNotice`, `WorkspaceUsagePage`), help docs (tier names only; no prices, "per user", "/month" or pricing links). One commit across both would break L5 |
 
 **Prod impact:** Prodigitality keeps team approvers via the seed, payouts moot (rates and payouts off), workspace `tracking_enabled=false` keeps the team context. Invoices: 0 (retainers, no `engagement_id`, `none` detail). Curated viewers lose logging; fallback loggers are back-filled (D16). `payouts` was never plan-checked before.

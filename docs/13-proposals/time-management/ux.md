@@ -2,7 +2,9 @@
 
 > **⚠️ Proposed — not built.**
 
-> **Last updated:** 2026-10-02 · **Status:** draft
+> **Last updated:** 2026-10-06 · **Status:** draft
+
+> Backend PR-1 is built and held unmerged; this page is the web PR's spec. Two rows below were aligned with the built backend on 2026-10-06: the weekly-limit indicator (D65) and the account-deletion copy (D70).
 
 Time leaves the team pages for one personal **Time** page at a bare `/time` (L27, CHANGE-10), where everyone logs, submits and approves, whatever the time is for. A card is one person's **sheet scope** for one period (L26, CHANGE-2); each entry's **For** tag says who approves it (L57); there are four statuses (L56); approvers who don't log get approver mode, not an empty week (L36); client hours are one identity-free surface (L22, CHANGE-7). Team pages keep Report, Rates, Payouts and pay cut-offs (L14), and every old link redirects. Component paths are under `web/src/`, and `file:n` is a line in that file; L-n, CHANGE-n, D# and E# ids are explained in the [pressure-test log](./pressure-test-log.md).
 
@@ -293,7 +295,8 @@ History: Imported from per-entry review Sep 29 · Returned Sep 30 "Split Thu" ·
 | Grid redaction (L21, CHANGE-8) | A reader without `access.time` on a project sees its hours merged into "Projects you can't open". Their entries list shows only interval, duration and work-item kind; task title and note read "A project you can't open". Under Axis 7 a decider never sees another person's email. |
 | Cell click | Filters entries to that project and day; merged cells filter to the merged rows |
 | Amounts (L64) | "Estimated cost" per currency before approval, "Amount at approval" after. Only when `costVisible`. Never on native for agreement sheets. Never to client-side admins. |
-| Over the limit (L12) | Adds the panel below. Rounding happens per entry first, then the cap. Ticking sends `approve_overtime: true` and sets "Overtime approved". |
+| Weekly limit line (D65) | The "⏱ Weekly limit 40h (Prodigitality) · 38:15 logged" line on a workspace or team sheet is an **indicator only**, read from `rules.weekly_limit_minutes` and the logged total. The policy limit never cuts payable hours there, so the line never says or implies that hours will be cut, and it never adds the over-the-limit panel. |
+| Over the limit (L12) | Adds the panel below only when a cap that cuts payable time is exceeded: the agreement's own weekly limit on an agreement sheet, or a team member's weekly or monthly cap (team member rates). Rounding happens per entry first, then the cap. Ticking sends `approve_overtime: true` and sets "Overtime approved". |
 | Approve… | Dialog with an optional note (and the overtime box when it applies). Toast: "Approved · 38:15 frozen". |
 | Return… | Note required. Placeholder "What should Maria change?"; button **Return to Maria**. |
 | Submitter's view | Withdraw (while Submitted), Reopen (own `auto`/`self` sheet) or Ask to reopen, in place of the decision buttons |
@@ -408,7 +411,7 @@ These come from the signed terms and override team and workspace rules.
 | Project people | `components/project/people/AttachTeamDialog.tsx` adds the consent line (L21): "Time this team logs here is approved in <team workspace>. Approvers who can't open this project see hours only." In `PersonRow.tsx`, a member who is the worker of an assignment on this project, under an engagement where the viewer is not a provider-side party, reads **"Delivery team member"** (L22, E35). The mask is keyed on the assignment, never on `project_access.origin`: that table holds one row per (project, user), and `origin` is only a descriptive label. |
 | Permission catalog (`components/project/permissions/permissionCatalog.ts`) | Add `time.log`, "Log time" ("Start timers and add time on this project."), granted at editor and above and requiring `access.time`. Reword `access.time` (`:82-84`) to "See time on this project." and `time.view_team_logs` (`:352-356`) to "See everyone's time on this project, not just your own." |
 | Engagement page (`routes/_execution/engagements/$engagementId.tsx`, web only) | **"Assign to project"** asks "Which client agreement is this work for?" when more than one client agreement qualifies (`ASSIGNMENT_CLIENT_ENGAGEMENT_REQUIRED`), and with `access_needed: true` adds "Ask a project admin to add Leo." (L25). **"End assignment"** warns "Ending this stops Leo's running timer at the end time." (L37) |
-| Account deletion (`/settings/delete-account`) | Adds "Your open timesheets will be sent for approval when you delete your account." Preflight refusals: `TEAM_HAS_OPEN_TIME` ("Prodigitality Services Inc. Team still has timesheets waiting or time that hasn't been paid. Finish them first.") and `WORKSPACE_HAS_OPEN_TIME` (the same with the workspace name). |
+| Account deletion (`/settings/delete-account`) | Adds "Your open timesheets will be sent for approval when you delete your account." Preflight refusals (D70, the copy the backend sends): `TEAM_HAS_OPEN_TIME` ("This team has time waiting for approval or payment. Hand it to another member instead of deleting it.") and `WORKSPACE_HAS_OPEN_TIME` ("This workspace has time waiting for approval or payment. Hand it to another member instead of deleting it."). A version that names the team or workspace needs a details field on the error and is a later web-PR change. |
 
 ## Reports
 

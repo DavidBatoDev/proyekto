@@ -1,8 +1,8 @@
 # Migrations and Rollout
 
-> **⚠️ Proposed — not built.**
+> **⚠️ Partly built.** M0 and M1 are on dev and prod, PR-0 is deployed, backend PR-1 is built and held unmerged, and M2/M3 are written but not applied anywhere. See [Rollout Status](#rollout-status).
 
-> **Last updated:** 2026-10-02 · **Status:** draft
+> **Last updated:** 2026-10-06 · **Status:** draft
 
 The rebuild lands as six migrations (M0–M5) and three code pushes, ordered so the running backend never meets a schema it cannot use: expand → cutover → contract. M0/M1 only add, M2 groups legacy entries into timesheets, M3 renames tables behind compatibility views, and M5 removes the old shape once nothing uses it. There are **no feature flags** (the user's standing rule: new user-visible features ship on by default, overriding the "ship dark" wording in `CLAUDE.md`); safety comes from additive files, views, an API alias, invariant prechecks and gates. This page is the only home of the verification SQL.
 
@@ -10,12 +10,16 @@ Part of the [time management proposal](./README.md).
 
 ## Rollout Status
 
+State on 2026-10-06:
+
 | Step | State | Evidence |
 |---|---|---|
-| 0 PR-0 | **Committed, not pushed** (branch `feat/time-pr0-heal-noop`): heal returns `{scanned: 0, healed: 0}`, and a second running timer maps to the existing 400 instead of a 500. Safe to deploy before or after M1: prod has 0 team-less rows, and M1's context trigger re-derives a consistent team context if the old heal ever writes a `team_id` | Jest 6/6 for `team-time.service.spec.ts`, backend `tsc --noEmit` clean |
+| 0 PR-0 | **Deployed.** On `main` as `1fa64b7f` (heal returns `{scanned: 0, healed: 0}`) and `c7ebf4ba` (a second running timer maps to the existing 400 instead of a 500); `backend-deploy.yml` deploys every `main` push that touches `backend/**`. Safe before or after M1: prod has 0 team-less rows, and M1's context trigger re-derives a consistent team context if the old heal ever writes a `team_id` | Jest 6/6 for `team-time.service.spec.ts`, backend `tsc --noEmit` clean before the merge |
 | 1 M0 | **Applied to dev and prod, 2026-10-02** (`time_plan_keys`) | 7 time keys at 120–126, the matrix matches the ladder, 28 keys and 112 rows on both; Prodigitality's workspace resolves `time_team_rules = true` |
 | 2 M1 | **Applied to dev and prod, 2026-10-02** (`time_entries_expand`) | Dev passed first; prod then took the same bytes. Prod: 415 entries all `team` (`work_item` other 238 / task 177); `updated_at` fingerprint unchanged; RLS on and 0 `anon`/`authenticated` table, sequence or function grants; L1 = 0 (no curated Prodigitality member below editor); L1b 1 → 0 (D16 added 1 curation row, `project_access` unchanged at 166); Prodigitality sheets resolve to team scope. Dev: L1b 2 → 0, 12 personal and 32 team entries. Rolled-back smoke tests passed on both: review update, old-shape insert, stop, no-access refusal, second running timer refused, period maths, sheet creation, guard refusals, policy audit. `sync_supabase_dev.mjs check` still reports pre-existing drift unrelated to time (prod-only comment threading, `roadmap_notes`, `mobile_app_requirements`, template seed functions; dev-only `uq_invoices_replacement_source`); 0 diff lines touch any time object |
-| 3 onward | Not started. Next: backend PR-1, held unmerged | |
+| 3 PR-1 | **Built and held, not merged.** Local branch `feat/time-pr1`, not pushed, one commit per work package, backend-only (no `web/**` path in any commit). Contents: `TimeModule` at `/api/time`, the `/api/team-time` alias, the `time_entries` rename sweep, and the invoice, payout, finance, project, team, account and engagement-assignment changes. What differs from this proposal is recorded on each page ([backend](./backend.md#as-built-in-pr-1), [data model](./data-model.md#as-built-in-m2-and-m3), [edge cases](./edge-cases-and-tests.md#as-built-in-pr-1)). Shipped-docs updates for 00–12 ride the same branch as a separate docs-only commit | Unit suites, `tsc --noEmit` and eslint green after each wave; the full-suite run and module wiring are the integration step (G1) |
+| 4 M2 + M3 | **Written, not applied anywhere.** Both files are untracked in `supabase/migrations/`: `20261003100000_time_timesheets_backfill.sql` (md5 `fbfe9dd9…`) and `20261003110000_rename_time_entries.sql` (md5 `163eccbb…`, assembled from five section files). Dev still has only M0/M1. They are committed only after dev and prod have applied the same bytes | Dev dry run: M2 and M3 in one transaction ending in `ROLLBACK`, no error, every smoke as designed (4 approved and 6 submitted legacy sheets; transition, payout, policy-delete, account-deletion and clean-up cases). A read-only check afterwards showed dev unchanged (0 timesheets, `task_time_logs` still a table). Carry-over checker clean; prosrc scan and function ACL 0 rows inside the dry run |
+| 5–11 | Not started. Next: dev apply and the [PR-1 go/no-go](#pr-1-release-gates) gates; the prod apply (step 5) is run by the user | |
 
 ## Principles
 
@@ -34,13 +38,13 @@ CHANGE-13. Backend PR-1 stays unmerged until M2 and M3 are on both databases.
 
 | Step | Action | Where | Old backend | Gate to proceed |
 |---|---|---|---|---|
-| 0 | Pause the `heal-orphaned-logs` Cloud Scheduler job in the GCP console, if it exists (unverified: the repo defines the endpoint but no Scheduler job for it). Merge **backend PR-0**: the handler returns `{healed:0}` (`team-time.service.ts:335-375`). Backend-only push, so it deploys. | GCP + `main` | works | New revision serves 100%; `POST …/cron/heal-orphaned-logs` returns `{healed:0}` |
+| 0 | Pause the `heal-orphaned-logs` Cloud Scheduler job in the GCP console, if it exists (unverified: the repo defines the endpoint but no Scheduler job for it). Merge **backend PR-0**: the handler returns `{scanned: 0, healed: 0}` (the old `{scanned, healed}` shape with zeros; the alias keeps it, D02). Backend-only push, so it deploys. **Done.** | GCP + `main` | works | New revision serves 100%; `POST …/cron/heal-orphaned-logs` returns `{scanned: 0, healed: 0}` |
 | 1 | **M0** `20261003090000_time_plan_keys.sql` | dev → verify → prod → verify | works (`time_tracking` keeps its kind and values) | M0 block green |
 | 2 | **M1** `20261003090100_time_entries_expand.sql` | dev → verify (incl. old-shape smoke) → prod → verify | works | M1 block green; L1 and L1b counts recorded |
-| 3 | **Backend PR-1** reviewed and **held unmerged**: `/api/time`, the alias, new names, `!column` embed hints | GitHub | — | Approved |
-| 4 | **M2** `20261003100000_time_timesheets_backfill.sql`, then **M3** `20261003110000_rename_time_entries.sql` | dev | works (degraded per [Rollback](#rollback-per-step)) | M2 and M3 blocks; the MD-15 embed check; `sync … check` |
-| 5 | **M2** then **M3** | prod, back to back | works through the views | M2 and M3 blocks green |
-| 6 | **Merge PR-1**: backend-only push, auto-deploys to Cloud Run `proyekto-backend` (asia-southeast1) | `main` | replaced | `GET /api/time/me/overview` 200 on the new revision; one alias call (`GET /api/team-time/...`) 200; dispatch `production-qa.yml` (exercises `reset_qa_fixture`) |
+| 3 | **Backend PR-1** built and **held unmerged**: `/api/time`, the alias, new names, `!column` embed hints. **Built** on `feat/time-pr1`. | branch | — | Unit suites green; G1 |
+| 4 | **M2** `20261003100000_time_timesheets_backfill.sql`, then **M3** `20261003110000_rename_time_entries.sql`; then the dev verification: M2/M3 blocks, the post-apply `md5(prosrc)` check, MD-15, PR-1 run locally against dev (integration suites, HTTP smoke incl. all 30 alias routes, the rewritten QA script), and the rollback rehearsal. While dev is ahead of prod, never run `sync_supabase_dev.mjs mirror` (it would rebuild dev from prod and erase M2/M3) | dev | works (degraded per [Rollback](#rollback-per-step)) | G2–G6 of the [go/no-go](#pr-1-release-gates); `sync … check` shows only M2/M3 objects as new |
+| 5 | **M2** then **M3**, by the user | prod, back to back (low-traffic window, Manila night) | works through the views | G7–G8; M2 and M3 blocks green |
+| 6 | **Merge PR-1**: backend-only push, auto-deploys to Cloud Run `proyekto-backend` (asia-southeast1). Commit both migration files first (bytes identical to what was applied; compare `list_migrations` by name) | `main` | replaced | `GET /api/time/me/overview` 200 on the new revision; one alias call (`GET /api/team-time/...`) 200; the B4 spot-check `SELECT count(*) FROM time_entries WHERE status='approved' AND payable_seconds IS NULL AND legacy_status IS NULL`; `time_legacy_backfill(true)` dry run. **`production-qa.yml` is not a gate here** (D53): prod `qa_fixtures` has 0 rows, so its `reset` fails until prod is seeded with `npm run qa:seed:production` |
 | 7 | **Merge the web PR** (separate push). It triggers `web-deploy.yml` and `mobile-ota-deploy.yml` together (see below). | `main` | — | Web smoke on `/time`; the OTA bundle is listed |
 | 8 | **M4** `20261003120000_time_timesheets_reconcile.sql` | dev → prod | — | M4 block green |
 | 9 | Cloud Scheduler job for `POST /api/time/cron/run` (reminders, auto-submit, 24 h stop) | GCP | — | First run logs OK |
@@ -56,6 +60,25 @@ flowchart LR
   P5 --> B6[6 merge PR-1: backend deploy + smoke] --> W7[7 web push: deploy + OTA]
   W7 --> M4[8 M4 reconcile + digest] --> C9[9 cron job] --> M5[10 M5 after L19 gate] --> A11[11 alias 410 after L18 gate]
 ```
+
+### PR-1 Release Gates
+
+Every gate must hold before the prod apply; any "no" stops the rollout. Agents run G1–G6 against dev only (every write-capable call names the dev project id); G7–G10 are the user's.
+
+| # | Gate | Pass |
+|---|---|---|
+| G1 | Unit + full jest, `tsc --noEmit`, eslint on the changed files | green |
+| G2 | Dev M2/M3 verification blocks, prosrc scan, ACL queries, post-apply `md5(prosrc)` check of the 34 functions M2/M3 create or rebuild (generated from the file bodies) | as expected; prosrc, ACL and md5 checks 0 rows |
+| G3 | MD-15 embed check: every old-backend select through the views, plus every new `ENTRY_*`, comment, segment and timesheet select against the new tables | 0 `PGRST200`/`PGRST201` |
+| G4 | Integration suites on dev; period parity on dev (spec) and prod (one read-only MCP `SELECT` over the fixture cases, never prod credentials in a shell) | green |
+| G5 | HTTP smoke on dev: all 30 alias routes with both `Origin` values, the new routes, and the rewritten `backend/scripts/verify-production-qa.ts` (`QA_TARGET=development`). Dev's `billing-v1` QA fixture currently lacks its contract row, so `reset_qa_fixture` raises `QA_FIXTURE_CORE_INVALID` until the dev fixture is re-seeded; during the first period after the dev M2 apply the invoice-hours assertion may run with `QA_ALLOW_BILLING_FLOOR_SKIP=1` (D71) | green |
+| G6 | Rollback rehearsal: the old backend (worktree of `91d227aa`) against dev | reads, current-week approve and stop/start work; locked edits fail with `TIME_ENTRY_LOCKED` |
+| G7 | Prod pre-apply snapshot (read-only, apply day) | 0 running entries, class counts recomputed, L1 recorded |
+| G8 | Readiness | previous Cloud Run revision id recorded with the `update-traffic` command ready; web PR approved and mergeable; Scheduler job for `/api/time/cron/run` **not** created yet (step 9); `OTA_PUBLISH_ENABLED` state known |
+| G9 | Push preflight | `/deploy-preflight` (`cd backend && npm run build`); no `web/**` in the PR; no shared-contract change, so no `check:roadmap-ai-schema` or agent canary |
+| G10 | Sequence | prod M2 then M3, each block verified; commit both files; merge PR-1; step-6 smoke; then the web PR |
+
+No-go triggers: any MD-15 failure; prosrc or ACL rows; an L11 hours-parity mismatch after M2; M2 class counts that differ from the apply-day recomputation for reasons other than new entries; any alias row mismatch; a raw 500 anywhere in the smoke; a rollback rehearsal that cannot read.
 
 ## Migration Files
 
@@ -169,16 +192,21 @@ Step 14 notification types: `category='specific'`, `ON CONFLICT (name) DO NOTHIN
 
 | # | Action |
 |---|---|
-| 1 | **Precheck invariants:** every row has `context_kind`; no non-personal row has `context_ref IS NULL`; no `status IN ('approved','paid','rejected')` row has `ended_at IS NULL`; the Prodigitality policy rows exist when that team exists. |
-| 2 | Create `time_legacy_backfill(p_reconcile boolean)` (service role only) and call it with `false`. It never modifies `status`. Logic in [Legacy grouping](#legacy-grouping). |
+| 1 | **Precheck invariants** (D21): `time_ensure_timesheet` exists and `time_legacy_backfill` does not; `timesheets` is empty; every row has `context_kind`; no non-personal row has `context_ref IS NULL` **or `member_user_id IS NULL`**; no `status IN ('approved','paid','rejected')` row has `ended_at IS NULL`; the `work_item` biconditional already holds; the Prodigitality policy rows exist when that team exists. |
+| 2 | Helpers `time_raise(code, detail)` (every new M2/M3 error goes through it, so `message` is the bare code and `details` is JSON), `time_legacy_sheet_facts`, `time_legacy_approver_scope`, `time_legacy_freeze`; then `time_legacy_backfill(p_reconcile boolean)` (service role only; body starts `#variable_conflict use_column`), called with `false`. It never modifies `status`. Logic in [Legacy grouping](#legacy-grouping). |
 | 3 | Constraints (L49): `ADD CONSTRAINT time_entries_context_check` (validated); `DROP` and re-`ADD` `time_entries_work_item_check` with the biconditional. |
-| 4 | Triggers: create `trg_time_entries_30_timesheet` and `trg_time_entries_40_lock`. |
-| 5 | Payout RPCs, build #1: `create_payout_and_mark_paid` and `void_payout_and_revert` on `task_time_logs` (Renames A1, A2). The `status='paid'` write is the RPC's own (`20260907090000:137-143`), not the old backend's. |
+| 4 | Triggers: `trg_time_entries_30_timesheet` fires on `INSERT OR UPDATE OF started_at, member_user_id, context_kind, context_ref, team_id, workspace_id, engagement_assignment_id, timesheet_id` (D19; a caller-set `timesheet_id` is ignored outside maintenance). `trg_time_entries_40_lock` reads the sheet `FOR SHARE`, lets `payout_id` change only under `app.time_settlement` and `payable_seconds`/`amount_snapshot`/`legacy_status` only under `app.time_freeze`, on every row (D20); the backend retries a `40P01` deadlock once. |
+| 5 | Payout RPCs, build #1: `create_payout_and_mark_paid` and `void_payout_and_revert` on `task_time_logs` (Renames A1, A2), `search_path` pinned to `public, pg_temp`. Create refuses `p_created_by = p_member_user_id` (`PAYOUT_SELF_NOT_ALLOWED`) and fixed-rate entries (`FIXED_RATE_NOT_PAYABLE_BY_ENTRY`), pays `context_kind='team' AND legacy_status IS NULL AND (payable_seconds IS NOT NULL OR status='approved')`, totals `round(sum(coalesce(payable_seconds, duration_seconds)/3600 × rate_snapshot), 2)`, and sets `app.time_settlement` only around its entry UPDATE. The `status='paid'` write is the RPC's own (`20260907090000:137-143`), not the old backend's. |
 | 6 | Notifications (L32): `UPDATE notifications SET is_read = true, read_at = now() WHERE is_read = false AND type_id = (SELECT id FROM notification_types WHERE name = 'time_log_approval_requested')`. Prod had 643 rows for 414 logs on 2026-10-02. |
+| 7 | Privileges: every new function `REVOKE ALL FROM PUBLIC, anon, authenticated`, `GRANT EXECUTE TO service_role`; the two trigger functions get the REVOKE only. |
+
+The file opens with a ticked self-review checklist and a `-- ROLLBACK (manual)` block in its header comment, and ends with the M2 verification block as a trailing comment after `COMMIT`.
 
 ### Legacy Grouping
 
 Decision 3, with D12 and D13 as decided. `time_legacy_backfill(false)` judges "today" in each sheet's timezone.
+
+> **Recomputed 2026-10-05 (prod, read-only):** 64 sheets, **30 approved / 34 submitted / 0 open**, markers `paid_outside` 4 and `rejected` 1. The two current-period sheets of 2026-10-02 have ended since, so they import as submitted. Recompute again on the apply day (G7). **Markers are by fact (D18):** on every row that was grouped into a sheet, `status='rejected'` → `legacy_status='rejected'` and `status='paid' AND payout_id IS NULL` → `'paid_outside'`, whatever class the sheet falls in; personal rows are never marked.
 
 **Group.** Each non-personal row with `timesheet_id IS NULL` gets `time_ensure_timesheet(member, scope_for(...), started_at)`; under maintenance sheets get `origin='legacy_migration'`, `submission_kind='legacy'`. Prodigitality resolves to `scope_kind='team'`, weekly / Monday / Asia/Manila: **64** person-weeks on prod, identical in Manila and UTC. On dev, teams without an override row group into `workspace`-scope sheets and workspace policies materialise lazily (UTC; no `user_time_preferences` yet).
 
@@ -193,18 +221,24 @@ Decision 3, with D12 and D13 as decided. `time_legacy_backfill(false)` judges "t
 
 Each sheet gets one `legacy_import` event (`from_status NULL`, `to_status` = result) and `policy_snapshot` = `time_resolve_policy(...)` at `period_start` plus `{"legacy": true}`. Counts are recomputed on the apply date (weeks ended by then become `submitted`). Known quirks, accepted: 34 entries fall on another calendar day in Manila than UTC (1 in another week); 6 entries overlap.
 
+**Reconcile mode** (`p_reconcile = true`, M4, written now): re-groups and re-marks (the `rejected` marker skipped), then per legacy sheet whose entries changed after its import event: `flagged_approved_changed`, `reconciled_returned`, or `reconciled_approved`. `reconciled_approved` also requires no running entry, because freezing a running entry would violate `time_entries_frozen_check`; both reconcile branches rewrite `total_seconds`.
+
 ### M3 Rename
 
 `20261003110000_rename_time_entries.sql` (L52).
 
 | # | Action |
 |---|---|
-| 1 | **Precheck:** `engagement_time_approvals` and `engagement_time_approval_items` have 0 rows; M2 objects exist; no non-personal entry lacks a `timesheet_id`. |
+| 1 | **Precheck:** `engagement_time_approvals` and `engagement_time_approval_items` have 0 rows; M2 objects exist (`time_legacy_backfill`, trg_30, `time_entries_context_check`); no non-personal entry lacks a `timesheet_id`; `time_entries` does not exist yet. |
 | 2 | **Renames:** `task_time_logs` → `time_entries` (`reviewed_*` → `legacy_reviewed_*`); `task_time_log_segments` → `time_entry_segments` and `time_log_comments` → `time_entry_comments` (`log_id` → `entry_id`); `trg_time_log_comments_updated_at` → `trg_time_entry_comments_updated_at`. |
-| 3 | **Compatibility views** (SQL below). |
+| 3 | **Compatibility views** (SQL below), REVOKEd from `anon`/`authenticated`, granted to `service_role` explicitly. |
 | 4 | **Drops:** the 3 segment and comment policies; `engagement_time_approval_items`, then `engagement_time_approvals`, with both guard functions and their triggers. |
+| 4b | **Policy audit survives a DELETE (D23):** `time_policy_events.policy_id` becomes nullable with FK `ON DELETE SET NULL`; new columns `scope`, `team_id`, `workspace_id` (back-filled, two partial indexes); `tg_time_policies_events` rebuilt to fill them; new `BEFORE DELETE` trigger `trg_time_policies_delete_event` writes a `{deleted: true, row}` event; new `time_policy_delete(p_policy_id, p_actor)` sets `app.time_policy_actor` and deletes. Team override DELETE goes through it. |
 | 5 | **Rebuilds:** Group A: A1, A2 (build #2), A3, A5 → new `account_deletion_close_running_entries_for_workspace`, A6–A10; all of Group B (including `time_timesheet_transition`, which mirrors decisions into `status` while it exists; see the [renames table](./data-model.md)); then `DROP FUNCTION account_deletion_close_running_logs_for_workspace(uuid)`; create `time_test_cleanup`. |
+| 5b | **Transition engine** (new): `time_sheet_has_cost_money`, `time_scope_deciders`, `time_timesheet_deciders`, `time_approval_queue_ids`, `time_stop_running_entries`, `time_apply_freeze`, `time_clear_freeze`, `time_route_sheet`, `time_sheet_routing_preview`, `time_timesheet_transition` ([data model](./data-model.md#as-built-in-m2-and-m3)). The three internal helpers (`time_apply_freeze`, `time_clear_freeze`, `time_route_sheet`) are revoked from `service_role` too: Supabase's default privileges grant it EXECUTE on new functions, and the freeze helpers could rewrite frozen columns outside a transition. |
 | 6 | **Dev only, before prod (MD-15, L52):** the embed check below. |
+
+The file was assembled from five section files (head, carry-over, engine, Group A, tail), and a carry-over check diffed every carried-over body against its M2/M1 source with the rename map applied (one-off PR-1 build tooling, not kept in the repository).
 
 The views are security invoker, revoked and column-for-column, so they stay auto-updatable; base-table BEFORE triggers fire for writes through them (NOT NULL `context_kind` is checked after trg_10 derives it). Constraint names stay until M5, so `!task_time_logs_*_fkey` hints keep resolving.
 
@@ -213,8 +247,8 @@ CREATE VIEW public.task_time_logs WITH (security_invoker = true) AS
   SELECT id, project_id, task_id, member_user_id, started_at, ended_at, duration_seconds, status,
          legacy_reviewed_by AS reviewed_by, legacy_reviewed_at AS reviewed_at, legacy_review_note AS review_note,
          source, created_at, updated_at, rate_snapshot, currency_snapshot, team_id, work_type_snapshot, payout_id,
-         break_minutes, rate_type_snapshot, paused_at, break_seconds, member_display_name_snapshot,
-         engagement_assignment_id, flagged_reason
+         rate_type_snapshot, break_minutes, paused_at, break_seconds, member_display_name_snapshot,
+         engagement_assignment_id, flagged_reason     -- prod ordinal order: rate_type_snapshot before break_minutes
   FROM public.time_entries;
 CREATE VIEW public.task_time_log_segments WITH (security_invoker = true) AS
   SELECT id, entry_id AS log_id, kind, started_at, ended_at, created_at FROM public.time_entry_segments;
@@ -223,7 +257,7 @@ CREATE VIEW public.time_log_comments WITH (security_invoker = true) AS
 REVOKE ALL ON public.task_time_logs, public.task_time_log_segments, public.time_log_comments FROM anon, authenticated;
 ```
 
-**MD-15 embed check.** Run the old backend revision locally against dev (or the equivalent PostgREST selects with the service key) for every embed: `team-time.service.ts:36-39,71,1215,2241-2242` (including `reviewer:profiles!task_time_logs_reviewed_by_fkey` through the aliased `legacy_reviewed_by AS reviewed_by`, and the `!inner` form), `finance-export.service.ts:131`, `invoice-composition.service.ts:169`, `backend/src/modules/marketplace/payouts/payouts.service.ts:391,459-460`, `financials.service.ts:396` (`teams!inner`), and `time_log_comments_author_user_id_fkey` on the comments view. **Any failure stops the rollout before prod.**
+**MD-15 embed check.** Run the old backend revision locally against dev (or the equivalent PostgREST selects with the service key) for every embed: `team-time.service.ts:36-39,71,1215,2241-2242` (including `reviewer:profiles!task_time_logs_reviewed_by_fkey` through the aliased `legacy_reviewed_by AS reviewed_by`, and the `!inner` form), `finance-export.service.ts:131`, `invoice-composition.service.ts:169`, `backend/src/modules/marketplace/payouts/payouts.service.ts:391,459-460`, `financials.service.ts:396` (`teams!inner`), and `time_log_comments_author_user_id_fkey` on the comments view. Also one INSERT → PATCH `?select=` → DELETE round trip through the `task_time_logs` view, and every new select of PR-1 against the new tables: the `time-entry.select.ts` constants (`ENTRY_*`, `SEGMENT_SELECT`, `COMMENT_SELECT*`, `TIMESHEET_*`), the reports' `timesheets!timesheet_id!inner(...)` with `count:'exact'`, `BOOK_TIME_SELECT`, `TIME_EXPORT_SELECT`, and the `timesheet_events`/`time_policy_events` audit-export selects. **Any `PGRST200`/`PGRST201` stops the rollout before prod.**
 
 ### M4 Reconcile
 
@@ -246,7 +280,7 @@ REVOKE ALL ON public.task_time_logs, public.task_time_log_segments, public.time_
 | 6 | `ALTER TABLE time_entries DROP COLUMN status` (its CHECK goes with it). |
 | 7 | Rebuilds: `tg_time_entries_lock` without the `status` / `legacy_reviewed_*` allowance; `time_timesheet_transition` without `status` writes; payout RPCs build #3, with no `status` writes and no fallback (L15). |
 | 8 | Every constraint and index rename in the [renames table](./data-model.md), as explicit `ALTER … RENAME`. |
-| 9 | Drop `teams.retroactive_log_days`, `teams.contract_enforcement` and `time_legacy_backfill`. |
+| 9 | Drop `teams.retroactive_log_days`, `teams.contract_enforcement`, `time_legacy_backfill` and its helpers. `time_legacy_sheet_facts` **must** go: it reads `e.status`, so the M5 status scan below flags it. |
 
 ## Compatibility Windows
 
@@ -270,7 +304,7 @@ REVOKE ALL ON public.task_time_logs, public.task_time_log_segments, public.time_
 | 2 M1 | Under maintenance: drop trg_10 and the new functions; rename the two triggers and two functions back; restore `set_task_time_logs_updated_at` (`20260320131000:37-45`), `can_manage_team` (`20260901160000:52-68`), `tg_engagement_assignments_guard` (`20260814020000:444-534`); drop the new indexes, CHECKs, columns and the 7 new tables; drop the 3 `engagement_time_settings` columns. The 10 notification types and the D16 curation rows may stay: nothing references the types before PR-1, and the curation rows grant nothing. **Keep** RLS and the REVOKEs; never restore the old grants. `btree_gist` may stay. | lossless (new columns only) |
 | 3 | n/a (unmerged PR) | — |
 | 4–5 M2 | Under maintenance: drop trg_30 and trg_40 and `time_entries_context_check`; restore the values-only `work_item_check`; restore the payout RPCs from `20260907090000:48-147` and `20260701000020:179-214`; clear `timesheet_id`, `payable_seconds`, `amount_snapshot`, `legacy_status`; delete `timesheet_events` and `timesheets`; drop `time_legacy_backfill`. Notifications marked read stay read (cosmetic; the old queue reads entry `status`). | lossless; old-backend reviews after M2 live on `status` |
-| 4–5 M3 | Drop the views; rename tables, columns and the comments trigger back; re-run the M1/M2 definitions of Group B (old table name); restore A1/A2 (build #1), A3 (`20260814021000:489-508`), A6–A10 and `reset_qa_fixture` from their source lines; recreate `account_deletion_close_running_logs_for_workspace` (`20260923090200:165-178`); drop `time_test_cleanup` and the `_entries_` helper; recreate the engagement approval tables (`20260814021000:94-161`), their guards (`:322-382`, `:384-439`) and triggers; recreate the 3 policies (`20260810150000:45`, `20260528000010:26,49`). | lossless |
+| 4–5 M3 | Drop the views; rename tables, columns and the comments trigger back; re-run the M1/M2 definitions of Group B (old table name); restore A1/A2 (build #1), A3 (`20260814021000:489-508`), A6–A10 and `reset_qa_fixture` from their source lines; recreate `account_deletion_close_running_logs_for_workspace` (`20260923090200:165-178`); drop `time_test_cleanup` and the `_entries_` helper; recreate the engagement approval tables (`20260814021000:94-161`), their guards (`:322-382`, `:384-439`) and triggers; recreate the 3 policies (`20260810150000:45`, `20260528000010:26,49`); reverse D23 (drop the three `time_policy_events` columns, restore `NOT NULL` and the CASCADE FK, restore `tg_time_policies_events` from M1, drop `trg_time_policies_delete_event` and `time_policy_delete`); drop the engine functions. The full block is the M3 file's `-- ROLLBACK (manual)` header. | lossless (audit rows of deleted policies are lost) |
 | 6 PR-1 | Shift traffic to the previous revision: `gcloud run services update-traffic proyekto-backend --region asia-southeast1 --to-revisions=<prev>=100`. **Roll web back first** if step 7 ran. **No DB rollback.** The old backend through the views supports **read, approve, and stop/start in the current week only** (L16). Expected old-UI errors: PATCH/DELETE of entries in submitted or approved sheets (`TIME_ENTRY_LOCKED`); manual entries into locked periods (`TIME_PERIOD_LOCKED`). New-model approvals and reopens are mirrored into `status` until M5. On the next forward deploy, `SELECT * FROM time_legacy_backfill(true)` re-reconciles. | none |
 | 7 web / OTA | Redeploy the previous web commit by `workflow_dispatch`; republish the previous bundle. Devices on the new bundle keep working: the new backend serves both `/api/time` and the alias. | none |
 | 8 M4 | Not needed (forward-only, idempotent). Digests can be deleted by type. | none |
@@ -334,7 +368,7 @@ WHERE l.team_id IS NOT NULL
 
 -- ── M2 (table still named task_time_logs) ───────────────────────────────
 SELECT status, origin, submission_kind, count(*) FROM timesheets GROUP BY 1,2,3;
-  -- prod 2026-10-02: approved/legacy_migration/legacy 30, submitted/…/legacy 32, open/…/legacy 2 (recompute on apply date)
+  -- prod 2026-10-05: approved/legacy_migration/legacy 30, submitted/…/legacy 34, open 0 (recompute on apply date)
 SELECT count(*) FROM task_time_logs WHERE context_kind <> 'personal' AND timesheet_id IS NULL;   -- 0
 SELECT legacy_status, count(*) FROM task_time_logs WHERE legacy_status IS NOT NULL GROUP BY 1;  -- prod: paid_outside 4, rejected 1
 SELECT count(*) FROM task_time_logs e JOIN timesheets t ON t.id = e.timesheet_id
@@ -372,7 +406,13 @@ SELECT (SELECT count(*) FROM task_time_logs) = (SELECT count(*) FROM time_entrie
 SELECT to_regclass('public.engagement_time_approvals'), to_regclass('public.engagement_time_approval_items');  -- NULL, NULL
 SELECT count(*) FROM pg_policies WHERE tablename IN ('time_entry_segments','time_entry_comments');  -- 0
 -- repeat the M1 grants and ACL queries (views and time_test_cleanup included) -> 0 rows
--- Dev: the MD-15 embed check. Prod after step 6: production-qa.yml green.
+SELECT has_function_privilege('service_role', 'public.time_apply_freeze(uuid,jsonb)', 'EXECUTE'),
+       has_function_privilege('service_role', 'public.time_clear_freeze(uuid)', 'EXECUTE'),
+       has_function_privilege('service_role', 'public.time_route_sheet(public.timesheets,text)', 'EXECUTE');  -- false, false, false
+SELECT is_nullable FROM information_schema.columns
+WHERE table_name = 'time_policy_events' AND column_name = 'policy_id';                            -- YES (D23)
+-- After the real apply: an md5(prosrc) check of the 34 functions M2/M3 create or rebuild, generated from the file bodies -> 0 rows.
+-- Dev: the MD-15 embed check. Prod after step 6: the step-6 smoke (production-qa.yml is not a gate, D53).
 
 -- ── M4 ──────────────────────────────────────────────────────────────────
 SELECT count(*) FROM timesheets t WHERE t.status = 'submitted' AND t.submission_kind = 'legacy'

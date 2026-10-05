@@ -1,8 +1,8 @@
 # Data Model
 
-> **⚠️ Proposed — not built.**
+> **⚠️ Partly built.** M0 and M1 are applied on dev and prod. M2 and M3 are written (untracked in `supabase/migrations/`) and dry-run on dev, but **not applied anywhere**. Where the files differ from this design, [As Built in M2 and M3](#as-built-in-m2-and-m3) records it and the sections below are corrected.
 
-> **Last updated:** 2026-10-02 · **Status:** draft
+> **Last updated:** 2026-10-06 · **Status:** draft
 
 Time keeps one ledger, `time_entries` (today's `task_time_logs`, renamed). Each entry is tagged with the context it was logged for and lands on a `timesheet`: one per person × sheet scope × period. Approval, freezing and settlement happen on the sheet, not on the entry. Policies stack in layers (workspace, team, contract), billing claims entries through a reservation table instead of a column, and every relation is service-role only. All objects live in `public`. Each object is tagged with the migration that creates or changes it (M0 to M5, see [migrations and rollout](./migrations-and-rollout.md), which is also the only place verification SQL lives). The renames table at the end maps every old name to its new one.
 
@@ -17,13 +17,38 @@ Part of the [time management proposal](./README.md).
 | `time_entry_comments` | table | renamed M3 from `time_log_comments` | |
 | `task_time_logs`, `task_time_log_segments`, `time_log_comments` | compatibility views | M3, dropped M5 | For the old backend only |
 | `timesheets`, `timesheet_events` | tables | M1 | One sheet per person × sheet scope × period (CHANGE-2) |
-| `time_policies`, `time_policy_events` | tables | M1 | Workspace and team layers plus their audit log |
+| `time_policies`, `time_policy_events` | tables | M1; M3 makes `time_policy_events.policy_id` nullable (`ON DELETE SET NULL`) and adds `scope`, `team_id`, `workspace_id` | Workspace and team layers plus their audit log, which now outlives a deleted override |
 | `user_time_preferences`, `time_logging_defaults` | tables | M1 | Display timezone; remembered "For" choice |
 | `invoice_time_entries` | table | M1 | Billing reservation (CHANGE-6); there is no `billed_invoice_id` column |
 | `time_entries_status_archive_<M5 date>` | table | M5 | One-time archive of `status` |
 | `engagement_time_settings` | existing table | M1 adds 3 columns | Contract layer |
 | `engagement_time_approvals`, `engagement_time_approval_items` | existing tables, 0 rows | dropped M3 | Replaced by `timesheets` |
 | `team_member_rates`, `payouts`, `invoice_line_items` | existing tables | M1 adds RLS and REVOKE | Names kept |
+
+## As Built in M2 and M3
+
+The M2/M3 files implement this page with these decisions (D-numbers are the PR-1 build plan's; each is also applied in the section it names).
+
+| # | Topic | As built |
+|---|---|---|
+| D10 | `p_freeze` shape | `{ "<timesheet id>": { "<entry id>": {payable_seconds, rate_snapshot, rate_type_snapshot, currency_snapshot, amount_snapshot} } }`. Every entry of the sheet must be present (else `STALE_REVISION {reason:'entry_set'}`); `payable_seconds` may exceed `duration_seconds` by at most 900; only the NULL-ness of `amount_snapshot` is read, SQL recomputes the amount. A key that is not a uuid is `freeze_invalid` |
+| D11 | Decider sets | `time_scope_deciders(...) RETURNS SETOF uuid` is the single source; counts are `count(*)` over it. `time_timesheet_deciders(id)` and `time_approval_queue_ids(user, status, since)` build on it |
+| D12 | Cost money | Structural, `time_sheet_has_cost_money(id)`: a team entry whose team has `member_rates_enabled` and whose workspace has `time_team_rules`, or an assignment entry with a `talent_engagement_id` — not "a non-zero rate" |
+| D13 | Submit timing | `submit` from `open` on a route other than `auto`/`self` is refused before the period's last local day (`too_early`); `auto`/`self` may submit early; resubmit from `returned` and `submit_on_deletion` have no timing rule |
+| D14 | `submit_on_deletion` with no other decider | Never `self`. No money → `auto` (cron job 4 finishes it); money → stays `submitted` on its scope |
+| D15 | `request_reopen` | Allowed when `decision_kind IN ('manual','legacy')` |
+| D16 | `status` mirror | Approve, reopen (both kinds) **and return** mirror into `time_entries.status`; every mirror statement is filtered `engagement_assignment_id IS NULL` (trg_20 fires on `UPDATE OF status`). Return: `status='pending' WHERE status='approved' AND payout_id IS NULL AND payable_seconds IS NULL` |
+| D17 | Owed for deletion | `account_deletion_*_has_open_time` count approved-unpaid team entries only for teams with `payouts_enabled`; submitted sheets always count |
+| D18 | M2 markers | By fact on every grouped row (personal rows never marked) |
+| D19 | trg_30 columns | `started_at, member_user_id, context_kind, context_ref, team_id, workspace_id, engagement_assignment_id, timesheet_id` |
+| D20 | trg_40 hardening | `FOR SHARE` on the sheet; `payout_id` only under `app.time_settlement`, `payable_seconds`/`amount_snapshot`/`legacy_status` only under `app.time_freeze`, on every row (locked or not) |
+| D21 | M2 prechecks | Also: no non-personal row with NULL `member_user_id`; the `work_item` biconditional holds; `timesheets` empty; `time_legacy_backfill` absent |
+| D22 | Test clean-up | `time_test_cleanup` refuses unless the project title is `LIKE 'itest %'` or `LIKE '[QA]%'` (`TIME_TEST_CLEANUP_FORBIDDEN`); `tg_invoice_time_entries_guard` lets a DELETE through under `app.time_maintenance` |
+| D23 | Policy audit on DELETE | See [`time_policy_events`](#policies-contract-layer-preferences-m1) below and `time_policy_delete` |
+| D65 | Freeze caps | Computed in TypeScript (`p_freeze`); the policy `weekly_limit_minutes` of a workspace or team never cuts payable time. See [Freeze](#freeze) |
+| — | Internal helpers | `time_apply_freeze`, `time_clear_freeze` and `time_route_sheet` are revoked from `service_role` as well (only `time_timesheet_transition` calls them, plus `time_sheet_routing_preview` for `time_route_sheet`; both are SECURITY DEFINER). Every other new function follows the grant rule in [SQL Functions](#sql-functions) |
+| — | Errors | Every new raise goes through `time_raise(code, detail)`: `message` is the bare code, `details` is JSON text. No detail key is named `message`, `status`, `path` or `timestamp` except `TIME_PERIOD_LOCKED {timesheet_id, status}`, which the backend re-keys to `sheet_status` (D50) |
+| — | View column order | The `task_time_logs` view follows prod ordinal order (`payout_id, rate_type_snapshot, break_minutes`), not the order first written |
 
 ## `time_entries`
 
@@ -110,8 +135,8 @@ BEFORE triggers fire in name order, hence the numeric prefixes. M1 renames the t
 |---|---|---|---|
 | 10 | `trg_time_entries_10_context` (`tg_time_entries_context`) | BEFORE INSERT, UPDATE OF `context_kind, context_ref, team_id, workspace_id, engagement_assignment_id, project_id, member_user_id, task_id, work_item` | M1 |
 | 20 | `trg_time_entries_20_assignment_guard` (`tg_time_entries_assignment_guard`) | BEFORE INSERT, UPDATE OF `engagement_assignment_id, member_user_id, project_id, started_at, ended_at, status`; `status` leaves the list in M5 | renamed M1; rebuilt M5 |
-| 30 | `trg_time_entries_30_timesheet` (`tg_time_entries_timesheet`) | BEFORE INSERT, UPDATE OF `started_at, member_user_id, context_kind, context_ref` | M2 |
-| 40 | `trg_time_entries_40_lock` (`tg_time_entries_lock`) | BEFORE UPDATE OR DELETE | M2; rebuilt M3, M5 |
+| 30 | `trg_time_entries_30_timesheet` (`tg_time_entries_timesheet`) | BEFORE INSERT, UPDATE OF `started_at, member_user_id, context_kind, context_ref, team_id, workspace_id, engagement_assignment_id, timesheet_id` (D19) | M2 |
+| 40 | `trg_time_entries_40_lock` (`tg_time_entries_lock`) | BEFORE UPDATE OR DELETE | M2; rebuilt M3 (renamed keys), M5 |
 | 90 | `trg_time_entries_90_updated_at` (`set_time_entries_updated_at`) | BEFORE UPDATE | renamed M1 |
 
 **10 · `tg_time_entries_context`** (CHANGE-14, L1, L2, L17, L49, L58)
@@ -144,9 +169,10 @@ Validation rules:
 | UPDATE with new `member_user_id` NULL | no change (L17) |
 | UPDATE keeping member and context, current sheet's period still holds the new local start date (sheet timezone) | keep the sheet; sheet bounds never move |
 | Otherwise | `(scope_kind, scope_ref, policy_workspace_id) := time_sheet_scope_for(context_kind, context_ref, project_id)`; `timesheet_id := time_ensure_timesheet(member, scope_kind, scope_ref, policy_workspace_id, started_at)` |
-| Target sheet not `open`/`returned` | `TIME_PERIOD_LOCKED`, mapped by the backend to `TIMESHEET_LOCKED {reason}` |
+| Caller sets `timesheet_id` directly | ignored outside `app.time_maintenance` (the trigger recomputes it); under maintenance a caller-set sheet passes through |
+| Target sheet not `open`/`returned` (read `FOR SHARE`) | `TIME_PERIOD_LOCKED {timesheet_id, status}`, mapped by the backend to `TIMESHEET_LOCKED {reason:'period', sheet_status}` |
 
-**40 · `tg_time_entries_lock`.** An entry is **locked** when its sheet is `submitted` or `approved`, or `payable_seconds`, `payout_id` or `legacy_status` is set, or an `invoice_time_entries` row exists for it. DELETE of a locked entry raises `TIME_ENTRY_LOCKED`. UPDATE raises it too unless `to_jsonb(NEW) - allowed = to_jsonb(OLD) - allowed`, where *allowed* is:
+**40 · `tg_time_entries_lock`.** An entry is **locked** when its sheet is `submitted` or `approved`, or `payable_seconds`, `payout_id` or `legacy_status` is set, or an `invoice_time_entries` row exists for it. DELETE of a locked entry raises `TIME_ENTRY_LOCKED {entry_id, reason}` with `reason` in `paid | billed | legacy | frozen | sheet_submitted | sheet_approved`. UPDATE raises it too unless `to_jsonb(NEW) - allowed = to_jsonb(OLD) - allowed`, where *allowed* is below. Independently of the lock, on **every** row a `payout_id` change outside `app.time_settlement` raises `reason: settlement_only`, and a `payable_seconds`/`amount_snapshot`/`legacy_status` change outside `app.time_freeze` raises `reason: freeze_only` (D20). The sheet is read `FOR SHARE`, which can deadlock with a transition; the backend retries a `40P01` once.
 
 | Allowed change | Condition |
 |---|---|
@@ -261,13 +287,14 @@ Frozen on the sheet by `time_timesheet_transition`, implementing the [model](./R
 | team scope whose override has `approver_scope='team'` | `team`, otherwise `workspace` |
 | workspace scope | `workspace` |
 
-- **Cost money exists** when any entry, resolved at submit with the freeze rate rules, carries a cost: a team entry whose team has `member_rates_enabled` **and** whose workspace has `time_team_rules`, or any talent-engagement entry. This is the same definition as [backend › approver routing](./backend.md).
+- **Cost money exists** (D12, `time_sheet_has_cost_money`) structurally: a team entry whose team has `member_rates_enabled` **and** whose workspace has `time_team_rules`, or an assignment entry whose assignment has a `talent_engagement_id`. No rate is resolved for this test. This is the same definition as [backend › approver routing](./backend.md).
 - `policy_snapshot.approval_required = false` yields `auto` only when no cost money exists.
-- If the base scope has no eligible decider other than the member: no cost money → `self`; cost money on a team scope → `workspace` (`can_manage_workspace(policy_workspace_id)`, member excluded); if still nobody qualifies, the sheet stays `submitted` on that scope (UI: "No one else can approve this").
+- If the base scope has no eligible decider other than the member (`count(time_scope_deciders(...)) = 0`): no cost money → `self` for `submit`/`auto_submit`, `auto` for `submit_on_deletion` (D14, never `self`); cost money on a team scope → retry with `workspace` (`can_manage_workspace(policy_workspace_id)`, member excluded); if still nobody qualifies, the sheet stays `submitted` on the base scope (`fallback:'wait'`; UI: "No one else can approve this").
+- Routing is computed by the internal `time_route_sheet(sheet, action)` and written at every submit action as `policy_snapshot.routing = {base, cost_money, deciders_count, fallback}`. `time_sheet_routing_preview(id, action)` returns the same answer without writing; cron job 3 uses it to skip manual-route sheets.
 
 ### Transitions
 
-All go through `time_timesheet_transition`: row lock, `expected_revision` check (`STALE_REVISION`), one `timesheet_events` row appended, `revision` bumped.
+All go through `time_timesheet_transition`: row lock (`ORDER BY id FOR UPDATE`; revisions pair with ids by original index), `expected_revision` check (`STALE_REVISION`), one `timesheet_events` row appended per step, `revision` bumped per step (a chained submit → approved is +2). A non-NULL actor who is neither the member nor `can_view_timesheet` gets `TIMESHEET_NOT_FOUND`. A NULL actor is valid only for `auto_submit`, `submit_on_deletion` and `approve` on an `auto`/`self` sheet (cron job 4, D09). The first failing sheet aborts the batch. `TIMESHEET_TRANSITION_INVALID.reason` is one of `action`, `arguments`, `note_too_long`, `not_allowed`, `state`, `empty`, `running_entry`, `too_early`, `not_auto`, `note_required`, `freeze_required`, `freeze_invalid`, `use_request_reopen`; every per-sheet refusal carries `timesheet_id`. Notes are stored trimmed (blank = no note); more than 2000 characters is `note_too_long`.
 
 ```mermaid
 stateDiagram-v2
@@ -283,17 +310,17 @@ stateDiagram-v2
 
 | Action | From → to | Actor | Rules |
 |---|---|---|---|
-| `submit` | open/returned → submitted, then approved when scope is `auto`/`self` | member | Refused while an entry runs or with 0 entries. Writes `policy_snapshot`, `approver_scope`, `total_seconds`, `submission_kind='manual'` |
-| `auto_submit` | open → submitted (→ approved) | NULL (time cron) | Only sheets resolving to `auto`/`self`, `max(reminder_days,1)` days after `period_end`, no running entry. `submission_kind='auto'`, event `auto_submitted` |
-| `submit_on_deletion` | open/returned → submitted | NULL (`delete_account`) | `submission_kind='on_deletion'`; `self` never chosen |
-| `withdraw` | submitted → open | member | |
-| `approve` | submitted → approved | `can_decide_timesheet` | Freezes (below). `p_approve_overtime` → `overtime_approved=true` |
-| `return` | submitted → returned | `can_decide_timesheet` | Note required |
-| `reopen` (decider) | approved → returned | `can_decide_timesheet` | Note required. Clears the freeze and `legacy_status='rejected'`. `TIMESHEET_HAS_SETTLED_ENTRIES` if any entry has `payout_id`, `legacy_status='paid_outside'` or a reservation |
-| `reopen` (member) | approved → open | member | Own `auto`/`self` sheets only. Refused if any entry is reserved, paid or has any `legacy_status` (L33) |
-| `request_reopen` | approved → approved | member | Event `reopen_requested` only |
+| `submit` | open/returned → submitted, then approved when scope is `auto`/`self` and `p_freeze` has the sheet | member | Refused while an entry runs (`running_entry`) or with 0 entries (`empty`). From `open` on a manual route, refused before the period's last local day (`too_early`, D13). Writes `policy_snapshot` (with `routing`), `approver_scope`, `total_seconds`, `submission_kind='manual'`, clears the decision fields |
+| `auto_submit` | open → submitted (→ approved) | NULL (time cron) | Only sheets resolving to `auto`/`self` (`not_auto` otherwise), no running entry. `submission_kind='auto'`, event `auto_submitted` |
+| `submit_on_deletion` | open/returned → submitted | NULL (`delete_account`) | `submission_kind='on_deletion'`; never chains; `self` never chosen (D14) |
+| `withdraw` | submitted → open | member | Clears like the member reopen. Event `withdrawn` |
+| `approve` | submitted → approved | `can_decide_timesheet` → `decision_kind='manual'`; or NULL actor on `auto`/`self` → kind = scope | `p_freeze` required (`freeze_required`); no running entry. Freezes (below). `p_approve_overtime` → `overtime_approved` |
+| `return` | submitted → returned | `can_decide_timesheet` | Note required (`note_required`). `approver_scope` kept. Return mirror (D16) |
+| `reopen` (decider) | approved → returned | `can_decide_timesheet`, scope `team`/`workspace`/`hirer` | Note required. `time_clear_freeze` clears the freeze and `legacy_status='rejected'`, resets `overtime_approved`. `TIMESHEET_HAS_SETTLED_ENTRIES {reason: paid \| billed}` if any entry has `payout_id`, `legacy_status='paid_outside'` or a reservation (paid is checked first) |
+| `reopen` (member) | approved → open | member | Own `auto`/`self` sheets only (`use_request_reopen` otherwise). Refused if any entry is reserved, paid or has any `legacy_status` (`reason: legacy`, L33). Clears `approver_scope`, `policy_snapshot`, every submit and decision field and both totals |
+| `request_reopen` | approved → approved | member | `decision_kind IN ('manual','legacy')` (D15). Event `reopen_requested`, `revision + 1` only |
 
-**`status` mirror (until M5).** While `time_entries.status` exists, approve writes `status='approved'` (or `'rejected'` for `legacy_status='rejected'`) and reopen writes `status='pending'` on every entry whose freeze it clears. Otherwise a decider reopen of a legacy-approved sheet clears `payable_seconds` but leaves `status='approved'`, and the payout RPC's fallback (A1) makes the returned entries payable between step 6 and M5. M5 removes the writes.
+**`status` mirror (until M5).** While `time_entries.status` exists, approve writes `status='approved'` (or `'rejected'` for `legacy_status='rejected'`), reopen (both kinds) writes `status='pending'` on every entry whose freeze it clears, and **return** writes `status='pending' WHERE status='approved' AND payout_id IS NULL AND payable_seconds IS NULL` (old-backend per-entry approvals inside the returned sheet). Every mirror statement is filtered `engagement_assignment_id IS NULL`, because trg_20 fires on `UPDATE OF status` (D16). Otherwise a decider reopen of a legacy-approved sheet clears `payable_seconds` but leaves `status='approved'`, and the payout RPC's fallback (A1) makes the returned entries payable between step 6 and M5. M5 removes the writes.
 
 ### Freeze
 
@@ -303,7 +330,7 @@ Runs on approve, and on a submit that chains to auto/self (CHANGE-4, L10, L12, L
 |---|---|
 | 1. Rate | Legacy entries (`created_at` before the first `legacy_import` event) keep their stored `rate_snapshot` (D13). **team:** the `team_member_rates` row for (team, member, project) with `start_date ≤ d ≤ coalesce(end_date, ∞)`; 0 when `member_rates_enabled=false` or the workspace lacks `time_team_rules`. **assignment:** the governing talent engagement's `cost`/`hour` rate in force on `d` (same rule as `ratesInForceOn`, `engagements.service.ts:124-134`), picking `rate_kind` (`cost` for freeze, `billing` for invoices) and `work_type = entry.work_type_snapshot` before a `work_type IS NULL` row (`engagement_time_rates.work_type`, `20260814021000:70-71`). A `month`/`fixed` unit gives `rate_type_snapshot='fixed'`; a client-only governing engagement gives `rate_snapshot=0`. **workspace:** 0. |
 | 2. Round | Per entry to `rounding_minutes`, nearest increment, ties up (D14). From the contract settings in force on `d` (`settingsInForceOn`) for engagement scope, otherwise `policy_snapshot`. |
-| 3. Cap | Cut `payable_seconds` to the remaining allowance in `started_at` order, unless `p_approve_overtime`. Contract `weekly_limit_minutes`: per (worker, governing engagement) across all linked projects, over the engagement sheet's week. Team `weekly_limit_hours` / `monthly_limit_hours`: per (member, team) over the sheet timezone's week or calendar month. |
+| 3. Cap | Cut `payable_seconds` to the remaining allowance, latest entries first, unless `p_approve_overtime` (the over-cap seconds are still reported). Only two sources cut (D65): (a) the **contract** `weekly_limit_minutes` in force on `d`, on engagement sheets only and only when the value comes from `engagement_time_settings` — per (worker, governing engagement) across all linked projects, over the engagement sheet's week; (b) team `weekly_limit_hours` / `monthly_limit_hours` from `team_member_rates` — per (member, team) over the sheet timezone's week, then calendar month; entries under different rate rows in one window take the strictest cap. Payable time already approved on other sheets in the window counts against the cap. A workspace or team **policy** `weekly_limit_minutes` never cuts payable time: it is a review indicator and a write-time warning only. |
 | 4. Amount | Hourly: `amount_snapshot = round(payable_seconds/3600.0 × rate_snapshot, 2)`. NULL for `fixed` or a client-only governing engagement. |
 | 5. Sheet totals | `timesheets.payable_seconds = sum(payable_seconds)` over approved entries |
 
@@ -367,6 +394,14 @@ CREATE TABLE public.time_policy_events (
   changes jsonb NOT NULL,                   -- {field: [old, new]}; full row on insert
   created_at timestamptz NOT NULL DEFAULT now());
 CREATE INDEX time_policy_events_policy_idx ON public.time_policy_events (policy_id, created_at DESC);
+-- M3 (D23): the audit survives a deleted override
+ALTER TABLE public.time_policy_events ALTER COLUMN policy_id DROP NOT NULL,
+  DROP CONSTRAINT time_policy_events_policy_id_fkey,
+  ADD CONSTRAINT time_policy_events_policy_id_fkey FOREIGN KEY (policy_id)
+      REFERENCES public.time_policies(id) ON DELETE SET NULL,
+  ADD COLUMN scope text, ADD COLUMN team_id uuid, ADD COLUMN workspace_id uuid;   -- copies, back-filled
+CREATE INDEX time_policy_events_team_idx ON public.time_policy_events (team_id, created_at DESC) WHERE team_id IS NOT NULL;
+CREATE INDEX time_policy_events_workspace_idx ON public.time_policy_events (workspace_id, created_at DESC) WHERE workspace_id IS NOT NULL;
 
 CREATE TABLE public.user_time_preferences (
   user_id uuid PRIMARY KEY REFERENCES public.profiles(id) ON DELETE CASCADE,
@@ -393,7 +428,8 @@ CREATE TABLE public.time_logging_defaults (
 | Trigger | Fires | Does |
 |---|---|---|
 | `trg_time_policies_guard` | BEFORE INSERT, UPDATE | Validates `timezone` against `pg_timezone_names` and the `period_anchor` weekday (`TIME_POLICY_INVALID`); refuses `approval_required=false` on a team row whose team has `member_rates_enabled=true` (`TEAM_RATES_REQUIRE_APPROVAL`); sets `updated_at`. Each rule re-checks only the columns the write changes, so an FK cascade (`created_by`/`updated_by` SET NULL on account deletion) always passes |
-| `trg_time_policies_events` | AFTER INSERT, UPDATE | Appends a `time_policy_events` row with `actor_user_id = coalesce(NEW.updated_by, NEW.created_by)` (L23). No row when only `updated_at` changed; an admin confirming the policy unchanged (setting `updated_by`) does write one |
+| `trg_time_policies_events` | AFTER INSERT, UPDATE | Appends a `time_policy_events` row with `actor_user_id = coalesce(NEW.updated_by, NEW.created_by)` (L23). No row when only `updated_at` changed; an admin confirming the policy unchanged (setting `updated_by`) does write one. Rebuilt in M3 to copy `scope`, `team_id`, `workspace_id` onto the event |
+| `trg_time_policies_delete_event` (M3) | BEFORE DELETE | Appends `{policy_id, actor_user_id: coalesce(app.time_policy_actor, OLD.updated_by), changes: {deleted: true, row}, scope, team_id, workspace_id}`; the FK then nulls `policy_id` and the row stays |
 
 **Layering** (`time_resolve_policy`). Every resolved field carries `source: default|workspace|team|contract|member`.
 
@@ -428,12 +464,12 @@ CREATE INDEX invoice_time_entries_contract_idx ON public.invoice_time_entries (c
 | Topic | Rule |
 |---|---|
 | Lifecycle | Rows are written at composition (scheduled or manual); issue only verifies the set; void-and-replace moves rows (`UPDATE invoice_id`); a void without replacement, a draft deletion, or a recompose that drops entries deletes them. Retainer invoices (`attach_hours=false`) never reserve |
-| `trg_invoice_time_entries_guard` (`tg_invoice_time_entries_guard`) | On INSERT and UPDATE OF `invoice_id`, `entry_id`: entry is Approved, `context_kind <> 'personal'`, `work_type_snapshot <> 'training'`, target invoice is `draft`, `contract_id = invoices.contract_id`; else `INVOICE_TIME_ENTRY_NOT_BILLABLE`. DELETE only while the invoice is `draft` or `void`, or the invoice row is gone (cascade) |
+| `trg_invoice_time_entries_guard` (`tg_invoice_time_entries_guard`) | On INSERT and UPDATE OF `invoice_id`, `entry_id`: entry is Approved, `context_kind <> 'personal'`, `work_type_snapshot <> 'training'`, target invoice is `draft`, `contract_id = invoices.contract_id`; else `INVOICE_TIME_ENTRY_NOT_BILLABLE`. DELETE only while the invoice is `draft` or `void`, or the invoice row is gone (cascade), or under `app.time_maintenance` (M3 rebuild, D22, so test and QA clean-up can remove reservations) |
 | Floor | `time_billing_floor(contract_id)` = `greatest(contracts.service_start_date, (SELECT min(created_at)::date FROM timesheet_events WHERE event='legacy_import'))`, NULLs ignored. The service keeps entries whose local date, in the policy timezone of `contracts.workspace_id` (NULL → the contract project's workspace), is ≤ period end and ≥ the floor |
 
 ## SQL Functions
 
-All new functions are `SECURITY DEFINER SET search_path = public, pg_temp`, `REVOKE ALL FROM PUBLIC, anon, authenticated`, `GRANT EXECUTE TO service_role`. Trigger functions get the REVOKE only.
+All new functions are `SECURITY DEFINER SET search_path = public, pg_temp`, `REVOKE ALL FROM PUBLIC, anon, authenticated`, `GRANT EXECUTE TO service_role`. Trigger functions get the REVOKE only. **Exception (M3):** the internal helpers `time_apply_freeze`, `time_clear_freeze` and `time_route_sheet` are also revoked from `service_role`; Supabase's default privileges would otherwise let PostgREST call them, and the freeze helpers set `app.time_freeze`.
 
 | Function | Signature | Created | Purpose |
 |---|---|---|---|
@@ -444,13 +480,26 @@ All new functions are `SECURITY DEFINER SET search_path = public, pg_temp`, `REV
 | `time_ensure_timesheet` | `(p_member_user_id uuid, p_scope_kind text, p_scope_ref uuid, p_policy_workspace_id uuid, p_at timestamptz) → uuid` | M1 | Steps below. Under `app.time_maintenance`, sets `origin='legacy_migration'` and `submission_kind='legacy'` (L47) |
 | `can_decide_timesheet` | `(p_timesheet_id uuid, p_user_id uuid) → boolean` | M1 | Uses the **frozen** `approver_scope`, never the plan (L40); rules below. Always false for the member; never special-cases legacy |
 | `can_view_timesheet` | `(p_timesheet_id uuid, p_user_id uuid) → boolean` | M1 | The member, OR `can_decide_timesheet`, OR (`scope_kind='team'` AND `can_manage_team(team_id)`). Entries, segments and comments follow (CHANGE-17) |
-| `time_timesheet_transition` | `(p_ids uuid[], p_actor uuid, p_action text, p_expected_revisions integer[], p_note text DEFAULT NULL, p_approve_overtime boolean DEFAULT false, p_freeze jsonb DEFAULT NULL) → SETOF timesheets` | M3 (moved from M1, see below); rebuilt M5 | One lock path. All ids succeed or the batch fails (approve-bulk). Unviewable id → `TIMESHEET_NOT_FOUND`; illegal action, running entry or empty sheet → `TIMESHEET_TRANSITION_INVALID {reason}` |
+| `time_timesheet_transition` | `(p_ids uuid[], p_actor uuid, p_action text, p_expected_revisions integer[], p_note text DEFAULT NULL, p_approve_overtime boolean DEFAULT false, p_freeze jsonb DEFAULT NULL) → SETOF timesheets` | M3 (moved from M1, see below); rebuilt M5 | One lock path, plpgsql VOLATILE, never sets `app.time_maintenance`. All ids succeed or the batch fails (approve-bulk). Unviewable id → `TIMESHEET_NOT_FOUND`; refusals → `TIMESHEET_TRANSITION_INVALID {reason, timesheet_id}` (reasons under [Transitions](#transitions)); `STALE_REVISION {timesheet_id, expected, actual}` or `{reason:'entry_set', timesheet_id}`; `TIMESHEET_HAS_SETTLED_ENTRIES {timesheet_id, reason: paid\|billed\|legacy}`. Returns the full rows (incl. `policy_snapshot`) ordered by id |
 | `time_billing_floor` | `(p_contract_id uuid) → date` STABLE | M1 | See `invoice_time_entries` |
-| `account_deletion_team_has_open_time` | `(p_team_id uuid) → boolean` | M3 (moved from M1) | A `submitted` team-scope sheet on the team, or any Owed entry with `context_ref` = the team |
-| `account_deletion_workspace_has_open_time` | `(p_workspace_id uuid) → boolean` | M3 (moved from M1) | A `submitted` sheet with `policy_workspace_id` = the workspace, or Owed entries on its teams |
-| `time_legacy_backfill` | `(p_reconcile boolean) → TABLE(timesheet_id uuid, action text)` | M2; rebuilt M3; dropped M5 | M2 grouping and M4 reconcile |
-| `time_test_cleanup` | `(p_project_id uuid) → void` | M3 | Under `app.time_maintenance`, deletes the project's reservations, entries and their members' now-empty sheets, for the harness's `h.cleanup()` (L20) |
-| `account_deletion_close_running_entries_for_workspace` | `(p_workspace_id uuid) → void` LANGUAGE sql | M3 | Body of `20260923090200:165-178` on `time_entries`; replaces the `_logs_` version |
+| `account_deletion_team_has_open_time` | `(p_team_id uuid) → boolean` | M3 (moved from M1) | A `submitted` team-scope sheet on the team, or an Owed entry with `context_ref` = the team **on a team with `payouts_enabled`** (D17) |
+| `account_deletion_workspace_has_open_time` | `(p_workspace_id uuid) → boolean` | M3 (moved from M1) | A `submitted` sheet with `policy_workspace_id` = the workspace, or Owed entries on its `payouts_enabled` teams (D17) |
+| `time_legacy_backfill` | `(p_reconcile boolean) → TABLE(timesheet_id uuid, action text)` | M2; rebuilt M3; dropped M5 | M2 grouping and M4 reconcile; saves, sets and restores `app.time_maintenance` |
+| `time_test_cleanup` | `(p_project_id uuid) → void` | M3 | Refuses unless the project title is `LIKE 'itest %'` or `LIKE '[QA]%'` (`TIME_TEST_CLEANUP_FORBIDDEN`, D22). Under `app.time_maintenance`, deletes the project's reservations, entries and their members' now-empty sheets in any status, for the harness's `h.cleanup()` (L20) |
+| `account_deletion_close_running_entries_for_workspace` | `(p_workspace_id uuid) → void` LANGUAGE sql | M3 | Stops the workspace's running entries through `time_stop_running_entries`; replaces the `_logs_` version |
+| `time_raise` | `(p_code text, p_detail jsonb DEFAULT '{}') → void` | M2 | `RAISE EXCEPTION USING MESSAGE = p_code, DETAIL = p_detail::text`. Every new M2/M3 error uses it |
+| `time_legacy_sheet_facts`, `time_legacy_approver_scope`, `time_legacy_freeze` | `(uuid) → TABLE(...)`, `(timesheets, jsonb) → text`, `(uuid) → void` | M2 (facts and freeze rebuilt M3); drop with the backfill in M5 | Backfill helpers. The freeze writes the stored-snapshot amounts (D13; rejected = 0). `time_legacy_sheet_facts` reads `status`, so M5 must drop it |
+| `time_sheet_has_cost_money` | `(p_timesheet_id uuid) → boolean` STABLE | M3 | D12, structural |
+| `time_scope_deciders` | `(p_approver_scope text, p_team_id uuid, p_policy_workspace_id uuid, p_engagement_id uuid, p_member_user_id uuid) → SETOF uuid` STABLE | M3 | Candidates (team owner, team owners/admins, workspace owners/admins, the engagement's hirer party) minus the member and tombstoned profiles, filtered by `time_can_decide_scope` (D11) |
+| `time_timesheet_deciders` | `(p_timesheet_id uuid) → SETOF uuid` STABLE | M3 | `time_scope_deciders` over the sheet's frozen columns |
+| `time_approval_queue_ids` | `(p_user_id uuid, p_status text DEFAULT 'submitted', p_since date DEFAULT NULL) → SETOF uuid` STABLE | M3 | `submitted`: submitted sheets of others, prefiltered by managed teams, managed policy workspaces and hired talent engagements, then exact `time_can_decide_scope`. `decided`: sheets the user decided since `p_since` (default 30 days), the user's own excluded. Unordered; the backend sorts and pages |
+| `time_stop_running_entries` | `(p_ids uuid[], p_at timestamptz DEFAULT now(), p_flag text DEFAULT NULL) → integer` | M3 | Folds an open pause, closes the open segment, writes the net duration and `flagged_reason = coalesce(p_flag, flagged_reason)`; only rows still running; returns the count |
+| `time_apply_freeze` | `(p_timesheet_id uuid, p_freeze jsonb) → void` | M3, **internal** | Validates and applies one sheet's freeze under `app.time_freeze` (entry set, `+900` bound, legacy cut-off from the first `legacy_import`) and the approve mirror |
+| `time_clear_freeze` | `(p_timesheet_id uuid) → void` | M3, **internal** | Clears `payable_seconds`, `amount_snapshot`, the `rejected` marker, then the reopen mirror |
+| `time_route_sheet` | `(p_sheet timesheets, p_action text) → jsonb` STABLE | M3, **internal** | `{approver_scope, routing}` per [Approver Scope at Submit](#approver-scope-at-submit) |
+| `time_sheet_routing_preview` | `(p_timesheet_id uuid, p_action text DEFAULT 'auto_submit') → jsonb` STABLE | M3 | `time_route_sheet` of the stored row, no writes; NULL for a missing id (D52, cron job 3) |
+| `time_policy_delete` | `(p_policy_id uuid, p_actor uuid) → void` | M3 | Sets `app.time_policy_actor` (empty for NULL), deletes the policy row, restores the setting (D23) |
+| `tg_time_policies_delete_event` | trigger | M3 | See the policy triggers table |
 
 | Helper | Signature | Created | Purpose |
 |---|---|---|---|
@@ -480,9 +529,10 @@ All new functions are `SECURITY DEFINER SET search_path = public, pg_temp`, `REV
 
 | GUC | Set by | Lets through |
 |---|---|---|
-| `app.time_maintenance` | migrations, `time_legacy_backfill`, `reset_qa_fixture`, `time_test_cleanup` | Skips trg_10 validation, the trg_40 lock, the guard's legacy paths and `updated_at` stamping |
-| `app.time_freeze` | `time_timesheet_transition` | Freeze columns on locked entries |
-| `app.time_settlement` | `create_payout_and_mark_paid`, `void_payout_and_revert` | `payout_id` (and, until M5, `status` / `legacy_reviewed_*`) |
+| `app.time_maintenance` | migrations, `time_legacy_backfill`, `reset_qa_fixture`, `time_test_cleanup` | Skips trg_10 validation, the trg_40 lock, the guard's legacy paths, the invoice-reservation DELETE guard and `updated_at` stamping; a caller-set `timesheet_id` passes trg_30 |
+| `app.time_freeze` | `time_apply_freeze`, `time_clear_freeze` (via `time_timesheet_transition`) | Freeze columns on any entry |
+| `app.time_settlement` | `create_payout_and_mark_paid`, `void_payout_and_revert`, only around their entry UPDATE | `payout_id` (and, until M5, `status` / `legacy_reviewed_*`) |
+| `app.time_policy_actor` | `time_policy_delete` | The actor recorded on the `deleted` policy event |
 
 ## Other Tables Touched
 
@@ -525,7 +575,7 @@ REVOKE ALL ON public.<t> FROM anon, authenticated;
 |---|---|
 | Triggers / functions | `trg_time_policies_guard` (`tg_time_policies_guard`), `trg_time_policies_events` (`tg_time_policies_events`), `time_workspace_has_feature`, `time_scope_label`, `time_can_decide_scope` |
 | Indexes / constraints | `timesheet_events_timesheet_idx`, `time_policy_events_policy_idx`, `invoice_time_entries_contract_idx`, `uq_invoice_time_entries_entry`, `time_entries_legacy_status_check`, `time_entries_amount_check`, `time_logging_defaults_context_check` |
-| Error codes | `TIMESHEET_TRANSITION_INVALID {reason: running_entry\|empty\|state}`, `TIMESHEET_NOT_FOUND` (backend → 404), `TIME_POLICY_INVALID`, `INVOICE_TIME_ENTRY_NOT_BILLABLE`, `TIMESHEET_IMMUTABLE`, `TIMESHEET_DECIDER_INVALID`, `TIMESHEET_DELETE_FORBIDDEN`, `TIMESHEET_SCOPE_REQUIRED`, `TIMESHEET_ENSURE_FAILED` |
+| Error codes | `TIMESHEET_TRANSITION_INVALID {reason}` (13 reasons, see [Transitions](#transitions)), `TIMESHEET_NOT_FOUND` (backend → 404), `TIME_POLICY_INVALID`, `INVOICE_TIME_ENTRY_NOT_BILLABLE`, `TIMESHEET_IMMUTABLE`, `TIMESHEET_DECIDER_INVALID` (a guard backstop; the backend shows it as `TIMESHEET_TRANSITION_INVALID {reason:'not_allowed'}`), `TIMESHEET_DELETE_FORBIDDEN`, `TIMESHEET_SCOPE_REQUIRED`, `TIMESHEET_ENSURE_FAILED`; M2/M3 add `TIME_ENTRY_LOCKED {entry_id, reason}`, `TIME_PERIOD_LOCKED {timesheet_id, status}`, `PAYOUT_SELF_NOT_ALLOWED`, `FIXED_RATE_NOT_PAYABLE_BY_ENTRY`, `TIME_TEST_CLEANUP_FORBIDDEN {project_id}`, and `TEAM_HAS_OPEN_TIME {team_id}` / `WORKSPACE_HAS_OPEN_TIME {workspace_id}` (bare-code message, so the account service's `includes` match still works) |
 | Signature change | `time_timesheet_transition` takes `uuid[]` and `integer[]` (approve-bulk is one transaction) and `p_freeze jsonb` (the TypeScript-computed freeze, keyed by sheet id) |
 
 ## Renames
@@ -578,16 +628,16 @@ Constraints all rename in M5 with explicit `ALTER … RENAME CONSTRAINT`, follow
 
 | # | Function | Latest body | Rebuilt | Change |
 |---|---|---|---|---|
-| A1 | `create_payout_and_mark_paid` | `20260907090000_split_rates_and_payouts.sql:48-147` | M2, M3, M5 | **M2:** names `task_time_logs`; `SET LOCAL app.time_settlement`; payable = `payout_id IS NULL AND legacy_status IS NULL AND (payable_seconds IS NOT NULL OR (payable_seconds IS NULL AND status='approved'))` (safe only because of the [status mirror](#transitions)); total = `round(sum(coalesce(payable_seconds, duration_seconds)/3600.0 × rate_snapshot), 2)`; keeps writing `status='paid'` and `reviewed_*` (the RPC's own write, `:137-143`); refuses `rate_type_snapshot='fixed'` (`FIXED_RATE_NOT_PAYABLE_BY_ENTRY`) and `p_created_by = p_member_user_id` (`PAYOUT_SELF_NOT_ALLOWED`). **M3:** same on `time_entries` / `legacy_reviewed_*`. **M5:** no `status` writes, no fallback. Signature (incl. `p_log_ids`) and grants unchanged |
+| A1 | `create_payout_and_mark_paid` | `20260907090000_split_rates_and_payouts.sql:48-147` | M2, M3, M5 | **M2:** names `task_time_logs`; `SET LOCAL app.time_settlement`; payable = `context_kind = 'team' AND payout_id IS NULL AND legacy_status IS NULL AND (payable_seconds IS NOT NULL OR status='approved')` (safe only because of the [status mirror](#transitions)); total = `round(sum(coalesce(payable_seconds, duration_seconds)/3600.0 × rate_snapshot), 2)`; keeps writing `status='paid'` and `reviewed_*` (the RPC's own write, `:137-143`); refuses `rate_type_snapshot='fixed'` (`FIXED_RATE_NOT_PAYABLE_BY_ENTRY`) and `p_created_by = p_member_user_id` (`PAYOUT_SELF_NOT_ALLOWED`). **M3:** same on `time_entries` / `legacy_reviewed_*`. **M5:** no `status` writes, no fallback. Signature (incl. `p_log_ids`) and grants unchanged |
 | A2 | `void_payout_and_revert` | `20260701000020_create_payouts.sql:179-214` (`000030` only changes grants) | M2, M3, M5 | Clears `payout_id` under `app.time_settlement`; M2/M3 keep writing `status='approved'` and `reviewed_*` (`:200-206`), M5 removes them |
-| A3 | `tg_engagement_assignment_running_timer_guard` | `20260814021000:489-508` | M3 | Stops the running entry instead of raising (L37) |
+| A3 | `tg_engagement_assignment_running_timer_guard` | `20260814021000:489-508` | M3 | On `active → ended/cancelled`, stops the running entries through `time_stop_running_entries(…, coalesce(NEW.ended_at, now()), 'stopped_by_assignment_end')` and never raises (L37) |
 | A4 | `tg_engagement_time_approval_items_guard` | `20260814021000:384-439` | M3 | **Dropped** with its table, as is `tg_engagement_time_approvals_guard` (`:322-382`) |
 | A5 | `account_deletion_close_running_logs_for_workspace` | `20260923090200:165-178` | M3 | Replaced (above) |
-| A6 | `delete_account` | `20260923090200:211-607` (refs `:369`, `:502`) | M3 | New names. After closing running entries, deletes the user's empty `open` sheets and calls `time_timesheet_transition(…, 'submit_on_deletion')` with actor NULL on their other `open`/`returned` sheets; writes `'Deleted user'` to `timesheets.member_display_name_snapshot`; still refuses when payouts exist |
+| A6 | `delete_account` | `20260923090200:211-607` (refs `:369`, `:502`) | M3 | New names. Step 2 reads the preflight and raises the first `blockers[].code` before validating the resolution. Running entries stop through `time_stop_running_entries`. A new step after the projects loop stops the user's own running entries, deletes their empty `open` sheets and calls `time_timesheet_transition(…, 'submit_on_deletion')` with actor NULL on their other `open`/`returned` sheets; step 7 also deletes `user_time_preferences` and `time_logging_defaults`; writes `'Deleted user'` to `timesheets.member_display_name_snapshot`; still refuses when payouts exist. The deciders' notices for those sheets are sent by the backend afterwards (D54) |
 | A7 | `reset_qa_fixture` | `20260813120000_production_qa_fixtures.sql:47-146` | M3 | Under `app.time_maintenance`: deletes fixture reservations, entries and **every** fixture-member sheet in any status (events cascade). Paid test: `payout_id IS NOT NULL OR legacy_status IS NOT NULL` |
 | A8 | `account_deletion_purge_team` | `20260923090200:70-99` | M3 | `TEAM_HAS_OPEN_TIME` when `account_deletion_team_has_open_time` |
 | A9 | `account_deletion_purge_workspace` | `20260923090200:128-163` | M3 | `WORKSPACE_HAS_OPEN_TIME` |
-| A10 | `account_deletion_preflight` | `20260923090100:79-283` | M3 | Reports both refusals before deletion |
+| A10 | `account_deletion_preflight` | `20260923090100:79-283` | M3 | `ws`/`tm` gain `has_open_time`; `can_delete = NOT (is_paid OR has_payouts OR has_open_time)`; both decision objects gain `has_open_time`; a new top-level `blockers` array lists `{kind:'workspace', id, name, code:'WORKSPACE_HAS_OPEN_TIME'}` for sole-member owned workspaces with open time and `{kind:'team', …, code:'TEAM_HAS_OPEN_TIME'}` for owned teams that would be purged (those leave `will_be_deleted.teams`). `preflight_token` stays `md5(decisions)`, so every user's token changes once at deploy |
 | A11 | `can_manage_team` | `20260901160000:52-68` | M1 | Role owner/admin; same signature, grants kept |
 | A12 | `tg_engagement_assignments_guard` | `20260814020000:444-534` | M1 | `ASSIGNMENT_HIRER_NOT_CLIENT_PROVIDER` |
 
@@ -596,12 +646,14 @@ Constraints all rename in M5 with explicit `ALTER … RENAME CONSTRAINT`, follow
 | Function | Created | Rebuilt |
 |---|---|---|
 | `tg_time_entries_lock` | M2 | M3 (`legacy_reviewed_*` keys), M5 (no `status` / reviewer allowance) |
-| `time_timesheet_transition` | M3 | M5. The M3 body carries the [status mirror](#transitions) (approve writes `status='approved'`, or `'rejected'` for `legacy_status='rejected'`; reopen writes `status='pending'` on every entry whose freeze it clears); M5 removes it |
-| `time_legacy_backfill` | M2 | M3 |
+| `time_timesheet_transition` | M3 | M5. The M3 body carries the [status mirror](#transitions) (approve writes `status='approved'`, or `'rejected'` for `legacy_status='rejected'`; reopen writes `status='pending'` on every entry whose freeze it clears; return writes `status='pending'` on old per-entry approvals); M5 removes it |
+| `time_legacy_backfill`, `time_legacy_sheet_facts`, `time_legacy_freeze` | M2 | M3 |
 | `tg_timesheets_guard`, `tg_invoice_time_entries_guard` | M1 | M3 |
 | `account_deletion_team_has_open_time`, `account_deletion_workspace_has_open_time` | M3 | — |
 
-**Dropped:** `tg_engagement_time_approvals_guard`, `tg_engagement_time_approval_items_guard`, `account_deletion_close_running_logs_for_workspace` (M3); `time_legacy_backfill` (M5).
+`tg_time_entries_timesheet` and `time_legacy_approver_scope` name no entry table and no reviewer column, so M3 does not rebuild them. M3 produces each carried-over body from its M2/M1 source with exactly four substitutions (`task_time_logs` → `time_entries`, `reviewed_by`/`reviewed_at`/`review_note` → `legacy_*`), and a carry-over diff during the PR-1 build checked it.
+
+**Dropped:** `tg_engagement_time_approvals_guard`, `tg_engagement_time_approval_items_guard`, `account_deletion_close_running_logs_for_workspace` (M3); `time_legacy_backfill` and its three helpers (M5).
 
 ### Names Kept on Purpose
 
