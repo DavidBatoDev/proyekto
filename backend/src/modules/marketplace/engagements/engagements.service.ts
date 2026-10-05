@@ -1,4 +1,10 @@
-import { Inject, Injectable, NotFoundException } from '@nestjs/common';
+import {
+  Inject,
+  Injectable,
+  InternalServerErrorException,
+  Logger,
+  NotFoundException,
+} from '@nestjs/common';
 import { SupabaseClient } from '@supabase/supabase-js';
 import { SUPABASE_ADMIN } from '../../../config/supabase.module';
 import type { EngagementListQueryDto } from './dto/engagements.dto';
@@ -29,7 +35,65 @@ const RATE_SELECT = `
   work_type, amount, currency, effective_from, effective_until
 `;
 
+const ASSIGNMENT_SELECT = `
+  id, project_id, worker_user_id, talent_engagement_id, client_engagement_id,
+  team_id, role_title, status, started_at, ended_at, created_at
+`;
+
+/** `time_scope_label`'s fallback when the governing hirer seat is gone. */
+const UNKNOWN_HIRER_LABEL = 'Unknown';
+
 export type EngagementPosition = 'hirer' | 'provider';
+
+export type EngagementKind = 'talent_services' | 'client_services';
+
+/** Structurally equal to `time.types` `WorkType`; declared here so this module imports nothing from `time/`. */
+export type EngagementWorkType = 'real_work' | 'training';
+
+/**
+ * One engagement assignment with its governing engagement resolved
+ * (CHANGE-3: the talent engagement, else the client engagement). Read with
+ * the service role; carries the worker id, so callers decide who may see it.
+ */
+export interface AssignmentContext {
+  id: string;
+  /**
+   * Null only on a severed assignment (its project was deleted; the FK is
+   * ON DELETE SET NULL). Only `getAssignment` can return one: the list
+   * methods filter by project.
+   */
+  project_id: string | null;
+  worker_user_id: string;
+  talent_engagement_id: string | null;
+  client_engagement_id: string | null;
+  /** coalesce(talent, client) — CHANGE-3. */
+  governing_engagement_id: string;
+  governing_kind: EngagementKind;
+  /** engagements.status of the governing engagement. */
+  governing_status: string;
+  team_id: string | null;
+  role_title: string | null;
+  status: string;
+  started_at: string;
+  ended_at: string | null;
+  created_at: string;
+  /** The governing hirer's display_name_snapshot (`time_scope_label`). */
+  hirer_label: string;
+}
+
+interface AssignmentRow {
+  id: string;
+  project_id: string | null;
+  worker_user_id: string;
+  talent_engagement_id: string | null;
+  client_engagement_id: string | null;
+  team_id: string | null;
+  role_title: string | null;
+  status: string;
+  started_at: string;
+  ended_at: string | null;
+  created_at: string;
+}
 
 export interface EngagementPartyRow {
   engagement_id: string;
@@ -132,6 +196,66 @@ export function ratesInForceOn<
   return rates.filter((row) => isEffective(row, date));
 }
 
+function compareText(a: string, b: string): number {
+  if (a === b) return 0;
+  return a < b ? -1 : 1;
+}
+
+/** Newest `effective_from` first, then `id`, so equal dates still pick one row deterministically. */
+function newestEffectiveFirst(
+  a: { id: string; effective_from: string },
+  b: { id: string; effective_from: string },
+): number {
+  return (
+    compareText(b.effective_from, a.effective_from) || compareText(a.id, b.id)
+  );
+}
+
+/**
+ * The single rate that prices an entry of `workType` worked on `localDate`
+ * (backend.md freeze step 1, invoices' bill rate; E43). Pure.
+ *
+ * Callers pass rows already narrowed to one engagement and one `rate_kind`
+ * (`ratesFor`); this filters them to the rows in force on `localDate` again,
+ * so a caller that skipped `ratesInForceOn` still gets the right answer.
+ *
+ * Preference, in order:
+ *   1. `work_type = workType` before `work_type IS NULL`; a row for the other
+ *      work type never applies.
+ *   2. Unit `'hour'` before `'month'`/`'fixed'`. A hybrid agreement carries
+ *      both a monthly retainer and an hourly row from the same version; only
+ *      the hourly row prices time. A `'month'`/`'fixed'` row is returned
+ *      as-is when it is all there is, and the caller treats it as fixed
+ *      (not amountable).
+ *   3. The latest `effective_from`, then the lowest `id`.
+ */
+export function pickRate(
+  rows: EngagementTimeRateRow[],
+  localDate: string,
+  workType: EngagementWorkType,
+): EngagementTimeRateRow | null {
+  const workTypeRank = (row: EngagementTimeRateRow): number => {
+    const rowWorkType = row.work_type ?? null;
+    if (rowWorkType === workType) return 0;
+    return rowWorkType === null ? 1 : -1;
+  };
+  const unitRank = (row: EngagementTimeRateRow): number =>
+    row.unit === 'hour' ? 0 : 1;
+
+  const candidates = ratesInForceOn(rows, localDate).filter(
+    (row) => workTypeRank(row) >= 0,
+  );
+  if (candidates.length === 0) return null;
+  return (
+    [...candidates].sort(
+      (a, b) =>
+        workTypeRank(a) - workTypeRank(b) ||
+        unitRank(a) - unitRank(b) ||
+        newestEffectiveFirst(a, b),
+    )[0] ?? null
+  );
+}
+
 /**
  * One contract seat of the caller's, redacted for their capacity. Talent
  * never sees `client_hourly_rate` (the client price is not their commercial
@@ -175,6 +299,8 @@ export interface AgreementView {
  */
 @Injectable()
 export class EngagementsService {
+  private readonly logger = new Logger(EngagementsService.name);
+
   constructor(
     @Inject(SUPABASE_ADMIN) private readonly supabase: SupabaseClient,
   ) {}
@@ -328,6 +454,420 @@ export class EngagementsService {
       }
       return view;
     });
+  }
+
+  // ── Time-composition reads (time-management rebuild, PR-1) ────────────────
+  //
+  // Everything below is a service-role read for TimeModule and the
+  // assignment endpoints. None of it checks a caller: the caller of these
+  // methods authorises (resolver, authority, assignments service), and none
+  // of them is exposed by EngagementsController. They are the only reads of
+  // the engagement tables outside this file's party-scoped views
+  // (authorization-axes.md: only this module reads engagement tables).
+
+  /**
+   * The worker's assignments on a project at `at` (resolver step 2, L37).
+   * `status <> 'cancelled'` and `started_at ≤ at < coalesce(ended_at, ∞)`.
+   * By default only active assignments count; `includeEndedWindow` (manual
+   * entries) also accepts an ended one whose window holds `at`. Each row
+   * carries its governing engagement's kind, status and hirer label. The
+   * engagement status is reported, not filtered: the resolver turns a
+   * non-active one into `unavailable: 'engagement_inactive'`.
+   * Order: `started_at`, then `id`.
+   */
+  async listActiveAssignmentsForWorker(
+    workerId: string,
+    projectId: string,
+    at: Date,
+    o: { includeEndedWindow?: boolean } = {},
+  ): Promise<AssignmentContext[]> {
+    const atIso = at.toISOString();
+    let builder = this.supabase
+      .from('engagement_assignments')
+      .select(ASSIGNMENT_SELECT)
+      .eq('worker_user_id', workerId)
+      .eq('project_id', projectId)
+      .lte('started_at', atIso);
+    builder = o.includeEndedWindow
+      ? builder
+          .in('status', ['active', 'ended'])
+          .or(`ended_at.is.null,ended_at.gt.${atIso}`)
+      : builder.eq('status', 'active');
+    const { data, error } = await builder
+      .order('started_at', { ascending: true })
+      .order('id', { ascending: true });
+    if (error) this.fail('listActiveAssignmentsForWorker', error);
+
+    // The query already applies the window; re-checking it on parsed instants
+    // keeps the rule exact whatever timestamp format PostgREST returns.
+    const atMs = at.getTime();
+    const rows = ((data ?? []) as unknown as AssignmentRow[]).filter(
+      (row) =>
+        (row.status === 'active' ||
+          (o.includeEndedWindow === true && row.status === 'ended')) &&
+        Date.parse(row.started_at) <= atMs &&
+        (row.ended_at === null || atMs < Date.parse(row.ended_at)),
+    );
+    return this.toAssignmentContexts(rows);
+  }
+
+  async getAssignment(assignmentId: string): Promise<AssignmentContext | null> {
+    const { data, error } = await this.supabase
+      .from('engagement_assignments')
+      .select(ASSIGNMENT_SELECT)
+      .eq('id', assignmentId)
+      .maybeSingle();
+    if (error) this.fail('getAssignment', error);
+    if (!data) return null;
+    const [context] = await this.toAssignmentContexts([
+      data as unknown as AssignmentRow,
+    ]);
+    return context ?? null;
+  }
+
+  /**
+   * Every assignment on a project, whatever its status: masking and identity
+   * apply to entries logged under ended and cancelled assignments too.
+   * Order: `started_at`, then `id`.
+   */
+  async assignmentsForProject(projectId: string): Promise<AssignmentContext[]> {
+    const { data, error } = await this.supabase
+      .from('engagement_assignments')
+      .select(ASSIGNMENT_SELECT)
+      .eq('project_id', projectId)
+      .order('started_at', { ascending: true })
+      .order('id', { ascending: true });
+    if (error) this.fail('assignmentsForProject', error);
+    return this.toAssignmentContexts(
+      (data ?? []) as unknown as AssignmentRow[],
+    );
+  }
+
+  async engagementKind(engagementId: string): Promise<EngagementKind | null> {
+    const { data, error } = await this.supabase
+      .from('engagements')
+      .select('kind')
+      .eq('id', engagementId)
+      .maybeSingle();
+    if (error) this.fail('engagementKind', error);
+    return (data as { kind: EngagementKind } | null)?.kind ?? null;
+  }
+
+  async hirerUserIdForEngagement(engagementId: string): Promise<string | null> {
+    return (await this.partySeat(engagementId, 'hirer'))?.user_id ?? null;
+  }
+
+  async providerUserIdForEngagement(
+    engagementId: string,
+  ): Promise<string | null> {
+    return (await this.partySeat(engagementId, 'provider'))?.user_id ?? null;
+  }
+
+  /** The team the hirer seat signed for (L35, L7b); null when none or the team was deleted. */
+  async hirerPartyTeamId(engagementId: string): Promise<string | null> {
+    return (await this.partySeat(engagementId, 'hirer'))?.team_id ?? null;
+  }
+
+  /** The team the provider seat signed for (L7b); null when none or the team was deleted. */
+  async providerPartyTeamId(engagementId: string): Promise<string | null> {
+    return (await this.partySeat(engagementId, 'provider'))?.team_id ?? null;
+  }
+
+  /** The seat `userId` holds on the engagement, or null when they hold none. */
+  async isParty(
+    engagementId: string,
+    userId: string,
+  ): Promise<EngagementPosition | null> {
+    const { data, error } = await this.supabase
+      .from('engagement_parties')
+      .select('position')
+      .eq('engagement_id', engagementId)
+      .eq('user_id', userId)
+      .maybeSingle();
+    if (error) this.fail('isParty', error);
+    return (data as { position: EngagementPosition } | null)?.position ?? null;
+  }
+
+  /**
+   * The `engagement_time_settings` row in force on a local date:
+   * `effective_from ≤ d ≤ coalesce(effective_until, ∞)`, newest
+   * `effective_from` first — the same pick as `time_resolve_policy`'s
+   * contract layer (M1). An amendment closes the previous row the day
+   * before it starts, so the boundary day belongs to exactly one version.
+   */
+  async settingsInForceOn(
+    engagementId: string,
+    localDate: string,
+  ): Promise<EngagementTimeSettingsRow | null> {
+    const { data, error } = await this.supabase
+      .from('engagement_time_settings')
+      .select(SETTINGS_SELECT)
+      .eq('engagement_id', engagementId)
+      .lte('effective_from', localDate)
+      .order('effective_from', { ascending: false });
+    if (error) this.fail('settingsInForceOn', error);
+    const inForce = ratesInForceOn(
+      (data ?? []) as unknown as EngagementTimeSettingsRow[],
+      localDate,
+    );
+    return [...inForce].sort(newestEffectiveFirst)[0] ?? null;
+  }
+
+  /**
+   * Every rate row of one kind on an engagement, all versions (callers apply
+   * `ratesInForceOn` / `pickRate` for the local date). With `workerId`, rows
+   * for that worker plus rows with no worker; without it, every row.
+   */
+  async ratesFor(
+    engagementId: string,
+    o: { rateKind: 'cost' | 'billing'; workerId?: string | null },
+  ): Promise<EngagementTimeRateRow[]> {
+    const { data, error } = await this.supabase
+      .from('engagement_time_rates')
+      .select(RATE_SELECT)
+      .eq('engagement_id', engagementId)
+      .eq('rate_kind', o.rateKind)
+      .order('effective_from', { ascending: false });
+    if (error) this.fail('ratesFor', error);
+    const rows = (data ?? []) as unknown as EngagementTimeRateRow[];
+    const workerId = o.workerId ?? null;
+    if (workerId === null) return rows;
+    return rows.filter(
+      (row) =>
+        (row.worker_user_id ?? null) === null ||
+        row.worker_user_id === workerId,
+    );
+  }
+
+  /**
+   * Ids of every assignment billed through a client engagement, whatever its
+   * status: entries logged before an assignment ended still bill (E16 a).
+   */
+  async assignmentIdsForClientEngagement(
+    engagementId: string,
+  ): Promise<string[]> {
+    const { data, error } = await this.supabase
+      .from('engagement_assignments')
+      .select('id')
+      .eq('client_engagement_id', engagementId)
+      .order('started_at', { ascending: true })
+      .order('id', { ascending: true });
+    if (error) this.fail('assignmentIdsForClientEngagement', error);
+    return ((data ?? []) as Array<{ id: string }>).map((row) => row.id);
+  }
+
+  /**
+   * The workspace whose time policy an engagement sheet falls back to.
+   * Mirrors `time_sheet_scope_for`'s engagement branch (M1
+   * `20261003090100_time_entries_expand.sql`) exactly:
+   *   coalesce(contracts.workspace_id via engagements.activated_by_contract_id,
+   *            the hirer party team's teams.workspace_id)
+   * and null (platform default) when neither exists. Never the project's
+   * workspace: one engagement sheet spans projects. It never gates.
+   */
+  async policyWorkspaceFor(engagementId: string): Promise<string | null> {
+    const { data: engagement, error: engagementError } = await this.supabase
+      .from('engagements')
+      .select('activated_by_contract_id')
+      .eq('id', engagementId)
+      .maybeSingle();
+    if (engagementError) this.fail('policyWorkspaceFor', engagementError);
+    const contractId =
+      (engagement as { activated_by_contract_id: string | null } | null)
+        ?.activated_by_contract_id ?? null;
+
+    if (contractId) {
+      const { data: contract, error: contractError } = await this.supabase
+        .from('contracts')
+        .select('workspace_id')
+        .eq('id', contractId)
+        .maybeSingle();
+      if (contractError) this.fail('policyWorkspaceFor', contractError);
+      const workspaceId =
+        (contract as { workspace_id: string | null } | null)?.workspace_id ??
+        null;
+      if (workspaceId) return workspaceId;
+    }
+
+    const hirerTeamId = await this.hirerPartyTeamId(engagementId);
+    if (!hirerTeamId) return null;
+    const { data: team, error: teamError } = await this.supabase
+      .from('teams')
+      .select('workspace_id')
+      .eq('id', hirerTeamId)
+      .maybeSingle();
+    if (teamError) this.fail('policyWorkspaceFor', teamError);
+    return (
+      (team as { workspace_id: string | null } | null)?.workspace_id ?? null
+    );
+  }
+
+  /**
+   * The engagement a contract version governs: `contracts.engagement_id`
+   * (set on the root and every signed amendment), else the engagement that
+   * contract activated. Null for a legacy or unsigned contract.
+   */
+  async engagementForContract(
+    contractId: string,
+  ): Promise<{ id: string; kind: EngagementKind; status: string } | null> {
+    const { data: contract, error: contractError } = await this.supabase
+      .from('contracts')
+      .select('engagement_id')
+      .eq('id', contractId)
+      .maybeSingle();
+    if (contractError) this.fail('engagementForContract', contractError);
+    const engagementId =
+      (contract as { engagement_id: string | null } | null)?.engagement_id ??
+      null;
+
+    let builder = this.supabase
+      .from('engagements')
+      .select('id, kind, status, created_at');
+    builder = engagementId
+      ? builder.eq('id', engagementId)
+      : builder.eq('activated_by_contract_id', contractId);
+    const { data, error } = await builder
+      .order('created_at', { ascending: true })
+      .limit(1);
+    if (error) this.fail('engagementForContract', error);
+    const row = (
+      (data ?? []) as Array<{
+        id: string;
+        kind: EngagementKind;
+        status: string;
+      }>
+    )[0];
+    return row ? { id: row.id, kind: row.kind, status: row.status } : null;
+  }
+
+  /** An active `engagement_project_links` row joins the engagement to the project. */
+  async isLinkedToProject(
+    engagementId: string,
+    projectId: string,
+  ): Promise<boolean> {
+    const { data, error } = await this.supabase
+      .from('engagement_project_links')
+      .select('id')
+      .eq('engagement_id', engagementId)
+      .eq('project_id', projectId)
+      .eq('status', 'active')
+      .limit(1);
+    if (error) this.fail('isLinkedToProject', error);
+    return ((data ?? []) as unknown[]).length > 0;
+  }
+
+  /** One party seat (the PK is (engagement_id, position), so at most one row). */
+  private async partySeat(
+    engagementId: string,
+    position: EngagementPosition,
+  ): Promise<{ user_id: string; team_id: string | null } | null> {
+    const { data, error } = await this.supabase
+      .from('engagement_parties')
+      .select('user_id, team_id')
+      .eq('engagement_id', engagementId)
+      .eq('position', position)
+      .maybeSingle();
+    if (error) this.fail('partySeat', error);
+    return (data as { user_id: string; team_id: string | null } | null) ?? null;
+  }
+
+  /**
+   * Resolves each assignment's governing engagement (talent, else client)
+   * with two batched reads: the engagements' kind and status, and their
+   * hirer seats' display names. Preserves input order.
+   */
+  private async toAssignmentContexts(
+    rows: AssignmentRow[],
+  ): Promise<AssignmentContext[]> {
+    if (rows.length === 0) return [];
+    const governingId = (row: AssignmentRow): string | null =>
+      row.talent_engagement_id ?? row.client_engagement_id;
+    const ids = [
+      ...new Set(
+        rows
+          .map(governingId)
+          .filter((id): id is string => typeof id === 'string'),
+      ),
+    ];
+
+    const [engagementsResult, hirersResult] = await Promise.all([
+      this.supabase
+        .from('engagements')
+        .select('id, kind, status')
+        .in('id', ids),
+      this.supabase
+        .from('engagement_parties')
+        .select('engagement_id, display_name_snapshot')
+        .in('engagement_id', ids)
+        .eq('position', 'hirer'),
+    ]);
+    if (engagementsResult.error) {
+      this.fail('toAssignmentContexts', engagementsResult.error);
+    }
+    if (hirersResult.error) {
+      this.fail('toAssignmentContexts', hirersResult.error);
+    }
+
+    const engagements = new Map(
+      (
+        (engagementsResult.data ?? []) as Array<{
+          id: string;
+          kind: EngagementKind;
+          status: string;
+        }>
+      ).map((row) => [row.id, row]),
+    );
+    const hirerLabels = new Map(
+      (
+        (hirersResult.data ?? []) as Array<{
+          engagement_id: string;
+          display_name_snapshot: string | null;
+        }>
+      ).map((row) => [row.engagement_id, row.display_name_snapshot]),
+    );
+
+    const contexts: AssignmentContext[] = [];
+    for (const row of rows) {
+      const governing = governingId(row);
+      // engagement_assignments_context_check makes this unreachable.
+      if (!governing) continue;
+      const engagement = engagements.get(governing);
+      contexts.push({
+        id: row.id,
+        project_id: row.project_id,
+        worker_user_id: row.worker_user_id,
+        talent_engagement_id: row.talent_engagement_id,
+        client_engagement_id: row.client_engagement_id,
+        governing_engagement_id: governing,
+        governing_kind:
+          engagement?.kind ??
+          (row.talent_engagement_id ? 'talent_services' : 'client_services'),
+        // The FK is ON DELETE RESTRICT, so a missing row is not expected; an
+        // unknown status reads as inactive to every caller.
+        governing_status: engagement?.status ?? 'unknown',
+        team_id: row.team_id,
+        role_title: row.role_title,
+        status: row.status,
+        started_at: row.started_at,
+        ended_at: row.ended_at,
+        created_at: row.created_at,
+        hirer_label: hirerLabels.get(governing) ?? UNKNOWN_HIRER_LABEL,
+      });
+    }
+    return contexts;
+  }
+
+  /**
+   * DB failures on the time-composition reads: log the Postgres text, answer
+   * a plain 500 (§0: no Postgres text in a response body).
+   */
+  private fail(operation: string, error: { message: string }): never {
+    this.logger.error(
+      `EngagementsService.${operation} failed: ${error.message}`,
+    );
+    throw new InternalServerErrorException(
+      "Proyekto couldn't load the agreement details. Try again.",
+    );
   }
 
   /** The caller's own seat on each engagement they are a party to. */
