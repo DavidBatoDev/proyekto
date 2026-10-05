@@ -549,7 +549,7 @@ export class TimeEntriesService {
     const note = normaliseNote(input.note);
     if (note !== undefined) insert.note = note;
 
-    // The one-running index (uq_time_entries_one_running_per_member) is the race backstop behind the D77
+    // The running-timer unique indexes (RUNNING_TIMER_INDEXES in time-errors.ts) are the race backstop behind the D77
     // pre-check: 23505 → 409, alias 400 (D07).
     const { data, error } = await this.sb
       .from('time_entries')

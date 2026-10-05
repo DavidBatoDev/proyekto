@@ -327,10 +327,14 @@ describeDevOnly('time entries (real DB)', () => {
       timezone: 'Asia/Manila',
       week_start: 1,
     });
-    const today = new Date().toISOString().slice(0, 10);
+    // `to` is a local date in the caller's zone (Asia/Manila, UTC+8): use
+    // tomorrow's UTC date so an entry logged after local midnight still counts.
+    const tomorrow = new Date(Date.now() + 86_400_000)
+      .toISOString()
+      .slice(0, 10);
     const summary = await request(h.server())
       .get(api('/me/summary'))
-      .query({ from: '2026-01-01', to: today })
+      .query({ from: '2026-01-01', to: tomorrow })
       .set(auth(editor))
       .expect(200);
     expect(summary.body.data.timezone).toBe('Asia/Manila');

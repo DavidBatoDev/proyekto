@@ -231,6 +231,16 @@ describe('time-errors', () => {
         expect(bodyOf(e).code).toBe('TIMER_ALREADY_RUNNING');
       });
 
+      it('maps the per-project running index too (concurrent starts on one project)', () => {
+        const e = mapTimeDbError({
+          code: '23505',
+          message:
+            'duplicate key value violates unique constraint "uq_task_time_logs_one_active_per_member_project"',
+        });
+        expect(e).toBeInstanceOf(ConflictException);
+        expect(bodyOf(e).code).toBe('TIMER_ALREADY_RUNNING');
+      });
+
       it('ignores any other unique violation', () => {
         expect(
           mapTimeDbError({

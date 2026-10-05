@@ -157,8 +157,16 @@ const PERIOD_LOCKED_MESSAGE = {
 /** The 404 copy for a scope miss (report scope, team, workspace, guest). */
 const SCOPE_NOT_FOUND_MESSAGE = "This doesn't exist or you can't open it.";
 
-/** The unique index behind the one-running-timer rule (M1; unchanged by M3). */
-const RUNNING_TIMER_INDEX = 'uq_time_entries_one_running_per_member';
+/**
+ * The unique indexes behind the running-timer rule: one per person (M1) and the
+ * older one per (project, member). Two concurrent starts on the same project hit
+ * the older one first. M5 renames it with the other index names.
+ */
+const RUNNING_TIMER_INDEXES = [
+  'uq_time_entries_one_running_per_member',
+  'uq_task_time_logs_one_active_per_member_project',
+  'uq_time_entries_one_active_per_member_project',
+];
 
 /**
  * Keys an extras object must never carry. HttpExceptionFilter writes `message`, `status`, `path` and
@@ -289,7 +297,7 @@ function isTimeErrorCode(code: string): code is TimeErrorCode {
 
 /**
  * Maps DB sentinels to HTTP. Recognises:
- *   23505 on uq_time_entries_one_running_per_member → 409 TIMER_ALREADY_RUNNING (alias: 400, RUNNING_TIMER_MESSAGE)
+ *   23505 on a running-timer index (RUNNING_TIMER_INDEXES) → 409 TIMER_ALREADY_RUNNING (alias: 400, RUNNING_TIMER_MESSAGE)
  *   TIME_ENTRY_LOCKED   → 409 TIMESHEET_LOCKED { reason: 'entry', lock: <db reason>, entry_id }
  *   TIME_PERIOD_LOCKED  → 409 TIMESHEET_LOCKED { reason: 'period', timesheet_id, sheet_status }   (never `status`:
  *                          HttpExceptionFilter overwrites it with the HTTP code, D50)
@@ -317,7 +325,8 @@ export function mapTimeDbError(
 
   if (err.code === '23505') {
     const text = `${err.message ?? ''} ${err.details ?? ''}`;
-    if (!text.includes(RUNNING_TIMER_INDEX)) return null;
+    if (!RUNNING_TIMER_INDEXES.some((index) => text.includes(index)))
+      return null;
     return ctx?.alias
       ? new BadRequestException(RUNNING_TIMER_MESSAGE)
       : timeError('TIMER_ALREADY_RUNNING');
