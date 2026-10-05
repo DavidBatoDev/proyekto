@@ -1,6 +1,6 @@
 // backend/src/modules/execution/time/legacy/team-time-legacy.types.ts
 //
-// The response shapes /api/team-time/* returned before PR-1 (team-time.service.ts:29-234 at 91d227aa), which
+// The response shapes the /api/team-time routes returned before PR-1 (team-time.service.ts:29-234 at 91d227aa), which
 // the alias (P15) must keep returning to the deployed web and old OTA bundles. Field names are frozen: the
 // old web reads them by name. Compat inventory: scratchpad pr1/compat.md §1 ("Row").
 import type {
@@ -142,10 +142,15 @@ export interface LegacyComment {
   } | null;
 }
 
-/** Old team/project member option: label = display_name || email || id. Email for managers only. */
+/**
+ * Old team/project member option: label = display_name || email || id. Email for managers only.
+ * `avatar_url` is on every row (today's queries select it; the web's member filters read it); a masked
+ * member gets `avatar_url: null` (D32, D75).
+ */
 export interface LegacyMember {
   id: string;
   display_name: string | null;
+  avatar_url: string | null;
   email?: string | null;
 }
 

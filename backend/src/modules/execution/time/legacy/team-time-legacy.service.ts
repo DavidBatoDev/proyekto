@@ -91,13 +91,6 @@ const REVIEWER_SELECT = 'id, display_name, avatar_url';
 /** The synthetic row id that asks costVisible for a team's verdict. */
 const TEAM_COST_PROBE_ID = 'team-cost-probe';
 
-/**
- * #22/#28 member option: today's rows carry `avatar_url` (team-time.service.ts:1174, :1234), which the web's
- * member filters read (TeamLogsPanel, project Time). P03's `LegacyMember` lacks it, so it is added here;
- * a masked member gets `avatar_url: null` (D32).
- */
-type LegacyMemberOption = LegacyMember & { avatar_url: string | null };
-
 // ── Query plumbing ────────────────────────────────────────────────────────────────────────────────────────────
 
 interface QueryResult {
@@ -380,7 +373,7 @@ export class TeamTimeLegacyService {
       )
       .eq('team_id', teamId);
     if (error) this.readFail('teamMembers', error);
-    const out: LegacyMemberOption[] = [];
+    const out: LegacyMember[] = [];
     for (const row of (data ?? []) as unknown as Array<{
       user: {
         id: string;
@@ -390,7 +383,7 @@ export class TeamTimeLegacyService {
       } | null;
     }>) {
       if (!row.user) continue;
-      const member: LegacyMemberOption = {
+      const member: LegacyMember = {
         id: row.user.id,
         display_name: row.user.display_name ?? null,
         avatar_url: row.user.avatar_url ?? null,
@@ -541,7 +534,7 @@ export class TeamTimeLegacyService {
         profiles.set(p.id.toLowerCase(), p);
       }
     }
-    const out: LegacyMemberOption[] = [];
+    const out: LegacyMember[] = [];
     for (const id of ids) {
       const p = profiles.get(id.toLowerCase());
       if (p) {

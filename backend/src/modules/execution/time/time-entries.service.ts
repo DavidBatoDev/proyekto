@@ -41,6 +41,7 @@ import {
   type MapContext,
   mapTimeDbError,
   type PgErrorLike,
+  RUNNING_TIMER_MESSAGE,
   throwTimeDb,
   TIME_INTERNAL_CODE,
   timeError,
@@ -501,6 +502,10 @@ export class TimeEntriesService {
       throw timeError('WORK_ITEM_INVALID', BOTH_WORK_ITEMS_MESSAGE);
     }
 
+    // D77: the caller's own running timer is refused first (old startLog order), so it wins over the resolver's
+    // 403/422 and the cap checks. It reveals only the caller's own state. The 23505 below stays the race backstop.
+    await this.assertNoRunningTimer(userId, alias);
+
     const at = new Date();
     // Uncached resolve (L60); also the plan gate (D26). No access → 404 before any task lookup.
     const option = await this.loggingContext.select(userId, input.project_id, {
@@ -544,7 +549,8 @@ export class TimeEntriesService {
     const note = normaliseNote(input.note);
     if (note !== undefined) insert.note = note;
 
-    // The one-running index (uq_time_entries_one_running_per_member) is the guard: 23505 → 409, alias 400 (D07).
+    // The one-running index (uq_time_entries_one_running_per_member) is the race backstop behind the D77
+    // pre-check: 23505 → 409, alias 400 (D07).
     const { data, error } = await this.sb
       .from('time_entries')
       .insert(insert)
@@ -555,6 +561,24 @@ export class TimeEntriesService {
 
     await this.openSegment(row.id, 'work', startedAt);
     return { ...selfView(row, false), warnings: contract ? [contract] : [] };
+  }
+
+  /** D77: any running timer of the caller (any project, any context) → 409 TIMER_ALREADY_RUNNING; alias 400 (D07). */
+  private async assertNoRunningTimer(
+    userId: string,
+    alias: { native: boolean } | null,
+  ): Promise<void> {
+    const { data, error } = await this.sb
+      .from('time_entries')
+      .select('id')
+      .eq('member_user_id', userId)
+      .is('ended_at', null)
+      .limit(1);
+    if (error) this.readFail('start.running', error);
+    if (((data ?? []) as Array<{ id: string }>).length === 0) return;
+    throw alias
+      ? new BadRequestException(RUNNING_TIMER_MESSAGE)
+      : timeError('TIMER_ALREADY_RUNNING');
   }
 
   /** actorId null only with o.system. Folds an open pause (stoppedTimerPatch semantics), closes the open segment.
@@ -1569,7 +1593,11 @@ export class TimeEntriesService {
     }
   }
 
-  /** The contract weekly limit only warns (D46, L12): per (worker, governing engagement), engagement week. */
+  /**
+   * The contract weekly limit only warns (D46, L12): per (worker, governing engagement), engagement week.
+   * Only a limit that comes from the contract raises `CONTRACT_WEEKLY_LIMIT` (D76); a workspace/team policy
+   * limit on the same entry is not the contract's, and its write-time warning waits for the web PR.
+   */
   private async contractWeekWarning(
     memberId: string,
     op: OptionPolicy,
@@ -1583,6 +1611,7 @@ export class TimeEntriesService {
       !op.scope ||
       !op.policy ||
       !op.timezone ||
+      op.policy.sources?.weekly_limit_minutes !== 'contract' ||
       limit === null ||
       limit <= 0
     ) {

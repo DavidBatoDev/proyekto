@@ -860,6 +860,79 @@ describe('start', () => {
     expect(legacy.body.message).toBe(RUNNING_TIMER_MESSAGE);
   });
 
+  it('a running timer elsewhere is refused first, before the resolver, the task and the caps (D77)', async () => {
+    // The caller's timer runs on another project under another context; the new start would also be refused
+    // by the resolver (403) and by a full cap, but the running timer wins, as in the old startLog.
+    const tables = (): Record<string, Row[]> => ({
+      ...baseTables(),
+      time_entries: [
+        running({
+          id: uid(87),
+          project_id: PROJECT_B,
+          context_kind: 'assignment',
+          context_ref: ASSIGN,
+          team_id: null,
+          engagement_assignment_id: ASSIGN,
+        }),
+      ],
+    });
+    const fullCap = {
+      member: {
+        weekly_limit_hours: 1,
+        monthly_limit_hours: null,
+        overtime_requires_approval: true,
+      },
+    };
+
+    const b = await build({ tables: tables(), policy: fullCap });
+    b.loggingContext.select.mockRejectedValue(timeError('NO_LOGGING_CONTEXT'));
+    const e = await errorOf(
+      b.service.start(USER, { project_id: PROJECT, task_id: TASK }),
+    );
+    expect(e.status).toBe(409);
+    expect(e.body.code).toBe('TIMER_ALREADY_RUNNING');
+    expect(b.loggingContext.select).not.toHaveBeenCalled();
+    expect(b.policy.resolve).not.toHaveBeenCalled();
+    expect(b.rates.estimate).not.toHaveBeenCalled();
+    expect(b.db.calls.some((c) => c.table === 'roadmap_tasks')).toBe(false);
+    expect(b.db.writes('time_entries', 'insert')).toHaveLength(0);
+    expect(b.db.writes('time_entry_segments', 'insert')).toHaveLength(0);
+
+    // The alias keeps the exact PR-0 400 (D07).
+    const a = await build({ tables: tables(), policy: fullCap });
+    a.loggingContext.select.mockRejectedValue(timeError('NO_LOGGING_CONTEXT'));
+    const legacy = await errorOf(
+      a.service.start(
+        USER,
+        { project_id: PROJECT },
+        { purpose: 'alias', native: true },
+      ),
+    );
+    expect(legacy.status).toBe(400);
+    expect(legacy.error).toBeInstanceOf(BadRequestException);
+    expect(legacy.body.message).toBe(RUNNING_TIMER_MESSAGE);
+    expect(a.loggingContext.select).not.toHaveBeenCalled();
+    expect(a.db.writes('time_entries', 'insert')).toHaveLength(0);
+  });
+
+  it("only the caller's own open timer counts: a stopped entry or another member's timer does not block (D77)", async () => {
+    const t = baseTables();
+    t.time_entries = [
+      entry({ id: uid(88) }),
+      running({ id: uid(89), member_user_id: OTHER }),
+    ];
+    const b = await build({ tables: t });
+    await b.service.start(USER, { project_id: PROJECT });
+    expect(b.db.writes('time_entries', 'insert')).toHaveLength(1);
+    // The pre-check is the first time_entries read: the caller's open rows only, any project, any context.
+    const pre = b.db.calls.find((c) => c.table === 'time_entries')!;
+    expect(pre.op).toBe('select');
+    expect(pre.filters).toEqual([
+      ['eq', 'member_user_id', USER],
+      ['is', 'ended_at', null],
+    ]);
+  });
+
   it('a submitted period is 409 TIMESHEET_LOCKED {reason: period, sheet_status} (D50)', async () => {
     const b = await build();
     b.db.failNext('time_entries', 'insert', {
@@ -1344,7 +1417,10 @@ describe('createManual', () => {
         label: 'Acme',
         sheet_scope: { kind: 'engagement', ref: ENG },
       }),
-      policy: { weekly_limit_minutes: 180 },
+      policy: {
+        weekly_limit_minutes: 180,
+        sources: { weekly_limit_minutes: 'contract' },
+      },
     });
     b.policy.sheetScopeFor.mockResolvedValue({
       scope_kind: 'engagement',
@@ -1365,6 +1441,57 @@ describe('createManual', () => {
       engagement_assignment_id: ASSIGN,
       team_id: null,
     });
+  });
+
+  it('a workspace-sourced weekly limit on an engagement entry does not warn CONTRACT_WEEKLY_LIMIT (D76)', async () => {
+    const t = baseTables();
+    t.timesheets = [
+      {
+        id: uid(71),
+        member_user_id: USER,
+        scope_kind: 'engagement',
+        scope_ref: ENG,
+        period_start: '2026-10-05',
+        period_end: '2026-10-11',
+      },
+    ];
+    t.time_entries = [
+      entry({
+        id: uid(86),
+        context_kind: 'assignment',
+        context_ref: ASSIGN,
+        team_id: null,
+        engagement_assignment_id: ASSIGN,
+        timesheet_id: uid(71),
+        started_at: '2026-10-05T01:00:00.000Z',
+        ended_at: '2026-10-05T03:00:00.000Z',
+        duration_seconds: 7200,
+      }),
+    ];
+    const b = await build({
+      tables: t,
+      option: option({
+        kind: 'assignment',
+        id: ASSIGN,
+        label: 'Acme',
+        sheet_scope: { kind: 'engagement', ref: ENG },
+      }),
+      // The contract sets no limit; the 180 min comes from the workspace policy (never cut, D65).
+      policy: {
+        weekly_limit_minutes: 180,
+        sources: { weekly_limit_minutes: 'workspace' },
+      },
+    });
+    b.policy.sheetScopeFor.mockResolvedValue({
+      scope_kind: 'engagement',
+      scope_ref: ENG,
+      policy_workspace_id: WS,
+      scope_label: 'Acme',
+    } as never);
+    const view = await b.service.createManual(USER, manual());
+    expect(view.warnings).toEqual([]);
+    // No week scan when the limit is not the contract's.
+    expect(b.db.calls.some((c) => c.table === 'timesheets')).toBe(false);
   });
 });
 

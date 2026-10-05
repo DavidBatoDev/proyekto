@@ -247,7 +247,9 @@ function mocks() {
       .mockResolvedValue([{ id: PROJECT, title: 'Acme site' }]),
     teamMembers: jest
       .fn()
-      .mockResolvedValue([{ id: ME, display_name: 'Me', email: 'me@x.io' }]),
+      .mockResolvedValue([
+        { id: ME, display_name: 'Me', avatar_url: null, email: 'me@x.io' },
+      ]),
     contractStatus: jest
       .fn()
       .mockResolvedValue({ enforcement: 'off', engagement_status: 'engaged' }),
@@ -257,7 +259,7 @@ function mocks() {
     projectSummary: jest.fn().mockResolvedValue(SUMMARY),
     projectMembers: jest
       .fn()
-      .mockResolvedValue([{ id: ME, display_name: 'Me' }]),
+      .mockResolvedValue([{ id: ME, display_name: 'Me', avatar_url: null }]),
   };
   return { entries, legacy };
 }
@@ -625,7 +627,7 @@ const ROUTES: RouteCase[] = [
     call: (c) => c.listTeamLogMembers(TEAM, USER),
     verify: (m, result) => {
       expect(m.legacy.teamMembers).toHaveBeenCalledWith(ME, TEAM);
-      keysOf((result as unknown[])[0], ['id', 'display_name']);
+      keysOf((result as unknown[])[0], ['id', 'display_name', 'avatar_url']);
     },
   },
   {
@@ -704,7 +706,7 @@ const ROUTES: RouteCase[] = [
     call: (c) => c.listProjectLogMembers(PROJECT, USER),
     verify: (m, result) => {
       expect(m.legacy.projectMembers).toHaveBeenCalledWith(ME, PROJECT);
-      keysOf((result as unknown[])[0], ['id', 'display_name']);
+      keysOf((result as unknown[])[0], ['id', 'display_name', 'avatar_url']);
       expect((result as unknown[])[0]).not.toHaveProperty('email');
     },
   },
