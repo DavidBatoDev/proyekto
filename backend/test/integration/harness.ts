@@ -43,6 +43,20 @@ export function requireEnv(name: string): string {
   return value;
 }
 
+/** The hosted development project (backend/.env.development.local). */
+export const DEV_PROJECT_REF = 'vyiedlwasdwmjbztqznl';
+
+/**
+ * `describe` against the hosted dev project, `describe.skip` anywhere else.
+ * For specs that write fixtures the production database must never see.
+ * load-env.ts runs as a jest setup file, so SUPABASE_URL is set at import time.
+ */
+export const describeDevOnly = process.env.SUPABASE_URL?.includes(
+  DEV_PROJECT_REF,
+)
+  ? describe
+  : describe.skip;
+
 /** Explicit no-op stubs for the two side-effecting providers. Explicit (not a
  * catch-all Proxy) so DI lifecycle/thenable probes can't misfire on them. */
 const realtimeStub = {
@@ -68,6 +82,57 @@ interface SeededUser {
   token: string;
 }
 
+/**
+ * A time entry written straight to `time_entries` (M3 name) with explicit
+ * context columns. The context is the assignment, else the team, else the
+ * workspace, else personal. The base triggers still run: trg_10 validates
+ * project access and team or workspace membership, trg_30 places the entry on
+ * its timesheet (and refuses a submitted or approved period), trg_40 locks.
+ */
+export interface TimeEntryInput {
+  projectId: string;
+  memberUserId: string;
+  teamId?: string | null;
+  workspaceId?: string | null;
+  engagementAssignmentId?: string | null;
+  /** ISO timestamp. */
+  startedAt: string;
+  /** ISO timestamp; null or omitted = a running timer. */
+  endedAt?: string | null;
+  /** Default: (endedAt − startedAt) − breakSeconds, or null while running. */
+  durationSeconds?: number | null;
+  breakSeconds?: number;
+  /** A task makes work_item 'task' (trg_10); without one the default is 'other'. */
+  taskId?: string | null;
+  workItem?: 'meeting' | 'review' | 'admin' | 'other';
+  note?: string | null;
+  source?: 'timer' | 'manual';
+  rateSnapshot?: number;
+  rateTypeSnapshot?: 'hourly' | 'fixed';
+  currencySnapshot?: string;
+  workTypeSnapshot?: 'real_work' | 'training';
+}
+
+export interface TimeEntryRow {
+  id: string;
+  timesheet_id: string | null;
+  context_kind: 'assignment' | 'team' | 'workspace' | 'personal';
+  context_ref: string | null;
+}
+
+export interface TeamTimeSettings {
+  time_tracking_enabled?: boolean;
+  member_rates_enabled?: boolean;
+  payouts_enabled?: boolean;
+}
+
+export type CompPlan = 'free' | 'pro' | 'business' | 'enterprise';
+
+/** A tracked fixture row: by id, or by a composite key for id-less tables. */
+type TrackedRow =
+  | { table: string; id: string }
+  | { table: string; match: Record<string, string> };
+
 export class Harness {
   readonly runId = randomUUID().slice(0, 8);
   readonly admin: SupabaseClient;
@@ -77,8 +142,8 @@ export class Harness {
 
   app!: INestApplication;
 
-  /** LIFO row cleanup: {table,id} deleted newest-first in teardown. */
-  private readonly rows: Array<{ table: string; id: string }> = [];
+  /** LIFO row cleanup: {table,id} (or a composite key) deleted newest-first in teardown. */
+  private readonly rows: TrackedRow[] = [];
   private readonly userIds: string[] = [];
 
   constructor() {
@@ -174,6 +239,16 @@ export class Harness {
   private track(table: string, id: string): string {
     this.rows.push({ table, id });
     return id;
+  }
+
+  private trackMatch(table: string, match: Record<string, string>): void {
+    this.rows.push({ table, match });
+  }
+
+  private trackedIds(table: string): string[] {
+    return this.rows.flatMap((r) =>
+      'id' in r && r.table === table ? [r.id] : [],
+    );
   }
 
   async createUser(label: string): Promise<SeededUser> {
@@ -465,6 +540,153 @@ export class Harness {
     };
   }
 
+  /**
+   * Attach a team to a project (project_teams has no id column, so it is
+   * tracked by its key; the project delete would cascade it anyway, but a team
+   * created after the project is deleted first and project_teams.team_id is
+   * RESTRICT).
+   */
+  async attachTeam(
+    projectId: string,
+    teamId: string,
+    isPrimary = false,
+  ): Promise<void> {
+    const { error } = await this.admin.from('project_teams').insert({
+      project_id: projectId,
+      team_id: teamId,
+      is_primary: isPrimary,
+    });
+    if (error) throw new Error(`attachTeam failed: ${error.message}`);
+    this.trackMatch('project_teams', {
+      project_id: projectId,
+      team_id: teamId,
+    });
+  }
+
+  /** Curate a team member onto a project (the resolver's team option needs it). */
+  async curateTeamMember(
+    projectId: string,
+    teamId: string,
+    userId: string,
+  ): Promise<void> {
+    const { error } = await this.admin.from('project_team_members').insert({
+      project_id: projectId,
+      team_id: teamId,
+      user_id: userId,
+    });
+    if (error) throw new Error(`curateTeamMember failed: ${error.message}`);
+    this.trackMatch('project_team_members', {
+      project_id: projectId,
+      team_id: teamId,
+      user_id: userId,
+    });
+  }
+
+  /** Team time switches (teams columns; the old backend reads the same ones). */
+  async setTeamTime(teamId: string, settings: TeamTimeSettings): Promise<void> {
+    const { error } = await this.admin
+      .from('teams')
+      .update(settings)
+      .eq('id', teamId);
+    if (error) throw new Error(`setTeamTime failed: ${error.message}`);
+  }
+
+  /**
+   * Comp a workspace onto a plan (the complimentary columns
+   * workspace_plan_state reads); 'free' clears the comp. Call it before the
+   * first entitlement lookup for the workspace, or invalidate the booted app's
+   * cache (EntitlementsService.invalidateWorkspace).
+   */
+  async compWorkspace(workspaceId: string, plan: CompPlan): Promise<void> {
+    const patch =
+      plan === 'free'
+        ? {
+            is_discounted_free: false,
+            discounted_plan: null,
+            discounted_at: null,
+            discounted_until: null,
+          }
+        : {
+            is_discounted_free: true,
+            discounted_plan: plan,
+            discounted_at: new Date().toISOString(),
+            discounted_until: null,
+          };
+    const { error } = await this.admin
+      .from('workspaces')
+      .update(patch)
+      .eq('id', workspaceId);
+    if (error) throw new Error(`compWorkspace failed: ${error.message}`);
+  }
+
+  /**
+   * Insert a time entry into time_entries (M3 and later) with explicit context
+   * columns; see TimeEntryInput. Tracked for LIFO delete, but locked entries
+   * only go through cleanup()'s time_test_cleanup call.
+   */
+  async createTimeEntry(input: TimeEntryInput): Promise<TimeEntryRow> {
+    const contextRef =
+      input.engagementAssignmentId ?? input.teamId ?? input.workspaceId ?? null;
+    const contextKind: TimeEntryRow['context_kind'] =
+      input.engagementAssignmentId
+        ? 'assignment'
+        : input.teamId
+          ? 'team'
+          : input.workspaceId
+            ? 'workspace'
+            : 'personal';
+    const breakSeconds = input.breakSeconds ?? 0;
+    const endedAt = input.endedAt ?? null;
+    const durationSeconds =
+      input.durationSeconds !== undefined
+        ? input.durationSeconds
+        : endedAt
+          ? Math.max(
+              0,
+              Math.floor(
+                (Date.parse(endedAt) - Date.parse(input.startedAt)) / 1000,
+              ) - breakSeconds,
+            )
+          : null;
+
+    const row: Record<string, unknown> = {
+      project_id: input.projectId,
+      member_user_id: input.memberUserId,
+      context_kind: contextKind,
+      context_ref: contextRef,
+      team_id: contextKind === 'team' ? input.teamId : null,
+      workspace_id: contextKind === 'workspace' ? input.workspaceId : null,
+      engagement_assignment_id:
+        contextKind === 'assignment' ? input.engagementAssignmentId : null,
+      started_at: input.startedAt,
+      ended_at: endedAt,
+      duration_seconds: durationSeconds,
+      break_seconds: breakSeconds,
+      break_minutes: Math.round(breakSeconds / 60),
+      source: input.source ?? 'manual',
+    };
+    if (input.taskId) row.task_id = input.taskId;
+    if (input.workItem) row.work_item = input.workItem;
+    if (input.note !== undefined) row.note = input.note;
+    if (input.rateSnapshot !== undefined)
+      row.rate_snapshot = input.rateSnapshot;
+    if (input.rateTypeSnapshot) row.rate_type_snapshot = input.rateTypeSnapshot;
+    if (input.currencySnapshot) row.currency_snapshot = input.currencySnapshot;
+    if (input.workTypeSnapshot) row.work_type_snapshot = input.workTypeSnapshot;
+
+    const { data, error } = await this.admin
+      .from('time_entries')
+      .insert(row)
+      .select('id, timesheet_id, context_kind, context_ref')
+      .single();
+    if (error || !data)
+      throw new Error(
+        `createTimeEntry failed: ${error?.message} ${error?.details ?? ''}`,
+      );
+    this.track('time_entries', data.id as string);
+    return data as TimeEntryRow;
+  }
+
   /** Read the roadmap's current updated_at (the revision token). */
   async roadmapUpdatedAt(roadmapId: string): Promise<string> {
     const { data, error } = await this.admin
@@ -478,14 +700,65 @@ export class Harness {
   }
 
   async cleanup(): Promise<void> {
-    for (let i = this.rows.length - 1; i >= 0; i--) {
-      const { table, id } = this.rows[i];
+    // Time first (M3): submitted or approved entries are locked and their
+    // sheets cannot be deleted through PostgREST, which cannot set
+    // app.time_maintenance, so a service-role RPC clears each test project's
+    // entries, reservations and emptied sheets. PGRST202 = the function is not
+    // there yet (before M3); TIME_TEST_CLEANUP_FORBIDDEN = not a test project.
+    for (const projectId of this.trackedIds('projects')) {
       try {
-        await this.admin.from(table).delete().eq('id', id);
+        const { error } = await this.admin.rpc('time_test_cleanup', {
+          p_project_id: projectId,
+        });
+        if (
+          error &&
+          error.code !== 'PGRST202' &&
+          !error.message?.includes('TIME_TEST_CLEANUP_FORBIDDEN')
+        ) {
+          console.warn(
+            `[integration] time_test_cleanup(${projectId}) failed: ${error.message}`,
+          );
+        }
       } catch {
         /* best-effort */
       }
     }
+
+    for (let i = this.rows.length - 1; i >= 0; i--) {
+      const row = this.rows[i];
+      try {
+        if ('id' in row) {
+          await this.admin.from(row.table).delete().eq('id', row.id);
+        } else {
+          await this.admin.from(row.table).delete().match(row.match);
+        }
+      } catch {
+        /* best-effort */
+      }
+    }
+
+    // A deleted team or workspace keeps its policy audit rows (D23: policy_id
+    // becomes NULL); drop the fixtures' ones. Errors (before M3 the columns do
+    // not exist) are ignored.
+    const teamIds = this.trackedIds('teams');
+    const workspaceIds = this.trackedIds('workspaces');
+    try {
+      if (teamIds.length)
+        await this.admin
+          .from('time_policy_events')
+          .delete()
+          .is('policy_id', null)
+          .in('team_id', teamIds);
+      if (workspaceIds.length)
+        await this.admin
+          .from('time_policy_events')
+          .delete()
+          .is('policy_id', null)
+          .in('workspace_id', workspaceIds);
+    } catch {
+      /* best-effort */
+    }
+
     for (let i = this.userIds.length - 1; i >= 0; i--) {
       try {
         await this.admin.auth.admin.deleteUser(this.userIds[i]);
