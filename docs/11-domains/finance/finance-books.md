@@ -1,15 +1,16 @@
 # Finance Books
 
-> **Last updated:** 2026-10-02 · **Status:** current
+> **Last updated:** 2026-10-06 · **Status:** current
 
 Finance used to be one page gated to verified consultants (`ConsultantOnlyGuard` on
 `/api/finance/*`). **Books** replace that wall with a created surface any execution user can
 have, where a contract unlocks **data** rather than creation.
 
 That distinction is the whole design: creating a book is never blocked, and a book with no
-contracts behind it renders empty states. What a signed contract unlocks is the timer,
-payroll membership, and payout eligibility — see
-[engagement eligibility](../../03-backend/authorization-axes.md#5-engagement-eligibility--is-this-work-contract-backed).
+contracts behind it renders empty states. What a signed contract unlocks is data — the
+project book, its contracts and invoices, and the time logged **for** the agreement through
+engagement assignments. It no longer gates the timer: the contract-gated timer was retired
+with the old time module (see [below](#contract-gated-time-retired)).
 
 ## The three kinds
 
@@ -101,33 +102,51 @@ Every route is under the global `/api` prefix.
 Export column filtering is not a UI concern: `export-columns.ts` drops cost columns for any
 role lacking `view_costs`, so an accountant's spreadsheet cannot carry margin.
 
-## Contract-gated time
+## Time figures
+
+Books read the time ledger (`time_entries`) with the same predicates as every other money
+surface. **Approved** = `payable_seconds` frozen by an approved timesheet and not a legacy
+rejection; hours are `payable_seconds`, never logged duration.
+
+| Figure | Rule |
+| --- | --- |
+| Pending | Entries on `open`, `submitted` or `returned` sheets, on logged duration |
+| Approved | Book overview: `approved_seconds` = payable seconds of approved entries, paid ones included. `GET /api/finance-books/me/summary` splits them: `approved_seconds` = approved and unpaid, `paid_seconds` = paid (a payout, or paid outside Proyekto) |
+| Cost (`view_costs` only) | Σ `amount_snapshot` frozen at approval; approved hours with no amount are reported as `uncosted_seconds`. Cost columns are never selected for a reader without `view_costs` |
+| Legacy rejections | Excluded from every figure |
+| Scope | Personal book: the owner's entries in every context, personal time included; team book: entries logged for the team; project book: the project's non-personal entries |
+
+On project books a placed talent's agreement rows are masked for readers who are not
+provider-side on that agreement (`user_id` `masked:<assignment>`, "Delivery team"). The time
+export keeps `kind=time_logs` and a `status` column (derived: paid, rejected, approved,
+pending), adds For, approved hours, timesheet status and period columns, and never includes
+email.
+
+## Contract-gated time (retired)
 
 Migration
 [`20260827110000_timer_contract_enforcement.sql`](../../../supabase/migrations/20260827110000_timer_contract_enforcement.sql)
-adds `teams.contract_enforcement` with values `off`, `warn` and `enforce`, defaulting to
-`off` so every existing team is grandfathered.
+added `teams.contract_enforcement` (`off`, `warn`, `enforce`). **It has no effect since the
+time rebuild:** the column is still accepted by `PATCH /api/teams/:id` so the current web keeps
+working, nothing reads it, and the contract migration (M5) drops it. No prod team has it set
+past `off` (2026-10-05 snapshot). The alias route `GET /api/team-time/projects/:projectId/contract-status` always
+answers `{enforcement:'off', engagement_status:'engaged'}`.
 
-| Dial | Behaviour |
-| --- | --- |
-| `off` | Log freely; no eligibility check applies |
-| `warn` | Logs go through, with a returned `contract_warning`; manual logs are stamped `flagged_reason='no_active_contract'` |
-| `enforce` | `startLog` is refused with the typed `NO_ACTIVE_CONTRACT` |
-
-A contract lapsing **mid-timer never kills the timer**. `stopLog` stamps
-`flagged_reason='contract_lapsed'` best-effort instead — losing eligibility must not destroy
-work already recorded. The owner's dial lives on the add-ons page.
+Contract-backed time is now a choice of **what the time is for**: a worker on an engagement
+assignment logs for that agreement, and the agreement's own settings decide whether time is
+optional, required (no other option is offered) or disabled. Ending an assignment stops a
+timer logging to it at the end time (`flagged_reason='stopped_by_assignment_end'`); nothing
+refuses.
 
 ## Add-ons
 
-`EntitlementGuard` with `@RequiresEntitlement('time_tracking')` gates the Time module per
-team. It is a sibling of `ConsultantOnlyGuard`, deliberately *not* a layer inside
-`resolvePermissions` — see
-[Authorization axes](../../03-backend/authorization-axes.md#6-entitlement--has-the-team-enabled-the-module).
-It reads only `teams.time_tracking_enabled`. The workspace plan gate (`time_tracking`, resolved
-on the team's workspace) is enforced separately in `TeamTimeService.assertTimeTrackingPlan`
-and when the team turns time on. Surface:
-`/engagements/finance/team/$teamId/addons`.
+A team's time is switched by `teams.time_tracking_enabled` (turning it on needs the workspace
+plan's `time_tracking`) and, from there, by the workspace plan's time features
+(`time_team_rules`, `time_payouts`, `time_billable_invoices`, `time_reports_export`,
+`time_audit_export`), checked on the team's workspace where each feature is used. The old
+`EntitlementGuard` was removed with the old time module. See
+[Authorization axes](../../03-backend/authorization-axes.md#6-entitlement--does-the-plan-include-it-and-is-the-team-on).
+Surface: `/engagements/finance/team/$teamId/addons`.
 
 ## Web surface
 
@@ -154,6 +173,6 @@ the service is
 ## Related documentation
 
 - [Finance hub](./README.md) — invoices, payouts, receivables, contract parties
-- [Authorization axes](../../03-backend/authorization-axes.md) — how book roles relate to the other five axes
+- [Authorization axes](../../03-backend/authorization-axes.md) — how book roles relate to the other six axes
 - [Engagements](../../14-engagement/README.md) — the commercial relationships books report on
-- [Teams and Time](../teams-and-time/README.md) — the time ledger the timer dial gates
+- [Teams and Time](../teams-and-time/README.md) — the time ledger the books report on

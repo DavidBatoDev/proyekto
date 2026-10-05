@@ -1,6 +1,6 @@
 # Talent Access and Permissions
 
-> **Last updated:** 2026-08-18 · **Status:** current
+> **Last updated:** 2026-10-06 · **Status:** current
 
 Nothing account-level grants project capabilities. A Talent participant receives a
 project role through a direct invite or team curation, then the shared permission resolver
@@ -62,8 +62,8 @@ Project access allows work; paid participation requires more:
 team membership
   -> project_team_members curation
   -> team_member_rates
-  -> task_time_logs.rate_snapshot
-  -> approved logs
+  -> time_entries.rate_snapshot
+  -> approved timesheets
   -> payout
 ```
 

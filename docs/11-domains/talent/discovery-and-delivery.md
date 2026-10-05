@@ -1,6 +1,6 @@
 # Talent Discovery and Delivery
 
-> **Last updated:** 2026-08-18 · **Status:** current
+> **Last updated:** 2026-10-06 · **Status:** current
 
 Discovery and paid delivery use different data. The marketplace advertises a public profile;
 teams and project curation establish who actually works; rates and approved time establish
@@ -39,7 +39,7 @@ an active talent enrollment. Accepting grants editor access with `origin='invite
 | --- | --- | --- |
 | `user_rate_settings.hourly_rate` | Marketplace expectation | Visible to browsing consultants |
 | `team_member_rates.hourly_rate` | Internal team/project pay rate | No |
-| `task_time_logs.rate_snapshot` | Historical cost captured when time is logged | No |
+| `time_entries.rate_snapshot` | Historical cost captured when time is logged | No |
 | `contracts.client_hourly_rate` | Price invoiced to the client | Yes |
 
 The marketplace rate is not automatically the payable project rate. Team operators establish

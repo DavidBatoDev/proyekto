@@ -1,6 +1,6 @@
 # Glossary
 
-> **Last updated:** 2026-09-05 · **Status:** current
+> **Last updated:** 2026-10-06 · **Status:** current
 
 Product-wide vocabulary. Domain-specific terms live in their own sections' glossaries
 (e.g. [Meetings](../11-domains/README.md), [Architecture](../02-architecture/README.md)).
@@ -34,7 +34,7 @@ Product-wide vocabulary. Domain-specific terms live in their own sections' gloss
 | **Engagement** | The durable record of who hired whom (`engagements` + `engagement_parties`), created only by the final signature on a two-position contract. It organizes commercial effects (project links, time policy, rates) and is never a source of project authorization. Read at `/engagements`. The term may be renamed "deals" / "deals center" — see the naming note in [Engagements](../14-engagement/README.md). |
 | **Engagement activation** | The `SECURITY DEFINER` RPC (`sign_contract_position_and_activate`) run by the final signature, writing the engagement, its parties, project links, time settings, and rates in one idempotent transaction. Distinct from **Activation** above, which is the project checklist flip. |
 | **Personal project** | A project linked one-to-one to its user through `personal_projects` (renamed from `personal_workspaces` on 2026-09-01, when "workspace" became the organization tier). The owner's `project_access` row still has `origin='personal_workspace'` — the literal was deliberately not renamed. Titled `"<name>'s Space"`. |
-| **Time log** | A billable record of work against a task (`task_time_logs`), rolled into invoices/payouts. |
+| **Time log** | A record of work (`time_entries`, logged for a team, agreement, workspace or "Just me"), approved on a timesheet and rolled into invoices/payouts. |
 | **Payout / Invoice** | The live money paths — manual payouts of approved time, and generated project invoices. |
 | **Guest** | An anonymous user (a `profiles` row with `is_guest`) who can build a roadmap before signing up. |
 | **AI assistant** | The Proyekto assistant — a conversational agent that reads and edits roadmaps. It lives in two places: inside a roadmap, where it edits that roadmap directly, and on the workspace dashboard, where it works across every project, roadmap, and team you can access. Every message is a **run** (investigate -> propose -> execute -> verify). Edits that reach beyond the open roadmap, touch several roadmaps, or — from the dashboard — delete anything or exceed 15 operations come back as a **proposal** to confirm first, then commit one change per roadmap. `@`-mentions (projects, roadmaps, epics, features, tasks, milestones, teams) tell it what you mean without limiting what it may look at. |

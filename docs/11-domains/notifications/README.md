@@ -1,6 +1,6 @@
 # Notifications & Push
 
-> **Last updated:** 2026-09-01 · **Status:** current
+> **Last updated:** 2026-10-06 · **Status:** current
 
 In-app notifications with two fan-out channels: **mobile/web push** over FCM
 (immediate) and **email** (deferred, for mentions and direct messages). The
@@ -16,13 +16,15 @@ never blocks the action that triggered it.
 | `notifications` | Per-user notification (category/priority, optionally project-scoped) |
 | `notification_types` | Catalog of type definitions, plus the per-type email policy |
 
-`NotificationsService.createNotification` is the single write path, called from ~18
-sites across 15 modules (projects, teams, meetings, chat, roadmaps, marketplace,
-invoices, payouts, team-time). It inserts the row and awaits a bounded FCM push in
-the same method. Fan-out to multiple recipients is each caller's job — e.g.
-`MeetingsService` has a private `notifyMany` helper that swallows per-recipient
-errors so one bad address cannot break scheduling. There is no shared multi-recipient
-helper on the service itself.
+`NotificationsService.createNotification` is the single write path, called from 24
+sites across 14 modules (chat, delivery, meetings, projects, roadmaps, teams, time,
+workspaces, applications, contracts, invoices, marketplace, admin, platform-billing). It
+inserts the row and awaits a bounded FCM push in the same method. Fan-out to multiple
+recipients is each caller's job — e.g. `MeetingsService` has a private `notifyMany` helper
+that swallows per-recipient errors so one bad address cannot break scheduling. There is no
+shared multi-recipient helper on the service itself. Payouts no longer call it directly;
+payouts, engagement assignments and account deletion all send their time notices through
+the time module's `TimeNotificationsService` (see [Time notifications](#time-notifications)).
 
 `content` is free-form jsonb with a loose convention: a human-readable `message`,
 scalar ids the client can act on (`task_id`, `room_id`, `message_id`, …), and the
@@ -73,12 +75,14 @@ in-app read can prevent an unnecessary email.
 | Invoice | A consultant sends or re-sends an issued invoice | Direct `MailerService` call, with the PDF attached | During the send action (normally seconds) |
 | Task, feature, epic, or chat mention | An existing member is @mentioned | Notification email outbox | 10-15 minutes |
 | Direct message | A recipient has a new unread DM | Notification email outbox | 30-35 minutes |
+| Timesheet to review (`timesheet_submitted`) | A timesheet waits on a decider | Notification email outbox | 60-65 minutes |
+| Timesheet returned, time to submit, payment recorded (`timesheet_returned`, `timesheet_reminder`, `time_payout_recorded`) | A decider returns a sheet; a manual-route sheet is due; a payout is recorded | Notification email outbox | 10-15 minutes |
 | Mention invite (when enabled) | An admin @mentions an email address with no account | Notification email outbox | 2-7 minutes |
 
 The notification dispatcher runs every five minutes. Its configured delay is
-600 seconds for mentions, 1,800 seconds for direct messages, and two minutes
-for account-less mention invites; the scheduler interval accounts for the
-range shown above. Inbox arrival can still vary after the mail provider accepts
+600 seconds for mentions and the three faster time types, 1,800 seconds for direct
+messages, 3,600 seconds for `timesheet_submitted`, and two minutes for account-less
+mention invites; the scheduler interval accounts for the range shown above. Inbox arrival can still vary after the mail provider accepts
 the message.
 
 > **Read before send:** Notification emails are deliberately cancelled when
@@ -88,7 +92,9 @@ the message.
 
 **Live since 2026-08-04** for the four mention types and for direct messages. Being
 mentioned in a task, feature or epic comment or in chat, or receiving a DM, can
-produce an email. A fifth type, `roadmap_mention_invite`, exists for people with no
+produce an email. The four time types above were seeded `email_eligible` by the time
+migration M1 (2026-10-02) and send from the deploy that ships their renderers (the time
+rebuild); until then the registry had no template for them, so nothing was mailed. A fifth type, `roadmap_mention_invite`, exists for people with no
 account and ships switched off — see [Mentioning someone with no account](#mentioning-someone-with-no-account).
 
 Delivery is **deferred and conditional**, the Trello/Slack model: the email is queued
@@ -342,6 +348,38 @@ unsubscribe button only when both are present.
 [Runbook → Google OAuth email](../../12-runbooks/google-oauth-email.md) for the ESP
   triggers and credential recovery.
 
+## Time notifications
+
+`TimeNotificationsService` (time module) owns every time notice: one row per transition per
+recipient, never the actor, never a deleted account (`profiles.deleted_at`), `project_id`
+always null, and **no amount, rate or currency** in the message, push or email (a spec checks
+every type). Each method catches and logs its own failure and is awaited, so a notice can
+never turn a committed approval into an error, and Cloud Run never freezes a detached tail.
+
+| Type | To | Push title | Clears |
+| --- | --- | --- | --- |
+| `timesheet_submitted` | the sheet's deciders | Timesheet to review | every decider's row on approve, return or withdraw |
+| `timesheet_returned` | member | Timesheet returned | the member's older row for the sheet |
+| `timesheet_approved` | member (not on a self-approval) | Timesheet approved | — |
+| `timesheet_reopened` | member | Timesheet reopened | — |
+| `timesheet_reopen_requested` | deciders | Reopen requested | on reopen |
+| `timesheet_reminder` | member | Time to submit | on submit |
+| `timer_running_long` | member | Timer still running | on stop, on an edit that ends the timer, on delete |
+| `timer_auto_stopped` | member | Timer stopped | `{entry_id, reason: auto_stopped_24h \| stopped_by_assignment_end}` |
+| `time_payout_recorded` | member | Payment recorded | "A payment was recorded for your time"; `{payout_id, entry_count}` |
+| `timesheets_imported` | deciders | Timesheets waiting | one-time digest from the M4 reconcile migration (not written yet; nothing emits it before then) |
+| `time_log_comment_added` (kept) | member, deciders, team managers of team-context entries | New comment on your time | — |
+
+The historical `time_log_approval_requested`, `time_log_approved` / `_rejected` /
+`_pending` and `time_log_day_rejected` keep push titles but are no longer emitted; the
+phantom `time_log_marked_paid` / `_marked_rejected` titles are gone. Timesheet notices link to
+`/time/timesheets/<id>`, a page the web rebuild adds (on the current web that link 404s, which
+only the account-deletion path can trigger before the time cron is scheduled). Until the web
+rebuild ships, comment and timer notices for entries logged for a team link to the team page (`/w/<slug>/teams/<id>/time/my-logs?log=<entry>` for the member,
+`team-logs` for others) and payment notices to the member's team page. The reminder and the
+10-hour notice also set a Redis marker (40 days), so deleting the bell row does not cause an
+hourly resend.
+
 ## Flow
 
 ```
@@ -354,7 +392,7 @@ domain event  ─►  NotificationsService.createNotification(...)  ─►  noti
 
 ## Code locations
 
-- **Backend:** [`backend/src/modules/shared/notifications/`](../../../backend/src/modules/shared/notifications/), [`backend/src/modules/shared/push/`](../../../backend/src/modules/shared/push/)
+- **Backend:** [`backend/src/modules/shared/notifications/`](../../../backend/src/modules/shared/notifications/), [`backend/src/modules/shared/push/`](../../../backend/src/modules/shared/push/), time notices in [`execution/time/time-notifications.service.ts`](../../../backend/src/modules/execution/time/time-notifications.service.ts)
 - **Email:** [`notifications/email/`](../../../backend/src/modules/shared/notifications/email/) — worker, registry, preferences service
 - **Templates:** [`backend/src/common/mail/templates/`](../../../backend/src/common/mail/templates/) — shared layout; delivery via [`transport/`](../../../backend/src/common/mail/transport/)
 - **Migrations:** `supabase/migrations/20260804090000_notification_email_outbox.sql` (machinery), `20260804120000_activate_mention_email.sql` (activation)

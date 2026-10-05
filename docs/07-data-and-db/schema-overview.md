@@ -1,13 +1,14 @@
 # Schema Overview
 
-> **Last updated:** 2026-09-06 · **Status:** current
+> **Last updated:** 2026-10-06 · **Status:** current
 
 The database is **Supabase Postgres 15**, and its source of truth is
-[`supabase/migrations/`](../../supabase/migrations/) — **335 migration files** spanning
-2025-12-11 → 2026-09-04, before the pending `20260906090000` multi-assignee RPC rebuild
-(see [migrations-workflow.md](./migrations-workflow.md#pending-through-mcp); a second
-uncommitted file in the tree, `20260906120000_time_tracking_without_consultant.sql`,
-belongs to a separate in-flight change and is not part of it). This page
+[`supabase/migrations/`](../../supabase/migrations/) — **370 migration files** spanning
+2025-12-11 → 2026-10-03 with the time rebuild merged. Its last two files, M2
+`20261003100000_time_timesheets_backfill.sql` and M3 `20261003110000_rename_time_entries.sql`,
+are committed only after both databases have applied the same bytes through MCP
+`apply_migration` (see
+[the time rollout](../13-proposals/time-management/migrations-and-rollout.md#rollout-status)). This page
 is the current-state map: the domains, the main
 tables, the enum vocabulary, and the foreign-key spine. It reflects the schema
 *after* later drops/renames, not what any single migration created. For how
@@ -19,11 +20,11 @@ migrations are authored and applied, see [migrations-workflow.md](./migrations-w
 > linked to features. Authorization hangs off `project_access` — **never** off
 > workspace membership.
 
-> The workspace tier is live. The two newest migrations (`20260904090000`,
-> `20260904090100`) add a foreign key to `workspaces(id)` and are reported applied to
-> **both** hosted dev and production on 2026-09-05 through the MCP `apply_migration`
-> path (migration application state is not visible from the repository — confirm with
-> `list_migrations`). See [Domains → Workspaces](../11-domains/workspaces/README.md).
+> The workspace tier is live. Migrations `20260904090000` and `20260904090100` add a
+> foreign key to `workspaces(id)` and are reported applied to **both** hosted dev and
+> production on 2026-09-05 through the MCP `apply_migration` path (migration application
+> state is not visible from the repository — confirm with `list_migrations`). See
+> [Domains → Workspaces](../11-domains/workspaces/README.md).
 
 ## Tables by domain
 
@@ -119,16 +120,22 @@ convention `TasksService` happens to follow:
 | --- | --- |
 | `teams`, `team_members`, `team_invites` | Reusable teams (incl. freeform `tags text[]` labels and a nullable `workspace_id` organizational home) + roster + invites |
 | `project_teams`, `project_team_members` | Attach a team to a project; curation fans out to `project_access` via trigger |
-| `team_member_rates` | Per-member (per-project) rate cards |
-| `task_time_logs`, `time_log_comments` | Billable time logs + threads; project/task/member FKs sever with `SET NULL`, while member name and rates remain snapshotted |
+| `team_member_rates` | Per-member (per-project) rate cards, plus the member hour caps (`weekly_limit_hours`, `monthly_limit_hours`, `overtime_requires_approval`) |
+| `time_entries` | The time ledger (renamed from `task_time_logs` in M3): person, project, optional task or `work_item` preset, interval, breaks, and the context it was logged **for** — `context_kind` (`assignment`, `team`, `workspace`, `personal`) with `context_ref` and the matching FK. Carries `timesheet_id`, the cost-side snapshots (`rate_snapshot`, `currency_snapshot`, `amount_snapshot`), `payable_seconds` (frozen at approval), `payout_id`, and `legacy_status` (`rejected` / `paid_outside`, migrations only). Project/task/member FKs sever with `SET NULL`; the old `status` column is written only by SQL until M5 drops it |
+| `time_entry_segments`, `time_entry_comments` | Work/break segments (display only) and comment threads, keyed `entry_id` (renamed from `task_time_log_segments` / `time_log_comments`, `log_id`) |
+| `task_time_logs`, `task_time_log_segments`, `time_log_comments` | **Compatibility views** (security invoker, service role only) over the renamed tables for the old backend during rollback; dropped in M5 |
+| `timesheets`, `timesheet_events` | One sheet per person × sheet scope (`team`, `workspace`, `engagement`) × period, status `open`/`submitted`/`returned`/`approved`, the frozen `approver_scope` and `policy_snapshot`; an append-only event history. A non-personal entry always has a sheet (trigger `trg_time_entries_30_timesheet`); a locked sheet locks its entries (`trg_time_entries_40_lock`) |
+| `time_policies`, `time_policy_events` | Workspace policy and team overrides (period, timezone, week start, approval, manual entries, retroactive days, rounding, weekly limit, reminders, hidden presets) and their audit log, which outlives a deleted override |
+| `user_time_preferences`, `time_logging_defaults` | A person's display timezone and week start; their remembered "For" choice per project |
 
 ### Money
 
 | Table | Purpose |
 | --- | --- |
 | `wallets` | User balances (available + escrow) |
-| `payout_methods`, `payouts` | The **active** money path — manual payouts grouping approved time logs |
+| `payout_methods`, `payouts` | The **active** money path — manual payouts grouping approved team time entries |
 | `invoices`, `invoice_line_items`, `invoice_documents` | Invoice generation + PDFs; terminal invoices survive project deletion with a project-title snapshot |
+| `invoice_time_entries` | Hour reservations: one row per billed entry (`UNIQUE (entry_id)`, so an entry bills once), with `bill_seconds`, `bill_rate`, `bill_amount`, currency; written at composition, moved on void-and-replace, guarded by `trg_invoice_time_entries_guard` |
 | `invoice_payments`, `invoice_events` | Payment recording/reversal and the invoice audit trail |
 | `contracts` | The service agreement — one live row per project (partial unique index on `status ∈ (signed, active)`). `consultant_user_id` is a durable nullable FK to `consultant_profiles`; a null-safe check prevents a contract's client and consultant seats from matching. Terminal party columns are trigger-locked, terminal rows survive project deletion, and the row carries project/party snapshots plus `client_hourly_rate` (**client-facing**, never the internal cost rate), clauses, and services |
 | `contract_signature_links` | Tokenized account-free client signing — 32 random bytes hex, single-use, 14-day expiry, at most one live link per contract |
@@ -151,8 +158,10 @@ detail in [../14-engagement/data-model.md](../14-engagement/data-model.md).
 | `engagement_project_links` | Which projects the relationship covers (`contract_scope` or `operational_assignment`); commercial attribution, never access |
 | `engagement_time_settings` | Effective-dated time policy (tracking mode, approval mode, rounding, weekly cap) |
 | `engagement_time_rates` | Effective-dated signed terms; `rate_kind` is `billing` on client engagements, `cost` on talent engagements — the two must never merge |
-| `engagement_assignments` | Which worker performs which project work — **no writer yet** |
-| `engagement_time_approvals`, `engagement_time_approval_items` | Talent submits, Consultant decides — **no writer yet** |
+| `engagement_assignments` | Which worker performs which project work — written by `EngagementAssignmentsService` (`POST /api/engagements/:id/assignments`, the post-signing project step); ending one stops its running timer |
+
+`engagement_time_approvals` and `engagement_time_approval_items` (0 rows, never written) were
+**dropped in M3**: agreement time is approved on `timesheets` with `approver_scope = 'hirer'`.
 
 > **⚠️ Dead tables:** `payment_checkpoints` (initial schema) and `transactions`
 > (escrow migration) were **dropped** on 2026-01-11 (`20260111000000_drop_old_project_tables.sql`)
@@ -198,6 +207,12 @@ The status/type language of the app is Postgres enums. The load-bearing ones:
 | `application_status` | draft, submitted, under_review, approved, rejected |
 | `admin_access_level` | support, moderator, super_admin |
 
+The time vocabulary is text CHECKs as well: `time_entries.context_kind`
+(assignment/team/workspace/personal) and `work_item` (task/meeting/review/admin/other);
+`timesheets.status` (open/submitted/returned/approved), `scope_kind`
+(workspace/team/engagement), `approver_scope` (team/workspace/hirer/auto/self),
+`submission_kind` (manual/auto/on_deletion/legacy), `decision_kind` (manual/auto/self/legacy).
+
 Note `feature_status` was **dropped** (`20260514120000`) — feature status is now
 derived from child task statuses in application code — and `account_role` was
 **dropped with `profiles.role`** (`20260810160000`): there is no account-role enum.
@@ -228,7 +243,10 @@ roadmap_milestones ◄─ milestone_features ─► roadmap_features   (M:N)
 roadmaps.id ◄─ roadmap_ai_sessions.roadmap_id (CASCADE)  xor  workspaces.id ◄─ roadmap_ai_sessions.workspace_id (CASCADE)
 roadmap_ai_sessions.id ◄─ roadmap_ai_messages.session_id (CASCADE)
 roadmap_ai_sessions.id ◄─ roadmap_change_history.session_id (SET NULL) ; roadmaps.id ◄─ roadmap_change_history.roadmap_id
-roadmap_tasks ◄─ task_time_logs ─► payouts (payout_id)       (severable task/project/member FKs)
+roadmap_tasks ◄─ time_entries ─► payouts (payout_id)         (severable task/project/member FKs)
+                   time_entries ─► timesheets (timesheet_id, RESTRICT) ◄─ timesheet_events
+                   time_entries ◄─ invoice_time_entries ─► invoices   (UNIQUE entry_id)
+engagement_assignments ◄─ time_entries.engagement_assignment_id (RESTRICT)
 teams.id ◄─ team_members ─► profiles ;  project_teams ─► projects
                 └─ project_team_members ──(trigger)──► project_access
 meetings ─► meeting_series ;  meetings ◄─ meeting_participants
@@ -245,7 +263,11 @@ pass, live in Postgres functions (`SECURITY DEFINER` unless noted):
 | `ai_context_roadmap_counts(uuid[], p_now)`, `ai_context_search_nodes(uuid[], q, kinds, limit)`, `ai_context_list_tasks(uuid[], assignee, statuses, due_from, due_to, overdue_at, limit)` | Cross-roadmap counts / title search / task listing over a set of **pre-authorized** roadmap ids for `/api/ai/context/*`. `SECURITY INVOKER`; EXECUTE revoked from `PUBLIC`/`anon`/`authenticated` and granted to `service_role` only, so they can never widen what a JWT can read. Caps 50 (search) and 200 (tasks). `ai_context_list_tasks` was rebuilt in `20260906090000` so its `assignee_ids` lists the stored primary first (`ORDER BY (a.assignee_id = t.assignee_id) DESC, a.assigned_at, a.assignee_id`) |
 | `search_knowledge_chunks(p_project, …)`, `search_knowledge_chunks_projects(p_project_ids, …)` | Hybrid HNSW + websearch retrieval with reciprocal-rank fusion over `ai_knowledge_chunks` — single-project, and its multi-project twin (a separately **named** function, not an overload, so PostgREST resolution stays unambiguous). `SECURITY INVOKER`; `chat_message` chunks are filtered to the caller's `p_room_ids` |
 | `match_relevant_memories` | Top-k `roadmap_ai_memories` by embedding similarity (falls back to the chronological list when embeddings are off) |
-| `create_payout_and_mark_paid`, `void_payout_and_revert` | Payout lifecycle |
+| `create_payout_and_mark_paid`, `void_payout_and_revert` | Payout lifecycle; create refuses a self-payout (`PAYOUT_SELF_NOT_ALLOWED`) and fixed-rate entries and totals `round(Σ payable/3600 × rate, 2)` once; void clears `payout_id` |
+| `time_timesheet_transition(ids, actor, action, expected_revisions, note, approve_overtime, freeze)` | The only timesheet state change: submit, auto-submit, submit on deletion, withdraw, approve, return, reopen, request reopen, one transaction for a batch; applies the backend-computed freeze under `app.time_freeze` and records `timesheet_events` |
+| `time_resolve_policy`, `time_sheet_scope_for`, `time_ensure_workspace_policy`, `time_ensure_timesheet`, `time_period_for` | Policy layering, sheet scope and period maths (one SQL path for triggers, backfill and backend) |
+| `can_view_timesheet`, `can_decide_timesheet`, `time_timesheet_deciders`, `time_approval_queue_ids`, `time_sheet_routing_preview` | Timesheet authority, deciders, the approval queue and routing preview |
+| `time_stop_running_entries`, `time_policy_delete`, `time_billing_floor`, `time_test_cleanup` | Stop running timers (project delete, assignment end, account deletion), delete a team override with its audit, the billing floor, harness clean-up of `itest`/`[QA]` projects |
 | `sign_contract_and_flip` | Locks a contract, re-checks consultant enrollment, stamps a party, supersedes the prior live version, and derives signing status atomically; executable only by `service_role` |
 | `create_guest_user`, `get_guest_user_id`, `cleanup_old_guest_users` | Guest sessions |
 | `provision_default_workspace(uuid)` | Idempotent, advisory-locked (**seed 1**) provisioning of a user's default workspace, owner membership, and a free subscription row. **Rejects guests**; `service_role` only |

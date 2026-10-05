@@ -1,6 +1,6 @@
 # Talent
 
-> **Last updated:** 2026-09-01 · **Status:** current
+> **Last updated:** 2026-10-06 · **Status:** current
 
 Talent are the people who deliver project work — a **market position, not an account
 attribute** (there is no stored account role; `profiles.role` was dropped 2026-08-10).
@@ -71,5 +71,5 @@ Signup (lane-free)
 - **Onboarding:** [`backend/src/modules/shared/auth/`](../../../backend/src/modules/shared/auth/)
 - **Profile quality:** [`backend/src/modules/marketplace/profile/talent-eligibility.service.ts`](../../../backend/src/modules/marketplace/profile/talent-eligibility.service.ts)
 - **Discovery and invites:** [`backend/src/modules/marketplace/marketplace/`](../../../backend/src/modules/marketplace/marketplace/)
-- **Teams and time:** [`backend/src/modules/execution/teams/`](../../../backend/src/modules/execution/teams/), [`backend/src/modules/execution/team-time/`](../../../backend/src/modules/execution/team-time/)
+- **Teams and time:** [`backend/src/modules/execution/teams/`](../../../backend/src/modules/execution/teams/), [`backend/src/modules/execution/time/`](../../../backend/src/modules/execution/time/)
 - **Web:** [`web/src/routes/marketplace/talent/`](../../../web/src/routes/marketplace/talent/), [`web/src/routes/_execution/teams/`](../../../web/src/routes/_execution/teams/)

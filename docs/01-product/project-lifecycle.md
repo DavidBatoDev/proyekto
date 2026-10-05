@@ -1,6 +1,6 @@
 # Project Lifecycle
 
-> **Last updated:** 2026-09-01 · **Status:** current
+> **Last updated:** 2026-10-06 · **Status:** current
 
 A **project** is the structured container for delivery — it holds the roadmap, the
 team, the conversations, the meetings, and the money. This page walks a project from
@@ -59,8 +59,8 @@ The team executes against the roadmap:
 
 - **Work** — features/tasks move through their statuses; assignees are multi-valued
   (`roadmap_task_assignees`). Feature status is **derived** from child tasks.
-- **Time** — billable work is captured in `task_time_logs` (start/stop or manual),
-  reviewed, and later rolled into payouts/invoices.
+- **Time** — work is captured in `time_entries` (start/stop or manual), grouped into
+  timesheets, approved, and later rolled into payouts/invoices.
 - **Talk** — project **chat** (channels + DMs + activity feed) and **meetings**
   (scheduled, recurring, with reminders) keep everyone aligned. Notifications and
   optional push fan out important events.
@@ -87,7 +87,7 @@ Progress turns into money through the **live** financial path:
 - **Invoices** (`invoices` + line items + server-rendered PDFs in the private R2
   bucket). When a contract exists, lines are composed from it: a retainer line, or
   approved hours priced at the contract's **client** rate — never at
-  `task_time_logs.rate_snapshot`, which is the member's internal cost. How much time
+  `time_entries.rate_snapshot`, which is the member's internal cost. How much time
   detail the client sees is controlled by `invoices.hours_detail_level`
   (`none` / `summary` / `detailed`); member identity never appears on an invoice.
 - **Automated invoicing** — a Cloud Scheduler cron (`POST /api/invoices/cron/run`)

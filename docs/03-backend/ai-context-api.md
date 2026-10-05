@@ -1,6 +1,6 @@
 # AI Context API
 
-> **Last updated:** 2026-09-08 · **Status:** current
+> **Last updated:** 2026-10-06 · **Status:** current
 
 The user-scoped read surface the Python agent uses across session scopes and the
 web calls to hydrate entity chips in assistant replies: what the caller can reach
@@ -402,6 +402,6 @@ Both migrations are reported applied to hosted dev and production on 2026-09-05
 
 ## See also
 
-- [modules.md](./modules.md) — where `ai-context` sits among the 42 modules
+- [modules.md](./modules.md) — where `ai-context` sits among the 49 modules
 - [Agent & Roadmap AI](../05-agent-ai/README.md) — the runtime that calls this surface
 - [Domains → Workspaces](../11-domains/workspaces/README.md) — the tier a workspace thread belongs to

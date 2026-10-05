@@ -1,6 +1,6 @@
 # Payments, Payouts & Invoices
 
-> **Last updated:** 2026-10-02 · **Status:** current
+> **Last updated:** 2026-10-06 · **Status:** current
 
 Money in Proyekto flows through the **payouts** and **invoices** modules. The dead
 payments/escrow backend surface was removed in Phase 3. `wallets` remains as
@@ -16,22 +16,38 @@ provisioned balance storage, but it has no HTTP module.
 
 | Page | What's in it |
 | --- | --- |
-| [Finance books](./finance-books.md) | The F1/F2/F3 book model, book roles and capabilities, contract-gated time, add-ons |
+| [Finance books](./finance-books.md) | The F1/F2/F3 book model, book roles and capabilities, time figures, the retired contract-gated timer, add-ons |
 | [Document imports](./document-imports.md) | Recording invoices and payments created outside Proyekto (**migration not yet applied to production**) |
 
 ## Payouts (live)
 
-Manual payouts group a team member's **approved, single-currency** time logs into a
+Manual payouts group a team member's **owed, single-currency** team time entries into a
 recorded payout, with a snapshotted payout method and a proof document.
 
 | Table | Holds |
 | --- | --- |
 | `payout_methods` | Saved methods (bank / GCash / QR), snapshotted onto a payout |
-| `payouts` | A recorded payout (`status` = recorded \| void), grouping billable logs |
+| `payouts` | A recorded payout (`status` = recorded \| void), grouping the entries it paid (`time_entries.payout_id`) |
 
+- **Owed** = approved (`payable_seconds` frozen, not legacy-rejected), team context, no
+  `payout_id`, no legacy marker, and not a fixed-rate entry. `GET /payouts/teams/:teamId/owed`
+  takes `?from=&until=` as local dates in the team's timezone (`to` is still accepted for
+  `until`); totals are `round(Σ payable_seconds/3600 × rate_snapshot, 2)` per member and
+  currency, rounded once.
+- **Who may pay:** a team manager (`isTeamManager`: the owner, or a member with role
+  `owner`/`admin`), with the team's time tracking and payouts on, and the `time_payouts` plan
+  feature on the team's workspace for create and owed. Void and reads are not plan-gated; a
+  member can always read their own payouts.
 - **Lifecycle** goes through `SECURITY DEFINER` RPCs `create_payout_and_mark_paid`
-  and `void_payout_and_revert` (which also flip the source `task_time_logs` paid
-  status).
+  and `void_payout_and_revert`, which set or clear `payout_id` under a settlement guard
+  (and, until the old `status` column is dropped, keep it in step). Creating one refuses a
+  payout to yourself (`PAYOUT_SELF_NOT_ALLOWED`, 403) and fixed-rate entries
+  (`FIXED_RATE_NOT_PAYABLE_BY_ENTRY`, 422: fixed pay is recorded manually); voiding has
+  neither check. `POST /payouts`
+  takes `entry_ids` (or the older synonym `log_ids`); `GET /payouts/:payoutId` returns the
+  entries as both `logs` and `entries`. The member's "Payment recorded" notice never carries an
+  amount.
+- A paid entry locks its timesheet: a reopen is refused while any entry is paid.
 - **Proof documents** upload to the **private R2 bucket** (`payout_proofs`) via the
   `uploads` module and are served through presigned GETs.
 - HTTP under `/payout-methods` and `/payouts`
@@ -39,7 +55,7 @@ recorded payout, with a snapshotted payout method and a proof document.
 
 ## Invoices (live)
 
-Project invoices with line items (manual or sourced from time logs) and a generated
+Project invoices with line items (manual or sourced from approved time) and a generated
 PDF.
 
 | Table | Holds |
@@ -47,9 +63,39 @@ PDF.
 | `contracts` | Commercial agreement with a durable consultant seat and immutable terminal party/project-title snapshots |
 | `invoices` | Invoice header (`status` = draft \| issued \| sent \| paid \| void) |
 | `invoice_line_items` | Lines (`source_type` = manual \| time_log \| retainer \| overage) |
+| `invoice_time_entries` | Hour reservations — which invoice bills which time entry (`UNIQUE (entry_id)`), with `bill_seconds`, `bill_rate`, `bill_amount` |
 | `invoice_documents` | Generated PDFs (storage path) |
 
 HTTP: create, get/update, `POST /invoices/:id/issue`, `POST /invoices/:id/generate-pdf`.
+
+**Hours on invoices.** An hourly (`time_based` or `hybrid`) contract bills only the time
+logged **for** it, each entry once:
+
+| Contract | Bills |
+| --- | --- |
+| Engagement-backed | Entries logged for the client engagement's assignments, plus team entries of the provider party's team on projects the engagement is linked to |
+| Legacy (no engagement) | Team entries on the contract's project from the provider seat's team (or the one team the provider owns, narrowed to teams attached to the project); none or several teams, or a second live hourly legacy contract on the project, is 409 `LEGACY_CONTRACT_AMBIGUOUS` |
+
+An entry is billable when it is approved, real work (not training), not personal, dated (in the
+contract workspace's time-policy timezone) on or before the invoice's `period_end`, on or after
+the contract's billing floor (`time_billing_floor`: the later of the service start date and the
+day the legacy per-log history was imported), and not reserved by another invoice. Hours
+dated before `period_start` bill on their own "Earlier hours" lines, never against a hybrid
+allowance. Composition reserves the entries (`invoice_time_entries`, conflicts ignored) and
+builds lines only from the rows it won, so two drafts never bill the same hour. Lines group by
+task and rate at `detailed`, by rate otherwise, at
+`least(invoice detail, the agreement's client_hours_detail_level)`; amounts are
+`round(Σ bill_seconds/3600 × bill_rate, 2)` per line. Engagement prices come from the
+agreement's billing rates in force on each entry's date (else the contract's
+`client_hourly_rate`); legacy contracts use `client_hourly_rate`. Retainers never reserve.
+
+Recomposing or detaching hours releases the draft's reservations; deleting a draft cascades;
+void-and-replace moves them to the replacement; issuing first verifies every reserved entry is
+still approved and every hour line still matches (else 409 `INVOICE_TIME_ENTRY_NOT_BILLABLE`).
+A reserved entry locks its timesheet against reopening. `hours_from`, `hours_to` and
+`hours_member_user_id` are still accepted and ignored. Creating or provider-signing an hourly
+`client_services` contract needs the `time_billable_invoices` plan feature; composing,
+issuing and voiding never do.
 
 Finance access requires active consultant capability plus a `project_access` row with
 `role=owner` — a verified consultant, on a project they own. The predicate used to also
@@ -191,12 +237,12 @@ controller or wallet HTTP API; changing that table or trigger is a separate deci
 ## How money connects to work
 
 ```
-task_time_logs  ──approved──►  payouts (per member, single currency)
-                └──────────►  invoice_line_items ──►  invoices ──►  invoice_documents (PDF)
+time_entries ──timesheet approved (payable_seconds frozen)──┬──► payouts (team entries, per member, single currency)
+                                                            └──► invoice_time_entries ──► invoice_line_items ──► invoices ──► invoice_documents (PDF)
 ```
 
-Billable time (see [Teams and Time](../teams-and-time/README.md)) is the source for both
-payouts and invoices.
+Approved time (see [Teams and Time](../teams-and-time/README.md)) is the source for both
+payouts and invoices; every total sums `payable_seconds`, never logged duration.
 
 ## Code locations
 

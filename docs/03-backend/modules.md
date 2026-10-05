@@ -1,12 +1,15 @@
 # Modules
 
-> **Last updated:** 2026-09-08 · **Status:** current
+> **Last updated:** 2026-10-06 · **Status:** current
 
-The backend is **42 feature modules** under
-[`backend/src/modules/`](../../backend/src/modules/) (counted from directories holding their own
-`*.module.ts` — 45 files, minus three nested modules that are not feature modules:
-`projects/access-sync`, `projects/authorization`, and the global
-`realtime/realtime-publisher`), each self-contained
+The backend is **49 feature modules** under
+[`backend/src/modules/`](../../backend/src/modules/) (recounted 2026-10-06 with the time
+rebuild in place: the directories directly under `execution/`, `marketplace/` and `shared/` that
+hold their own `*.module.ts` — 11 + 20 + 18. There are 58 module files; the other nine are
+nested or companion modules, not feature modules: `projects/access-sync`,
+`projects/authorization`, `roadmaps/roadmap-plan-limits`, `engagements/engagements-core`,
+`finance/eligibility`, `entitlements/entitlements-core`, `platform-billing/platform-billing-core`,
+`realtime/realtime-publisher` and `safety/blocks`), each self-contained
 (controller → service → repository). This page is the inventory: purpose, the
 tables each owns, and notable dependencies. Table names are verified from the
 actual `.from('…')` calls — the identity domain uses **`user_*`** tables, with
@@ -40,19 +43,19 @@ group-level barrel modules.
 | `roadmap-shares` | Public/tokenized share links + shared commenting | `roadmap_shares`, `roadmap_share_access` |
 | `roadmap-templates` | Public roadmap-template gallery (versions, tags, ratings, usage) | `roadmap_public_templates`, `roadmap_template_*` |
 | `teams` | Teams, members, invites, project-team assignment, rates | `teams`, `team_members`, `team_invites`, `project_teams`, `team_member_rates` |
-| `team-time` | Billable time logs + comments | `task_time_logs`, `time_log_comments` |
+| `time` | Time entries, timesheets and approvals, layered time policy, the "For" resolver, reports and exports, the hourly time cron, and the `/api/team-time` alias for old clients | `time_entries`, `time_entry_segments`, `time_entry_comments`, `timesheets`, `timesheet_events`, `time_policies`, `time_policy_events`, `user_time_preferences`, `time_logging_defaults` |
 | `consultants` | Active-consultant directory, plus the category-filtered public directory | `profiles`, `consultant_profiles`, `consultant_subcategories` |
 | `taxonomy` | Curated marketplace category tree behind the mega-menu and `/marketplace/category/*` | `marketplace_categories`, `marketplace_subcategories` |
 | `applications` | Consultant/talent application submission | `consultant_applications` |
 | `marketplace` | Talent enrollment, discovery + hiring invites | `talent_profiles`, `profiles`, `user_*`, `project_invites` |
 | `guests` | Anonymous guest sessions | `profiles`, `roadmaps` |
 | `admin` | Admin console — vetting, consultant promotion/team provisioning, matchmaking | `admin_profiles`, `consultant_applications`, `user_*` |
-| `payouts` | Payout methods + payout requests | `payout_methods`, `payouts` |
-| `invoices` | Invoice generation with line items | `invoices`, `invoice_line_items`, `invoice_documents` |
+| `payouts` | Payout methods + payouts of approved team time | `payout_methods`, `payouts` *(reads `time_entries`)* |
+| `invoices` | Invoice generation with line items; hour lines reserve approved time entries | `invoices`, `invoice_line_items`, `invoice_documents`, `invoice_time_entries` |
 | `contracts` | Service agreements, signing (in-app + tokenized link), amendments, and project economics | `contracts`, `contract_signature_links`, `finance_project_settings`, `finance_member_allocations` |
-| `engagements` | Party-scoped reads over the activation-written commercial tables — the only module allowed to touch them (RLS is deny-all; see [Engagements](../14-engagement/integration.md)) | `engagements`, `engagement_parties`, `engagement_project_links`, `engagement_time_settings`, `engagement_time_rates` |
+| `engagements` | Party-scoped reads over the activation-written commercial tables — the only module allowed to touch them (RLS is deny-all; see [Engagements](../14-engagement/integration.md)) — plus the post-signing project step and engagement assignments. Direct readers outside it today: `contracts`, finance books, engagement eligibility, and two read-only probes in `time` (the dashboard's assignment probe and the overview's hirer check) | `engagements`, `engagement_parties`, `engagement_project_links`, `engagement_time_settings`, `engagement_time_rates`, `engagement_assignments` |
 | `finance` | Consultant-only cross-project money portfolio | *(reads `contracts`, `invoices`)* |
-| `financials` | Per-project profitability API consumed by Finance | *(reads `finance_project_settings`, `task_time_logs`)* |
+| `financials` | Per-project profitability API consumed by Finance | *(reads `finance_project_settings`, `time_entries`)* |
 | `activity` | Project activity feed read API | `project_activity_log` |
 | `meetings` | Meetings + recurring series + reminders | `meetings`, `meeting_series`, `meeting_participants` |
 | `chat` | Project channels, DMs, reactions, activity feed | `chat_rooms`, `chat_room_*` |
@@ -65,11 +68,12 @@ group-level barrel modules.
 | `knowledge` | Project-knowledge RAG pipeline (outbox ingest + hybrid search) | `ai_knowledge_chunks`, `ai_knowledge_outbox` |
 | `mcp` | First-party read + write MCP server, Personal Access Tokens, OAuth 2.1 authorization server | `mcp_personal_access_tokens`, `mcp_oauth_clients`, `mcp_oauth_grants` |
 
-> **⚠️ The table above lists 34 of the 42 modules.** Eight exist in source and are not yet
-> detailed here: `delivery`, `postings`, `profile-import`, `project-commerce`,
-> `service-offerings`, `survey`, `talent`, and `qa-fixtures`. Their existence is verified;
-> their purposes and tables are **unverified in this page** — read the source, not this table,
-> for them.
+> **⚠️ The table above lists 34 of the 49 modules.** Fifteen exist in source and are not yet
+> detailed here: `delivery`, `document-intake`, `finance-imports`, `postings`, `profile-import`,
+> `project-commerce`, `service-offerings`, `survey`, `talent` (marketplace and execution), and
+> `account`, `contact`, `entitlements`, `platform-billing`, `qa-fixtures`, `safety` (shared).
+> Their existence is verified; their purposes and tables are **unverified in this page** — read
+> the source, not this table, for them.
 
 ## Identity & accounts
 
@@ -205,15 +209,35 @@ Clones a template into a new `roadmaps` graph.
 (`project_teams`, `project_team_members`), and per-member `team_member_rates`.
 3 controllers.
 
-**`team-time`** — task time logs (`task_time_logs`) + `time_log_comments`, with
-rate resolution for billing.
+**`time`** — [`backend/src/modules/execution/time/`](../../backend/src/modules/execution/time/),
+which replaced `team-time` in the time rebuild. Services query Supabase directly (no
+repository): `LoggingContextService` (the "For" resolver), `TimePolicyService` and
+`TimeRatesService`, `TimeAuthorityService` (every view, decide, cost and identity question,
+answered by SQL predicates and per-class selects), `TimeEntriesService`, `TimesheetsService`
+(the only caller of the `time_timesheet_transition` RPC), `TimeCronService`,
+`TimeReportsService`, `TimeNotificationsService`, and `TimeProjectsFacade` (the projects
+module's only door). Six controllers: entries, timesheets, reports, policies, cron, and the
+`/api/team-time` alias (`controllers/team-time-legacy.controller.ts`, backed by `legacy/`). Imports `SupabaseModule`, `AuthorizationModule`,
+`NotificationsModule`, `WorkspacesModule`, `EntitlementsCoreModule` and
+`EngagementsCoreModule`; it imports no module that imports it (`ProjectsModule`, `TeamsModule`,
+`PayoutsModule`, `InvoicesModule`, `EngagementsModule`, `FinanceModule`, `AccountModule`), so
+there is no cycle. See [Teams & Time](../11-domains/teams-and-time/README.md).
 
-**`payouts`** — talent payout methods (`payout_methods`) and payout requests
-(`payouts`) aggregating billable time; proof documents go to the **private R2
-bucket** via `UploadsModule`.
+**`engagements`** — `EngagementsService` (party-scoped reads, rate and settings lookups for
+time) is provided by the small `EngagementsCoreModule`, which imports only `SupabaseModule`, so
+the time, invoice and finance modules can use it without importing the engagement controllers.
+`EngagementsModule` adds the project step (`EngagementProjectService`) and
+`EngagementAssignmentsService`, the first writer of `engagement_assignments`.
+
+**`payouts`** — talent payout methods (`payout_methods`) and payouts (`payouts`) of approved
+team time, through the `create_payout_and_mark_paid` / `void_payout_and_revert` RPCs;
+authority via `team-authority.ts` (`isTeamManager`) plus the team's flags and the
+`time_payouts` plan feature. Proof documents go to the **private R2 bucket** via
+`UploadsModule`.
 
 **`invoices`** — invoice generation with line items and attached documents
-(`invoices`, `invoice_line_items`, `invoice_documents`), sourced from `task_time_logs`.
+(`invoices`, `invoice_line_items`, `invoice_documents`). Hour lines come from approved
+`time_entries` and are reserved in `invoice_time_entries`, one invoice per entry.
 
 ## Collaboration
 
@@ -284,7 +308,7 @@ screen, and rotating refresh tokens on durable per-connection grants
 ## Structural notes
 
 - **Co-located services** (no separate `*.service.ts`): `uploads`, `applications`, `guests`.
-- **No repository** (service queries Supabase directly): `consultants`, `engagements`, `marketplace`, `notifications`, `knowledge`, `roadmap-templates`, `mcp`, `workspaces`. `taxonomy` is repository-backed.
+- **No repository** (service queries Supabase directly): `consultants`, `engagements`, `marketplace`, `notifications`, `knowledge`, `roadmap-templates`, `mcp`, `workspaces`, `time`. `taxonomy` is repository-backed.
 - **No tables**: `realtime`, `audit` writes only `project_activity_log`; `uploads` writes no Postgres table.
 - **RPC persistence**: `roadmap-patch` uses `upsert_full_roadmap` rather than `.from()`.
 - **RPC reads**: `ai-context` reads through `ai_context_roadmap_counts`, `ai_context_search_nodes`,

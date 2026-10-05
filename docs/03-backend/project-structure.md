@@ -1,6 +1,6 @@
 # Project Structure
 
-> **Last updated:** 2026-09-01 · **Status:** current
+> **Last updated:** 2026-10-06 · **Status:** current
 
 Where everything lives under `backend/src/`. Two things to internalize: **global
 concerns sit in `config/` and `common/`**, and **every feature is a self-contained
@@ -18,11 +18,11 @@ backend/
     main.ts               Nest bootstrap (middleware, prefix, pipe, filter, interceptors)
     tracing.ts            OpenTelemetry → Google Cloud Trace
     lambda.ts             orphaned Vercel/serverless adapter — NOT deployed
-    app.module.ts         root module: infra + 42 feature modules, Throttler
+    app.module.ts         root module: infra + 49 feature modules, Throttler
     app.controller.ts     GET / health ("status":"ok"), excluded from /api prefix
     config/               global infra providers (see below)
     common/               cross-cutting utilities (see below)
-    modules/              the 42 feature modules, grouped:
+    modules/              the 49 feature modules, grouped:
                             execution/  marketplace/  shared/
 ```
 

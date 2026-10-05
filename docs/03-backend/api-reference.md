@@ -1,6 +1,6 @@
 # API Reference
 
-> **Last updated:** 2026-09-08 · **Status:** current
+> **Last updated:** 2026-10-06 · **Status:** current
 
 Every HTTP route the backend exposes, grouped by module. All paths carry the global
 `/api` prefix — the exceptions are `POST /mcp` and the OAuth surface (`/oauth/*`,
@@ -56,7 +56,7 @@ All `Supabase`. Metadata: `GET /meta/skills`, `GET /meta/languages`. Profile:
 | GET | /api/projects/roadmap-link-candidates | Supabase | Linkable roadmaps |
 | POST | /api/projects | Supabase | Create project (always provisions the default roadmap; blocks guests; the agent's `create_project` tool uses it) |
 | POST | /api/projects/from-roadmap | Supabase | Create from roadmap (blocks guests) |
-| GET·PATCH·DELETE | /api/projects/:id | Supabase | Get / update (owner-only; only title, status, duration, currency persist) / guarded delete (active finance records block) |
+| GET·PATCH·DELETE | /api/projects/:id | Supabase | Get (404 unless the caller has a `project_access` row; a malformed id is 404 too; placed-talent members read "Delivery team member") / update (owner-only; only title, status, duration, currency persist) / guarded delete (active finance records block; running timers are stopped first) |
 | POST | /api/projects/:id/transfer-owner | Supabase | Transfer ownership |
 | * | /api/projects/:id/resources/{folders,links}… | Supabase | Resource folders/links CRUD + reorder |
 | POST | /api/projects/:id/members · /invites | Supabase | Add member / invite by email |
@@ -65,7 +65,7 @@ All `Supabase`. Metadata: `GET /meta/skills`, `GET /meta/languages`. Profile:
 | GET·DELETE | /api/projects/:id/invites[/:inviteId] | Supabase | List / cancel invites |
 | GET·PATCH | /api/projects/:id/permissions/role | Supabase | Role permissions |
 | * | /api/projects/:id/members/:memberId… | Supabase | Member update / permissions / position / remove |
-| GET | /api/projects/:id/my-permissions | Supabase | My permissions |
+| GET | /api/projects/:id/my-permissions | Supabase | My permissions, including `time.log` and `time_client_hours_level` (`none` / `summary` / `detailed`) |
 | POST | /api/projects/:id/members/leave | Supabase | Leave project |
 
 ## roadmaps · `roadmaps` / `epics` / `features` / `tasks` / `milestones`
@@ -226,13 +226,61 @@ tier),
 /teams/:id/invites`. **`project-teams`** (base `projects/:projectId/teams`) — attach/
 detach a team, curated + available members. **`team-member-rates`** (base
 `teams/:teamId/members/:userId/rates`) — list/active/create/update/delete rates.
+`PATCH /teams/:id` keeps its time fields: `retroactive_log_days` is also written through to
+the team's time policy, `contract_enforcement` is accepted and has no effect, and a non-null
+`pay_period_config` needs the `time_billable_invoices` or `time_payouts` plan feature
+(clearing it never does). Team time policy itself lives under `/api/time/policies/teams/:teamId`.
 
-## team-time · `team-time`
+## time · `time` and `team-time`
 
-Log lifecycle (`POST /logs/start`, `/logs/manual`, `/logs/:logId/stop`,
-`/logs/:logId/review`, `/logs/review-bulk`), log CRUD + comments, `GET
-/logs/me/running`, and team rollups (`GET /teams/:teamId/{my,my/summary,logs,
-logs/summary,projects,members}` and per-project rate/tasks). All `Supabase`.
+The time module ([Teams & Time](../11-domains/teams-and-time/README.md)): time entries,
+timesheets, approvals, policies, reports, and the `/api/team-time` alias the current web
+and older app bundles still call. Every route carries `SupabaseAuthGuard` +
+`TimeGuestGuard`: a guest session gets **404** everywhere except `GET /time/me/overview`
+(the empty shape) and `GET /time/me/running` / alias `GET /team-time/logs/me/running`
+(`null`). Misses are 404, never 403, and a non-uuid id is a 404.
+
+| Method | Path | Auth | Purpose |
+| --- | --- | --- | --- |
+| GET·PUT | /api/time/projects/:projectId/logging-for | Supabase | The "For" options for the caller on a project (30 s cache) / remember a choice |
+| GET | /api/time/projects/:projectId/policy?for=<kind>:<id> | Supabase | The resolved time policy for one of the caller's options |
+| GET | /api/time/projects/:projectId/work-items | Supabase | Tasks plus presets (meeting, review, admin, other); needs `access.roadmap` |
+| GET | /api/time/me/running | Supabase | The caller's running entry or `null` |
+| GET | /api/time/me/entries · /me/summary · /me/timesheets | Supabase | Own entries (paged, ≤ 200) / totals by day, context, project and sheet status / own timesheets (200 newest) |
+| GET | /api/time/me/overview?tz= | Supabase | `can_log`, `approver_mode`, contexts with the current sheet, approvals waiting, workspaces the caller administers |
+| GET·PUT | /api/time/me/preferences | Supabase | Display timezone and week start |
+| POST | /api/time/entries/start · /api/time/entries | Supabase | Start a timer / add time manually (201). A second running timer is 409 `TIMER_ALREADY_RUNNING` |
+| POST | /api/time/entries/:id/{stop,pause,resume} | Supabase | Timer controls (200) |
+| GET·PATCH·DELETE | /api/time/entries/:id | Supabase | Read / edit (`expected_updated_at` required) / delete |
+| GET | /api/time/entries/:id/segments · GET·POST …/comments | Supabase | Segments; comment thread |
+| POST | /api/time/timesheets/approve-bulk | Supabase | Approve 1–100 sheets in one transaction (all or nothing) |
+| GET | /api/time/timesheets/:id | Supabase | Sheet detail: entries, events, rules, routing, freeze preview for deciders, allowed actions |
+| POST | /api/time/timesheets/:id/{submit,withdraw,approve,return,reopen,request-reopen} | Supabase | Transitions (`expected_revision`; `note` required for return and a decider reopen) |
+| GET | /api/time/approvals · /approvals/count | Supabase | Approval queue across workspaces (`status=submitted\|decided`, `since`, `scope_kind`) / badge count |
+| GET | /api/time/reports/{entries,summary} | Supabase | Ledger by `scope=team:\|project:\|workspace:\|engagement:<id>` |
+| GET | /api/time/reports/export · /audit-export | Supabase | CSV/XLSX file download (`time_reports_export`; audit `time_audit_export`) |
+| GET·PUT | /api/time/policies/workspaces/:workspaceId | Supabase | Workspace time policy (managers; `?tz=` materialises on GET) |
+| GET·PUT·DELETE | /api/time/policies/teams/:teamId | Supabase | Team override (managers read; owner-only fields; DELETE owner, 200) |
+| POST | /api/time/cron/run | Public +CronSecret | Hourly sweep once its Cloud Scheduler job exists ([rollout step 9](../13-proposals/time-management/migrations-and-rollout.md#apply-and-deploy-sequence)): 24 h auto-stop, 10 h notice, auto-submit, finish auto/self sheets, reminders (200) |
+
+Error bodies carry `{error: {code, message, status, …extras}}` with typed codes
+(`NO_LOGGING_CONTEXT`, `LOGGING_FOR_REQUIRED`, `TIMESHEET_LOCKED`, `STALE_REVISION`,
+`TIMESHEET_TRANSITION_INVALID {reason}`, …); an unmapped database failure is a 500
+`TIME_INTERNAL` with fixed copy, never Postgres text.
+
+**The `/api/team-time` alias** keeps all 30 old routes (`logs/start`, `logs/manual`,
+`logs/:logId/{stop,pause,resume,segments,comments}`, `PATCH/DELETE/GET logs/:logId`,
+`logs/me/running`, `teams/:teamId/{my,my/summary,logs,logs/summary,projects,members}`,
+`teams/:teamId/projects/:projectId/{my-rate,tasks}`,
+`projects/:projectId/{my,my/summary,logs,logs/summary,members,tasks,contract-status}`)
+with their old request bodies and response shapes, served by the new services. Changed:
+`POST logs/review-bulk` and `POST logs/:logId/review` answer **410**
+`TIMESHEETS_REPLACED_REVIEW`; a write into a submitted or approved week is 409
+`TIMESHEET_LOCKED`; `contract-status` is always `{enforcement:'off',
+engagement_status:'engaged'}`; `my-rate` is `null`; `POST cron/heal-orphaned-logs`
+(**Public +CronSecret**) returns `{scanned:0, healed:0}`. Hits are counted per route and day
+in Redis (`time:alias:hits:<route>:<yyyymmdd>`) to decide when the alias can retire. See
+[Teams & Time → the alias](../11-domains/teams-and-time/README.md#the-apiteam-time-alias).
 
 ## consultants · `consultants` (Public)
 
@@ -269,15 +317,22 @@ list/grant/revoke, `GET /admin/match-candidates` + `POST /admin/match-assign`,
 ## payouts · `payout-methods` / `payouts`
 
 Payout methods CRUD + set-default under `/payout-methods`; payouts under `/payouts`
-(create, `GET /payouts/teams/:teamId`, `GET /payouts/:payoutId[/proof-url]`,
-`POST /payouts/:payoutId/void`), plus a payer view of a member's methods.
+(create, `GET /payouts/teams/:teamId`, `GET /payouts/teams/:teamId/owed`,
+`GET /payouts/:payoutId[/proof-url]`, `POST /payouts/:payoutId/void`), plus a payer view of a
+member's methods. `POST /payouts` takes `entry_ids` (or the older synonym `log_ids`, exactly
+one of the two) and needs the `time_payouts` plan feature, as does `owed`
+(`?from=&until=`, local dates in the team's timezone; `to` is still accepted for `until`).
+`GET /payouts/:payoutId` returns the paid entries as both `logs` and `entries`. Team, payout
+and member ids that are not uuids are 404.
 
 ## invoices · `invoices`
 
 `GET /invoices/project/:projectId`, `POST /invoices`, `GET/PATCH /invoices/:id`,
 `POST /invoices/:id/issue`, `POST /invoices/:id/generate-pdf`. Authenticated
 invoice operations require verified consultant capability and a `project_access` row with
-`role=owner`. Delivery to the recipient is by attached PDF; the in-app notification returns
+`role=owner`. Hour lines bill approved time for the invoice's own `period_start`/`period_end`
+and reserve each entry once (`hours_from`, `hours_to`, `hours_member_user_id` are accepted and
+ignored); issue verifies the reservations still match. Delivery to the recipient is by attached PDF; the in-app notification returns
 them to the project overview.
 
 ## finance · `finance`
@@ -331,7 +386,12 @@ so engagement ids cannot be probed. See [Engagements](../14-engagement/README.md
 | Method | Path | Auth | Purpose |
 | --- | --- | --- | --- |
 | GET | /api/engagements | Supabase | Engagements the caller holds a seat on (`kind`, `status`, `project_id` filters) |
+| GET | /api/engagements/agreements | Supabase | The caller's contract seats, including contracts with no engagement row |
 | GET | /api/engagements/:id | Supabase | One engagement — seats, counterparty, project links, effective settings and rates |
+| GET·POST | /api/engagements/:id/project | Supabase | The project step after signing: defaults / create or link the project (also creates the consultant's own client assignment) |
+| GET | /api/engagements/:id/assignments | Supabase | Who works on which project under the engagement, any status; the worker is named only to provider-side parties |
+| POST | /api/engagements/:id/assignments | Supabase | Assign the worker to a project (talent: the hirer seat; client: the consultant themselves) — 201, may grant project access, `access_needed` otherwise |
+| POST | /api/engagements/:id/assignments/:aid/end | Supabase | End an active assignment (200); a running timer under it stops at the end time |
 
 ## meetings · `meetings`
 
