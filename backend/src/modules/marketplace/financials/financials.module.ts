@@ -5,8 +5,10 @@ import { FinancialsService } from './financials.service';
 
 /**
  * Reads revenue/cost straight from Supabase via the service-role client and
- * gates on project role, so it only needs AuthorizationModule — no dependency on
- * the invoices/team-time/payouts modules (which would pull in a wider graph).
+ * gates on project role. Everything it injects comes through FinanceModule
+ * (ConsultantFinanceAccessService, and EngagementsService re-exported from
+ * EngagementsCoreModule) — no dependency on the invoices, time or payouts
+ * modules (which would pull in a wider graph).
  */
 @Module({
   imports: [FinanceModule],

@@ -57,7 +57,7 @@ interface BilledInvoiceRow {
  * arms and a delivery-cost side this surface must never have. Team finance is
  * strictly project-scoped and REVENUE-SIDE ONLY — cost and margin are the
  * owner's economics (talent rate snapshots), so the payloads carry `cost`,
- * `margin`, and `margin_percent` as null and never query `task_time_logs`.
+ * `margin`, and `margin_percent` as null and never query `time_entries`.
  * The receivable arithmetic itself is shared through `receivables.ts` so both
  * surfaces agree to the peso.
  */

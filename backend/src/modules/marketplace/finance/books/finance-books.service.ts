@@ -3,10 +3,24 @@ import {
   ConflictException,
   Inject,
   Injectable,
+  Logger,
   NotFoundException,
+  Optional,
 } from '@nestjs/common';
 import { SupabaseClient } from '@supabase/supabase-js';
 import { SUPABASE_ADMIN } from '../../../../config/supabase.module';
+import {
+  MASKED_MEMBER_LABEL,
+  TimeAuthorityService,
+} from '../../../execution/time/time-authority.service';
+import {
+  failTimeRead,
+  isApproved,
+} from '../../../execution/time/time-reports.service';
+import type {
+  EntryAuthRow,
+  TimesheetStatus,
+} from '../../../execution/time/time.types';
 import { FinanceExpensesService } from '../expenses/finance-expenses.service';
 import { BILLED_STATUSES, collectedByInvoice } from '../receivables';
 import {
@@ -82,11 +96,55 @@ export interface FinanceHub {
 }
 
 export interface OverviewTimeByMember {
+  /** The member's id, or `masked:<assignment>` for placed talent the viewer may not name (L22). */
   user_id: string;
   display_name: string;
+  /** Logged seconds (legacy rejected time excluded). */
   seconds: number;
+  /** view_costs only: Σ amount_snapshot of the member's frozen entries. */
   amount?: number;
   currency?: string;
+  /** view_costs only: approved seconds whose amount_snapshot is NULL (fixed, client-only), listed uncosted. */
+  uncosted_seconds?: number;
+}
+
+/** Sheet states whose time is not yet approved (CHANGE-5 "Pending"). */
+const PENDING_SHEET_STATUSES: ReadonlySet<TimesheetStatus> = new Set([
+  'open',
+  'submitted',
+  'returned',
+]);
+
+/** The finance books' read of one time entry: the time module's tables and predicates (CHANGE-5). */
+interface BookTimeRow extends EntryAuthRow {
+  member_display_name_snapshot: string | null;
+  duration_seconds: number | null;
+  payable_seconds: number | null;
+  legacy_status: string | null;
+  currency_snapshot?: string | null;
+  amount_snapshot?: number | string | null;
+  timesheet: { status: TimesheetStatus } | null;
+}
+
+const BOOK_TIME_SELECT =
+  'id, member_user_id, member_display_name_snapshot, project_id, context_kind, context_ref, team_id, ' +
+  'workspace_id, engagement_assignment_id, timesheet_id, started_at, duration_seconds, payable_seconds, ' +
+  'legacy_status, timesheet:timesheets!timesheet_id(status)';
+
+/** Paid (CHANGE-5): a payout, or paid outside Proyekto before the rebuild. */
+function isPaid(row: {
+  payout_id: string | null;
+  legacy_status: string | null;
+}): boolean {
+  return row.payout_id !== null || row.legacy_status === 'paid_outside';
+}
+
+function isPendingSheet(
+  sheet: { status: TimesheetStatus } | null | undefined,
+): boolean {
+  return sheet !== null && sheet !== undefined
+    ? PENDING_SHEET_STATUSES.has(sheet.status)
+    : false;
 }
 
 export interface BookOverview {
@@ -132,10 +190,14 @@ export interface BookOverview {
  */
 @Injectable()
 export class FinanceBooksService {
+  private readonly logger = new Logger(FinanceBooksService.name);
+
   constructor(
     @Inject(SUPABASE_ADMIN) private readonly supabase: SupabaseClient,
     private readonly access: FinanceBookAccessService,
     private readonly expenses: FinanceExpensesService,
+    /** L22 on project books. Absent only in unit harnesses: then every assignment row is masked (fail closed). */
+    @Optional() private readonly timeAuthority?: TimeAuthorityService,
   ) {}
 
   /** Every book the caller can open: their F1, plus F2/F3 via ownership or membership. */
@@ -521,7 +583,7 @@ export class FinanceBooksService {
     };
 
     if (permissions.view_time) {
-      overview.time = await this.overviewTime(book, permissions);
+      overview.time = await this.overviewTime(callerId, book, permissions);
       overview.payouts = await this.overviewPayouts(book);
     }
     if (permissions.view_contracts) {
@@ -532,57 +594,74 @@ export class FinanceBooksService {
   }
 
   private async overviewTime(
+    callerId: string,
     book: FinanceBookRow,
     permissions: FinanceBookPermissions,
   ): Promise<NonNullable<BookOverview['time']>> {
-    const baseColumns =
-      'member_user_id, member_display_name_snapshot, duration_seconds, status';
+    // amount_snapshot is internal cost and is never even SELECTED without view_costs.
     const columns = permissions.view_costs
-      ? `${baseColumns}, rate_snapshot, currency_snapshot`
-      : baseColumns;
-    // Same scoping as finance-export: personal → the owner's own logs,
-    // team → the team's, project → the project's.
-    let query = this.supabase.from('task_time_logs').select(columns);
+      ? `${BOOK_TIME_SELECT}, currency_snapshot, amount_snapshot`
+      : BOOK_TIME_SELECT;
+    // Same scoping as finance-export: personal → the owner's own entries in every context (personal included),
+    // team → the team's (team_id is set only on team-context entries), project → the project's governed
+    // entries (never personal).
+    let query = this.supabase.from('time_entries').select(columns);
     if (book.kind === 'personal') {
       query = query.eq('member_user_id', book.owner_user_id);
     } else if (book.kind === 'team') {
       query = query.eq('team_id', book.owner_team_id);
     } else {
-      query = query.eq('project_id', book.project_id);
+      query = query
+        .eq('project_id', book.project_id)
+        .neq('context_kind', 'personal');
     }
     const { data, error } = await query.not('ended_at', 'is', null);
-    if (error) throw new Error(error.message);
+    if (error) {
+      failTimeRead(this.logger, 'FinanceBooksService.overviewTime', error);
+    }
+    const rows = (data ?? []) as unknown as BookTimeRow[];
+    const masked =
+      book.kind === 'project'
+        ? await this.maskedTimeRows(callerId, rows)
+        : new Set<string>();
 
+    // CHANGE-5: pending = the sheet is open, submitted or returned (logged seconds); approved = payable_seconds
+    // of Approved entries; legacy rejected time is left out of every figure (E64).
     let totalSeconds = 0;
     let pendingSeconds = 0;
     let approvedSeconds = 0;
     const byMember = new Map<string, OverviewTimeByMember>();
-    for (const log of (data ?? []) as unknown as Array<{
-      member_user_id: string | null;
-      member_display_name_snapshot: string | null;
-      duration_seconds: number | null;
-      status: string | null;
-      rate_snapshot?: number | null;
-      currency_snapshot?: string | null;
-    }>) {
-      const seconds = Math.max(0, Number(log.duration_seconds ?? 0));
+    for (const row of rows) {
+      if (row.legacy_status === 'rejected') continue;
+      const seconds = Math.max(0, Number(row.duration_seconds ?? 0));
+      const approved = isApproved(row);
       totalSeconds += seconds;
-      if (log.status === 'pending') pendingSeconds += seconds;
-      if (log.status === 'approved') approvedSeconds += seconds;
+      if (isPendingSheet(row.timesheet)) pendingSeconds += seconds;
+      if (approved) approvedSeconds += Number(row.payable_seconds);
 
-      const userId = log.member_user_id ?? 'unknown';
+      // L22: placed talent the viewer may not name is grouped per assignment as "Delivery team".
+      const hidden = masked.has(row.id);
+      const userId = hidden
+        ? `masked:${row.context_ref ?? 'assignment'}`
+        : (row.member_user_id ?? 'unknown');
       const entry = byMember.get(userId) ?? {
         user_id: userId,
-        display_name: log.member_display_name_snapshot ?? userId,
+        display_name: hidden
+          ? MASKED_MEMBER_LABEL
+          : (row.member_display_name_snapshot ?? userId),
         seconds: 0,
       };
       entry.seconds += seconds;
       if (permissions.view_costs) {
-        const rate = Number(log.rate_snapshot ?? 0);
-        entry.amount = Number(
-          ((entry.amount ?? 0) + rate * (seconds / 3600)).toFixed(2),
-        );
-        entry.currency = log.currency_snapshot ?? entry.currency;
+        const amount =
+          row.amount_snapshot === null || row.amount_snapshot === undefined
+            ? null
+            : Number(row.amount_snapshot);
+        entry.amount = Number(((entry.amount ?? 0) + (amount ?? 0)).toFixed(2));
+        entry.currency = row.currency_snapshot ?? entry.currency;
+        entry.uncosted_seconds =
+          (entry.uncosted_seconds ?? 0) +
+          (approved && amount === null ? Number(row.payable_seconds) : 0);
       }
       byMember.set(userId, entry);
     }
@@ -592,6 +671,28 @@ export class FinanceBooksService {
       approved_seconds: approvedSeconds,
       by_member: [...byMember.values()],
     };
+  }
+
+  /**
+   * Project books: assignment rows whose worker the viewer may not name (L22, D57). Without the time module
+   * (unit harnesses) every assignment row of someone else is masked.
+   */
+  private async maskedTimeRows(
+    callerId: string,
+    rows: BookTimeRow[],
+  ): Promise<Set<string>> {
+    const candidates = rows.filter(
+      (r) => r.context_kind === 'assignment' && r.member_user_id !== callerId,
+    );
+    if (candidates.length === 0) return new Set<string>();
+    if (!this.timeAuthority) return new Set(candidates.map((r) => r.id));
+    const visible = await this.timeAuthority.identityVisible(
+      callerId,
+      candidates,
+    );
+    return new Set(
+      candidates.filter((r) => !visible.has(r.id)).map((r) => r.id),
+    );
   }
 
   private async overviewPayouts(
@@ -969,8 +1070,11 @@ export class FinanceBooksService {
             .in('owner_team_id', teamIds)
         : Promise.resolve({ data: [], error: null }),
       this.supabase
-        .from('task_time_logs')
-        .select('team_id, duration_seconds, status, started_at')
+        .from('time_entries')
+        .select(
+          'team_id, duration_seconds, payable_seconds, legacy_status, payout_id, started_at, ' +
+            'timesheet:timesheets!timesheet_id(status)',
+        )
         .eq('member_user_id', callerId)
         .not('ended_at', 'is', null),
       teamIds.length > 0
@@ -983,7 +1087,13 @@ export class FinanceBooksService {
         : Promise.resolve({ data: [], error: null }),
     ]);
     if (booksRes.error) throw new Error(booksRes.error.message);
-    if (logsRes.error) throw new Error(logsRes.error.message);
+    if (logsRes.error) {
+      failTimeRead(
+        this.logger,
+        'FinanceBooksService.getMySummary',
+        logsRes.error,
+      );
+    }
     if (paidToMeRes.error) throw new Error(paidToMeRes.error.message);
 
     const bookIdByTeam = new Map<string, string>();
@@ -1009,7 +1119,8 @@ export class FinanceBooksService {
       }
     }
 
-    // Hours: the caller's own logs. Rejected time is excluded.
+    // Hours: the caller's own entries in every context (CHANGE-5). Legacy rejected time is excluded; pending =
+    // the sheet is open, submitted or returned (logged seconds); approved and paid sum payable_seconds.
     const overall = {
       total_seconds: 0,
       month_seconds: 0,
@@ -1018,20 +1129,26 @@ export class FinanceBooksService {
       paid_seconds: 0,
     };
     const hoursByTeam = new Map<string, HoursBreakdown>();
-    for (const log of (logsRes.data ?? []) as Array<{
+    for (const log of (logsRes.data ?? []) as unknown as Array<{
       team_id: string | null;
       duration_seconds: number | null;
-      status: string;
+      payable_seconds: number | null;
+      legacy_status: string | null;
+      payout_id: string | null;
       started_at: string;
+      timesheet: { status: TimesheetStatus } | null;
     }>) {
-      if (log.status === 'rejected') continue;
-      const seconds = log.duration_seconds ?? 0;
+      if (log.legacy_status === 'rejected') continue;
+      const seconds = Math.max(0, Number(log.duration_seconds ?? 0));
       const inMonth = log.started_at >= monthStartIso;
+      const pending = isPendingSheet(log.timesheet);
       overall.total_seconds += seconds;
       if (inMonth) overall.month_seconds += seconds;
-      if (log.status === 'pending') overall.pending_seconds += seconds;
-      if (log.status === 'approved') overall.approved_seconds += seconds;
-      if (log.status === 'paid') overall.paid_seconds += seconds;
+      if (pending) overall.pending_seconds += seconds;
+      if (isApproved(log)) {
+        if (isPaid(log)) overall.paid_seconds += Number(log.payable_seconds);
+        else overall.approved_seconds += Number(log.payable_seconds);
+      }
       if (!log.team_id) continue;
       const team = hoursByTeam.get(log.team_id) ?? {
         total_seconds: 0,
@@ -1040,7 +1157,7 @@ export class FinanceBooksService {
       };
       team.total_seconds += seconds;
       if (inMonth) team.month_seconds += seconds;
-      if (log.status === 'pending') team.pending_seconds += seconds;
+      if (pending) team.pending_seconds += seconds;
       hoursByTeam.set(log.team_id, team);
     }
 
@@ -1190,8 +1307,10 @@ export class FinanceBooksService {
     const [engaged, logs, payouts] = await Promise.all([
       this.listEngagedProjects(callerId),
       this.supabase
-        .from('task_time_logs')
-        .select('duration_seconds, status, started_at')
+        .from('time_entries')
+        .select(
+          'duration_seconds, legacy_status, started_at, timesheet:timesheets!timesheet_id(status)',
+        )
         .eq('member_user_id', callerId)
         .not('ended_at', 'is', null),
       this.supabase
@@ -1200,20 +1319,29 @@ export class FinanceBooksService {
         .eq('member_user_id', callerId)
         .eq('status', 'recorded'),
     ]);
-    if (logs.error) throw new Error(logs.error.message);
+    if (logs.error) {
+      failTimeRead(
+        this.logger,
+        'FinanceBooksService.getPersonalDashboard',
+        logs.error,
+      );
+    }
 
+    // CHANGE-5: pending = the sheet is open, submitted or returned; legacy rejected time is left out (E64).
     let totalSeconds = 0;
     let monthSeconds = 0;
     let pendingSeconds = 0;
-    for (const log of (logs.data ?? []) as Array<{
+    for (const log of (logs.data ?? []) as unknown as Array<{
       duration_seconds: number | null;
-      status: string;
+      legacy_status: string | null;
       started_at: string;
+      timesheet: { status: TimesheetStatus } | null;
     }>) {
-      const seconds = log.duration_seconds ?? 0;
+      if (log.legacy_status === 'rejected') continue;
+      const seconds = Math.max(0, Number(log.duration_seconds ?? 0));
       totalSeconds += seconds;
       if (log.started_at >= monthStart.toISOString()) monthSeconds += seconds;
-      if (log.status === 'pending') pendingSeconds += seconds;
+      if (isPendingSheet(log.timesheet)) pendingSeconds += seconds;
     }
 
     const payoutsByCurrency = new Map<

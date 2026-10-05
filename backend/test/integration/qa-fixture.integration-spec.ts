@@ -85,7 +85,9 @@ describe('production QA fixture registry', () => {
   afterAll(async () => {
     await h.admin.from('qa_fixtures').delete().eq('key', key);
     await h.admin.from('invoices').delete().eq('project_id', projectId);
-    await h.admin.from('task_time_logs').delete().eq('project_id', projectId);
+    // Time goes through the test clean-up RPC: an entry on a submitted or
+    // approved sheet is locked, and an emptied sheet is removed with it.
+    await h.admin.rpc('time_test_cleanup', { p_project_id: projectId });
     await h.admin.from('contracts').delete().eq('id', contractId);
     await h.admin.from('project_teams').delete().eq('project_id', projectId);
     await h.admin
@@ -117,16 +119,21 @@ describe('production QA fixture registry', () => {
   });
 
   it('atomically deletes transient rows and restores both team flags', async () => {
-    await insert('task_time_logs', {
-      project_id: projectId,
-      member_user_id: worker.id,
-      team_id: primaryTeamId,
-      started_at: '2026-08-12T09:00:00.000Z',
-      ended_at: '2026-08-12T10:00:00.000Z',
-      duration_seconds: 3600,
-      status: 'approved',
+    // A team-context entry (time_entries, M3). trg_30 files it on the
+    // worker's sheet for that period; the reset must remove both.
+    const entry = await h.createTimeEntry({
+      projectId,
+      memberUserId: worker.id,
+      teamId: primaryTeamId,
+      startedAt: '2026-08-12T09:00:00.000Z',
+      endedAt: '2026-08-12T10:00:00.000Z',
+      durationSeconds: 3600,
+      workItem: 'other',
       source: 'manual',
     });
+    expect(entry.context_kind).toBe('team');
+    expect(entry.context_ref).toBe(primaryTeamId);
+    expect(entry.timesheet_id).toBeTruthy();
     await insert('invoices', {
       project_id: projectId,
       contract_id: contractId,
@@ -142,8 +149,9 @@ describe('production QA fixture registry', () => {
     });
     expect(reset.error).toBeNull();
 
-    const [logs, invoices, teams, registry] = await Promise.all([
-      h.admin.from('task_time_logs').select('id').eq('project_id', projectId),
+    const [entries, sheets, invoices, teams, registry] = await Promise.all([
+      h.admin.from('time_entries').select('id').eq('project_id', projectId),
+      h.admin.from('timesheets').select('id').eq('member_user_id', worker.id),
       h.admin.from('invoices').select('id').eq('project_id', projectId),
       h.admin
         .from('teams')
@@ -155,7 +163,8 @@ describe('production QA fixture registry', () => {
         .eq('key', key)
         .single(),
     ]);
-    expect(logs.data).toEqual([]);
+    expect(entries.data).toEqual([]);
+    expect(sheets.data).toEqual([]);
     expect(invoices.data).toEqual([]);
     expect(teams.data).toHaveLength(2);
     expect(teams.data?.every((team) => team.time_tracking_enabled)).toBe(true);

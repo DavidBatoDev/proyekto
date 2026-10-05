@@ -78,7 +78,7 @@ describe('EngagementEligibilityService', () => {
         contract_positions: [
           { data: [seat({ id: 'c1', status: 'ended', project_id: 'p1' })] },
         ],
-        task_time_logs: [{ count: 0 }],
+        time_entries: [{ count: 0 }],
         project_access: [{ data: null }],
       }),
     );
@@ -89,7 +89,7 @@ describe('EngagementEligibilityService', () => {
     const service = new EngagementEligibilityService(
       stubSupabase({
         contract_positions: [{ data: [] }],
-        task_time_logs: [{ count: 3 }],
+        time_entries: [{ count: 3 }],
       }),
     );
     expect(await service.getEngagementStatus('u1', 'p1')).toBe('grandfathered');
@@ -99,7 +99,7 @@ describe('EngagementEligibilityService', () => {
     const service = new EngagementEligibilityService(
       stubSupabase({
         contract_positions: [{ data: [] }],
-        task_time_logs: [{ count: 0 }],
+        time_entries: [{ count: 0 }],
         project_access: [{ data: { granted_at: '2026-01-01T00:00:00Z' } }],
         consultant_profiles: [{ count: 1 }],
       }),
@@ -111,7 +111,7 @@ describe('EngagementEligibilityService', () => {
     const service = new EngagementEligibilityService(
       stubSupabase({
         contract_positions: [{ data: [] }],
-        task_time_logs: [{ count: 0 }],
+        time_entries: [{ count: 0 }],
         project_access: [{ data: { granted_at: '2026-01-01T00:00:00Z' } }],
         consultant_profiles: [{ count: 0 }],
       }),
@@ -126,7 +126,7 @@ describe('EngagementEligibilityService', () => {
         { data: [] },
         { data: [] },
       ],
-      task_time_logs: [{ count: 0 }, { count: 0 }],
+      time_entries: [{ count: 0 }, { count: 0 }],
       project_access: [{ data: null }, { data: null }],
     });
     const service = new EngagementEligibilityService(supabase);

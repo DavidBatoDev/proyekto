@@ -38,7 +38,8 @@ interface CacheEntry {
  * signing/amendment therefore takes at most a minute to be reflected — an
  * accepted staleness window; there is deliberately no cross-module
  * invalidation hook, keeping this module dependency-free so both execution
- * (team-time) and marketplace (finance) can import it.
+ * and marketplace (finance) modules can import it. Since the time rebuild it
+ * has no importer: contract enforcement on timers is gone (kept, unwired).
  */
 @Injectable()
 export class EngagementEligibilityService {
@@ -136,7 +137,7 @@ export class EngagementEligibilityService {
     projectId: string,
   ): Promise<boolean> {
     const { count: logCount, error: logError } = await this.supabase
-      .from('task_time_logs')
+      .from('time_entries')
       .select('id', { count: 'exact', head: true })
       .eq('member_user_id', userId)
       .eq('project_id', projectId)

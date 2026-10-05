@@ -245,7 +245,7 @@ async function teardown() {
 
 	for (const id of projectIds) {
 		await rest(`invoices?project_id=eq.${id}`, { method: "DELETE" });
-		await rest(`task_time_logs?project_id=eq.${id}`, { method: "DELETE" });
+		await clearDemoTime(id);
 	}
 	for (const id of contractIds) {
 		await rest(`invoices?contract_id=eq.${id}`, { method: "DELETE" });
@@ -286,6 +286,87 @@ async function teardown() {
 		await adminAuth(`users/${user.id}`, { method: "DELETE" });
 	}
 	log("Teardown complete.");
+}
+
+/**
+ * Teardown of one demo project's time. Approved and submitted weeks are
+ * locked, so each sheet is first reopened (decider, back to `returned`) or
+ * withdrawn (member, back to `open`) through the one RPC that changes a
+ * timesheet; then the entries go, then the sheets they leave empty.
+ */
+async function clearDemoTime(projectId) {
+	const entries = await rest(
+		`time_entries?select=id,timesheet_id,member_user_id&project_id=eq.${projectId}`,
+	);
+	const sheetIds = [...new Set(entries.map((e) => e.timesheet_id).filter(Boolean))];
+	const members = [...new Set(entries.map((e) => e.member_user_id).filter(Boolean))];
+	for (const sheetId of sheetIds) {
+		const [sheet] = await rest(
+			`timesheets?select=id,status,revision,member_user_id,decided_by&id=eq.${sheetId}`,
+		);
+		if (!sheet) continue;
+		const move =
+			sheet.status === "approved" && sheet.decided_by
+				? { p_actor: sheet.decided_by, p_action: "reopen", p_note: "Demo teardown" }
+				: sheet.status === "submitted"
+					? { p_actor: sheet.member_user_id, p_action: "withdraw", p_note: null }
+					: null;
+		if (!move) continue;
+		try {
+			await rest("rpc/time_timesheet_transition", {
+				method: "POST",
+				body: JSON.stringify({
+					p_ids: [sheetId],
+					p_expected_revisions: [sheet.revision],
+					...move,
+				}),
+			});
+		} catch (error) {
+			log(`  timesheet ${sheetId} stays locked: ${error.message}`);
+		}
+	}
+	await rest(`time_entries?project_id=eq.${projectId}`, { method: "DELETE" });
+	// Open sheets left empty can go; a returned one stays (a sheet that was
+	// decided keeps its history) and its member is deleted below.
+	if (members.length > 0 && sheetIds.length > 0) {
+		await rest(
+			`timesheets?status=eq.open&id=in.(${sheetIds.join(",")})`,
+			{ method: "DELETE" },
+		).catch((error) => log(`  empty timesheets kept: ${error.message}`));
+	}
+}
+
+/** Submit as each talent, approve as the consultant; returns how many sheets ended approved. */
+async function approveDemoTimesheets(inserted, consultant, sessions, ids) {
+	const tokenByUser = new Map(
+		Object.entries(ids).map(([key, userId]) => [userId, sessions[key]?.token]),
+	);
+	const sheetIds = [...new Set(inserted.map((e) => e.timesheet_id).filter(Boolean))];
+	let approved = 0;
+	for (const sheetId of sheetIds) {
+		try {
+			let [sheet] = await rest(
+				`timesheets?select=id,status,revision,member_user_id&id=eq.${sheetId}`,
+			);
+			const memberToken = tokenByUser.get(sheet.member_user_id);
+			if ((sheet.status === "open" || sheet.status === "returned") && memberToken) {
+				await api(memberToken, "POST", `/api/time/timesheets/${sheetId}/submit`, {
+					expected_revision: sheet.revision,
+				});
+				[sheet] = await rest(`timesheets?select=id,status,revision,member_user_id&id=eq.${sheetId}`);
+			}
+			if (sheet.status === "submitted") {
+				await api(consultant.token, "POST", `/api/time/timesheets/${sheetId}/approve`, {
+					expected_revision: sheet.revision,
+				});
+				[sheet] = await rest(`timesheets?select=id,status&id=eq.${sheetId}`);
+			}
+			if (sheet.status === "approved") approved += 1;
+		} catch (error) {
+			log(`     timesheet ${sheetId} left as it is: ${error.message}`);
+		}
+	}
+	return approved;
 }
 
 /* ── seed ─────────────────────────────────────────────────────────────────── */
@@ -558,7 +639,7 @@ async function seed() {
 		);
 	}
 
-	log("6/7  Six months of delivery cost (approved time logs)…");
+	log("6/7  Six months of delivery cost (time entries, approved by timesheet)…");
 	const teamRows = await rest(
 		`project_teams?select=team_id&project_id=eq.${project.id}`,
 	);
@@ -599,22 +680,24 @@ async function seed() {
 			// retainer — a believable agency margin. Varied per month so the chart
 			// has a shape rather than a plateau.
 			const hours = 22 + ((m * 5 + person.rate) % 13);
-			// A log is a real window: ended_at must actually follow started_at, so
-			// spread the month's hours forward from the first of the month.
+			// An entry is a real window: ended_at must actually follow started_at,
+			// so spread the month's hours forward from the first of the month.
 			const startedAt = new Date(`${monthStart(m)}T09:00:00Z`);
 			const endedAt = new Date(startedAt.getTime() + hours * 3600 * 1000);
+			// time_entries (M3): an explicit context, a work item, never a status.
+			// Without a team the entry is the talent's own ("Just me") time.
 			logs.push({
 				project_id: project.id,
+				context_kind: teamId ? "team" : "personal",
+				context_ref: teamId,
 				team_id: teamId,
+				work_item: "other",
 				member_user_id: ids[person.key],
 				member_display_name_snapshot: person.name,
 				started_at: startedAt.toISOString(),
 				ended_at: endedAt.toISOString(),
 				duration_seconds: hours * 3600,
-				status: "approved",
 				source: "manual",
-				reviewed_by: consultant.userId,
-				reviewed_at: `${monthEnd(m)}T12:00:00Z`,
 				rate_snapshot: person.rate,
 				currency_snapshot: "PHP",
 				work_type_snapshot: "real_work",
@@ -622,11 +705,16 @@ async function seed() {
 			});
 		}
 	}
-	await rest("task_time_logs", {
+	const inserted = await rest("time_entries?select=id,timesheet_id,member_user_id", {
 		method: "POST",
 		body: JSON.stringify(logs),
 	});
-	log(`     ${logs.length} approved logs`);
+	log(`     ${inserted.length} time entries`);
+	// Approval happens per timesheet, through the API, the way people do it:
+	// the talent submits, the consultant approves. A sheet the API refuses
+	// (the current period is too early to submit, a policy rule) stays as it is.
+	const approved = await approveDemoTimesheets(inserted, consultant, sessions, ids);
+	log(`     ${approved} timesheet(s) approved`);
 
 	log("7/7  Six months of client invoices, with real payment history…");
 	const invoices = [];

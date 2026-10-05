@@ -1,5 +1,7 @@
 import { Module } from '@nestjs/common';
 import { AuthorizationModule } from '../../execution/projects/authorization/authorization.module';
+import { TimeModule } from '../../execution/time/time.module';
+import { EngagementsCoreModule } from '../engagements/engagements-core.module';
 import { FinanceBookAccessService } from './books/finance-book-access.service';
 import { FinanceBookMembersController } from './books/finance-book-members.controller';
 import { FinanceBookMembersService } from './books/finance-book-members.service';
@@ -18,8 +20,14 @@ import { TeamFinanceAccessService } from './team-finance-access.service';
 import { TeamFinanceController } from './team-finance.controller';
 import { TeamFinanceService } from './team-finance.service';
 
+/**
+ * TimeModule supplies TimeAuthorityService to the books and the export (L22 masking on project books). It is
+ * cycle-free: TimeModule imports no finance module (it imports EngagementsCoreModule, never EngagementsModule).
+ * EngagementsCoreModule is re-exported for FinancialsModule (placed talent vs a consultant's own client time in
+ * the uncosted marker); it imports only SupabaseModule.
+ */
 @Module({
-  imports: [AuthorizationModule],
+  imports: [AuthorizationModule, TimeModule, EngagementsCoreModule],
   controllers: [
     FinanceController,
     TeamFinanceController,
@@ -46,6 +54,7 @@ import { TeamFinanceService } from './team-finance.service';
     ConsultantFinanceAccessService,
     TeamFinanceAccessService,
     FinanceBookAccessService,
+    EngagementsCoreModule,
   ],
 })
 export class FinanceModule {}

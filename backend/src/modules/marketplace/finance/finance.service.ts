@@ -1,6 +1,10 @@
-import { Inject, Injectable } from '@nestjs/common';
+import { Inject, Injectable, Logger } from '@nestjs/common';
 import { SupabaseClient } from '@supabase/supabase-js';
 import { SUPABASE_ADMIN } from '../../../config/supabase.module';
+import {
+  failTimeRead,
+  NOT_LEGACY_REJECTED_OR,
+} from '../../execution/time/time-reports.service';
 import {
   FinanceContractsQueryDto,
   FinanceFiltersDto,
@@ -56,6 +60,8 @@ interface BilledInvoiceRow {
 
 @Injectable()
 export class FinanceService {
+  private readonly logger = new Logger(FinanceService.name);
+
   constructor(
     @Inject(SUPABASE_ADMIN) private readonly supabase: SupabaseClient,
     private readonly access: ConsultantFinanceAccessService,
@@ -76,14 +82,17 @@ export class FinanceService {
       .select('id, project_id, currency, total, status, due_date')
       .in('project_id', ids)
       .in('status', BILLED_STATUSES);
+    // Cost = the frozen amount_snapshot of Approved real-work time (CHANGE-5). Personal time is never cost; a
+    // consultant's own client-engagement time has a NULL amount and so never reaches the sum.
     let logsQuery = this.supabase
-      .from('task_time_logs')
-      .select(
-        'project_id, currency_snapshot, duration_seconds, rate_snapshot, started_at',
-      )
+      .from('time_entries')
+      .select('project_id, currency_snapshot, amount_snapshot, started_at')
       .in('project_id', ids)
-      .in('status', ['approved', 'paid'])
-      .eq('work_type_snapshot', 'real_work');
+      .neq('context_kind', 'personal')
+      .eq('work_type_snapshot', 'real_work')
+      .not('payable_seconds', 'is', null)
+      .not('amount_snapshot', 'is', null)
+      .or(NOT_LEGACY_REJECTED_OR.join(','));
 
     // Revenue is dated by when it was BILLED, not by when the row happened to be
     // inserted. Every status in BILLED_STATUSES has been through issue(), which
@@ -120,7 +129,9 @@ export class FinanceService {
         .order('version', { ascending: false }),
     ]);
     if (invoiceResult.error) throw new Error(invoiceResult.error.message);
-    if (logResult.error) throw new Error(logResult.error.message);
+    if (logResult.error) {
+      failTimeRead(this.logger, 'FinanceService.getPortfolio', logResult.error);
+    }
     if (contractResult.error) throw new Error(contractResult.error.message);
 
     const invoiceRows = (invoiceResult.data ?? []) as BilledInvoiceRow[];
@@ -208,14 +219,11 @@ export class FinanceService {
     for (const row of (logResult.data ?? []) as Array<{
       project_id: string;
       currency_snapshot: string | null;
-      duration_seconds: number | null;
-      rate_snapshot: number | null;
+      amount_snapshot: number | string | null;
     }>) {
       const projectId = String(row.project_id);
       const currency = String(row.currency_snapshot ?? 'USD').toUpperCase();
-      const cost =
-        (Math.max(0, Number(row.duration_seconds ?? 0)) / 3600) *
-        Number(row.rate_snapshot ?? 0);
+      const cost = Number(row.amount_snapshot ?? 0);
       const bucket = ensureCurrency(currency);
       bucket.cost += cost;
       bucket.project_ids.add(projectId);

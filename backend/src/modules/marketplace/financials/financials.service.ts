@@ -1,6 +1,12 @@
-import { Inject, Injectable, Logger } from '@nestjs/common';
+import { Inject, Injectable, Logger, Optional } from '@nestjs/common';
 import { SupabaseClient } from '@supabase/supabase-js';
 import { SUPABASE_ADMIN } from '../../../config/supabase.module';
+import {
+  andOfOrGroups,
+  failTimeRead,
+  NOT_LEGACY_REJECTED_OR,
+} from '../../execution/time/time-reports.service';
+import { EngagementsService } from '../engagements/engagements.service';
 import { ConsultantFinanceAccessService } from '../finance/consultant-finance-access.service';
 import {
   type Aging,
@@ -50,10 +56,12 @@ export interface ProjectFinancials {
   /** Cash position in the project currency. */
   receivables: ProjectReceivables;
   /**
-   * Hours that carry no cost because the team logging them has member rates
-   * switched off. Cost and margin above simply do not cover them — without this
-   * marker a project staffed by an hours-only team reads as 100% margin rather
-   * than as unmeasured.
+   * Approved hours that carry no cost (CHANGE-5): team entries of a team with
+   * member rates on but no rate for the member (rate 0), and placed talent whose
+   * amount is NULL (fixed or monthly rates). Cost and margin above simply do not
+   * cover them — without this marker such a project reads as 100% margin rather
+   * than as unmeasured. Workspace time and a consultant's own client-engagement
+   * time are not cost by design and never count.
    */
   uncosted: { hours: number; cost_incomplete: boolean };
   /** Every currency seen (a project can mix), so nothing is summed across FX. */
@@ -70,14 +78,14 @@ export interface ProjectFinancials {
 }
 
 /**
- * Per-project profitability: revenue (issued/paid invoices) minus cost (billable
- * time-log fees at the member's internal rate), split by the company/team
- * economics.
+ * Per-project profitability: revenue (issued/paid invoices) minus cost (the
+ * frozen `amount_snapshot` of approved, billable time), split by the
+ * company/team economics.
  *
- * Cost is time-log fees, NOT payouts: payouts group a member's logs team-wide and
- * carry no project_id, so they can't be attributed to one project without
- * double-counting. Time-log fees ARE project-scoped and are the accurate per-
- * project cost — a payout is just the later realization of those same fees.
+ * Cost is time-entry amounts, NOT payouts: payouts group a member's entries
+ * team-wide and carry no project_id, so they can't be attributed to one project
+ * without double-counting. Entry amounts ARE project-scoped and are the accurate
+ * per-project cost — a payout is just the later realization of those same fees.
  *
  * Amounts are bucketed per currency and never summed across FX (the app has no
  * conversion). The headline totals use the project's own currency.
@@ -89,6 +97,8 @@ export class FinancialsService {
   constructor(
     @Inject(SUPABASE_ADMIN) private readonly supabase: SupabaseClient,
     private readonly financeAccess: ConsultantFinanceAccessService,
+    /** Tells placed talent from a consultant's own client time (uncosted marker). Re-exported by FinanceModule. */
+    @Optional() private readonly engagements?: EngagementsService,
   ) {}
 
   async getProjectFinancials(
@@ -343,45 +353,116 @@ export class FinancialsService {
   }
 
   /**
-   * Approved/paid real-work hours logged by a team with member rates switched
-   * off. Those logs snapshot at rate 0, so they contribute nothing to the cost
-   * sum above and would otherwise be invisible — the project would read as pure
-   * margin. Reported so the UI can say the figure is incomplete.
-   *
-   * `teams!inner` makes this one query rather than a two-step id lookup; the
-   * filter applies to the embedded row, so only rates-off teams come back.
+   * The uncosted marker (CHANGE-5, backend.md "Finance, Exports and
+   * Dashboard"): approved real-work hours (Σ payable_seconds) that carry no
+   * cost — team entries of a rates-on team frozen at rate 0, and placed-talent
+   * entries whose amount is NULL. Workspace and personal time and a
+   * consultant's own client-engagement time are excluded: they are not cost.
+   * The rates flag is read per team (no inner join on teams any more).
    */
   private async getUncostedHours(
     projectId: string,
     range?: { from?: string; to?: string },
   ): Promise<number> {
-    let q = this.supabase
-      .from('task_time_logs')
-      .select('duration_seconds, teams!inner(member_rates_enabled)')
-      .eq('project_id', projectId)
-      .in('status', ['approved', 'paid'])
-      .eq('work_type_snapshot', 'real_work')
-      .eq('teams.member_rates_enabled', false);
-    if (range?.from) q = q.gte('started_at', range.from);
-    if (range?.to) q = q.lte('started_at', `${range.to}T23:59:59.999Z`);
-    const { data, error } = await q;
-    if (error) {
+    const rows: Array<{
+      context_kind: string;
+      team_id: string | null;
+      engagement_assignment_id: string | null;
+      payable_seconds: number | null;
+    }> = [];
+    const pageSize = 1000;
+    try {
+      for (let page = 0; ; page += 1) {
+        let q = this.supabase
+          .from('time_entries')
+          .select(
+            'context_kind, team_id, engagement_assignment_id, payable_seconds',
+          )
+          .eq('project_id', projectId)
+          .eq('work_type_snapshot', 'real_work')
+          .not('payable_seconds', 'is', null)
+          .or(
+            andOfOrGroups([
+              NOT_LEGACY_REJECTED_OR,
+              [
+                'and(context_kind.eq.team,rate_snapshot.eq.0)',
+                'and(context_kind.eq.assignment,amount_snapshot.is.null)',
+              ],
+            ]) as string,
+          )
+          .order('id', { ascending: true })
+          .range(page * pageSize, page * pageSize + pageSize - 1);
+        if (range?.from) q = q.gte('started_at', range.from);
+        if (range?.to) q = q.lte('started_at', endOfDay(range.to));
+        const { data, error } = await q;
+        if (error) throw new Error(error.message);
+        const batch = (data ?? []) as typeof rows;
+        rows.push(...batch);
+        if (batch.length < pageSize) break;
+      }
+
+      const teamIds = [
+        ...new Set(
+          rows
+            .filter((r) => r.context_kind === 'team' && r.team_id)
+            .map((r) => r.team_id as string),
+        ),
+      ];
+      const ratesOn = new Set<string>();
+      if (teamIds.length > 0) {
+        const { data, error } = await this.supabase
+          .from('teams')
+          .select('id, member_rates_enabled')
+          .in('id', teamIds);
+        if (error) throw new Error(error.message);
+        for (const team of (data ?? []) as Array<{
+          id: string;
+          member_rates_enabled: boolean | null;
+        }>) {
+          if (team.member_rates_enabled === true) ratesOn.add(team.id);
+        }
+      }
+
+      // Placed talent only: an assignment with a talent engagement. A
+      // client-only assignment (the consultant's own time) is never cost.
+      const talentAssignments = new Set<string>();
+      if (
+        this.engagements &&
+        rows.some((r) => r.context_kind === 'assignment')
+      ) {
+        for (const a of await this.engagements.assignmentsForProject(
+          projectId,
+        )) {
+          if (a.talent_engagement_id) talentAssignments.add(a.id);
+        }
+      }
+
+      let seconds = 0;
+      for (const row of rows) {
+        const counts =
+          row.context_kind === 'team'
+            ? row.team_id !== null && ratesOn.has(row.team_id)
+            : row.context_kind === 'assignment' &&
+              row.engagement_assignment_id !== null &&
+              talentAssignments.has(row.engagement_assignment_id);
+        if (counts) seconds += Math.max(0, Number(row.payable_seconds ?? 0));
+      }
+      return round2(seconds / 3600);
+    } catch (error) {
       // Never fail the whole financials page over the completeness marker.
-      this.logger.warn(`uncosted-hours lookup failed: ${error.message}`);
+      this.logger.warn(
+        `uncosted-hours lookup failed: ${error instanceof Error ? error.message : String(error)}`,
+      );
       return 0;
     }
-    const seconds = (data ?? []).reduce(
-      (sum, row) =>
-        sum +
-        Number(
-          (row as { duration_seconds: number | null }).duration_seconds ?? 0,
-        ),
-      0,
-    );
-    return round2(seconds / 3600);
   }
 
-  /** Approved/paid real-work time logs, priced at the member's internal rate. */
+  /**
+   * Approved real-work time on the project, priced by its frozen
+   * `amount_snapshot` (CHANGE-5). Personal time is never cost, and a
+   * consultant's own client-engagement time has a NULL amount, so it never
+   * reaches the sum either.
+   */
   private async getCostRows(
     projectId: string,
     range?: { from?: string; to?: string },
@@ -393,32 +474,32 @@ export class FinancialsService {
     // Page through — a busy project can exceed a single 1000-row window.
     for (;;) {
       let q = this.supabase
-        .from('task_time_logs')
-        .select(
-          'currency_snapshot, duration_seconds, rate_snapshot, started_at',
-        )
+        .from('time_entries')
+        .select('currency_snapshot, amount_snapshot, started_at')
         .eq('project_id', projectId)
-        .in('status', ['approved', 'paid'])
+        .neq('context_kind', 'personal')
         .eq('work_type_snapshot', 'real_work')
+        .not('payable_seconds', 'is', null)
+        .not('amount_snapshot', 'is', null)
+        .or(NOT_LEGACY_REJECTED_OR.join(','))
         .order('started_at', { ascending: true })
         .range(page * pageSize, page * pageSize + pageSize - 1);
       if (range?.from) q = q.gte('started_at', range.from);
       // started_at is a timestamptz; a date-only end bound has to reach the end
-      // of that day or the last day's logs vanish.
+      // of that day or the last day's entries vanish.
       if (range?.to) q = q.lte('started_at', endOfDay(range.to));
       const { data, error } = await q;
-      if (error) throw new Error(error.message);
+      if (error)
+        failTimeRead(this.logger, 'FinancialsService.getCostRows', error);
       const batch = (data ?? []) as Array<{
-        currency_snapshot: string;
-        duration_seconds: number | null;
-        rate_snapshot: number | null;
+        currency_snapshot: string | null;
+        amount_snapshot: number | string | null;
         started_at: string;
       }>;
       for (const row of batch) {
-        const hours = Math.max(0, Number(row.duration_seconds ?? 0)) / 3600;
         rows.push({
           currency: row.currency_snapshot ?? 'USD',
-          fee: hours * Number(row.rate_snapshot ?? 0),
+          fee: Number(row.amount_snapshot ?? 0),
           month: monthOf(row.started_at),
         });
       }

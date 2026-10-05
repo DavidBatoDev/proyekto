@@ -13,7 +13,8 @@
  *     (origin 'imported', backed by an uploaded document)
  *   - imported documents (an invoice PDF and a bank proof of payment), uploaded
  *     through the running backend so the bytes land in the private bucket
- *   - three weeks of time logs for the owner and Mika (approved and pending)
+ *   - three weeks of time entries for the owner and Mika (older weeks
+ *     approved through their timesheets, the latest week open)
  *   - project expenses (a monthly subscription, a contractor, fees)
  *
  * DEV ONLY. Reads backend/.env.development.local and web/.env.development.local
@@ -254,8 +255,13 @@ async function seedCore(db) {
 		}
 	}
 
-	// Three weeks of time: weekdays, owner and Mika, older weeks approved.
+	// Three weeks of time: weekdays, owner and Mika, team context (time_entries,
+	// M3). The entry never carries a status: trg_30 files it on the member's
+	// timesheet, and the older weeks are approved below through the one path
+	// that changes a sheet, time_timesheet_transition. A re-run leaves existing
+	// entries alone: an approved week is locked.
 	let logIndex = 0;
+	const olderWeekEntries = new Map(); // entry id -> member id
 	for (let day = -21; day <= -1; day += 1) {
 		const weekday = new Date(`${isoDate(day)}T00:00:00Z`).getUTCDay();
 		if (weekday === 0 || weekday === 6) continue;
@@ -264,22 +270,19 @@ async function seedCore(db) {
 			[MIKA, "Mika Villanueva", 5, 650],
 		]) {
 			logIndex += 1;
-			const status = day < -7 ? "approved" : "pending";
+			const entryId = id(`7${String(logIndex).padStart(3, "0")}`);
 			await db.query(
-				`insert into task_time_logs (id, project_id, team_id, member_user_id, member_display_name_snapshot,
-				   started_at, ended_at, duration_seconds, status, source, rate_snapshot, currency_snapshot,
-				   rate_type_snapshot, work_type_snapshot, reviewed_by, reviewed_at)
-				 values ($1, $2, $3, $4, $5, $6, $7, $8, $9, 'timer', $10, $11, 'hourly', 'real_work',
-				   case when $9 = 'approved' then $12::uuid else null end,
-				   case when $9 = 'approved' then $7::timestamptz else null end)
-				 on conflict (id) do update set status = excluded.status`,
-				[
-					id(`7${String(logIndex).padStart(3, "0")}`), PROJECT, TEAM, userId, name,
-					isoAt(day, 1), isoAt(day, 1 + hours), hours * 3600, status, rate, CURRENCY, OWNER,
-				],
+				`insert into time_entries (id, project_id, context_kind, context_ref, team_id, work_item,
+				   member_user_id, member_display_name_snapshot, started_at, ended_at, duration_seconds, source,
+				   rate_snapshot, currency_snapshot, rate_type_snapshot, work_type_snapshot)
+				 values ($1, $2, 'team', $3, $3, 'other', $4, $5, $6, $7, $8, 'timer', $9, $10, 'hourly', 'real_work')
+				 on conflict (id) do nothing`,
+				[entryId, PROJECT, TEAM, userId, name, isoAt(day, 1), isoAt(day, 1 + hours), hours * 3600, rate, CURRENCY],
 			);
+			if (day < -7) olderWeekEntries.set(entryId, userId);
 		}
 	}
+	await approveOlderWeeks(db, olderWeekEntries);
 
 	// Money out on this project.
 	const expenses = [
@@ -296,6 +299,70 @@ async function seedCore(db) {
 			 on conflict (id) do update set amount = excluded.amount, voided_at = null`,
 			[id(suffix), TEAM, PROJECT_BOOK, PROJECT, category, description, vendor, amount, CURRENCY, isoDate(when), recurrence, OWNER],
 		);
+	}
+}
+
+/**
+ * Submits (as the member) and approves (as the owner, or the member for a
+ * self-approved sheet) every timesheet holding an older-week entry, with the
+ * freeze the backend would send: payable = logged, the stored rate, amount =
+ * round(payable / 3600 x rate, 2). Best effort: a sheet the seed cannot move
+ * (a decider rule, a policy that refuses) is left as it is, with a warning.
+ */
+async function approveOlderWeeks(db, entryMembers) {
+	if (entryMembers.size === 0) return;
+	const { rows: sheets } = await db.query(
+		`select distinct t.id, t.member_user_id
+		   from time_entries e join timesheets t on t.id = e.timesheet_id
+		  where e.id = any($1::uuid[])`,
+		[[...entryMembers.keys()]],
+	);
+	for (const sheet of sheets) {
+		// The seed runs in one transaction: a refused transition must not abort it.
+		await db.query("savepoint seed_timesheet");
+		try {
+			const { rows: entries } = await db.query(
+				`select id, duration_seconds, rate_snapshot, rate_type_snapshot, currency_snapshot
+				   from time_entries where timesheet_id = $1`,
+				[sheet.id],
+			);
+			const sheetFreeze = {};
+			for (const e of entries) {
+				const payable = Math.max(0, Number(e.duration_seconds ?? 0));
+				const rate = Number(e.rate_snapshot ?? 0);
+				const hourly = e.rate_type_snapshot !== "fixed";
+				sheetFreeze[e.id] = {
+					payable_seconds: payable,
+					rate_snapshot: rate,
+					rate_type_snapshot: hourly ? "hourly" : "fixed",
+					currency_snapshot: e.currency_snapshot ?? CURRENCY,
+					amount_snapshot: hourly ? Math.round((payable / 3600) * rate * 100) / 100 : null,
+				};
+			}
+			const freeze = JSON.stringify({ [sheet.id]: sheetFreeze });
+			const read = async () =>
+				(await db.query("select status, revision, approver_scope from timesheets where id = $1", [sheet.id]))
+					.rows[0];
+			let current = await read();
+			if (current.status === "open" || current.status === "returned") {
+				await db.query(
+					"select id from time_timesheet_transition($1::uuid[], $2::uuid, 'submit', $3::int[], null, false, $4::jsonb)",
+					[[sheet.id], sheet.member_user_id, [current.revision], freeze],
+				);
+				current = await read();
+			}
+			if (current.status === "submitted") {
+				const actor = current.approver_scope === "self" ? sheet.member_user_id : OWNER;
+				await db.query(
+					"select id from time_timesheet_transition($1::uuid[], $2::uuid, 'approve', $3::int[], null, false, $4::jsonb)",
+					[[sheet.id], actor, [current.revision], freeze],
+				);
+			}
+			await db.query("release savepoint seed_timesheet");
+		} catch (error) {
+			await db.query("rollback to savepoint seed_timesheet");
+			console.warn(`  timesheet ${sheet.id} left as it is: ${error.message}`);
+		}
 	}
 }
 

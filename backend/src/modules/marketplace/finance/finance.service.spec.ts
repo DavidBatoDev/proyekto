@@ -11,6 +11,8 @@ function builderResult(data: unknown[]) {
     'in',
     'is',
     'eq',
+    'neq',
+    'not',
     'gte',
     'lte',
   ]) {
@@ -121,13 +123,14 @@ describe('FinanceService receivables', () => {
   function portfolioSupabase(
     invoices: unknown[],
     payments: unknown[],
+    entries: unknown[] = [],
   ): {
     supabase: SupabaseClient;
     builders: Record<string, ReturnType<typeof builderResult>>;
   } {
     const builders = {
       invoices: builderResult(invoices),
-      task_time_logs: builderResult([]),
+      time_entries: builderResult(entries),
       contracts: builderResult([]),
       invoice_payments: builderResult(payments),
     };
@@ -261,10 +264,50 @@ describe('FinanceService receivables', () => {
       'issue_date',
       '2026-08-18',
     );
-    expect(builders.task_time_logs.lte).toHaveBeenCalledWith(
+    expect(builders.time_entries.lte).toHaveBeenCalledWith(
       'started_at',
       '2026-08-18T23:59:59.999Z',
     );
+  });
+
+  it('prices cost from amount_snapshot of Approved real-work, non-personal time (CHANGE-5)', async () => {
+    const { supabase, builders } = portfolioSupabase(
+      [],
+      [],
+      [
+        // Frozen at approval: 1.5 h payable × 500 = 750, whatever the logged duration was.
+        {
+          project_id: PROJECT,
+          currency_snapshot: 'PHP',
+          amount_snapshot: '750.00',
+          started_at: '2026-08-03T01:00:00Z',
+        },
+        {
+          project_id: PROJECT,
+          currency_snapshot: 'PHP',
+          amount_snapshot: 249.5,
+          started_at: '2026-08-04T01:00:00Z',
+        },
+      ],
+    );
+
+    const result = await serviceFor(supabase).getPortfolio(CONSULTANT, {});
+
+    const php = result.totals_by_currency.find((t) => t.currency === 'PHP');
+    expect(php?.cost).toBe(999.5);
+    const entries = builders.time_entries;
+    expect(entries.select).toHaveBeenCalledWith(
+      'project_id, currency_snapshot, amount_snapshot, started_at',
+    );
+    expect(entries.neq).toHaveBeenCalledWith('context_kind', 'personal');
+    expect(entries.eq).toHaveBeenCalledWith('work_type_snapshot', 'real_work');
+    expect(entries.not).toHaveBeenCalledWith('payable_seconds', 'is', null);
+    expect(entries.not).toHaveBeenCalledWith('amount_snapshot', 'is', null);
+    expect(entries.or).toHaveBeenCalledWith(
+      'legacy_status.is.null,legacy_status.neq.rejected',
+    );
+    // Never the entry status (it drops in M5).
+    expect(entries.in).not.toHaveBeenCalledWith('status', expect.anything());
   });
 
   it('decorates listed invoices with balance and overdue facts', async () => {
