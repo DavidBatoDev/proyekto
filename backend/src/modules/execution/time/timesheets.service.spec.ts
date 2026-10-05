@@ -1337,8 +1337,131 @@ describe('TimesheetsService.buildFreeze', () => {
     expect(payload[S1][E3].payable_seconds).toBe(50 * 60);
   });
 
-  it('a workspace sheet caps by the policy weekly limit from the snapshot', async () => {
-    const { service } = await setup({
+  it('engagement sheets: over the contract limit is cut; approve_overtime keeps rounded and still reports over', async () => {
+    const mocks = defaultMocks();
+    mocks.engagements.settingsInForceOn.mockResolvedValue({
+      rounding_minutes: 0,
+      weekly_limit_minutes: 180,
+    });
+    const a = {
+      context_kind: 'assignment',
+      context_ref: ASSIGN,
+      engagement_assignment_id: ASSIGN,
+      workspace_id: null,
+    } as const;
+    const { service } = await setup(
+      {
+        timesheets: [
+          sheet({
+            scope_kind: 'engagement',
+            scope_ref: ENG,
+            engagement_id: ENG,
+            workspace_id: null,
+            approver_scope: 'hirer',
+            policy_snapshot: {
+              rounding_minutes: 0,
+              weekly_limit_minutes: 180,
+              sources: { weekly_limit_minutes: 'contract' },
+            },
+          }),
+        ],
+        time_entries: [
+          entry({ id: E1, ...a, duration_seconds: 2 * HOUR }),
+          entry({
+            id: E2,
+            ...a,
+            started_at: '2026-09-16T09:00:00.000Z',
+            duration_seconds: 2 * HOUR,
+          }),
+        ],
+      },
+      {},
+      mocks,
+    );
+    const capped = await service.buildFreeze([S1], {
+      approveOvertime: false,
+      mode: 'approve',
+    });
+    expect(capped.payload[S1][E1].payable_seconds).toBe(2 * HOUR);
+    expect(capped.payload[S1][E2].payable_seconds).toBe(HOUR);
+    expect(capped.preview[S1].over_cap_seconds).toBe(HOUR);
+
+    const overtime = await service.buildFreeze([S1], {
+      approveOvertime: true,
+      mode: 'approve',
+    });
+    expect(overtime.payload[S1][E2].payable_seconds).toBe(2 * HOUR);
+    expect(overtime.preview[S1].over_cap_seconds).toBe(HOUR);
+  });
+
+  it('engagement sheets with no contract limit never fall back to the workspace policy limit (D65)', async () => {
+    const a = {
+      context_kind: 'assignment',
+      context_ref: ASSIGN,
+      engagement_assignment_id: ASSIGN,
+      workspace_id: null,
+    } as const;
+    const tables = {
+      timesheets: [
+        sheet({
+          scope_kind: 'engagement',
+          scope_ref: ENG,
+          engagement_id: ENG,
+          workspace_id: null,
+          approver_scope: 'hirer',
+          policy_snapshot: {
+            rounding_minutes: 0,
+            weekly_limit_minutes: 60,
+            sources: { weekly_limit_minutes: 'workspace' },
+          },
+        }),
+      ],
+      time_entries: [
+        entry({ id: E1, ...a, duration_seconds: 2 * HOUR }),
+        entry({
+          id: E2,
+          ...a,
+          started_at: '2026-09-16T09:00:00.000Z',
+          duration_seconds: 2 * HOUR,
+        }),
+      ],
+    };
+
+    // A settings row in force that leaves the limit NULL.
+    const withRow = defaultMocks();
+    withRow.engagements.settingsInForceOn.mockResolvedValue({
+      rounding_minutes: 0,
+      weekly_limit_minutes: null,
+    });
+    const one = await setup(tables, {}, withRow);
+    const approved = await one.service.buildFreeze([S1], {
+      approveOvertime: false,
+      mode: 'approve',
+    });
+    expect(approved.payload[S1][E1].payable_seconds).toBe(2 * HOUR);
+    expect(approved.payload[S1][E2].payable_seconds).toBe(2 * HOUR);
+    expect(approved.preview[S1].over_cap_seconds).toBe(0);
+
+    // No settings row at all, and the submit path (a fresh resolve that carries the workspace limit).
+    const noRow = defaultMocks();
+    noRow.policy.resolve.mockResolvedValue({
+      rounding_minutes: 0,
+      weekly_limit_minutes: 60,
+      reminder_days: 1,
+      sources: { weekly_limit_minutes: 'workspace' },
+    });
+    const two = await setup(tables, {}, noRow);
+    const submitted = await two.service.buildFreeze([S1], {
+      approveOvertime: false,
+      mode: 'submit',
+    });
+    expect(two.policy.resolve).toHaveBeenCalled();
+    expect(submitted.payload[S1][E2].payable_seconds).toBe(2 * HOUR);
+    expect(submitted.preview[S1].over_cap_seconds).toBe(0);
+  });
+
+  it('a workspace sheet over the policy weekly limit: payable is not cut (D65)', async () => {
+    const tables = {
       timesheets: [
         sheet({
           policy_snapshot: {
@@ -1356,13 +1479,104 @@ describe('TimesheetsService.buildFreeze', () => {
           duration_seconds: HOUR,
         }),
       ],
-    });
+    };
+    const { service } = await setup(tables);
     const { payload, preview } = await service.buildFreeze([S1], {
       approveOvertime: false,
       mode: 'approve',
     });
-    expect(payload[S1][E2].payable_seconds).toBe(30 * 60);
-    expect(preview[S1].over_cap_seconds).toBe(30 * 60);
+    expect(payload[S1][E1].payable_seconds).toBe(HOUR);
+    expect(payload[S1][E2].payable_seconds).toBe(HOUR);
+    expect(preview[S1].over_cap_seconds).toBe(0);
+
+    // Submit resolves the policy fresh: the same limit still never cuts.
+    const mocks = defaultMocks();
+    mocks.policy.resolve.mockResolvedValue({
+      rounding_minutes: 0,
+      weekly_limit_minutes: 30,
+      reminder_days: 1,
+      sources: { weekly_limit_minutes: 'workspace' },
+    });
+    const fresh = await setup(tables, {}, mocks);
+    const submitted = await fresh.service.buildFreeze([S1], {
+      approveOvertime: false,
+      mode: 'submit',
+    });
+    expect(fresh.policy.resolve).toHaveBeenCalled();
+    expect(submitted.payload[S1][E2].payable_seconds).toBe(HOUR);
+    expect(submitted.preview[S1].over_cap_seconds).toBe(0);
+  });
+
+  it('a team sheet over the team policy weekly limit is cut only by the team member cap (D65)', async () => {
+    const team = {
+      context_kind: 'team',
+      context_ref: TEAM,
+      team_id: TEAM,
+      workspace_id: null,
+    } as const;
+    const tables = {
+      timesheets: [
+        sheet({
+          scope_kind: 'team',
+          scope_ref: TEAM,
+          team_id: TEAM,
+          workspace_id: null,
+          approver_scope: 'team',
+          policy_snapshot: {
+            rounding_minutes: 0,
+            weekly_limit_minutes: 60,
+            sources: { weekly_limit_minutes: 'team' },
+          },
+        }),
+      ],
+      time_entries: [
+        entry({ id: E1, ...team, duration_seconds: 3 * HOUR }),
+        entry({
+          id: E2,
+          ...team,
+          started_at: '2026-09-16T09:00:00.000Z',
+          duration_seconds: 3 * HOUR,
+        }),
+      ],
+    };
+
+    // Over the 1h policy limit, under the 10h member cap: nothing is cut.
+    const under = defaultMocks();
+    under.rates.memberCaps.mockResolvedValue({
+      weekly_limit_hours: 10,
+      monthly_limit_hours: null,
+      overtime_requires_approval: true,
+    });
+    const a = await setup(tables, {}, under);
+    const notCut = await a.service.buildFreeze([S1], {
+      approveOvertime: false,
+      mode: 'approve',
+    });
+    expect(notCut.payload[S1][E1].payable_seconds).toBe(3 * HOUR);
+    expect(notCut.payload[S1][E2].payable_seconds).toBe(3 * HOUR);
+    expect(notCut.preview[S1].over_cap_seconds).toBe(0);
+
+    // Over the 5h member cap: the latest entry is cut, unless overtime is approved.
+    const over = defaultMocks();
+    over.rates.memberCaps.mockResolvedValue({
+      weekly_limit_hours: 5,
+      monthly_limit_hours: null,
+      overtime_requires_approval: true,
+    });
+    const b = await setup(tables, {}, over);
+    const cut = await b.service.buildFreeze([S1], {
+      approveOvertime: false,
+      mode: 'approve',
+    });
+    expect(cut.payload[S1][E1].payable_seconds).toBe(3 * HOUR);
+    expect(cut.payload[S1][E2].payable_seconds).toBe(2 * HOUR);
+    expect(cut.preview[S1].over_cap_seconds).toBe(HOUR);
+    const overtime = await b.service.buildFreeze([S1], {
+      approveOvertime: true,
+      mode: 'approve',
+    });
+    expect(overtime.payload[S1][E2].payable_seconds).toBe(3 * HOUR);
+    expect(overtime.preview[S1].over_cap_seconds).toBe(HOUR);
   });
 
   it('memoises rate lookups for entries sharing a rate key', async () => {
@@ -1447,6 +1661,7 @@ describe('TimesheetsService.get', () => {
       can_decide: true,
       actions: ['approve', 'return'],
     });
+    // The policy weekly limit stays visible as the review indicator (rules + logged seconds) ...
     expect(detail.rules).toEqual({
       rounding_minutes: 0,
       weekly_limit_minutes: 30,
@@ -1456,17 +1671,18 @@ describe('TimesheetsService.get', () => {
       base: 'workspace',
       deciders_count: 1,
     });
+    // ... but never reduces payable time on a workspace sheet (D65).
     expect(detail.freeze_preview).toEqual({
       timesheet_id: S1,
       entries: [
         {
           entry_id: E1,
           rounded_seconds: 3600,
-          payable_seconds: 1800,
-          over_cap_seconds: 1800,
+          payable_seconds: 3600,
+          over_cap_seconds: 0,
         },
       ],
-      over_cap_seconds: 1800,
+      over_cap_seconds: 0,
     });
     expect(detail.deciders_count).toBe(1);
     expect(detail.events).toHaveLength(1);

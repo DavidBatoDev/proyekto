@@ -196,12 +196,10 @@ interface OverviewEntryRow {
   duration_seconds: number | null;
 }
 
+/** What the freeze reads from the policy layers: only the rounding. The policy `weekly_limit_minutes` never cuts
+ *  payable time (D65); it stays in `policy_snapshot` as the review screen's indicator. */
 interface PolicyLayers {
   rounding: number;
-  /** The resolved weekly limit (contract layer included when the sheet is an engagement's). */
-  weeklyLimitMinutes: number | null;
-  /** The weekly limit without a contract-set value: what applies on a date whose settings row leaves it NULL. */
-  weeklyLimitBelowContract: number | null;
 }
 
 /** One entry while its freeze is computed. `payable` only ever shrinks as caps apply. */
@@ -300,17 +298,9 @@ function splitSnapshot(
   };
 }
 
-/** Rounding and weekly limit from a resolved policy (or a sheet's snapshot of one). */
+/** Rounding from a resolved policy (or a sheet's snapshot of one). */
 function layersOf(policy: Record<string, unknown>): PolicyLayers {
-  const weekly = positiveOrNull(policy.weekly_limit_minutes);
-  const sources = isSnapshotObject(policy.sources) ? policy.sources : {};
-  return {
-    rounding: toNumber(policy.rounding_minutes) ?? 0,
-    weeklyLimitMinutes: weekly,
-    // A contract-set limit belongs to the settings row in force at period start, not to every date.
-    weeklyLimitBelowContract:
-      sources.weekly_limit_minutes === 'contract' ? null : weekly,
-  };
+  return { rounding: toNumber(policy.rounding_minutes) ?? 0 };
 }
 
 /** The instant SQL resolves a sheet's policy at: period_start::timestamp AT TIME ZONE timezone. */
@@ -660,10 +650,11 @@ export class TimesheetsService {
    * p_freeze keyed by sheet id, then entry id (D10), plus a preview per sheet. Per entry, in started_at order:
    * the local start date d in the sheet timezone; the rate re-resolved for d (TimeRatesService.freezeRate; legacy
    * entries keep their snapshot); rounding (contract settings in force on d for engagement sheets, else the
-   * policy: `policy_snapshot` on approve, a fresh resolve at period start on submit); the caps in order: the
-   * policy weekly limit per (member, sheet scope) over the sheet week (for engagement sheets the contract's
-   * `weekly_limit_minutes` in force on d), then the team member caps per (member, team) over the sheet-tz week
-   * and calendar month; finally the amount. Already-approved payable time in each window counts against the cap.
+   * policy: `policy_snapshot` on approve, a fresh resolve at period start on submit); the caps in order (D65):
+   * on engagement sheets only, the contract's `weekly_limit_minutes` in force on d per (member, engagement) over
+   * the sheet week; then the team member caps per (member, team) over the sheet-tz week and calendar month;
+   * finally the amount. The workspace/team policy `weekly_limit_minutes` never cuts payable time (it is a review
+   * indicator and a write-time warning). Already-approved payable time in each window counts against the cap.
    * The preview carries no money; the caller adds per-currency totals only for a cost-visible viewer.
    */
   async buildFreeze(
@@ -763,26 +754,26 @@ export class TimesheetsService {
       }
 
       const member = sheet.member_user_id;
-      // Cap 1 (L12): the policy weekly limit per (member, sheet scope) over the sheet week. On an engagement
-      // sheet this is the contract's weekly_limit_minutes in force on each entry's date, summed across every
-      // linked project (the sheet is the governing engagement's).
+      // Cap 1 (D65, L12): engagement sheets only. The contract's weekly_limit_minutes in force on each entry's
+      // date, per (member, engagement) over the sheet week, summed across every linked project (the sheet is the
+      // governing engagement's). Only a contract-set value caps: a date whose settings row leaves the limit NULL
+      // (or has no row) is uncapped, never filled from the workspace/team policy layers.
       const scopeGroups = new Map<string, CapGroup>();
-      for (const w of work) {
-        const settings = await settingsOn(w.d);
-        const limitMinutes = !engagementId
-          ? layers.weeklyLimitMinutes
-          : (positiveOrNull(settings?.weekly_limit_minutes) ??
-            layers.weeklyLimitBelowContract);
-        if (limitMinutes === null) continue;
-        const week = weekWindow(w.d, sheet.week_start);
-        addToGroup(
-          scopeGroups,
-          `scope|${member ?? ''}|${sheet.scope_kind}|${sheet.scope_ref}|${week.start}`,
-          w,
-          limitMinutes * 60,
-          week,
-          null,
-        );
+      if (engagementId) {
+        for (const w of work) {
+          const settings = await settingsOn(w.d);
+          const limitMinutes = positiveOrNull(settings?.weekly_limit_minutes);
+          if (limitMinutes === null) continue;
+          const week = weekWindow(w.d, sheet.week_start);
+          addToGroup(
+            scopeGroups,
+            `contract|${member ?? ''}|${sheet.scope_ref}|${week.start}`,
+            w,
+            limitMinutes * 60,
+            week,
+            null,
+          );
+        }
       }
       for (const [key, group] of scopeGroups) {
         const already = await this.approvedBefore(
@@ -1197,8 +1188,8 @@ export class TimesheetsService {
 
   // ── internals: the freeze ───────────────────────────────────────────────────────────────────────────
 
-  /** Rounding and the policy weekly limit: `policy_snapshot` on approve (L40), a resolve at period start on
-   *  submit (what the RPC is about to snapshot). */
+  /** The policy rounding: `policy_snapshot` on approve (L40), a resolve at period start on submit (what the
+   *  RPC is about to snapshot). */
   private async freezeLayers(
     sheet: DetailSheetRow,
     mode: 'approve' | 'submit',
@@ -1316,7 +1307,8 @@ export class TimesheetsService {
     return db + (consumed.get(key) ?? 0);
   }
 
-  /** Σ payable of the member's entries on other sheets of the same scope, started inside the window. */
+  /** Σ payable of the member's entries on other sheets of the same scope (the contract cap: the same engagement),
+   *  started inside the window. */
   private async approvedInScopeWindow(
     member: string,
     sheet: TimesheetRow,
