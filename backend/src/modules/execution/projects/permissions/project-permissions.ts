@@ -139,6 +139,12 @@ export type ProjectPermissions = {
     view_sensitive: boolean;
   };
   time: {
+    /**
+     * Start timers and add time on this project. Editor and above: viewers and
+     * commenters can open Time but only read their own entries there. Every
+     * logging option (team, assignment, workspace, "Just me") needs it.
+     */
+    log: boolean;
     /** See every member's time on the project, not just your own. */
     view_team_logs: boolean;
   };
@@ -224,6 +230,7 @@ export type PermissionPath =
   | 'resources.delete'
   | 'logs.view'
   | 'logs.view_sensitive'
+  | 'time.log'
   | 'time.view_team_logs'
   | 'finance.view'
   | 'finance.manage_invoices'
@@ -282,6 +289,7 @@ export const PERMISSION_PATHS: readonly PermissionPath[] = [
   'resources.delete',
   'logs.view',
   'logs.view_sensitive',
+  'time.log',
   'time.view_team_logs',
   'finance.view',
   'finance.manage_invoices',
@@ -400,7 +408,7 @@ function allFalse(): ProjectPermissions {
     },
     resources: { view: false, upload: false, delete: false },
     logs: { view: false, view_sensitive: false },
-    time: { view_team_logs: false },
+    time: { log: false, view_team_logs: false },
     finance: { view: false, manage_invoices: false, view_contracts: false },
     // Not reachable via setPermission, so allTrue() leaves it false. Resolved
     // only in ProjectsService.getMyPermissions.
@@ -446,8 +454,8 @@ function buildRoleDefault(role: ProjectRole): ProjectPermissions {
     'access.resources': true,
     'access.project_settings': false,
     // Everyone who can see the project can open Time — but they only get their
-    // OWN logs there. Seeing the rest of the team's time is
-    // `time.view_team_logs`, granted at admin and to the consultant below.
+    // OWN entries there, read-only until editor (`time.log`). Seeing the rest
+    // of the team's time is `time.view_team_logs`, granted at admin.
     'access.time': true,
     // Deliverables / Change Requests / Risks / Decisions are readable by anyone
     // who can see the project; the verbs below are what actually differ.
@@ -488,6 +496,9 @@ function buildRoleDefault(role: ProjectRole): ProjectPermissions {
     'roadmap.share': true,
     'chat.share_files': true,
     'resources.upload': true,
+    // Logging time is doing work on the project, so it starts here. Viewers
+    // and commenters (clients included) read their own past entries only.
+    'time.log': true,
     'deliverables.edit': true,
     'risks.edit': true,
     // Recording a decision is describing what the team chose, not changing what
@@ -602,6 +613,7 @@ export const PERMISSION_DEPENDENCIES: Partial<
 
   'logs.view_sensitive': ['logs.view'],
 
+  'time.log': ['access.time'],
   'time.view_team_logs': ['access.time'],
 
   'finance.manage_invoices': ['finance.view'],

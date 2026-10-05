@@ -56,6 +56,7 @@ exports[`effective permissions across every production combination admin + clien
   "roadmap.view_internal": true,
   "teams.manage": true,
   "teams.view": true,
+  "time.log": true,
   "time.view_team_logs": true,
 }
 `;
@@ -116,6 +117,7 @@ exports[`effective permissions across every production combination admin + team-
   "roadmap.view_internal": true,
   "teams.manage": true,
   "teams.view": true,
+  "time.log": true,
   "time.view_team_logs": true,
 }
 `;
@@ -176,6 +178,7 @@ exports[`effective permissions across every production combination editor + invi
   "roadmap.view_internal": false,
   "teams.manage": false,
   "teams.view": true,
+  "time.log": true,
   "time.view_team_logs": false,
 }
 `;
@@ -236,6 +239,7 @@ exports[`effective permissions across every production combination editor + team
   "roadmap.view_internal": false,
   "teams.manage": false,
   "teams.view": true,
+  "time.log": true,
   "time.view_team_logs": false,
 }
 `;
@@ -296,6 +300,7 @@ exports[`effective permissions across every production combination editor + team
   "roadmap.view_internal": true,
   "teams.manage": false,
   "teams.view": false,
+  "time.log": true,
   "time.view_team_logs": false,
 }
 `;
@@ -356,6 +361,7 @@ exports[`effective permissions across every production combination editor + team
   "roadmap.view_internal": true,
   "teams.manage": true,
   "teams.view": true,
+  "time.log": true,
   "time.view_team_logs": true,
 }
 `;
@@ -416,6 +422,7 @@ exports[`effective permissions across every production combination owner + consu
   "roadmap.view_internal": true,
   "teams.manage": true,
   "teams.view": true,
+  "time.log": true,
   "time.view_team_logs": true,
 }
 `;
@@ -476,6 +483,7 @@ exports[`effective permissions across every production combination owner + perso
   "roadmap.view_internal": true,
   "teams.manage": true,
   "teams.view": true,
+  "time.log": true,
   "time.view_team_logs": true,
 }
 `;

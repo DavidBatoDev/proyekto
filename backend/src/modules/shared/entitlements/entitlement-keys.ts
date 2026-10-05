@@ -99,14 +99,17 @@ export const ENTITLEMENT_KEYS = {
     enforced: true,
   },
   // Time management rebuild (docs/13-proposals/time-management/), seeded by
-  // 20261003090000_time_plan_keys. Registered but not yet enforced: the
-  // rebuilt time module (backend PR-1) is the first code that checks them.
-  time_billable_invoices: { kind: 'feature', enforced: false },
-  time_team_rules: { kind: 'feature', enforced: false, plural: true },
-  time_payouts: { kind: 'feature', enforced: false, plural: true },
-  time_reports_export: { kind: 'feature', enforced: false, plural: true },
+  // 20261003090000_time_plan_keys. The rebuilt time module checks these:
+  // invoices bill approved hours only with time_billable_invoices, team rules
+  // and payouts need theirs on the team's plan subject, and the two exports
+  // are gated. Approval chains are registered for the plan page but nothing
+  // builds a chain yet, so that key stays display-only.
+  time_billable_invoices: { kind: 'feature', enforced: true },
+  time_team_rules: { kind: 'feature', enforced: true, plural: true },
+  time_payouts: { kind: 'feature', enforced: true, plural: true },
+  time_reports_export: { kind: 'feature', enforced: true, plural: true },
   time_approval_chains: { kind: 'feature', enforced: false, plural: true },
-  time_audit_export: { kind: 'feature', enforced: false },
+  time_audit_export: { kind: 'feature', enforced: true },
 } as const satisfies Record<string, EntitlementKeyDef>;
 
 export type EntitlementKey = keyof typeof ENTITLEMENT_KEYS;

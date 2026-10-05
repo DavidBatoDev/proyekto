@@ -1,5 +1,7 @@
 import {
+  PERMISSION_DEPENDENCIES,
   PERMISSION_PATHS,
+  diffCapabilities,
   resolvePermissions,
   validateDependencies,
 } from './project-permissions';
@@ -74,6 +76,64 @@ describe('delivery governance gates', () => {
       });
     },
   );
+});
+
+describe('time logging', () => {
+  // Logging time is doing work on the project, so it sits at the editor rung.
+  // Viewers and commenters (clients included) can open Time, but only to read
+  // their own past entries.
+  it.each([
+    ['viewer', false],
+    ['commenter', false],
+    ['editor', true],
+    ['admin', true],
+    ['owner', true],
+  ] as const)('grants time.log to %s: %s', (role, expected) => {
+    const permissions = resolvePermissions(role, null);
+
+    expect(permissions.time.log).toBe(expected);
+    // Opening Time is still available to everyone who can see the project.
+    expect(permissions.access.time).toBe(true);
+  });
+
+  it('keeps team-wide time at admin, above logging', () => {
+    expect(resolvePermissions('editor', null).time.view_team_logs).toBe(false);
+    expect(resolvePermissions('admin', null).time.view_team_logs).toBe(true);
+  });
+
+  it('declares time.log in PERMISSION_PATHS, depending on access.time', () => {
+    expect(PERMISSION_PATHS).toContain('time.log');
+    expect(PERMISSION_DEPENDENCIES['time.log']).toEqual(['access.time']);
+  });
+
+  it('refuses time.log without access.time', () => {
+    const permissions = resolvePermissions('editor', { 'access.time': false });
+
+    expect(validateDependencies(permissions)).toEqual({
+      ok: false,
+      missing: [{ path: 'time.log', requires: ['access.time'] }],
+    });
+  });
+
+  it('can grant or withhold time.log per member', () => {
+    expect(resolvePermissions('viewer', { 'time.log': true }).time.log).toBe(
+      true,
+    );
+    expect(resolvePermissions('editor', { 'time.log': false }).time.log).toBe(
+      false,
+    );
+  });
+
+  it('stores only the delta from the role baseline', () => {
+    const viewerWhoLogs = resolvePermissions('viewer', { 'time.log': true });
+
+    expect(diffCapabilities('viewer', viewerWhoLogs)).toEqual({
+      'time.log': true,
+    });
+    expect(
+      diffCapabilities('editor', resolvePermissions('editor', null)),
+    ).toEqual({});
+  });
 });
 
 describe('capability overrides', () => {
