@@ -138,6 +138,29 @@ async function main(): Promise<void> {
     );
   }
 
+  // Team time needs time_tracking on the team's workspace and billed hours need
+  // time_billable_invoices (both Pro). The fixture teams live in the QA
+  // consultant's own workspace, so it is comped to Pro.
+  const { data: teamRow, error: teamError } = await db
+    .from('teams')
+    .select('workspace_id')
+    .eq('id', primaryTeamId)
+    .single<{ workspace_id: string | null }>();
+  if (teamError) throw new Error(`teams read failed: ${teamError.message}`);
+  if (!teamRow?.workspace_id) {
+    throw new Error('The primary QA team has no workspace to comp.');
+  }
+  const { error: compError } = await db
+    .from('workspaces')
+    .update({
+      is_discounted_free: true,
+      discounted_plan: 'pro',
+      discounted_at: new Date().toISOString(),
+      discounted_until: null,
+    })
+    .eq('id', teamRow.workspace_id);
+  if (compError) throw new Error(`workspace comp failed: ${compError.message}`);
+
   await upsert(
     db,
     'project_teams',
@@ -245,7 +268,8 @@ async function main(): Promise<void> {
       project_id: projectId,
       version: 1,
       contract_number: 'QA-BILLING-001',
-      status: 'active',
+      // Fully signed (the contracts status ladder has no 'active').
+      status: 'signed',
       provider_kind: 'agency',
       provider_name: '[QA] Proyekto Verification',
       provider_email: consultant.email,
@@ -280,6 +304,46 @@ async function main(): Promise<void> {
     },
     'id',
   );
+
+  // A legacy contract's hours bill the provider seat's team. The consultant
+  // owns both fixture teams and both are on the project, so without a seat
+  // naming the primary team the invoice refuses with LEGACY_CONTRACT_AMBIGUOUS.
+  for (const seat of [
+    {
+      position: 'provider',
+      user: consultant,
+      capacity: 'consultant',
+      name: '[QA] Billing Consultant',
+      teamId: primaryTeamId,
+      teamName: '[QA] Billing Verification — Primary',
+    },
+    {
+      position: 'hirer',
+      user: client,
+      capacity: 'client',
+      name: '[QA] Billing Client',
+      teamId: null,
+      teamName: null,
+    },
+  ]) {
+    await upsert(
+      db,
+      'contract_positions',
+      {
+        contract_id: contractId,
+        position: seat.position,
+        user_id: seat.user.id,
+        capacity: seat.capacity,
+        display_name_snapshot: seat.name,
+        email_snapshot: seat.user.email,
+        signer_name: seat.name,
+        signed_at: signedAt,
+        team_id: seat.teamId,
+        team_name_snapshot: seat.teamName,
+      },
+      'contract_id,position',
+    );
+  }
 
   for (const email of [consultant.email, worker.email, client.email]) {
     await upsert(
