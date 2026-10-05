@@ -83,6 +83,16 @@ describe('isRunningTimerConflict', () => {
     ).toBe(true);
   });
 
+  it('recognises the per-project running index (two starts on one project)', () => {
+    expect(
+      isRunningTimerConflict({
+        code: '23505',
+        message:
+          'duplicate key value violates unique constraint "uq_task_time_logs_one_active_per_member_project"',
+      }),
+    ).toBe(true);
+  });
+
   it('ignores other unique violations and other errors', () => {
     expect(
       isRunningTimerConflict({

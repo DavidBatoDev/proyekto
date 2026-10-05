@@ -179,16 +179,24 @@ const RUNNING_TIMER_MESSAGE =
 
 /**
  * The database allows one running timer per person
- * (uq_time_entries_one_running_per_member). Two concurrent starts, or
- * re-opening a stopped log while another runs, now hit that index instead of
- * creating a second timer; report it as the same 400 the app-level check gives.
+ * (uq_time_entries_one_running_per_member) and one per project and member
+ * (uq_task_time_logs_one_active_per_member_project). Two concurrent starts, or
+ * re-opening a stopped log while another runs, hit one of them instead of
+ * creating a second timer (two starts on the same project hit the per-project
+ * one first); report either as the same 400 the app-level check gives.
  */
+const RUNNING_TIMER_INDEXES = [
+  'uq_time_entries_one_running_per_member',
+  'uq_task_time_logs_one_active_per_member_project',
+];
+
 export function isRunningTimerConflict(
   error: { code?: string; message?: string } | null | undefined,
 ): boolean {
+  const message = error?.message ?? '';
   return (
     error?.code === '23505' &&
-    (error.message ?? '').includes('uq_time_entries_one_running_per_member')
+    RUNNING_TIMER_INDEXES.some((index) => message.includes(index))
   );
 }
 
