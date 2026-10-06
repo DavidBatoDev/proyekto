@@ -1416,10 +1416,15 @@ async function confirmPersonaUsers(admin, ids, problems) {
 	return confirmed;
 }
 
-/** A foreign key or an append-only guard still holds the row: expected for the engagement graph. */
+/**
+ * A foreign key or an append-only guard still holds the row: expected for the engagement graph. Deleting the
+ * Studio team cascades into its engagement_parties rows, whose guard refuses with ENGAGEMENT_PARTY_IMMUTABLE
+ * (P0001); that team is kept, the same verdict the --orphans sweep gives it, so --teardown and --replace exit 0
+ * when it is the only leftover.
+ */
 function isPinned(error) {
 	const text = errorText(error);
-	return error?.code === "23503" || /DELETE_FORBIDDEN|violates foreign key|still referenced/i.test(text);
+	return error?.code === "23503" || /DELETE_FORBIDDEN|ENGAGEMENT_PARTY_IMMUTABLE|violates foreign key|still referenced/i.test(text);
 }
 
 async function selectIds(admin, table, column, values) {
@@ -1613,6 +1618,13 @@ export function selfTest() {
 	check("teardown skips the API and web checks", checkTargets({ ...good, apiUrl: "https://api.proyekto.tech", webSupabaseUrl: "" }, { needApi: false, needWeb: false, needAnon: false }).ok);
 	check("teardown still refuses prod", refused({ supabaseUrl: "https://byvbnkpiselvvulsvxgo.supabase.co" }, { needApi: false, needWeb: false, needAnon: false }));
 	check("/api suffix is stripped", normaliseApi("http://localhost:8011/api/") === "http://localhost:8011");
+
+	// Teardown verdicts: a pinned row is "kept" (exit 0), anything else is a problem (exit 1).
+	check("the Studio team's ENGAGEMENT_PARTY_IMMUTABLE refusal is kept", isPinned({ code: "P0001", message: "ENGAGEMENT_PARTY_IMMUTABLE" }));
+	check("a foreign key is kept", isPinned({ code: "23503", message: "update or delete on table violates foreign key constraint" }));
+	check("an append-only DELETE_FORBIDDEN is kept", isPinned({ code: "P0001", message: "TIME_EVENT_DELETE_FORBIDDEN" }));
+	check("another P0001 is still a problem", !isPinned({ code: "P0001", message: "ENGAGEMENT_STATUS_TRANSITION_INVALID" }));
+	check("a permission error is still a problem", !isPinned({ code: "42501", message: "permission denied for table teams" }));
 
 	check("parseArgs rejects unknown flags", (() => {
 		try {

@@ -117,7 +117,8 @@ function retiredImports(file: string, text: string): string[] {
 	return hits;
 }
 
-describe("no legacy team-time imports or keys", () => {
+// Each check reads the whole source tree; a full single-worker run once took 7 s for this file.
+describe("no legacy team-time imports or keys", { timeout: 30_000 }, () => {
 	const files = sourceFiles(SRC).filter((file) => resolve(file) !== SELF);
 
 	it("walks the whole source tree", () => {
