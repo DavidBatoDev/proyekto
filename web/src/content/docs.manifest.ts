@@ -5,7 +5,7 @@
  * bundling. The sidebar, the home page, the search index and the Popular grid
  * all need metadata for EVERY article before a single body renders. With
  * frontmatter the only way to get it is an eager `?raw` glob, which would pull
- * all 47 articles' prose into the initial chunk for someone who reads one page.
+ * every article's prose into the initial chunk for someone who reads one page.
  * Here, metadata is one small eager module and bodies stay a lazy glob fetched
  * per article (see `docsContent.ts`).
  *
@@ -145,6 +145,8 @@ export const DOC_SECTIONS: DocSection[] = [
 ];
 
 const UPDATED = "2026-09-23";
+/** The time rebuild: the Time page, timesheets, approvals and policies. */
+const TIME_UPDATED = "2026-10-06";
 
 export const DOC_ARTICLES: DocArticle[] = [
 	// ── 1. Start here ───────────────────────────────────────────────────────
@@ -303,7 +305,7 @@ export const DOC_ARTICLES: DocArticle[] = [
 		title: "Members and seats",
 		description:
 			"Who is in your workspace, what a seat means for billing, and how invites, roles and provisioning work.",
-		updated: UPDATED,
+		updated: TIME_UPDATED,
 		keywords: ["invite", "seat", "billing", "saml", "scim", "sso"],
 		related: ["access-and-roles", "teams", "limits-and-usage"],
 	},
@@ -314,9 +316,9 @@ export const DOC_ARTICLES: DocArticle[] = [
 		title: "Plans",
 		description:
 			"What Free, Pro, Business and Enterprise each include, and how to tell which plan your workspace is on.",
-		updated: UPDATED,
+		updated: TIME_UPDATED,
 		keywords: ["pricing", "tier", "upgrade", "free", "pro", "business"],
-		related: ["limits-and-usage", "workspaces"],
+		related: ["limits-and-usage", "workspaces", "time-tracking"],
 	},
 	{
 		slug: "limits-and-usage",
@@ -325,7 +327,7 @@ export const DOC_ARTICLES: DocArticle[] = [
 		title: "Limits and usage",
 		description:
 			"How plan limits behave — they block new work and never take anything away — and how to read the Usage page.",
-		updated: UPDATED,
+		updated: TIME_UPDATED,
 		keywords: ["quota", "cap", "over limit", "usage", "meter"],
 		related: ["plans", "workspaces"],
 	},
@@ -690,46 +692,130 @@ export const DOC_ARTICLES: DocArticle[] = [
 		title: "Teams",
 		description:
 			"A team is a reusable group of people you attach to projects — and curating its members is the fastest way to grant project access.",
-		updated: UPDATED,
+		updated: TIME_UPDATED,
 		keywords: ["group", "squad", "attach", "invite"],
-		related: ["access-and-roles", "time-tracking", "limits-and-usage"],
+		related: [
+			"access-and-roles",
+			"time-tracking",
+			"time-policy",
+			"limits-and-usage",
+		],
 	},
 	{
+		// The slug predates the rebuild and is a public URL, so it stays even
+		// though the title now reads "Tracking time". Not plan-gated: personal
+		// time is on every plan.
 		slug: "time-tracking",
 		section: "teams-time-and-rates",
 		order: 20,
-		plan: "pro",
-		title: "Time tracking",
+		title: "Tracking time",
 		description:
-			"Log time against a project, send it for approval, and see what is billable — across My logs and Team logs.",
-		updated: UPDATED,
-		keywords: ["timesheet", "hours", "log", "approve", "billable"],
-		related: ["rates-and-currency", "payouts", "teams", "plans"],
+			"Start a timer or add time on a task, choose who the time is for, and see your week on the Time page — on every plan.",
+		updated: TIME_UPDATED,
+		keywords: [
+			"timer",
+			"hours",
+			"log time",
+			"time entry",
+			"stopwatch",
+			"just me",
+			"personal",
+			"for",
+		],
+		related: ["timesheets", "approving-time", "time-policy", "plans"],
+	},
+	{
+		// 23, 25 and 27 sit between time-tracking (20) and rates (30), so no
+		// sibling had to be renumbered.
+		slug: "timesheets",
+		section: "teams-time-and-rates",
+		order: 23,
+		plan: "pro",
+		title: "Timesheets",
+		description:
+			"Your time is grouped into one timesheet for each period and approver, which you submit, withdraw, fix and resubmit until it is approved.",
+		updated: TIME_UPDATED,
+		keywords: [
+			"submit",
+			"withdraw",
+			"resubmit",
+			"returned",
+			"reopen",
+			"period",
+			"week",
+			"auto-submit",
+			"reminder",
+		],
+		related: ["time-tracking", "approving-time", "time-policy", "plans"],
+	},
+	{
+		slug: "approving-time",
+		section: "teams-time-and-rates",
+		order: 25,
+		plan: "pro",
+		title: "Approving time",
+		description:
+			"Review a timesheet day by day, approve it or return it with a note, approve several at once, decide overtime, and read the reports.",
+		updated: TIME_UPDATED,
+		keywords: [
+			"approve",
+			"approval",
+			"approver",
+			"reject",
+			"bulk approve",
+			"overtime",
+			"manager",
+			"report",
+			"export",
+		],
+		related: ["timesheets", "time-policy", "payouts", "plans"],
+	},
+	{
+		slug: "time-policy",
+		section: "teams-time-and-rates",
+		order: 27,
+		plan: "pro",
+		title: "Time policy and team rules",
+		description:
+			"The workspace time policy, a team's own rules on Business, and agreement terms — the period, timezone, approval and limits your time follows.",
+		updated: TIME_UPDATED,
+		keywords: [
+			"settings",
+			"timezone",
+			"week start",
+			"rounding",
+			"override",
+			"approvers",
+			"retroactive",
+			"weekly limit",
+			"presets",
+		],
+		related: ["timesheets", "approving-time", "teams", "plans"],
 	},
 	{
 		slug: "rates-and-currency",
 		section: "teams-time-and-rates",
 		order: 30,
-		plan: "pro",
+		plan: "business",
 		title: "Rates and currency",
 		description:
-			"Set a team's default currency and per-member and per-project rate cards so approved time resolves to real amounts.",
-		updated: UPDATED,
-		keywords: ["rate card", "hourly", "currency", "billing"],
-		related: ["time-tracking", "payouts", "plans"],
+			"Set a team's default currency and member rates, and see how approval fixes each entry's amount from the rate in force on its day.",
+		updated: TIME_UPDATED,
+		keywords: ["rate card", "hourly", "fixed", "currency", "cost"],
+		related: ["time-tracking", "approving-time", "payouts", "plans"],
 	},
 	{
 		slug: "payouts",
 		section: "teams-time-and-rates",
 		order: 40,
-		plan: "pro",
+		plan: "business",
 		title: "Payouts",
 		description:
-			"Group approved time logs of a single currency into a payout so what is owed is recorded in one place.",
-		updated: UPDATED,
-		keywords: ["pay", "owed", "settlement", "invoice"],
+			"Record that a member's approved, unpaid team time — in one currency — was paid, and void the record if it was wrong.",
+		updated: TIME_UPDATED,
+		keywords: ["pay", "owed", "settlement", "cut-off", "void"],
 		related: [
-			"time-tracking",
+			"approving-time",
 			"rates-and-currency",
 			"contracts-and-invoices",
 			"plans",

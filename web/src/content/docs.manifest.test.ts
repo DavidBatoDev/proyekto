@@ -116,10 +116,12 @@ describe("docs manifest", () => {
 		);
 	});
 
-	it("carries the 49 articles the site was planned around", () => {
+	it("carries the 52 articles the site was planned around", () => {
 		// A tripwire, not a rule: if this changes, the sidebar and the home page
-		// should be looked at rather than the number just bumped.
-		expect(DOC_ARTICLES).toHaveLength(49);
+		// should be looked at rather than the number just bumped. 49 → 52 with
+		// the time rebuild's timesheets, approving-time and time-policy; the
+		// Teams, time & rates section (7 articles) still fits its sidebar group.
+		expect(DOC_ARTICLES).toHaveLength(52);
 		expect(DOC_SECTIONS).toHaveLength(10);
 	});
 });

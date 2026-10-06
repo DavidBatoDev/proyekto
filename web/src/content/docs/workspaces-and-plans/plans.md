@@ -8,9 +8,9 @@ on the web.
 
 | Plan | Its job |
 | --- | --- |
-| **Free** | Plan the work. A real roadmap, real tasks, real chat — enough to run something small end to end. |
-| **Pro** | Run real delivery. The governance registers, time tracking, and the higher AI allowance that daily use needs. |
-| **Business** | Govern delivery across an organisation. No caps on projects or teams, stronger AI, private teams and a long activity history. |
+| **Free** | Plan the work. A real roadmap, real tasks, real chat, your own time tracking — enough to run something small end to end. |
+| **Pro** | Run real delivery. The governance registers, timesheets and approvals, and the higher AI allowance that daily use needs. |
+| **Business** | Govern delivery across an organisation. No caps on projects or teams, stronger AI, private teams, team time rules and payouts, and a long activity history. |
 | **Enterprise** | Identity, audit and account management. SSO and provisioning, granular admin control, exportable history. |
 
 ## On every plan, including Free
@@ -29,6 +29,10 @@ None of the following is ever gated. They are what Proyekto is:
 - **Roadmap share links**, granting viewing or commenting to people with no
   account
 - The **AI assistant**, with a monthly message allowance
+- **Personal time tracking** — a timer and time entries just for you —
+  [tracking time](/docs/teams-time-and-rates/time-tracking)
+- **Time under an agreement**: time logged under a client or talent agreement
+  is never limited by plan, timesheets and approval included
 - **Google sign-in**, and the mobile apps
 
 ## What arrives at Pro
@@ -40,8 +44,10 @@ engagement.
   with submit-and-review, [change requests](/docs/delivery-governance/change-requests),
   [risks and issues](/docs/delivery-governance/risks-and-issues), and
   [decisions](/docs/delivery-governance/decisions)
-- **Time tracking and timesheets**, with rate cards and payouts —
-  [time tracking](/docs/teams-time-and-rates/time-tracking)
+- **Timesheets and approvals**: team and workspace time grouped into
+  timesheets that the workspace's owners and admins approve —
+  [timesheets](/docs/teams-time-and-rates/timesheets)
+- **Billable hours on invoices**, for agreements that bill by the hour
 - The **MCP server**, which connects Claude and other MCP hosts to your
   projects. It is an optional integration and may not be enabled on your
   workspace — see [Connect Proyekto to Claude](/docs/account-and-apps/mcp-server)
@@ -57,6 +63,12 @@ engagement.
   effort** rather than Standard — it thinks longer before it proposes a change
 - **Private teams and guests**: teams hidden from the rest of the workspace,
   and people brought in for one piece of work
+- **Team approvers and time rules**: a team can approve its own timesheets
+  and set its own period, manual-time and rounding rules —
+  [time policy and team rules](/docs/teams-time-and-rates/time-policy)
+- **Member rates that price approved time**, and
+  [payouts](/docs/teams-time-and-rates/payouts) to record what was paid
+- **Workspace time reports and export**
 - **Full activity history**, rather than a window
 
 ## What arrives at Enterprise
@@ -66,6 +78,7 @@ engagement.
   [members and seats](/docs/workspaces-and-plans/members-and-seats)
 - **Granular roles and permissions** across the workspace
 - **Activity export**, for audit outside Proyekto
+- **Custom approval chains** for timesheets, and **time audit export**
 - **Priority AI capacity**, on a negotiated allowance
 - **Account management** — a named contact rather than a support queue
 

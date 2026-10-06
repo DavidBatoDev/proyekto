@@ -20,9 +20,9 @@ is the mechanic further down this page.
 
 | Role | What it can change |
 | --- | --- |
-| **Owner** | Everything below, plus the things that move money — the team's billing identity, its default currency, the retroactive-logging window and the cut-off schedule. Only the owner can delete the team. |
-| **Admin** | The team's name, photo, description, labels and status; its members and invites; its attached projects; whether time tracking is on. Admins also review time logs and manage rates and payouts. |
-| **Member** | Nothing about the team itself. A member takes part in projects the team is on and logs their own time. |
+| **Owner** | Everything below, plus the things that move money or decide approval — the team's billing identity, its default currency, the member-rates and payouts switches, the billing and pay cut-offs, and, among the team rules, the approvers, whether approval is required, the retroactive window and rounding. Only the owner can delete the team. |
+| **Admin** | The team's name, photo, description, labels and status; its members and invites; its attached projects; whether time tracking is on, and the team rules for the timesheet period and manual time. Admins also see the team's time report, manage rates and record payouts — and approve the team's timesheets when the team approves its own time. |
+| **Member** | Nothing about the team itself. A member takes part in projects the team is on and tracks their time for the team on the Time page. |
 
 There is exactly one owner — the creator — and admins are promoted from the
 member list.
@@ -56,6 +56,12 @@ it instead: you cannot see someone else's team, so the person who runs it
 chooses which team and who comes along, while you still set the access those
 people get. Nothing changes until they accept.
 
+The attach dialog also says where the team's time on the project will be
+decided: "Time this team logs here is approved in Acme. Approvers who can't
+open this project see hours only." The approvers are the team's workspace
+owners and admins (or, on Business, possibly the team itself), and they do
+not need access to the project to approve its hours.
+
 Curating the list is the whole workflow. Add a team member to the project and
 they get access, with an origin of "from a team" recorded on the grant so it
 is obvious where it came from. Remove them and the access goes with it —
@@ -77,12 +83,32 @@ Four tabs, behind the team's gear:
   lives here too, for the owner only.
 - **Projects** — every project this team is attached to, with the same detach
   choices in bulk.
-- **Time** — whether time tracking is on for this team, and beneath it the
-  member-rates and payouts switches, the retroactive-logging window, the
-  default currency and the cut-off schedule. See
-  [time tracking](/docs/teams-time-and-rates/time-tracking).
+- **Time** — whether time tracking is on for this team; on Business, the
+  team rules that override the workspace's time policy (who approves, the
+  timesheet period, manual time, the retroactive window, rounding); and, on
+  the web, the money settings — member rates, payouts, billing and pay
+  cut-offs, and the default currency. See
+  [time policy and team rules](/docs/teams-time-and-rates/time-policy).
 - **Logs** — the team's own audit trail, separate from any single project's
   [activity](/docs/delivery-governance/activity).
+
+## The team's Time pages
+
+A team's time is tracked on the **Time** page like everyone else's — members
+choose the team in the For chip and submit from there. What the team itself
+keeps is the management side, for its owner and admins, behind the team's
+**Time** item in the sidebar:
+
+| Page | What it shows |
+| --- | --- |
+| **Report** | Everything members logged for the team, filtered and grouped by person, project, task, day or week, with Approved and Not yet approved kept apart. An hours-only **Under agreements** line covers agreement work assigned through the team |
+| **Rates** | The members' [rates](/docs/teams-time-and-rates/rates-and-currency), while member rates are on |
+| **Payouts** | Recording [payments](/docs/teams-time-and-rates/payouts), while payouts are on |
+
+A member who opens the team's Time page is taken to their own time for the
+team instead. In the app only Report is shown; rates and payouts stay on the
+web. Old links to the team's My Logs and Team Logs pages still work and land
+in the right new place.
 
 ## Teams and your plan
 
@@ -91,10 +117,14 @@ counted.
 
 > At the team limit, creating a **new** team is blocked. Every team you
 > already have stays exactly as it is — same members, same attached projects,
-> same rates and logs, all still editable.
+> same rates and time, all still editable.
 
-Business adds **private teams and guests**: teams that are not visible to the
-rest of the workspace, and people brought in for one piece of work. See
+A team's time needs Pro: on Free, members track time just for themselves.
+Business adds **team rules** — including a team approving its own time —
+member rates that price approved time, and payouts.
+
+Business also adds **private teams and guests**: teams that are not visible to
+the rest of the workspace, and people brought in for one piece of work. See
 [plans](/docs/workspaces-and-plans/plans) and
 [limits and usage](/docs/workspaces-and-plans/limits-and-usage).
 
@@ -102,5 +132,7 @@ rest of the workspace, and people brought in for one piece of work. See
 
 - [Project access and roles](/docs/projects/access-and-roles) — what the roles
   a team grants actually permit
-- [Time tracking](/docs/teams-time-and-rates/time-tracking) — logging and
-  approving a team's hours
+- [Tracking time](/docs/teams-time-and-rates/time-tracking) — logging time
+  for a team
+- [Approving time](/docs/teams-time-and-rates/approving-time) — who decides a
+  team's timesheets

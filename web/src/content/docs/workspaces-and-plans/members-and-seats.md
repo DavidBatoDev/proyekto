@@ -52,6 +52,16 @@ members and invites and edits the workspace's general settings. A **member**
 is simply in the workspace. None of the three grants a single permission
 inside a project, and a project owner need not be a workspace admin.
 
+## Seats and time
+
+Tracking time for a **team** needs no seat in the team's workspace — a team
+can include people who are not workspace members, and their team time is
+still approved there. Tracking time for the **workspace itself**, on a
+project where you are not on any attached team, does need one: without a
+seat, Proyekto doesn't offer the workspace as a For, so unless you work there
+under an agreement, your time on that project is Just me — yours alone, never
+approved. See [tracking time](/docs/teams-time-and-rates/time-tracking).
+
 ## At the member limit
 
 Where your plan caps members, reaching that cap blocks one thing: new invites.
@@ -84,7 +94,7 @@ understanding:
   grants are still there to be removed.
 - **Comments, chat messages and activity** stay, still attributed to them. A
   record of who said what is the point of having one.
-- **Time logs** stay, including approved ones, so timesheets, rates and
+- **Time entries** stay, including approved ones, so timesheets, rates and
   payouts still add up.
 
 If your aim is to cut off access, remove their project access first — that is

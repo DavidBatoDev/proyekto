@@ -1,40 +1,67 @@
-A payout is a record. It groups a member's approved time logs — all in one
-currency — into a total, and says that total was paid. Proyekto keeps the
+A payout is a record. It groups a member's approved, unpaid team time — all in
+one currency — into a total, and says that total was paid. Proyekto keeps the
 record; the payment itself happens through whatever channel you already use.
-Payouts are part of Pro and above, and a team owner switches them on from the
-team's Time settings, underneath member rates.
+Payouts come with Business, a team owner switches them on from the team's
+Time settings underneath member rates, and they live on the web: the app
+leaves them out.
 
-## What a payout is made of
+## What can be paid
 
-One payout covers one member, in one currency, over the logs you select. It
-carries the total those logs add up to, the date paid, and optionally a
-reference number, a note, and a file you attach as proof — a screenshot or a
-receipt. Once recorded, the logs inside it move from approved to **paid**, and
-that is the only route to the paid state. A log is paid exactly when a payout
-covers it.
+A payout pays **team time**: time a member logged for the team, priced by
+their [member rate](/docs/teams-time-and-rates/rates-and-currency), on a
+timesheet that has been approved, and not in a payout already. The Payouts
+page calls this **approved and unpaid**.
 
-## Recording one
+Nothing else is paid here. Workspace time carries no cost, Just me time is
+never paid, and agreement time is settled under its agreement. Time on a
+fixed rate is not paid by entry either — "Fixed-fee time is paid as a manual
+payment, not by entry." — because its pay is a set figure, not hours times a
+rate.
 
-The **Payouts** tab is for the team owner and team admins. It opens on
-outstanding balances: approved-but-unpaid time, grouped by the team's cut-off
-periods, newest first, with each member's total inside each period.
+## The Payouts page
 
-1. **Pick the period.** Cut-offs come from the schedule in team settings, so
-   the grouping matches how the team actually pays.
-2. **Clear the review queue.** A period with logs still pending cannot be
-   paid; Proyekto sends you to Team Logs to approve or reject them first. This
-   stops a payout going out while somebody's hours are still in dispute.
-3. **Pick the person, and the logs.** Every log in the selection must be
-   approved and not already in a payout.
-4. **Record the payment.** Choose where it went, add the date, a reference and
-   any proof, and save.
+**Payouts** is one of the team's Time pages, next to Report and Rates, for the
+team's owner and admins while payouts are on. It opens on **To pay**:
+approved, unpaid time grouped by the team's pay cut-offs, newest first, with
+each member's total inside each cut-off. A cut-off that has not ended yet is
+marked **In progress**; one that has is **Ready to pay**.
 
-Members can store where they want to be paid — a bank account or wallet, with
-an optional scan-to-pay image — and whoever records the payout can see those
-details at the moment of paying, rather than hunting for them in chat. Those
-details are web-only: the mobile app records the payout without showing them.
+1. **Approve the cut-off's timesheets in Time.** Approval is what makes time
+   payable, and it happens on the Time page —
+   [approving time](/docs/teams-time-and-rates/approving-time).
+2. **Pay the cut-off here once its time is approved.**
 
-You cannot pay your own logs, for the same reason you cannot approve them.
+Cut-offs come from **Billing and pay cut-offs** in the team's settings, so
+the grouping matches how the team actually pays, and their days are counted
+in the team's timezone. The page reads the last couple of months. If older
+approved time is still unpaid it says so — "Some approved time from before
+Aug 1, 2026 isn't paid yet." — and **Show older time** brings it in.
+
+Unapproved time never holds a payment up. A member's row says "2h not yet
+approved", and **Review** opens the team report on that person and cut-off.
+You can pay the approved part now and the rest once it is approved.
+
+## Recording a payment
+
+**Pay** on a member's row opens the record: "Record a payment you made
+outside Proyekto. The time below is marked as paid."
+
+- The **total** is each entry's approved hours times the rate it was approved
+  at, added up and rounded once.
+- **Where it went**: members can store where they want to be paid — a bank
+  account or a wallet, with an optional scan-to-pay image — and whoever
+  records the payout sees those details at the moment of paying, rather than
+  hunting for them in chat.
+- The **date paid**, and optionally a **reference**, a **note** and a file as
+  **proof** — a screenshot or a receipt.
+- Time in the period that is not approved yet is named and left out: it
+  "isn't part of this payment; pay it once it's approved."
+
+Saving marks every entry in it **Paid**, and the member gets a "Payment
+recorded" notification and email. Neither ever shows the amount.
+
+> You cannot pay yourself: "Someone else on the team has to record your
+> payment." For the same reason, nobody approves their own priced time.
 
 ## Why one currency
 
@@ -64,23 +91,32 @@ records that an invoice was paid, it never collects the payment.
 
 ## Fixing a mistake
 
-Logs inside a payout are locked — paid logs cannot be edited, and they cannot
-be pulled into a second payout. Correcting something therefore means undoing
-the record rather than editing it:
+Paid time is locked. It cannot be edited, it cannot go into a second payout,
+and its timesheet cannot be reopened — the refusal says "Void the payout to
+reopen." Correcting something therefore means undoing the record rather than
+editing it:
 
-**Void the payout.** Its logs go straight back to **approved** and become
-payable again, and the payout stays in the list marked as void rather than
-vanishing. Then record a new one with the right logs, amount or details.
+**Void the payout.** Its time goes straight back to approved and unpaid —
+"Payout voided. Its time is approved and unpaid again." — and the payout stays
+in **Payout history** marked Void rather than vanishing. Then record a new one
+with the right time, amount or details.
 
 Nothing is deleted by this, which is the point. A voided payout plus its
 replacement is an honest history of what happened; a silently edited payout is
 not.
 
+## Payouts and your plan
+
+On a plan without payouts, To pay is replaced by "Payouts are part of
+Business." and payouts cannot be switched on. Nothing recorded is lost:
+"Recorded payments stay readable here, and can still be voided."
+
 ## Where to go next
 
-- [Time tracking](/docs/teams-time-and-rates/time-tracking) — how a log
-  reaches approved, and who can approve it
+- [Approving time](/docs/teams-time-and-rates/approving-time) — how team time
+  reaches approved, and who approves it
 - [Rates and currency](/docs/teams-time-and-rates/rates-and-currency) — where
-  the amount on each log comes from
+  the amount on each entry comes from
 - [Teams](/docs/teams-time-and-rates/teams) — the settings that switch
   payouts, rates and cut-offs on
+- [Plans](/docs/workspaces-and-plans/plans) — what Business adds

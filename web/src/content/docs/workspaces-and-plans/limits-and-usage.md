@@ -62,7 +62,8 @@ four sections:
   left, and a caption that turns into a warning as you approach the limit.
   Roadmap nodes are shown against the largest roadmap in the workspace, since
   that is the one that hits the cap first.
-- **Features** — every feature gate, marked *Included* or naming the plan it
+- **Features** — every feature gate, grouped under Delivery governance,
+  Teams and time, and Platform, and marked *Included* or naming the plan it
   arrives on.
 - **Activity history** — how far back your activity log currently goes.
 
@@ -78,14 +79,20 @@ A **counted limit** caps a number. You can keep using the thing; you just
 cannot add another one.
 
 A **feature gate** turns a whole surface on or off — the delivery registers,
-time tracking, activity export, the MCP server. On a plan without the gate,
-the surface is not there to open.
+timesheets and approvals, activity export, the MCP server. On a plan without
+the gate, the surface is not there to open.
 
 The invariant covers both. If a plan change closes a gate, the data behind it
-is untouched: your deliverables, change requests, risks, decisions and time
-logs are all still stored, still exactly as you left them, and they reappear —
-whole — on a plan that includes the gate again. A gate hides a door; it never
-empties the room.
+is untouched: your deliverables, change requests, risks, decisions, time
+entries and timesheets are all still stored, still exactly as you left them,
+and they reappear — whole — on a plan that includes the gate again. A gate
+hides a door; it never empties the room.
+
+Time shows the rule clearly. When a workspace's plan stops including
+timesheets, people carry on tracking time just for themselves, every
+existing entry stays, and open timesheets can still be submitted and
+decided. Team rules that were saved are kept and apply again on a plan that
+includes them.
 
 ## Where to go next
 
