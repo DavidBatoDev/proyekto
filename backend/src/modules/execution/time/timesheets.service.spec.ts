@@ -17,9 +17,12 @@ import { TimePolicyService } from './time-policy.service';
 import { TimeRatesService } from './time-rates.service';
 import {
   FLAGS_BUDGET_MS,
+  NO_CONTEXT_POLICY,
   TIMESHEET_NOTE_REQUIRED_MESSAGE,
   TimesheetsService,
+  contextPolicyFields,
   isTransitionRefusal,
+  reminderDaysOf,
 } from './timesheets.service';
 import type { EntryAuthRow, TimeEntryView, TimesheetRow } from './time.types';
 
@@ -73,6 +76,17 @@ function project(row: Row, select: string | null): Row {
   }
   if (cur.trim()) tokens.push(cur.trim());
   for (const token of tokens) {
+    // A JSON path (`alias:column->key`), as PostgREST answers it: the key's value under the alias (else the key).
+    const path = /^(?:(\w+):)?(\w+)->>?(\w+)$/.exec(token);
+    if (path) {
+      const [, alias, column, field] = path;
+      const value = row[column];
+      out[alias ?? field] =
+        value && typeof value === 'object' && !Array.isArray(value)
+          ? ((value as Row)[field] ?? null)
+          : null;
+      continue;
+    }
     const key = token.split('(')[0].split(':')[0].split('!')[0].trim();
     out[key] = row[key] ?? null;
   }
@@ -331,6 +345,7 @@ function defaultMocks(): Mocks {
         }),
       ),
       ensureWorkspacePolicy: jest.fn(() => Promise.resolve(uid(999))),
+      sheetScopeFor: jest.fn(() => Promise.resolve(null)),
     },
     rates: {
       legacyCutoff: jest.fn(() => Promise.resolve(null)),
@@ -2103,9 +2118,19 @@ describe('TimesheetsService.overview', () => {
     expect(b.db.mutations).toEqual([]);
   });
 
-  it('contexts with their current sheet; can_log from the share role; no approver mode while logging', async () => {
+  it('contexts with their current sheet and period rules; can_log from the share role; no approver mode while logging', async () => {
     const today = new Date().toISOString().slice(0, 10);
-    const { service } = await setup(
+    const mocks = defaultMocks();
+    mocks.policy.resolve.mockResolvedValue({
+      timezone: 'Asia/Manila',
+      week_start: 7,
+      period_kind: 'biweekly',
+      period_anchor: '2026-01-04',
+      reminder_days: 3,
+      rounding_minutes: 0,
+      sources: {},
+    });
+    const { service, policy } = await setup(
       {
         project_access: [
           {
@@ -2142,6 +2167,7 @@ describe('TimesheetsService.overview', () => {
         ],
       },
       { time_approval_queue_ids: () => ({ data: [S2] }) },
+      mocks,
     );
     const o = await service.overview({ id: MEMBER });
     expect(o.can_log).toBe(true);
@@ -2160,6 +2186,12 @@ describe('TimesheetsService.overview', () => {
           period_end: today,
           total_seconds: 1800,
         },
+        // D85: the workspace's own scope, resolved now.
+        timezone: 'Asia/Manila',
+        week_start: 7,
+        period_kind: 'biweekly',
+        period_anchor: '2026-01-04',
+        reminder_days: 3,
       },
       {
         kind: 'personal',
@@ -2167,8 +2199,21 @@ describe('TimesheetsService.overview', () => {
         label: 'Just me',
         sheet_scope: null,
         current_sheet: null,
+        timezone: null,
+        week_start: null,
+        period_kind: null,
+        period_anchor: null,
+        reminder_days: null,
       },
     ]);
+    // A workspace context is its own scope: no scope call; personal resolves nothing.
+    expect(policy.sheetScopeFor).not.toHaveBeenCalled();
+    expect(policy.resolve).toHaveBeenCalledTimes(1);
+    expect(policy.resolve).toHaveBeenCalledWith(
+      { kind: 'workspace', ref: WS },
+      WS,
+      expect.any(Date),
+    );
   });
 
   it('approver mode: waiting approvals and nothing logged in 30 days; a viewer cannot log', async () => {
@@ -3278,6 +3323,524 @@ describe('A12 TIMESHEET_HAS_SETTLED_ENTRIES extras', () => {
         timesheet_id: S1,
         reason: 'billed',
       });
+    });
+  });
+});
+
+// ── D85: period rules on reads (overview contexts, reminder_days on summaries) ─
+describe('D85 period rules on reads', () => {
+  const TEAM_GONE = uid(21);
+  const recentIso = (daysAgo: number) =>
+    new Date(Date.now() - daysAgo * 86_400_000).toISOString();
+  const MANILA = {
+    timezone: 'Asia/Manila',
+    week_start: 7,
+    period_kind: 'semi_monthly',
+    period_anchor: null,
+    reminder_days: 2,
+    rounding_minutes: 0,
+    sources: {},
+  };
+  const scopeKey = (scope: { kind: string; ref: string }) =>
+    `${scope.kind}:${scope.ref}`;
+
+  describe('pure helpers', () => {
+    it('reminderDaysOf keeps whole days ≥ 0 only', () => {
+      expect(reminderDaysOf(0)).toBe(0);
+      expect(reminderDaysOf(14)).toBe(14);
+      expect(reminderDaysOf('3')).toBe(3);
+      expect(reminderDaysOf(-1)).toBeNull();
+      expect(reminderDaysOf(1.5)).toBeNull();
+      expect(reminderDaysOf(null)).toBeNull();
+      expect(reminderDaysOf(undefined)).toBeNull();
+      expect(reminderDaysOf('soon')).toBeNull();
+    });
+
+    it('contextPolicyFields: null policy → all null; values read the way the server reads them', () => {
+      expect(contextPolicyFields(null)).toEqual(NO_CONTEXT_POLICY);
+      expect(
+        contextPolicyFields({
+          ...MANILA,
+          period_kind: 'biweekly',
+          period_anchor: '2026-01-04',
+        } as never),
+      ).toEqual({
+        timezone: 'Asia/Manila',
+        week_start: 7,
+        period_kind: 'biweekly',
+        period_anchor: '2026-01-04',
+        reminder_days: 2,
+      });
+      // An invalid zone is UTC, week start Monday, kind weekly, no anchor; a missing reminder is 1 day.
+      expect(
+        contextPolicyFields({
+          timezone: 'Mars/Olympus',
+          week_start: 0,
+          period_kind: 'fortnightly',
+          period_anchor: 'soon',
+        } as never),
+      ).toEqual({
+        timezone: 'UTC',
+        week_start: 1,
+        period_kind: 'weekly',
+        period_anchor: null,
+        reminder_days: 1,
+      });
+    });
+  });
+
+  describe('overview contexts', () => {
+    function contextMocks() {
+      const mocks = defaultMocks();
+      mocks.policy.sheetScopeFor.mockImplementation(
+        (kind: string, ref: string) => {
+          if (kind === 'team' && ref === TEAM) {
+            // A team without an override routes to its workspace.
+            return Promise.resolve({
+              scope_kind: 'workspace',
+              scope_ref: WS,
+              policy_workspace_id: WS,
+              scope_label: 'Acme',
+            });
+          }
+          if (kind === 'assignment' && ref === ASSIGN) {
+            return Promise.resolve({
+              scope_kind: 'engagement',
+              scope_ref: ENG,
+              policy_workspace_id: WS_OTHER,
+              scope_label: 'Rico for Pixel',
+            });
+          }
+          return Promise.reject(new Error('LOGGING_FOR_INVALID'));
+        },
+      );
+      mocks.policy.resolve.mockImplementation(
+        (scope: { kind: string; ref: string }) =>
+          scopeKey(scope) === `workspace:${WS}`
+            ? Promise.resolve(MANILA)
+            : scopeKey(scope) === `engagement:${ENG}`
+              ? Promise.resolve({
+                  ...MANILA,
+                  timezone: 'Europe/Berlin',
+                  week_start: 1,
+                  period_kind: 'biweekly',
+                  period_anchor: '2026-09-07',
+                  reminder_days: 0,
+                })
+              : Promise.reject(new Error('resolve down')),
+      );
+      return mocks;
+    }
+
+    function contextEntries(): Row[] {
+      return [
+        entry({
+          id: E1,
+          context_kind: 'team',
+          context_ref: TEAM,
+          team_id: TEAM,
+          timesheet_id: null,
+          started_at: recentIso(1),
+        }),
+        entry({
+          id: E2,
+          context_kind: 'workspace',
+          context_ref: WS,
+          timesheet_id: null,
+          started_at: recentIso(2),
+        }),
+        entry({
+          id: E3,
+          context_kind: 'assignment',
+          context_ref: ASSIGN,
+          engagement_assignment_id: ASSIGN,
+          timesheet_id: null,
+          started_at: recentIso(3),
+        }),
+        entry({
+          id: E4,
+          context_kind: 'team',
+          context_ref: TEAM_GONE,
+          team_id: TEAM_GONE,
+          timesheet_id: null,
+          started_at: recentIso(4),
+        }),
+      ];
+    }
+
+    it('each context reads its routed scope now; one resolve per distinct scope; a failed scope read is null', async () => {
+      const mocks = contextMocks();
+      const { service, policy } = await setup(
+        { time_entries: contextEntries() },
+        { time_approval_queue_ids: () => ({ data: [] }) },
+        mocks,
+      );
+      const o = await service.overview({ id: MEMBER });
+      const byKey = new Map(o.contexts.map((c) => [`${c.kind}:${c.id}`, c]));
+      const manila = {
+        timezone: 'Asia/Manila',
+        week_start: 7,
+        period_kind: 'semi_monthly',
+        period_anchor: null,
+        reminder_days: 2,
+      };
+      // The team routes to its workspace: the same rules as the workspace context, read once.
+      expect(byKey.get(`team:${TEAM}`)).toMatchObject(manila);
+      expect(byKey.get(`workspace:${WS}`)).toMatchObject(manila);
+      expect(byKey.get(`assignment:${ASSIGN}`)).toMatchObject({
+        timezone: 'Europe/Berlin',
+        week_start: 1,
+        period_kind: 'biweekly',
+        period_anchor: '2026-09-07',
+        reminder_days: 0,
+      });
+      // A context the scope call refuses (me/entries reads it in the person's own zone): null here.
+      expect(byKey.get(`team:${TEAM_GONE}`)).toMatchObject(NO_CONTEXT_POLICY);
+
+      expect(policy.sheetScopeFor.mock.calls).toEqual(
+        expect.arrayContaining([
+          ['team', TEAM, null],
+          ['assignment', ASSIGN, null],
+          ['team', TEAM_GONE, null],
+        ]),
+      );
+      // A workspace context is its own scope.
+      expect(policy.sheetScopeFor).toHaveBeenCalledTimes(3);
+      expect(policy.resolve).toHaveBeenCalledTimes(2);
+      expect(policy.resolve).toHaveBeenCalledWith(
+        { kind: 'workspace', ref: WS },
+        WS,
+        expect.any(Date),
+      );
+      expect(policy.resolve).toHaveBeenCalledWith(
+        { kind: 'engagement', ref: ENG },
+        WS_OTHER,
+        expect.any(Date),
+      );
+    });
+
+    it('a failed policy read leaves only that context null; the overview still answers', async () => {
+      const mocks = contextMocks();
+      mocks.policy.sheetScopeFor.mockImplementation(() =>
+        Promise.resolve({
+          scope_kind: 'team',
+          scope_ref: TEAM,
+          policy_workspace_id: WS,
+          scope_label: 'Design',
+        }),
+      );
+      const [teamEntry, workspaceEntry] = contextEntries();
+      const { service } = await setup(
+        { time_entries: [teamEntry, workspaceEntry] },
+        { time_approval_queue_ids: () => ({ data: [] }) },
+        mocks,
+      );
+      const o = await service.overview({ id: MEMBER });
+      expect(o.contexts.map((c) => c.kind)).toEqual(['team', 'workspace']);
+      // team:TEAM rejects in contextMocks' resolve; the workspace context still reads.
+      expect(o.contexts[0]).toMatchObject(NO_CONTEXT_POLICY);
+      expect(o.contexts[1]).toMatchObject({ timezone: 'Asia/Manila' });
+    });
+
+    it('the recent contexts read their rules alongside the sheet reads; a context only on an open sheet reads after', async () => {
+      const mocks = contextMocks();
+      const [teamEntry, workspaceEntry] = contextEntries();
+      // An assignment context with no recent entry, only an older entry on an open sheet.
+      const onSheetOnly = entry({
+        id: E3,
+        context_kind: 'assignment',
+        context_ref: ASSIGN,
+        engagement_assignment_id: ASSIGN,
+        timesheet_id: S1,
+        started_at: recentIso(40),
+      });
+      const { service, policy, db } = await setup(
+        {
+          time_entries: [teamEntry, workspaceEntry, onSheetOnly],
+          timesheets: [sheet({ status: 'open', approver_scope: null })],
+        },
+        { time_approval_queue_ids: () => ({ data: [] }) },
+        mocks,
+      );
+      const o = await service.overview({ id: MEMBER });
+
+      const byKey = new Map(o.contexts.map((c) => [`${c.kind}:${c.id}`, c]));
+      expect(byKey.get(`team:${TEAM}`)).toMatchObject({
+        timezone: 'Asia/Manila',
+      });
+      expect(byKey.get(`assignment:${ASSIGN}`)).toMatchObject({
+        timezone: 'Europe/Berlin',
+        reminder_days: 0,
+      });
+
+      const firstSheetRead = Math.min(
+        ...db.from.mock.calls.flatMap((call, i) =>
+          call[0] === 'timesheets' ? [db.from.mock.invocationCallOrder[i]] : [],
+        ),
+      );
+      const scopeCallOrder = (kind: string, ref: string) =>
+        policy.sheetScopeFor.mock.invocationCallOrder[
+          policy.sheetScopeFor.mock.calls.findIndex(
+            (call) => call[0] === kind && call[1] === ref,
+          )
+        ];
+      // The team's scope call (from a recent entry) does not wait for the sheet reads.
+      expect(scopeCallOrder('team', TEAM)).toBeLessThan(firstSheetRead);
+      // The assignment is known only from its sheet's entries.
+      expect(scopeCallOrder('assignment', ASSIGN)).toBeGreaterThan(
+        firstSheetRead,
+      );
+      // Still one scope call per context and one resolve per distinct scope.
+      expect(policy.sheetScopeFor).toHaveBeenCalledTimes(2);
+      expect(policy.resolve).toHaveBeenCalledTimes(2);
+    });
+  });
+
+  describe('reminder_days on summaries', () => {
+    const S4 = uid(103);
+    const S5 = uid(104);
+    const S6 = uid(105);
+    const S7 = uid(106);
+    const snapshot = (over: Row) => ({
+      rounding_minutes: 0,
+      weekly_limit_minutes: null,
+      sources: {},
+      routing: {
+        base: 'workspace',
+        cost_money: false,
+        deciders_count: 1,
+        fallback: 'none',
+      },
+      ...over,
+    });
+
+    function reminderMocks() {
+      const mocks = defaultMocks();
+      mocks.policy.resolve.mockImplementation(
+        (scope: { kind: string; ref: string }) =>
+          scope.kind === 'workspace'
+            ? Promise.resolve({ ...MANILA, reminder_days: 5 })
+            : Promise.reject(new Error('resolve down')),
+      );
+      return mocks;
+    }
+
+    it('me/timesheets: the scope policy now when open or returned, the snapshot when submitted or approved, else absent', async () => {
+      const mocks = reminderMocks();
+      const { service, policy } = await setup(
+        {
+          timesheets: [
+            sheet({
+              id: S1,
+              status: 'submitted',
+              policy_snapshot: snapshot({ reminder_days: 3 }),
+            }),
+            sheet({
+              id: S2,
+              status: 'open',
+              approver_scope: null,
+              policy_snapshot: {},
+              period_start: '2026-09-21',
+              period_end: '2026-09-27',
+            }),
+            // A pre-move open sheet keeps a legacy snapshot; the auto-submit check re-resolves, so does this.
+            sheet({
+              id: S3,
+              status: 'open',
+              approver_scope: null,
+              policy_snapshot: snapshot({ reminder_days: 9, legacy: true }),
+              period_start: '2026-09-28',
+              period_end: '2026-10-04',
+            }),
+            // A snapshot without the key: unknown, so absent.
+            sheet({
+              id: S4,
+              status: 'approved',
+              period_start: '2026-08-31',
+              period_end: '2026-09-06',
+            }),
+            // An open team sheet whose policy read fails: absent, the list still answers.
+            sheet({
+              id: S5,
+              status: 'open',
+              approver_scope: null,
+              policy_snapshot: {},
+              scope_kind: 'team',
+              scope_ref: TEAM,
+              team_id: TEAM,
+              period_start: '2026-08-24',
+              period_end: '2026-08-30',
+            }),
+            // Returned: the reminder check still acts on it and resolves when it runs, so not the snapshot.
+            sheet({
+              id: S6,
+              status: 'returned',
+              policy_snapshot: snapshot({ reminder_days: 8 }),
+              period_start: '2026-08-17',
+              period_end: '2026-08-23',
+            }),
+            // A zero-day snapshot is a value, not a gap.
+            sheet({
+              id: S7,
+              status: 'approved',
+              policy_snapshot: snapshot({ reminder_days: 0 }),
+              period_start: '2026-08-10',
+              period_end: '2026-08-16',
+            }),
+          ],
+          time_entries: [],
+        },
+        {},
+        mocks,
+      );
+      const items = await service.listMine(MEMBER, {});
+      const byId = new Map(items.map((s) => [s.id, s]));
+      expect(byId.get(S1)?.reminder_days).toBe(3);
+      expect(byId.get(S2)?.reminder_days).toBe(5);
+      expect(byId.get(S3)?.reminder_days).toBe(5);
+      expect(byId.get(S4)).not.toHaveProperty('reminder_days');
+      expect(byId.get(S5)).not.toHaveProperty('reminder_days');
+      expect(byId.get(S6)?.reminder_days).toBe(5);
+      expect(byId.get(S7)?.reminder_days).toBe(0);
+      // The read key never reaches the answer, and neither does the snapshot.
+      for (const s of items) {
+        expect(s).not.toHaveProperty('snapshot_reminder_days');
+        expect(s).not.toHaveProperty('policy_snapshot');
+      }
+      // One resolve per distinct scope of the open sheets.
+      expect(policy.resolve).toHaveBeenCalledTimes(2);
+      expect(policy.resolve).toHaveBeenCalledWith(
+        { kind: 'workspace', ref: WS },
+        WS,
+        expect.any(Date),
+      );
+      expect(policy.resolve).toHaveBeenCalledWith(
+        { kind: 'team', ref: TEAM },
+        WS,
+        expect.any(Date),
+      );
+    });
+
+    it('approval rows: the waiting queue reads the snapshot; a reopened (open) decided row reads its scope', async () => {
+      const mocks = reminderMocks();
+      const { service } = await setup(
+        {
+          timesheets: [
+            sheet({
+              id: S1,
+              status: 'submitted',
+              policy_snapshot: snapshot({ reminder_days: 4 }),
+            }),
+            sheet({
+              id: S2,
+              status: 'approved',
+              decided_at: '2026-09-22T01:00:00.000Z',
+              policy_snapshot: snapshot({ reminder_days: 6 }),
+            }),
+            sheet({
+              id: S3,
+              status: 'open',
+              approver_scope: null,
+              decided_at: null,
+              policy_snapshot: {},
+            }),
+          ],
+          time_entries: [],
+        },
+        {
+          time_approval_queue_ids: (args) => ({
+            data: args.p_status === 'submitted' ? [S1] : [S2, S3],
+          }),
+        },
+        mocks,
+      );
+      const waiting = await service.queue(DECIDER, {
+        status: 'submitted',
+        page: 1,
+        limit: 50,
+      });
+      expect(waiting.items.map((r) => [r.id, r.reminder_days])).toEqual([
+        [S1, 4],
+      ]);
+      expect(waiting.items[0]).not.toHaveProperty('snapshot_reminder_days');
+      const decided = await service.queue(DECIDER, {
+        status: 'decided',
+        page: 1,
+        limit: 50,
+      });
+      expect(
+        new Map(decided.items.map((r) => [r.id, r.reminder_days])),
+      ).toEqual(
+        new Map([
+          [S2, 6],
+          [S3, 5],
+        ]),
+      );
+    });
+
+    it('detail: the sheet carries the snapshot value, or the scope policy now while open or returned', async () => {
+      const submitted = sheet({
+        status: 'submitted',
+        policy_snapshot: snapshot({ reminder_days: 7 }),
+      });
+      const a = reminderMocks();
+      a.authority.assertViewTimesheet.mockResolvedValue(submitted);
+      const one = await setup(
+        { timesheets: [submitted], time_entries: [entry({})] },
+        {},
+        a,
+      );
+      const detail = await one.service.get(MEMBER, S1);
+      expect(detail.sheet.reminder_days).toBe(7);
+      expect(one.policy.resolve).not.toHaveBeenCalled();
+
+      const open = sheet({
+        status: 'open',
+        approver_scope: null,
+        policy_snapshot: {},
+        period_start: '2999-01-04',
+        period_end: '2999-01-10',
+      });
+      const b = reminderMocks();
+      b.authority.assertViewTimesheet.mockResolvedValue(open);
+      const two = await setup(
+        { timesheets: [open], time_entries: [entry({})] },
+        {},
+        b,
+      );
+      expect((await two.service.get(MEMBER, S1)).sheet.reminder_days).toBe(5);
+      expect(two.policy.resolve).toHaveBeenCalledWith(
+        { kind: 'workspace', ref: WS },
+        WS,
+        expect.any(Date),
+      );
+
+      // Returned: the scope policy now, not the submit-time snapshot.
+      const returned = sheet({
+        status: 'returned',
+        policy_snapshot: snapshot({ reminder_days: 8 }),
+      });
+      const r = reminderMocks();
+      r.authority.assertViewTimesheet.mockResolvedValue(returned);
+      const back = await setup(
+        { timesheets: [returned], time_entries: [entry({})] },
+        {},
+        r,
+      );
+      expect((await back.service.get(MEMBER, S1)).sheet.reminder_days).toBe(5);
+
+      // A failed read leaves it out; the detail still answers.
+      const c = defaultMocks();
+      c.policy.resolve.mockRejectedValue(new Error('resolve down'));
+      c.authority.assertViewTimesheet.mockResolvedValue(open);
+      const three = await setup(
+        { timesheets: [open], time_entries: [entry({})] },
+        {},
+        c,
+      );
+      expect((await three.service.get(MEMBER, S1)).sheet).not.toHaveProperty(
+        'reminder_days',
+      );
     });
   });
 });

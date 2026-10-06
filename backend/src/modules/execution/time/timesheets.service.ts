@@ -70,13 +70,17 @@ import {
   type FreezePreviewEntry,
   type FrozenRate,
   type OverviewContext,
+  type OverviewContextPolicy,
   type Paged,
+  type PeriodKind,
   type PolicySnapshot,
   type RateType,
+  type ResolvedTimePolicy,
   type RoutingPreview,
   type SheetFreeze,
   type SheetRouting,
   type SheetScopeKind,
+  type SheetScopeRef,
   type TimeEntryView,
   type TimeOverview,
   type TimesheetAction,
@@ -177,10 +181,44 @@ const SHEET_STATS_SELECT =
 
 const TIMESHEET_COLUMNS = TIMESHEET_SELECT.split(',').map((c) => c.trim());
 
+/** D85: a summary's sheet row plus `policy_snapshot.reminder_days` (a PostgREST JSON path, so no second read and
+ *  no whole snapshot). The extra key is stripped (toSheetRow) before the row is answered. */
+const SUMMARY_SHEET_SELECT = `${TIMESHEET_SELECT}, snapshot_reminder_days:policy_snapshot->reminder_days`;
+
+/** time_sheet_scope_for never reads p_project_id: a team routes the same in every project, and one engagement
+ *  sheet spans projects. */
+const ANY_PROJECT = null as unknown as string;
+
+const PERIOD_KINDS: ReadonlySet<string> = new Set<PeriodKind>([
+  'weekly',
+  'biweekly',
+  'semi_monthly',
+  'monthly',
+]);
+const LOCAL_DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
+/** D85: statuses whose reminder_days is the scope's policy now (the reminder and auto-submit checks still act on
+ *  them and resolve when they run); the others carry their snapshot's. */
+const LIVE_REMINDER_STATUSES: ReadonlySet<TimesheetStatus> =
+  new Set<TimesheetStatus>(['open', 'returned']);
+
+/** D85: the fields of a context with no policy (personal, or a failed read). */
+export const NO_CONTEXT_POLICY: Readonly<OverviewContextPolicy> = {
+  timezone: null,
+  week_start: null,
+  period_kind: null,
+  period_anchor: null,
+  reminder_days: null,
+};
+
 // ── row shapes ──────────────────────────────────────────────────────────────────────────────────────────
 
 interface DetailSheetRow extends TimesheetRow {
   policy_snapshot: Record<string, unknown> | null;
+}
+
+/** A sheet read with SUMMARY_SHEET_SELECT (D85). */
+interface SummarySheetRow extends TimesheetRow {
+  snapshot_reminder_days?: unknown;
 }
 
 interface FreezeEntryRow {
@@ -320,8 +358,49 @@ function toSheetRow(row: Record<string, unknown>): TimesheetRow {
   return out as unknown as TimesheetRow;
 }
 
+/** A SUMMARY_SHEET_SELECT row as the answered TimesheetRow (the snapshot key dropped). */
+function summarySheet(row: SummarySheetRow): TimesheetRow {
+  return toSheetRow(row as unknown as Record<string, unknown>);
+}
+
 function isSnapshotObject(value: unknown): value is Record<string, unknown> {
   return value !== null && typeof value === 'object' && !Array.isArray(value);
+}
+
+/** D85: a whole number of days ≥ 0 (time_policies CHECK 0..14), else null. */
+export function reminderDaysOf(value: unknown): number | null {
+  const n = toNumber(value);
+  return n !== null && Number.isInteger(n) && n >= 0 ? n : null;
+}
+
+/** D85: an overview context's period rules from its resolved policy (null → NO_CONTEXT_POLICY), read the way the
+ *  server reads them: an invalid zone is UTC (safeTimezone), an invalid week start Monday, an unknown period kind
+ *  weekly (the SQL defaults), and a missing reminder 1 day (the auto-submit check's coalesce). */
+export function contextPolicyFields(
+  policy: ResolvedTimePolicy | null,
+): OverviewContextPolicy {
+  if (!policy) return { ...NO_CONTEXT_POLICY };
+  const p = policy as unknown as Record<string, unknown>;
+  const weekStart = toNumber(p.week_start);
+  return {
+    timezone: safeTimezone(typeof p.timezone === 'string' ? p.timezone : null),
+    week_start:
+      weekStart !== null &&
+      Number.isInteger(weekStart) &&
+      weekStart >= 1 &&
+      weekStart <= 7
+        ? weekStart
+        : 1,
+    period_kind:
+      typeof p.period_kind === 'string' && PERIOD_KINDS.has(p.period_kind)
+        ? (p.period_kind as PeriodKind)
+        : 'weekly',
+    period_anchor:
+      typeof p.period_anchor === 'string' && LOCAL_DATE_RE.test(p.period_anchor)
+        ? p.period_anchor
+        : null,
+    reminder_days: reminderDaysOf(p.reminder_days) ?? 1,
+  };
 }
 
 /** policy_snapshot minus `routing` (critic CC15), and the routing; both null while the sheet is open. */
@@ -491,19 +570,25 @@ export class TimesheetsService {
       isMember && (sheet.status === 'open' || sheet.status === 'returned');
     const memberSubmitted = isMember && sheet.status === 'submitted';
 
-    const [snapshot, authRows, events, canDecide, route] = await Promise.all([
-      this.policySnapshot(sheet.id),
-      this.entryAuthRows(sheet.id),
-      this.events(sheet.id),
-      // The member never decides their own sheet (time_can_decide_scope excludes them, `self` included).
-      isMember
-        ? Promise.resolve(false)
-        : this.authority.canDecide(viewerId, sheet.id),
-      // A1 (and canSubmitNow): read once, best effort.
-      memberEditable
-        ? this.routingPreviewSoft(sheet.id)
-        : Promise.resolve(null),
-    ]);
+    const liveReminder = LIVE_REMINDER_STATUSES.has(sheet.status);
+    const [snapshot, authRows, events, canDecide, route, liveDays] =
+      await Promise.all([
+        this.policySnapshot(sheet.id),
+        this.entryAuthRows(sheet.id),
+        this.events(sheet.id),
+        // The member never decides their own sheet (time_can_decide_scope excludes them, `self` included).
+        isMember
+          ? Promise.resolve(false)
+          : this.authority.canDecide(viewerId, sheet.id),
+        // A1 (and canSubmitNow): read once, best effort.
+        memberEditable
+          ? this.routingPreviewSoft(sheet.id)
+          : Promise.resolve(null),
+        // D85: an open or returned sheet reads its scope's policy now (reminderDaysFor), best effort.
+        liveReminder
+          ? this.liveReminderDays(sheet, new Memo(), new Date())
+          : Promise.resolve(null),
+      ]);
     // Email only in self and team-manager views (backend.md "Cost and Content Redaction").
     const withEmail =
       isMember ||
@@ -529,9 +614,16 @@ export class TimesheetsService {
       stats,
       route,
     );
+    const reminderDays = liveReminder
+      ? liveDays
+      : reminderDaysOf(snapshot?.reminder_days);
 
     const detail: TimesheetDetail = {
-      sheet: { ...sheet, ...stats },
+      sheet: {
+        ...sheet,
+        ...stats,
+        ...(reminderDays !== null ? { reminder_days: reminderDays } : {}),
+      },
       entries,
       events,
       rules,
@@ -581,14 +673,15 @@ export class TimesheetsService {
   }
 
   /** The caller's own sheets (every workspace, by member id), newest first; `origin` and `submission_kind` kept.
-   *  Open/returned sheets carry `routing_preview` (A1), submitted ones `deciders` (A2). */
+   *  Open/returned sheets carry `routing_preview` (A1), submitted ones `deciders` (A2); each its
+   *  `reminder_days` when known (D85). */
   async listMine(
     userId: string,
     q: { from?: string; to?: string },
   ): Promise<TimesheetSummary[]> {
     let query = this.sb
       .from('timesheets')
-      .select(TIMESHEET_SELECT)
+      .select(SUMMARY_SHEET_SELECT)
       .eq('member_user_id', userId);
     if (q.from) query = query.gte('period_end', q.from.slice(0, 10));
     if (q.to) query = query.lte('period_start', q.to.slice(0, 10));
@@ -597,10 +690,16 @@ export class TimesheetsService {
       .order('id', { ascending: true })
       .limit(MINE_LIMIT);
     if (error) this.fail('list_mine', error);
-    const items = await this.summaries(
-      (data ?? []) as unknown as TimesheetRow[],
-    );
-    await this.decorateMine(items);
+    const rows = (data ?? []) as unknown as SummarySheetRow[];
+    const items = await this.summaries(rows.map(summarySheet));
+    const [, reminderDays] = await Promise.all([
+      this.decorateMine(items),
+      this.reminderDaysFor(rows),
+    ]);
+    for (const s of items) {
+      const days = reminderDays.get(s.id);
+      if (days !== undefined) s.reminder_days = days;
+    }
     return items;
   }
 
@@ -1041,7 +1140,8 @@ export class TimesheetsService {
   // ── approvals ───────────────────────────────────────────────────────────────────────────────────────
 
   /** Cross-workspace queue (time_approval_queue_ids), paged in TS; each row carries the member and, when it
-   *  differs from the viewer's current workspace (or always, when none is known), the policy workspace (E27). */
+   *  differs from the viewer's current workspace (or always, when none is known), the policy workspace (E27),
+   *  and its `reminder_days` when known (D85). */
   async queue(
     userId: string,
     q: {
@@ -1058,7 +1158,10 @@ export class TimesheetsService {
     const limit = Math.max(1, Math.floor(q.limit || 50));
     const ids = await this.queueIds(userId, status, q.since);
 
-    let sheets = await this.loadSheets(ids, TIMESHEET_SELECT);
+    let sheets = await this.loadSheets<SummarySheetRow>(
+      ids,
+      SUMMARY_SHEET_SELECT,
+    );
     if (q.scope_kind) {
       sheets = sheets.filter((s) => s.scope_kind === q.scope_kind);
     }
@@ -1076,13 +1179,20 @@ export class TimesheetsService {
     if (slice.length === 0) return { items: [], total, page, limit };
 
     const waiting = status === 'submitted';
-    const [{ items: summaries, needsReview }, members, workspaces, overCap] =
-      await Promise.all([
-        this.summariesWithReview(slice),
-        this.memberProfiles(distinct(slice.map((s) => s.member_user_id))),
-        this.workspaceNames(distinct(slice.map((s) => s.policy_workspace_id))),
-        waiting ? this.overCapFor(slice) : Promise.resolve(null),
-      ]);
+    const rows = slice.map(summarySheet);
+    const [
+      { items: summaries, needsReview },
+      members,
+      workspaces,
+      overCap,
+      reminderDays,
+    ] = await Promise.all([
+      this.summariesWithReview(rows),
+      this.memberProfiles(distinct(rows.map((s) => s.member_user_id))),
+      this.workspaceNames(distinct(rows.map((s) => s.policy_workspace_id))),
+      waiting ? this.overCapFor(rows) : Promise.resolve(null),
+      this.reminderDaysFor(slice),
+    ]);
     const current = q.currentWorkspaceId ?? null;
     const items: ApprovalRow[] = summaries.map((s) => {
       const wsId = s.policy_workspace_id;
@@ -1097,6 +1207,8 @@ export class TimesheetsService {
             ? { id: wsId, name }
             : null,
       };
+      const days = reminderDays.get(s.id);
+      if (days !== undefined) row.reminder_days = days;
       // A3: the waiting queue only (a decided sheet has nothing left to decide).
       if (overCap) {
         row.flags = {
@@ -1687,6 +1799,122 @@ export class TimesheetsService {
       : { invoice_id: first.invoice_id };
   }
 
+  // ── internals: period rules on reads (D85) ──────────────────────────────────────────────────────────
+
+  /** policy.resolve, once per (scope, policy workspace) for one read; null on failure (logged at warn: it only
+   *  decorates a read). Every caller of one memo resolves at the same instant. */
+  private resolvePolicySoft(
+    scope: SheetScopeRef,
+    policyWorkspaceId: string | null,
+    at: Date,
+    memo: Memo<ResolvedTimePolicy | null>,
+  ): Promise<ResolvedTimePolicy | null> {
+    const key = `${scope.kind}|${scope.ref}|${policyWorkspaceId ?? ''}`;
+    return memo.get(key, async () => {
+      try {
+        return await this.policy.resolve(scope, policyWorkspaceId, at);
+      } catch (error) {
+        this.logger.warn(
+          `time_policy_read_failed scope=${scope.kind}: ${error instanceof Error ? error.message : String(error)}`,
+        );
+        return null;
+      }
+    });
+  }
+
+  /** An open or returned sheet's reminder_days: its scope's policy now. An open sheet has no snapshot (it is
+   *  written at submit), and the reminder and auto-submit checks that still act on open and returned sheets
+   *  resolve the scope when they run; reminder_days comes only from the workspace and team layers, which are not
+   *  dated (the contract layer, the only dated one, never sets it), so one read per scope serves every period.
+   *  A missing value is 1 (the checks' coalesce); null when the read failed. */
+  private async liveReminderDays(
+    sheet: TimesheetRow,
+    memo: Memo<ResolvedTimePolicy | null>,
+    at: Date,
+  ): Promise<number | null> {
+    const policy = await this.resolvePolicySoft(
+      { kind: sheet.scope_kind, ref: sheet.scope_ref },
+      sheet.policy_workspace_id,
+      at,
+      memo,
+    );
+    return policy ? (reminderDaysOf(policy.reminder_days) ?? 1) : null;
+  }
+
+  /** sheet id → reminder_days (D85): liveReminderDays for `open` and `returned` (one resolve per distinct scope),
+   *  `policy_snapshot.reminder_days` (frozen at submit) for `submitted` and `approved`. Unknown values are left
+   *  out. */
+  private async reminderDaysFor(
+    sheets: SummarySheetRow[],
+  ): Promise<Map<string, number>> {
+    const out = new Map<string, number>();
+    const memo = new Memo<ResolvedTimePolicy | null>();
+    const now = new Date();
+    await mapLimit(sheets, DECORATE_CONCURRENCY, async (s) => {
+      const days = LIVE_REMINDER_STATUSES.has(s.status)
+        ? await this.liveReminderDays(s, memo, now)
+        : reminderDaysOf(s.snapshot_reminder_days);
+      if (days !== null) out.set(s.id, days);
+    });
+    return out;
+  }
+
+  /** A context's routed sheet scope now, as `me/entries?for=` reads it: a workspace context is its own scope;
+   *  a team or an assignment goes through time_sheet_scope_for. Null for personal and when the call fails (an
+   *  assignment that no longer exists, which `me/entries` reads in the person's own zone too). */
+  private async contextScopeSoft(
+    kind: ContextKind,
+    id: string | null,
+  ): Promise<{
+    scope: SheetScopeRef;
+    policyWorkspaceId: string | null;
+  } | null> {
+    if (kind === 'personal' || !id) return null;
+    if (kind === 'workspace') {
+      return {
+        scope: { kind: 'workspace', ref: id },
+        policyWorkspaceId: id,
+      };
+    }
+    try {
+      const routed = await this.policy.sheetScopeFor(kind, id, ANY_PROJECT);
+      return routed
+        ? {
+            scope: { kind: routed.scope_kind, ref: routed.scope_ref },
+            policyWorkspaceId: routed.policy_workspace_id ?? null,
+          }
+        : null;
+    } catch (error) {
+      this.logger.warn(
+        `time_context_scope_failed kind=${kind}: ${error instanceof Error ? error.message : String(error)}`,
+      );
+      return null;
+    }
+  }
+
+  /** D85: a reader of each context's period rules from its resolved policy (contextPolicyFields), memoised by
+   *  context: one scope call per team or assignment context, one resolve per distinct routed (scope, policy
+   *  workspace), all at `now`. Best effort per context: a failed read gives NO_CONTEXT_POLICY. Its promises never
+   *  reject, so a read can start early and be awaited later (see overviewContexts). */
+  private contextPolicyReader(
+    now: Date,
+  ): (kind: ContextKind, id: string | null) => Promise<OverviewContextPolicy> {
+    const resolved = new Memo<ResolvedTimePolicy | null>();
+    const byContext = new Memo<OverviewContextPolicy>();
+    return (kind, id) =>
+      byContext.get(`${kind}|${id ?? ''}`, async () => {
+        const routed = await this.contextScopeSoft(kind, id);
+        if (!routed) return { ...NO_CONTEXT_POLICY };
+        const policy = await this.resolvePolicySoft(
+          routed.scope,
+          routed.policyWorkspaceId,
+          now,
+          resolved,
+        );
+        return contextPolicyFields(policy);
+      });
+  }
+
   // ── internals: the freeze ───────────────────────────────────────────────────────────────────────────
 
   /** The policy rounding: `policy_snapshot` on approve (L40), a resolve at period start on submit (what the
@@ -2149,7 +2377,8 @@ export class TimesheetsService {
   /**
    * contexts[] (backend.md me/overview): every logging context with an own entry in the last 30 days or an
    * entry on an `open`/`returned` sheet, newest activity first. Each carries the scope of its latest entry's
-   * sheet and that scope's current sheet (the one holding today, else the newest open/returned one).
+   * sheet and that scope's current sheet (the one holding today, else the newest open/returned one), and its
+   * period rules from its resolved policy (D85, contextPolicyReader; null for personal).
    */
   private async overviewContexts(
     userId: string,
@@ -2159,6 +2388,8 @@ export class TimesheetsService {
       now.getTime() - OVERVIEW_DAYS * 86_400_000,
     ).toISOString();
     const sinceDate = addDays(localDate(now, 'UTC'), -(OVERVIEW_DAYS + 1));
+    const contextIdOf = (e: OverviewEntryRow): string | null =>
+      e.context_kind === 'personal' ? null : e.context_ref;
 
     const recentRes = await this.sb
       .from('time_entries')
@@ -2171,6 +2402,20 @@ export class TimesheetsService {
       .limit(OVERVIEW_ENTRY_LIMIT);
     if (recentRes.error) this.fail('overview_entries', recentRes.error);
     const recent = (recentRes.data ?? []) as unknown as OverviewEntryRow[];
+
+    // D85: a context's period rules depend only on its kind and id, and the recent entries already name most
+    // contexts, so their policy reads start now and overlap the sheet reads below instead of following them. The
+    // reader never rejects; the contexts only on open sheets (no recent entry) start at the end.
+    const policyOf = this.contextPolicyReader(now);
+    const early = new Map<string, OverviewEntryRow>();
+    for (const e of recent) {
+      if (e.context_kind === 'personal') continue;
+      const key = `${e.context_kind}|${e.context_ref ?? ''}`;
+      if (!early.has(key)) early.set(key, e);
+    }
+    void mapLimit([...early.values()], DECORATE_CONCURRENCY, (e) =>
+      policyOf(e.context_kind, contextIdOf(e)),
+    );
 
     const [liveRes, currentRes] = await Promise.all([
       this.sb
@@ -2242,13 +2487,14 @@ export class TimesheetsService {
         : null;
       contexts.set(key, {
         kind: e.context_kind,
-        id: e.context_kind === 'personal' ? null : e.context_ref,
+        id: contextIdOf(e),
         label:
           e.context_kind === 'personal'
             ? PERSONAL_LABEL
             : (e.context_label_snapshot ?? sheet?.scope_label_snapshot ?? ''),
         sheet_scope: e.context_kind === 'personal' ? null : scope,
         current_sheet: null,
+        ...NO_CONTEXT_POLICY,
       });
     }
 
@@ -2276,10 +2522,12 @@ export class TimesheetsService {
         };
       }
     }
-    return {
-      contexts: [...contexts.values()],
-      hasRecentEntries: recent.length > 0,
-    };
+    const list = [...contexts.values()];
+    // The early reads are shared through the reader's memo; this awaits them and starts the rest.
+    await mapLimit(list, DECORATE_CONCURRENCY, async (ctx) => {
+      Object.assign(ctx, await policyOf(ctx.kind, ctx.id));
+    });
+    return { contexts: list, hasRecentEntries: recent.length > 0 };
   }
 
   /** workspace_time_admin[]: workspaces the caller owns or administers (can_manage_workspace's rule). */

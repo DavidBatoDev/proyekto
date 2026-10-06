@@ -581,6 +581,12 @@ export interface TimesheetSummary extends TimesheetRow {
   routing_preview?: RoutingPreview;
   /** A2, `GET /time/me/timesheets` only: the member's `submitted` sheets (time_timesheet_deciders). */
   deciders?: DeciderName[];
+  /** D85 (`me/timesheets`, the approval rows, the detail's `sheet`): the reminder and auto-submit delay in days
+   *  (0..14), for "sends itself <period_end + max(reminder_days, 1)>". `open` and `returned` sheets carry their
+   *  scope's resolved policy now (an open sheet has no snapshot yet, and the reminder and auto-submit checks
+   *  resolve when they run); `submitted` and `approved` ones carry `policy_snapshot.reminder_days`, frozen at
+   *  submit. Absent when unknown (a failed policy read, or a snapshot without it). */
+  reminder_days?: number;
 }
 
 export interface TimesheetDetail {
@@ -658,7 +664,23 @@ export interface TimesheetSettledExtras {
   invoice_status?: string;
 }
 
-export interface OverviewContext {
+/** D85: the period rules of an overview context, from its resolved policy: the context's routed sheet scope
+ *  (time_sheet_scope_for now) resolved now, the same policy `me/entries?for=<context>` reads its dates in.
+ *  Every field is null for `personal` (the web uses the person's preferences) and when the scope or policy
+ *  read failed (an assignment that no longer exists reads in the person's zone on `me/entries` too). */
+export interface OverviewContextPolicy {
+  /** IANA zone; an invalid stored zone reads as 'UTC', as the server reads it. */
+  timezone: string | null;
+  /** 1..7 ISO weekday (1 = Monday). */
+  week_start: number | null;
+  period_kind: PeriodKind | null;
+  /** `YYYY-MM-DD`; null for the default biweekly anchor and for every other period kind without one. */
+  period_anchor: string | null;
+  /** 0..14 days after period end; "sends itself" is period end + max(reminder_days, 1). */
+  reminder_days: number | null;
+}
+
+export interface OverviewContext extends OverviewContextPolicy {
   kind: ContextKind;
   id: string | null;
   label: string;
