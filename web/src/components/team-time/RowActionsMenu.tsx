@@ -15,8 +15,8 @@ export interface ActionMenuItem {
 
 /**
  * Portal-positioned "⋯" actions menu. Opens upward when there isn't room
- * below, closes on outside click / Escape / scroll. Extracted from
- * TeamApprovalsGrid so the grid and the inbox share one implementation.
+ * below, closes on outside click / Escape / scroll. Shared by the Time page's
+ * entries table and the month view's day dialog.
  */
 export function RowActionsMenu({
 	rowId,

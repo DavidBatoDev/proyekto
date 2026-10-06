@@ -11,8 +11,8 @@ import {
 /**
  * The Rates page's add, edit and delete dialogs.
  *
- * Copied out of TeamTimeModals.tsx (which W3-1 retires with the rest of the
- * old per-log time UI) onto AppDialog and theme tokens, with the props kept as
+ * Copied out of the old TeamTimeModals.tsx (retired with the rest of the old
+ * per-log time UI) onto AppDialog and theme tokens, with the props kept as
  * they were. The copy follows the time rebuild: a rate no longer decides who
  * may track time; it prices the member's approved team time on the dates it
  * covers (start to end date, both inclusive).

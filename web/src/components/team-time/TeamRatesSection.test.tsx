@@ -71,8 +71,16 @@ describe("TeamRatesSection", () => {
 		expect(
 			screen.getByText("A rate prices a member's approved time on a project."),
 		).toBeTruthy();
-		fireEvent.click(screen.getByRole("button", { name: "View time" }));
+		// Each card's buttons name their person (one card per member).
+		const view = screen.getByRole("button", {
+			name: "View time: Maria Santos",
+		});
+		expect(view.textContent).toBe("View time");
+		fireEvent.click(view);
 		expect(onViewLogs).toHaveBeenCalledWith(member);
+		expect(
+			screen.getByRole("button", { name: "Manage rates: Maria Santos" }),
+		).toBeTruthy();
 
 		const text = container.textContent ?? "";
 		expect(text).not.toMatch(/\blogs?\b/i);

@@ -212,10 +212,9 @@ describe("PayMemberModal", () => {
 		expect(spy).toHaveBeenCalledWith({ queryKey: ["payouts"] });
 	});
 
-	it("still takes the old `logs` prop from the pages that haven't moved yet", async () => {
+	it("pays an entry that carries no payable_seconds snapshot", async () => {
 		renderModal({
-			entries: undefined,
-			logs: [entry({ id: "old-1", payable_seconds: undefined })],
+			entries: [entry({ id: "old-1", payable_seconds: undefined })],
 		});
 		await screen.findByRole("combobox");
 		fireEvent.click(screen.getByRole("button", { name: /record payout/i }));

@@ -144,11 +144,6 @@ export interface PayMemberModalProps {
 	currency: string;
 	/** The Owed entries to pay: approved, unpaid, team time, one currency. */
 	entries?: readonly PayableEntry[];
-	/**
-	 * @deprecated The old name of `entries`, still passed by the pages that
-	 * W2-5 and W3-1 replace (project Time, Team Logs).
-	 */
-	logs?: readonly PayableEntry[];
 	/** Team cut-off schedule, used to break a multi-period payment down. */
 	payPeriodConfig?: PayPeriodConfig | null;
 	/** The team's time zone (cut-offs are counted in it). The device's when absent. */
@@ -252,7 +247,6 @@ function PayMemberDialog({
 	memberLabel,
 	currency,
 	entries: entriesProp,
-	logs,
 	payPeriodConfig,
 	timezone,
 	unapprovedSeconds = 0,
@@ -274,8 +268,8 @@ function PayMemberDialog({
 	const [submitting, setSubmitting] = useState(false);
 
 	const entries = useMemo<readonly PayableEntry[]>(
-		() => entriesProp ?? logs ?? [],
-		[entriesProp, logs],
+		() => entriesProp ?? [],
+		[entriesProp],
 	);
 	const zone = safeTimezone(timezone ?? deviceTimeZone());
 	// No self-payment (CHANGE-9): the server refuses it too
