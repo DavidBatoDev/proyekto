@@ -15,6 +15,7 @@ import {
 	AppEmptyState,
 	AppSurfaceCard,
 } from "@/components/common/AppPrimitives";
+import { EngagementAssignmentsCard } from "@/components/engagements/EngagementAssignmentsCard";
 import { EngagementProjectCard } from "@/components/engagements/EngagementProjectCard";
 import {
 	describeRate,
@@ -247,17 +248,8 @@ function EngagementDetailPage() {
 
 				<EngagementProjectCard engagement={engagement} />
 
-				<AppSurfaceCard className="p-5">
-					<h2 className="mb-1.5 text-sm font-semibold text-foreground">
-						What happens next
-					</h2>
-					<p className="text-sm leading-6 text-muted-foreground">
-						Assignments — which worker performs which piece of project work —
-						and time submission and approval will appear on this page as those
-						workflows ship. Until then, this engagement records the parties, the
-						projects it covers, and the signed terms in effect.
-					</p>
-				</AppSurfaceCard>
+				{/* Who works on which project under this agreement (assign, end). */}
+				<EngagementAssignmentsCard engagement={engagement} />
 
 				<ExecutionNotice engagement={engagement} />
 			</div>
@@ -280,7 +272,8 @@ function ExecutionNotice({ engagement }: { engagement: Engagement }) {
 					? ` — signing added them to ${engagement.viewer_team.name} as a member, which is a team membership, not a project grant`
 					: " and does not place this person on your team"
 				: ""}
-			— project access is granted separately, through the project's people.
+			— project access is granted separately, through the project's people or an
+			assignment.
 		</p>
 	);
 }
