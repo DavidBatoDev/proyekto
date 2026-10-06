@@ -1,6 +1,6 @@
 # API Reference
 
-> **Last updated:** 2026-10-06 · **Status:** current
+> **Last updated:** 2026-10-07 · **Status:** current
 
 Every HTTP route the backend exposes, grouped by module. All paths carry the global
 `/api` prefix — the exceptions are `POST /mcp` and the OAuth surface (`/oauth/*`,
@@ -248,7 +248,7 @@ still call (the web calls `/api/time` only). Every route carries `SupabaseAuthGu
 | GET | /api/time/projects/:projectId/loggers | Supabase | "Who can log time here": everyone with `time.log` and the option their time goes to by default; project admins and owners only (404 otherwise); placed talent masked or left out for non-parties |
 | GET | /api/time/me/running | Supabase | The caller's running entry or `null` |
 | GET | /api/time/me/entries · /me/summary · /me/timesheets | Supabase | Own entries (paged, ≤ 200) / totals by day, context, project and sheet status / own timesheets (200 newest) |
-| GET | /api/time/me/overview?tz= | Supabase | `can_log`, `approver_mode`, contexts with the current sheet, approvals waiting, workspaces the caller administers |
+| GET | /api/time/me/overview?tz= | Supabase | `can_log`, `approver_mode`, contexts with the current sheet and their period rules (below), approvals waiting, workspaces the caller administers |
 | GET·PUT | /api/time/me/preferences | Supabase | Display timezone and week start |
 | GET | /api/time/me/projects | Supabase | The projects the caller can log on (`time.log` and at least one option), most recently logged first, at most 200, with the remembered default kind (30 s cache) |
 | POST | /api/time/entries/start · /api/time/entries | Supabase | Start a timer / add time manually (201). A second running timer is 409 `TIMER_ALREADY_RUNNING` |
@@ -265,6 +265,16 @@ still call (the web calls `/api/time` only). Every route carries `SupabaseAuthGu
 | GET | /api/time/policies/workspaces/:workspaceId/history | Supabase | The policy's audit rows and those of the workspace's team overrides, newest first (managers; not plan-gated) |
 | GET·PUT·DELETE | /api/time/policies/teams/:teamId | Supabase | Team override (managers read; owner-only fields; DELETE owner, 200) |
 | POST | /api/time/cron/run | Public +CronSecret | Hourly sweep once its Cloud Scheduler job exists ([rollout step 9](../13-proposals/time-management/migrations-and-rollout.md#apply-and-deploy-sequence)): 24 h auto-stop, 10 h notice, auto-submit, finish auto/self sheets, reminders (200) |
+
+**Period rules on reads.** Every `me/overview` context carries `timezone`, `week_start`
+(1–7, 1 = Monday), `period_kind`, `period_anchor` and `reminder_days` from the policy it
+routes to now, read as the server reads them (an invalid zone is `UTC`, a missing reminder
+1). All five are null for `personal` and when that context's policy read fails. Every
+timesheet summary (`me/timesheets` items, `approvals` rows and the detail's `sheet`)
+carries `reminder_days` (0–14), absent when unknown: open and returned sheets read the
+scope's live policy, submitted and approved sheets the `policy_snapshot` frozen at submit.
+An `auto` or `self` sheet sends itself at period end + `max(reminder_days, 1)` days. See
+[backend › D85](../13-proposals/time-management/backend.md#timesheets-and-cron).
 
 Error bodies carry `{error: {code, message, status, …extras}}` with typed codes
 (`NO_LOGGING_CONTEXT`, `LOGGING_FOR_REQUIRED`, `TIMESHEET_LOCKED`, `STALE_REVISION`,

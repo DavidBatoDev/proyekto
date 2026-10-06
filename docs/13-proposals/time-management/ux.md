@@ -2,7 +2,7 @@
 
 > **⚠️ Built, held unmerged.** The web PR implements this page on the local branch `feat/time-web` (2026-10-06), based on backend PR-1 (`feat/time-pr1`); it merges after PR-1, at [rollout step 7](./migrations-and-rollout.md#apply-and-deploy-sequence). [As Built in the Web PR](#as-built-in-the-web-pr) lists every place the build differs from, or settles a question left open by, the sections below, the copy the build added, the decisions D79–D86 and the backlog. When the web PR merges, the shipped behaviour is described in [Teams and Time › On the web](../../11-domains/teams-and-time/README.md#on-the-web) and [Web › Routing › Time](../../04-web/routing-and-access.md#time).
 
-> **Last updated:** 2026-10-06 · **Status:** draft
+> **Last updated:** 2026-10-07 · **Status:** draft
 
 > This page is the web PR's spec. Rows aligned with the built backend on 2026-10-06: the weekly-limit indicator (D65) and the account-deletion copy (D70). Statements the web build proved wrong are corrected inline and tagged "(as built)".
 
@@ -20,7 +20,7 @@ The web PR is the local branch `feat/time-web` (worktree `prdigy-web`), branched
 |---|---|
 | D79 | Every time notification, email and push links to the Time pages (PR-1 A13): timesheet types `/time/timesheets/<id>`, comment and timer notices `/time?entry=<id>`, payments `/time`, approval digests `/time#waiting`. PR-1 and the web PR merge in one cutover, so the D29 team-page gap links are gone; links already stored keep resolving through the redirect stubs |
 | D80 | `invoice_id`, `invoice_number` and `invoice_status` on `TIMESHEET_HAS_SETTLED_ENTRIES` go only to callers who can see cost. A member reopening their own `auto`/`self` sheet gets the reason, `paid_outside` and `payout_id` only, so a worker never learns client invoice numbers. With no invoice reference the web says "This time is already being billed, so it can't be reopened." and links nothing |
-| D81 | A "confirmed" policy-history row reads "Confirmed (no changes)". Week-grouped exports get no Week column (`group_by` shapes the summary only). The `POLICY_WEEKLY_LIMIT` warning never says hours are cut; as built it reads "<label> has a 40h weekly limit. You've logged 41h this week." |
+| D81 | A "confirmed" policy-history row reads "Confirmed (no changes)". Week-grouped exports get no Week column (`group_by` shapes the summary only). The `POLICY_WEEKLY_LIMIT` warning never says hours are cut. It reads "<label> has a 40h weekly limit. You've logged 41h this week." |
 | D82 | Comment and timer links are `/time?entry=<id>` for everyone, deciders included; the Time page's entry modal opens any entry the viewer can see. Up to 30 s of staleness in `me/projects` (A9) is accepted |
 | D83 | In the decision dialogs, **Return to <First>** and a decider's **Reopen** stay disabled until the note has non-blank text, with the helper "Add a note so <First> knows what to change." ("the person" without a name) |
 | D84 | Project › Time › Everyone rows are read-only. Opening someone else's entry from a project report needs a backend `assertViewEntry` branch for `time.view_team_logs` with L21/L22 redaction ([backlog](#backlog)) |
@@ -141,7 +141,7 @@ Added to PR-1 as TypeScript-only commits for the web; every field is optional on
 | Item | Shape |
 |---|---|
 | A1, A2 | `routing_preview {approver_scope, cost_money, deciders ≤ 5}` on the member's own open/returned sheet, `deciders ≤ 5` on their submitted sheet, in the detail and on `me/timesheets` |
-| A3 | `ApprovalRow.flags {needs_review, over_cap_seconds, running}` plus `flags_partial` when the 5 s budget ran out |
+| A3 | `ApprovalRow.flags {needs_review, over_cap_seconds, running}` plus `flags_partial` when the row's `over_cap_seconds` wasn't computed and reads 0, for one of three reasons: the row is past the page's first 50 waiting rows, the 5 s budget ran out before its check started, or its check (the freeze preview) failed |
 | A4 | Any workspace member reads `GET time/policies/workspaces/:id` with `can_edit: false`; a member's read never materialises the row |
 | A5 | `group_by=week` on report entries, summary and export, in the scope's policy timezone and week start |
 | A6 | Warning `POLICY_WEEKLY_LIMIT {limit_minutes, logged_minutes, label}` on team and workspace writes (indicator only, D65) |
