@@ -1,7 +1,8 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { Plus, RotateCcw, Trash2 } from "lucide-react";
-import { useMemo, useState } from "react";
+import { type ReactNode, useMemo, useState } from "react";
 import { useToast } from "@/hooks/useToast";
+import { isPlanLimitError } from "@/lib/planLimitErrors";
 import {
 	type PayPeriodConfig,
 	type PayPeriodDef,
@@ -13,10 +14,30 @@ import {
 	resolvePayPeriods,
 } from "./log-period";
 
+export const PAY_PERIOD_COPY = {
+	title: "Billing and pay cut-offs",
+	description:
+		"The cut-off periods this team bills hours and pays people by, and when each is paid. They show up in the report's period filter (“Current cut-off”). Leave as is to use the default semi-monthly schedule.",
+	saved: "Cut-offs saved",
+	resetDone: "Cut-offs reset to the default",
+	save: "Save cut-offs",
+	saving: "Saving…",
+	reset: "Reset to default",
+	addPeriod: "Add period",
+	thisMonth: "This month",
+} as const;
+
 interface PayPeriodSettingsCardProps {
 	teamId: string;
 	config?: PayPeriodConfig | null;
+	/** The team owner (the backend keeps `pay_period_config` owner-only). */
 	canManage: boolean;
+	/**
+	 * The plan notice shown when the team's workspace has neither
+	 * `time_billable_invoices` nor `time_payouts` (L14, D39). While it is set
+	 * the schedule is read-only, whoever is looking.
+	 */
+	planNotice?: ReactNode;
 }
 
 function newPeriodId(): string {
@@ -27,23 +48,31 @@ function newPeriodId(): string {
 }
 
 /**
- * Owner-only editor for a team's payout cut-off schedule
- * (teams.pay_period_config). Mirrors the retroactive-days / default-currency
- * sections in settings/time.tsx: local draft + Save, and the same divider-led
- * section shell rather than a card of its own, so the settings page reads as
- * one flat column. A live preview shows the concrete cut-off windows and their
- * pay dates for the current month.
+ * "Billing and pay cut-offs" (ux.md › Team Override, L14): the team's cut-off
+ * schedule (teams.pay_period_config), which serves both hourly invoices and
+ * payouts. The owner edits it when the team's workspace plan has either
+ * feature; otherwise it reads only, under `planNotice`. Local draft + Save, in
+ * the same flat section shell as the rest of Team settings › Time, with a live
+ * preview of this month's concrete windows and their pay dates.
  */
 export function PayPeriodSettingsCard({
 	teamId,
 	config,
 	canManage,
+	planNotice,
 }: PayPeriodSettingsCardProps) {
 	const toast = useToast();
 	const qc = useQueryClient();
+	const editable = canManage && !planNotice;
 	const [draft, setDraft] = useState<PayPeriodDef[]>(
 		() => (config ?? DEFAULT_PAY_PERIOD_CONFIG).periods,
 	);
+
+	const onError = (e: Error) => {
+		// The plan prompt is raised globally (api/axios notifyPlanLimit).
+		if (isPlanLimitError(e)) return;
+		toast.error(e.message);
+	};
 
 	const saveMutation = useMutation({
 		mutationFn: (periods: PayPeriodDef[]) =>
@@ -51,22 +80,22 @@ export function PayPeriodSettingsCard({
 				pay_period_config: { cadence: "monthly", periods },
 			}),
 		onSuccess: () => {
-			toast.success("Cut-off schedule saved");
+			toast.success(PAY_PERIOD_COPY.saved);
 			qc.invalidateQueries({ queryKey: ["teams", "detail", teamId] });
 			qc.invalidateQueries({ queryKey: ["team", teamId] });
 		},
-		onError: (e: Error) => toast.error(e.message),
+		onError,
 	});
 
 	const resetMutation = useMutation({
 		mutationFn: () => updateTeam(teamId, { pay_period_config: null }),
 		onSuccess: () => {
-			toast.success("Cut-off schedule reset to default");
+			toast.success(PAY_PERIOD_COPY.resetDone);
 			setDraft(DEFAULT_PAY_PERIOD_CONFIG.periods);
 			qc.invalidateQueries({ queryKey: ["teams", "detail", teamId] });
 			qc.invalidateQueries({ queryKey: ["team", teamId] });
 		},
-		onError: (e: Error) => toast.error(e.message),
+		onError,
 	});
 
 	const previewMonth = useMemo(() => {
@@ -101,17 +130,20 @@ export function PayPeriodSettingsCard({
 	const clampDay = (v: number) => Math.min(31, Math.max(1, Math.round(v) || 1));
 
 	return (
-		<section>
+		<section data-testid="pay-period-settings" aria-labelledby="pay-cutoffs">
 			<div>
-				<p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-					Payout cut-offs
+				<p
+					id="pay-cutoffs"
+					className="text-sm font-medium leading-5 text-foreground"
+				>
+					{PAY_PERIOD_COPY.title}
 				</p>
-				<p className="mt-1 max-w-xl text-xs text-muted-foreground">
-					Define your pay periods and when each is paid. Members and admins pick
-					these from the period filter (e.g. “Current cut-off”). Leave as-is to
-					use the default semi-monthly schedule.
+				<p className="mt-0.5 max-w-xl text-xs leading-relaxed text-muted-foreground">
+					{PAY_PERIOD_COPY.description}
 				</p>
 			</div>
+
+			{planNotice ? <div className="mt-3">{planNotice}</div> : null}
 
 			<div className="mt-3 space-y-2">
 				{/* Header row (desktop) */}
@@ -131,23 +163,24 @@ export function PayPeriodSettingsCard({
 						<input
 							type="text"
 							value={row.label}
-							disabled={!canManage}
+							disabled={!editable}
 							onChange={(e) => updateRow(i, { label: e.target.value })}
 							placeholder="Label"
-							className="col-span-2 rounded-md border border-border px-2 py-1 text-sm sm:col-span-1"
+							aria-label="Label"
+							className="col-span-2 rounded-md border border-border bg-background px-2 py-1 text-sm sm:col-span-1"
 						/>
 						<input
 							type="number"
 							min={1}
 							max={31}
 							value={row.start_day}
-							disabled={!canManage}
+							disabled={!editable}
 							onChange={(e) =>
 								updateRow(i, {
 									start_day: clampDay(Number(e.target.value)),
 								})
 							}
-							className="w-16 rounded-md border border-border px-2 py-1 text-sm tabular-nums"
+							className="w-16 rounded-md border border-border bg-background px-2 py-1 text-sm tabular-nums"
 							aria-label="Start day"
 						/>
 						<div className="flex items-center gap-1">
@@ -161,20 +194,20 @@ export function PayPeriodSettingsCard({
 									min={1}
 									max={31}
 									value={row.end_day}
-									disabled={!canManage}
+									disabled={!editable}
 									onChange={(e) =>
 										updateRow(i, {
 											end_day: clampDay(Number(e.target.value)),
 										})
 									}
-									className="w-16 rounded-md border border-border px-2 py-1 text-sm tabular-nums"
+									className="w-16 rounded-md border border-border bg-background px-2 py-1 text-sm tabular-nums"
 									aria-label="End day"
 								/>
 							)}
 							<label className="flex items-center gap-1 text-[10px] text-muted-foreground">
 								<input
 									type="checkbox"
-									disabled={!canManage}
+									disabled={!editable}
 									checked={row.end_day === "EOM"}
 									onChange={(e) =>
 										updateRow(i, { end_day: e.target.checked ? "EOM" : 15 })
@@ -189,40 +222,44 @@ export function PayPeriodSettingsCard({
 							min={1}
 							max={31}
 							value={row.pay_day}
-							disabled={!canManage}
+							disabled={!editable}
 							onChange={(e) =>
 								updateRow(i, { pay_day: clampDay(Number(e.target.value)) })
 							}
-							className="w-16 rounded-md border border-border px-2 py-1 text-sm tabular-nums"
+							className="w-16 rounded-md border border-border bg-background px-2 py-1 text-sm tabular-nums"
 							aria-label="Pay day"
 						/>
 						<select
 							value={row.pay_month_offset}
-							disabled={!canManage}
+							disabled={!editable}
 							onChange={(e) =>
 								updateRow(i, { pay_month_offset: Number(e.target.value) })
 							}
-							className="rounded-md border border-border px-2 py-1 text-xs"
+							className="rounded-md border border-border bg-background px-2 py-1 text-xs"
 							aria-label="Pay month"
 						>
 							<option value={0}>Same month</option>
 							<option value={1}>Next month</option>
 							<option value={2}>+2 months</option>
 						</select>
-						<button
-							type="button"
-							disabled={!canManage || draft.length <= 1}
-							onClick={() => removeRow(i)}
-							className="justify-self-end rounded-md p-1.5 text-muted-foreground hover:bg-rose-50 hover:text-rose-600 disabled:cursor-not-allowed disabled:opacity-40"
-							aria-label="Remove period"
-						>
-							<Trash2 className="h-3.5 w-3.5" />
-						</button>
+						{editable ? (
+							<button
+								type="button"
+								disabled={draft.length <= 1}
+								onClick={() => removeRow(i)}
+								className="justify-self-end rounded-md p-1.5 text-muted-foreground hover:bg-destructive/10 hover:text-destructive disabled:cursor-not-allowed disabled:opacity-40"
+								aria-label="Remove period"
+							>
+								<Trash2 className="h-3.5 w-3.5" />
+							</button>
+						) : (
+							<span />
+						)}
 					</div>
 				))}
 			</div>
 
-			{canManage && (
+			{editable && (
 				<button
 					type="button"
 					onClick={addRow}
@@ -230,14 +267,14 @@ export function PayPeriodSettingsCard({
 					className="mt-2 inline-flex items-center gap-1.5 rounded-md border border-dashed border-border px-2.5 py-1.5 text-xs font-medium text-muted-foreground hover:bg-muted disabled:opacity-40"
 				>
 					<Plus className="h-3.5 w-3.5" />
-					Add period
+					{PAY_PERIOD_COPY.addPeriod}
 				</button>
 			)}
 
 			{/* Live preview for the current month */}
 			<div className="mt-3 rounded-md border border-border bg-muted px-3 py-2">
 				<p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
-					This month
+					{PAY_PERIOD_COPY.thisMonth}
 				</p>
 				<ul className="mt-1 space-y-0.5">
 					{preview.map((p) => (
@@ -251,7 +288,7 @@ export function PayPeriodSettingsCard({
 									({p.dayRangeLabel})
 								</span>
 							</span>
-							<span className="text-emerald-600">
+							<span className="text-success-foreground">
 								{payDateLabel(p.payDate.toISOString())}
 							</span>
 						</li>
@@ -259,29 +296,29 @@ export function PayPeriodSettingsCard({
 				</ul>
 			</div>
 
-			{canManage && (
-				<div className="mt-3 flex items-center gap-2">
+			{editable && (
+				<div className="mt-3 flex flex-wrap items-center gap-2">
 					<button
 						type="button"
 						onClick={() => saveMutation.mutate(draft)}
 						disabled={saveMutation.isPending}
-						className="rounded-md bg-secondary px-3 py-1.5 text-xs font-semibold text-secondary-foreground hover:bg-secondary/90 disabled:opacity-60"
+						className="rounded-md bg-primary px-3 py-1.5 text-xs font-semibold text-primary-foreground hover:bg-primary/90 disabled:opacity-60"
 					>
-						{saveMutation.isPending ? "Saving..." : "Save cut-offs"}
+						{saveMutation.isPending
+							? PAY_PERIOD_COPY.saving
+							: PAY_PERIOD_COPY.save}
+					</button>
+					<button
+						type="button"
+						onClick={() => resetMutation.mutate()}
+						disabled={resetMutation.isPending}
+						className="inline-flex items-center gap-1.5 rounded-md border border-border px-3 py-1.5 text-xs font-semibold text-muted-foreground hover:bg-muted disabled:opacity-60"
+					>
+						<RotateCcw className="h-3.5 w-3.5" />
+						{PAY_PERIOD_COPY.reset}
 					</button>
 				</div>
 			)}
-			<div className="mt-3 flex items-center gap-2">
-				<button
-					type="button"
-					onClick={() => resetMutation.mutate()}
-					disabled={!canManage || resetMutation.isPending}
-					className="inline-flex items-center gap-1.5 rounded-md border border-border px-3 py-1.5 text-xs font-semibold text-muted-foreground hover:bg-muted disabled:opacity-60"
-				>
-					<RotateCcw className="h-3.5 w-3.5" />
-					Reset to default
-				</button>
-			</div>
 		</section>
 	);
 }

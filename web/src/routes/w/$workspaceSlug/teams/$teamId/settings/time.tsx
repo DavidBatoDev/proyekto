@@ -1,19 +1,60 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { createFileRoute, Link, redirect } from "@tanstack/react-router";
-import { ChevronRight, Clock, Loader2 } from "lucide-react";
-import { useEffect, useState } from "react";
+import { Clock, Loader2 } from "lucide-react";
 import {
 	featureLimitInfo,
 	PlanLimitNotice,
 } from "@/components/billing/PlanLimitNotice";
+import { TeamMoneySection } from "@/components/team/settings/time/TeamMoneySection";
+import {
+	TeamRulesSection,
+	type TeamTimeWorkspace,
+} from "@/components/team/settings/time/TeamRulesSection";
 import { TeamSettingsLayout } from "@/components/team/TeamSettingsLayout";
-import { PayPeriodSettingsCard } from "@/components/team-time/PayPeriodSettingsCard";
 import { SettingSwitch } from "@/components/team-time/SettingSwitch";
+import { TimeReasonCard } from "@/components/time/shared/TimeReasonCard";
+import {
+	SettingsPageHeader,
+	SettingsSection,
+	settingsButton,
+} from "@/components/workspace/settings/SettingsPrimitives";
 import { useEntitlements } from "@/hooks/useEntitlements";
 import { useToast } from "@/hooks/useToast";
 import { useCurrentWorkspace } from "@/hooks/useWorkspaceQueries";
+import { isAccessDeniedError } from "@/lib/apiErrors";
+import { isPlanLimitError } from "@/lib/planLimitErrors";
+import { isNativeApp } from "@/lib/platform";
+import { timePlanCopy, timePlanDowngradeCopy } from "@/lib/timeErrors";
+import { timeForParam } from "@/lib/timeSearch";
+import { invalidateTime } from "@/queries/time";
 import { getTeam, updateTeam } from "@/services/teams.service";
 import { useAuthStore, useUser } from "@/stores/authStore";
+
+/**
+ * Team settings › Time (ux.md › Team Override): the team's time switch, its
+ * rules on top of the workspace policy (Business), and its money settings
+ * (member rates, payouts, billing and pay cut-offs; web only). Logging,
+ * submitting and approving moved to `/time`; this page only configures.
+ */
+
+const COPY = {
+	title: "Time",
+	tracking: "Time tracking",
+	trackingDescription: "Members log time for this team on attached projects.",
+	on: "On",
+	off: "Off",
+	// L34
+	timeOff:
+		"Members can't log for this team while time is off. They can still track time just for themselves.",
+	enable: "Enable time tracking",
+	enabled: "Time tracking enabled",
+	disabled: "Time tracking disabled",
+	managersOnly: "Only the team owner or a team admin can change this setting.",
+	openTeamTime: "Open team time",
+	openTime: "Open Time",
+	loadFailed: "Proyekto couldn't load this team. Try again.",
+	notFound: "This team doesn't exist or you can't open it.",
+} as const;
 
 /** Polar helper: a point on the clock face, measuring clockwise from 12. */
 function clockPoint(degrees: number, radius: number) {
@@ -29,12 +70,9 @@ const CLOCK_TICKS = Array.from({ length: 12 }, (_, i) => i * 30);
 const SWEEP_END = clockPoint(60, 48);
 
 /**
- * The empty-state illustration: a ghosted clock face, drawn as inline SVG off
+ * The time-off illustration: a ghosted clock face, drawn as inline SVG off
  * the theme's CSS variables (rather than an asset or hardcoded hex) so it
  * tracks light/dark and any brand-colour change automatically.
- *
- * The accent arc sweeps the same hour the hands read, so the drawing says
- * "elapsed time" rather than just "a clock".
  */
 function GhostClock({ className }: { className?: string }) {
 	return (
@@ -45,7 +83,6 @@ function GhostClock({ className }: { className?: string }) {
 			fill="none"
 			role="presentation"
 		>
-			{/* Outer halo, echoing the soft ground the other empty states sit on. */}
 			<circle
 				cx="60"
 				cy="60"
@@ -54,8 +91,6 @@ function GhostClock({ className }: { className?: string }) {
 				strokeWidth="1"
 				opacity="0.55"
 			/>
-
-			{/* Elapsed sweep: 12 → 2, drawn outside the face. */}
 			<path
 				d={`M 60 12 A 48 48 0 0 1 ${SWEEP_END.x.toFixed(2)} ${SWEEP_END.y.toFixed(2)}`}
 				stroke="var(--primary)"
@@ -63,8 +98,6 @@ function GhostClock({ className }: { className?: string }) {
 				strokeLinecap="round"
 				opacity="0.5"
 			/>
-
-			{/* Face */}
 			<circle
 				cx="60"
 				cy="60"
@@ -73,8 +106,6 @@ function GhostClock({ className }: { className?: string }) {
 				stroke="var(--border)"
 				strokeWidth="2"
 			/>
-
-			{/* Hour ticks — the quarters read heavier than the rest. */}
 			{CLOCK_TICKS.map((angle) => {
 				const isQuarter = angle % 90 === 0;
 				const outer = clockPoint(angle, 33);
@@ -93,8 +124,6 @@ function GhostClock({ className }: { className?: string }) {
 					/>
 				);
 			})}
-
-			{/* Hands, reading 2 o'clock. */}
 			<line
 				x1="60"
 				y1="60"
@@ -138,439 +167,207 @@ function TeamTimeSettings() {
 	const user = useUser();
 	const toast = useToast();
 	const qc = useQueryClient();
+	const native = isNativeApp();
 
 	const teamQuery = useQuery({
 		queryKey: ["teams", "detail", teamId],
 		queryFn: () => getTeam(teamId),
 	});
-
 	const team = teamQuery.data;
-	const [retroDays, setRetroDays] = useState(0);
-	const [advancedOpen, setAdvancedOpen] = useState(false);
-	useEffect(() => {
-		setRetroDays(Number(team?.retroactive_log_days ?? 0));
-	}, [team?.retroactive_log_days]);
-	const isOwner = team?.owner_id === user?.id;
-	// The switch is an operational setting, so the owner and team admins may
-	// both flip it — no consultant capability involved. Everything below it that
-	// moves money (retroactive window, currency, pay period) stays owner-only.
-	// For everyone else the toggle is read-only with an explainer.
-	const canToggle = isOwner || team?.viewer_role === "admin";
+
+	const isOwner =
+		Boolean(team && user?.id) &&
+		(team?.owner_id === user?.id || team?.viewer_role === "owner");
+	// The switch is operational, so team admins flip it too. The rules section
+	// splits owner-only fields itself (D62); money is the owner's.
+	const isManager = isOwner || team?.viewer_role === "admin";
 	const enabled = team?.time_tracking_enabled === true;
 
-	// Time tracking is a plan feature of the TEAM's workspace. Without it the
-	// switch can't be turned on; a team that already has it on keeps its logs
-	// readable and may still turn it off. Fails open while usage is unknown.
+	// Time is a plan feature of the TEAM's workspace, which may not be the one
+	// in the URL. Without it the switch can't be turned on; a team that has it
+	// on keeps its time readable and may still turn it off. Fails open while
+	// usage is unknown.
 	const teamWorkspaceId = team ? (team.workspace_id ?? workspace.id) : null;
 	const teamWorkspace =
 		teamWorkspaceId === workspace.id
 			? workspace
 			: (workspaces.find((item) => item.id === teamWorkspaceId) ?? null);
+	const planWorkspace: TeamTimeWorkspace | null = teamWorkspaceId
+		? {
+				id: teamWorkspaceId,
+				name: teamWorkspace?.name,
+				slug: teamWorkspace?.slug,
+				my_role: teamWorkspace?.my_role ?? null,
+			}
+		: null;
 	const entitlements = useEntitlements(teamWorkspaceId);
 	const timeTrackingLimit = featureLimitInfo(entitlements, "time_tracking");
 	const enableBlocked = timeTrackingLimit !== null && !enabled;
-
-	// Every switch on this page invalidates the same three caches: the detail
-	// query this page reads, the ["team", id] one the Time tabs read, and the
-	// sidebar's list.
-	const invalidateTeam = () => {
-		qc.invalidateQueries({ queryKey: ["teams", "detail", teamId] });
-		qc.invalidateQueries({ queryKey: ["team", teamId] });
-		qc.invalidateQueries({ queryKey: ["teams", "mine"] });
-	};
 
 	const toggleMutation = useMutation({
 		mutationFn: (next: boolean) =>
 			updateTeam(teamId, { time_tracking_enabled: next }),
 		onSuccess: (updated) => {
 			toast.success(
-				updated.time_tracking_enabled
-					? "Time tracking enabled"
-					: "Time tracking disabled",
+				updated.time_tracking_enabled ? COPY.enabled : COPY.disabled,
 			);
 			qc.invalidateQueries({ queryKey: ["teams", "detail", teamId] });
 			qc.invalidateQueries({ queryKey: ["team", teamId] });
-			// Sidebar reads from listMyTeams; refetch so the new "Time"
-			// sub-link appears (or disappears) immediately.
+			// The sidebar reads listMyTeams; refetch so the team's Time link
+			// appears (or disappears) at once.
 			qc.invalidateQueries({ queryKey: ["teams", "mine"] });
+			// The team's For option comes and goes with the switch.
+			void invalidateTime(qc, "policy");
 		},
-		onError: (e: Error) => toast.error(e.message),
+		onError: (error: Error) => {
+			// The plan prompt is raised globally (api/axios notifyPlanLimit).
+			if (isPlanLimitError(error)) return;
+			toast.error(error.message);
+		},
 	});
 
-	const retroPolicyMutation = useMutation({
-		mutationFn: (days: number) =>
-			updateTeam(teamId, { retroactive_log_days: Math.max(0, days) }),
-		onSuccess: (updated) => {
-			toast.success(
-				Number(updated.retroactive_log_days ?? 0) > 0
-					? "Retroactive logging policy updated"
-					: "Retroactive limit removed",
-			);
-			qc.invalidateQueries({ queryKey: ["teams", "detail", teamId] });
-			qc.invalidateQueries({ queryKey: ["team", teamId] });
-		},
-		onError: (e: Error) => toast.error(e.message),
-	});
-
-	/**
-	 * The backend treats retroactive_log_days of 0/null as "no restriction"
-	 * (assertWithinRetroactiveWindow returns early), so the switch is a limit
-	 * toggle, not a permission: OFF means members may log ANY past date. Turning
-	 * it on seeds a week so the control has a meaningful starting value.
-	 */
-	const retroLimitOn = Number(team?.retroactive_log_days ?? 0) > 0;
-	const RETRO_DEFAULT_DAYS = 7;
-
-	const ratesMutation = useMutation({
-		mutationFn: (next: boolean) =>
-			updateTeam(teamId, { member_rates_enabled: next }),
-		onSuccess: (updated) => {
-			toast.success(
-				updated.member_rates_enabled
-					? "Member rates enabled"
-					: "Member rates disabled — payouts turned off with them",
-			);
-			invalidateTeam();
-		},
-		onError: (e: Error) => toast.error(e.message),
-	});
-
-	const payoutsMutation = useMutation({
-		mutationFn: (next: boolean) =>
-			updateTeam(teamId, { payouts_enabled: next }),
-		onSuccess: (updated) => {
-			toast.success(
-				updated.payouts_enabled ? "Payouts enabled" : "Payouts disabled",
-			);
-			invalidateTeam();
-		},
-		onError: (e: Error) => toast.error(e.message),
-	});
-
-	const hasRates = team?.member_rates_enabled === true;
-	const canPay = team?.payouts_enabled === true;
-
-	const currencyMutation = useMutation({
-		mutationFn: (currency: "USD" | "CAD" | "PHP") =>
-			updateTeam(teamId, { default_currency: currency }),
-		onSuccess: (updated) => {
-			toast.success(`Default currency set to ${updated.default_currency}`);
-			qc.invalidateQueries({ queryKey: ["teams", "detail", teamId] });
-			qc.invalidateQueries({ queryKey: ["team", teamId] });
-		},
-		onError: (e: Error) => toast.error(e.message),
-	});
-	const currency = (team?.default_currency ?? "USD") as "USD" | "CAD" | "PHP";
+	const workspaceName = planWorkspace?.name ?? null;
 
 	return (
 		<TeamSettingsLayout teamId={teamId} teamName={team?.name}>
-			<section className="space-y-3">
-				<div className="flex items-center gap-2">
-					<Clock className="h-5 w-5 text-muted-foreground" />
-					<h2 className="text-[30px] font-semibold leading-none text-foreground">
-						Time tracking
-					</h2>
-				</div>
+			<SettingsPageHeader
+				title={
+					<span className="inline-flex items-center gap-2">
+						<Clock
+							className="h-5 w-5 text-muted-foreground"
+							aria-hidden="true"
+						/>
+						{team?.name ? `${COPY.title} · ${team.name}` : COPY.title}
+					</span>
+				}
+			/>
 
-				{teamQuery.isPending ? (
-					<div className="flex justify-center p-12">
-						<Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
-					</div>
-				) : (
-					<div className="pt-2">
+			{teamQuery.isPending ? (
+				<div className="flex justify-center p-12">
+					<Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+				</div>
+			) : teamQuery.isError || !team ? (
+				<TimeReasonCard
+					className="mt-6"
+					variant="inline"
+					role="alert"
+					tone={isAccessDeniedError(teamQuery.error) ? "not-found" : "danger"}
+					title={
+						isAccessDeniedError(teamQuery.error)
+							? COPY.notFound
+							: COPY.loadFailed
+					}
+				/>
+			) : (
+				<>
+					<SettingsSection
+						id="team-time-tracking"
+						title={COPY.tracking}
+						description={COPY.trackingDescription}
+					>
 						<div className="space-y-4">
 							{timeTrackingLimit ? (
 								<PlanLimitNotice
 									info={timeTrackingLimit}
 									workspace={teamWorkspace}
 									isComplimentary={entitlements.isComplimentary}
-									detail={enabled ? "Existing logs stay readable." : null}
+									message={
+										enabled
+											? timePlanDowngradeCopy({ workspaceName })
+											: timePlanCopy("time_tracking", {
+													workspaceName,
+													native,
+												})
+									}
 								/>
 							) : null}
-							<div className="flex items-start justify-between gap-4">
-								<div className="space-y-1">
-									<div className="text-sm font-semibold text-foreground">
-										Enable time tracking for this team
-									</div>
-									<p className="max-w-xl text-sm text-muted-foreground">
-										Members log time on tasks across the projects this team is
-										attached to; team owners and admins approve those logs and
-										manage per-member rates.
-										{enabled && (
-											<>
-												{" "}
-												Pages live at{" "}
-												<Link
-													to="/w/$workspaceSlug/teams/$teamId/time"
-													params={{ workspaceSlug, teamId }}
-													className="text-primary hover:underline"
-												>
-													/teams/{team?.name ?? "…"}/time
-												</Link>{" "}
-												and{" "}
-												<Link
-													to="/w/$workspaceSlug/teams/$teamId/time/manage-rates"
-													params={{ workspaceSlug, teamId }}
-													className="text-primary hover:underline"
-												>
-													/teams/{team?.name ?? "…"}/time/manage-rates
-												</Link>
-												.
-											</>
-										)}
-									</p>
-								</div>
+
+							<div className="flex items-center justify-between gap-4">
+								<span className="text-sm font-medium text-foreground">
+									{enabled ? COPY.on : COPY.off}
+								</span>
 								<SettingSwitch
 									checked={enabled}
 									disabled={
-										!canToggle || toggleMutation.isPending || enableBlocked
+										!isManager || toggleMutation.isPending || enableBlocked
 									}
 									onChange={(next) => toggleMutation.mutate(next)}
-									label="Enable time tracking for this team"
+									label={COPY.tracking}
 								/>
 							</div>
 
-							{enabled && (
-								<div className="flex flex-wrap gap-2 pt-1">
-									<Link
-										to="/w/$workspaceSlug/teams/$teamId/time"
-										params={{ workspaceSlug, teamId }}
-										className="rounded-lg bg-primary px-3.5 py-2 text-sm font-semibold text-primary-foreground hover:bg-primary/90"
-									>
-										Open team time
-									</Link>
-									<Link
-										to="/w/$workspaceSlug/teams/$teamId/time/manage-rates"
-										params={{ workspaceSlug, teamId }}
-										className="rounded-lg border border-border px-3.5 py-2 text-sm font-medium text-foreground hover:bg-muted"
-									>
-										Manage rates
-									</Link>
+							{enabled ? (
+								<div className="flex flex-wrap gap-2">
+									{isManager ? (
+										<Link
+											to="/w/$workspaceSlug/teams/$teamId/time"
+											params={{ workspaceSlug, teamId }}
+											className={settingsButton.secondary}
+										>
+											{COPY.openTeamTime}
+										</Link>
+									) : (
+										<Link
+											to="/time"
+											search={{
+												for: timeForParam({ kind: "team", id: teamId }),
+											}}
+											className={settingsButton.secondary}
+										>
+											{COPY.openTime}
+										</Link>
+									)}
 								</div>
-							)}
-
-							{enabled && !canToggle && (
-								<div className="rounded-md border border-border bg-muted px-3 py-2 text-xs text-muted-foreground">
-									Only the team owner or a team admin can change this setting.
-								</div>
-							)}
-
-							{!enabled && (
-								<div className="border-t border-border pb-4 pt-12 text-center">
-									<GhostClock className="mx-auto mb-6 h-32 w-32" />
-									<h4 className="text-base font-semibold text-foreground">
-										No time tracked yet
-									</h4>
-									<p className="mx-auto mt-1 max-w-sm text-sm text-muted-foreground">
-										{canToggle
-											? "Turn tracking on and this team's members can start logging hours against their tasks. You'll approve the logs and set each member's rate."
-											: "Once an owner or admin turns tracking on, you can log hours against your tasks on this team's projects."}
+							) : (
+								<div className="border-t border-border pb-2 pt-8 text-center">
+									<GhostClock className="mx-auto mb-5 h-28 w-28" />
+									<p className="mx-auto max-w-sm text-sm text-muted-foreground">
+										{COPY.timeOff}
 									</p>
-									{canToggle && (
+									{isManager ? (
 										<button
 											type="button"
 											onClick={() => toggleMutation.mutate(true)}
 											disabled={toggleMutation.isPending || enableBlocked}
-											className="mt-5 inline-flex items-center gap-1.5 rounded-lg bg-primary px-3.5 py-2 text-sm font-semibold text-primary-foreground hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-60"
+											className={`${settingsButton.primary} mt-5`}
 										>
 											{toggleMutation.isPending ? (
 												<Loader2 className="h-4 w-4 animate-spin" />
 											) : (
 												<Clock className="h-4 w-4" />
 											)}
-											Enable time tracking
+											{COPY.enable}
 										</button>
-									)}
+									) : null}
 								</div>
 							)}
 
-							{enabled && isOwner && (
-								<div className="border-t border-border pt-5">
-									<p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-										Default currency
-									</p>
-									<p className="mt-1 text-xs text-muted-foreground">
-										Used as the fallback currency for member rates and new logs.
-										Existing logs keep the currency frozen when they were
-										recorded.
-									</p>
-									<div className="mt-3 inline-flex rounded-lg border border-border bg-muted p-1">
-										{(["USD", "CAD", "PHP"] as const).map((code) => {
-											const active = currency === code;
-											return (
-												<button
-													key={code}
-													type="button"
-													disabled={active || currencyMutation.isPending}
-													onClick={() => currencyMutation.mutate(code)}
-													className={
-														active
-															? "rounded-md bg-card px-3 py-1.5 text-xs font-semibold text-foreground shadow-sm"
-															: "rounded-md px-3 py-1.5 text-xs font-medium text-muted-foreground hover:text-foreground disabled:opacity-60"
-													}
-												>
-													{code}
-												</button>
-											);
-										})}
-									</div>
-								</div>
-							)}
-
-							{/* Advanced: the two policies most teams never touch. Owner-only,
-							    because both shape what lands in a payout. */}
-							{enabled && isOwner && (
-								<div className="border-t border-border pt-4">
-									<button
-										type="button"
-										onClick={() => setAdvancedOpen((open) => !open)}
-										aria-expanded={advancedOpen}
-										className="inline-flex items-center gap-1.5 rounded-lg px-2 py-1.5 -ml-2 text-sm font-semibold text-foreground hover:bg-muted"
-									>
-										<ChevronRight
-											className={`h-4 w-4 text-muted-foreground transition-transform ${
-												advancedOpen ? "rotate-90" : ""
-											}`}
-										/>
-										Advanced options
-									</button>
-
-									{advancedOpen && (
-										<div className="mt-4 space-y-6">
-											<section>
-												<div className="flex items-start justify-between gap-4">
-													<div>
-														<p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-															Retroactive manual logs
-														</p>
-														<p className="mt-1 max-w-xl text-xs text-muted-foreground">
-															{retroLimitOn
-																? "Members can only add or edit manual logs within this window."
-																: "Members can add or edit manual logs for any past date. Turn this on to lock older days."}
-														</p>
-													</div>
-													<SettingSwitch
-														checked={retroLimitOn}
-														disabled={retroPolicyMutation.isPending}
-														onChange={(next) =>
-															retroPolicyMutation.mutate(
-																next
-																	? retroDays > 0
-																		? retroDays
-																		: RETRO_DEFAULT_DAYS
-																	: 0,
-															)
-														}
-														label="Limit retroactive manual logs"
-													/>
-												</div>
-
-												{retroLimitOn && (
-													<div className="mt-3 flex items-center gap-2">
-														<input
-															type="number"
-															min={1}
-															value={retroDays}
-															onChange={(e) =>
-																setRetroDays(
-																	Math.max(1, Number(e.target.value || 1)),
-																)
-															}
-															className="w-28 rounded-md border border-border px-2.5 py-1.5 text-sm"
-															aria-label="Retroactive window in days"
-														/>
-														<span className="text-xs text-muted-foreground">
-															days
-														</span>
-														<button
-															type="button"
-															onClick={() =>
-																retroPolicyMutation.mutate(retroDays)
-															}
-															disabled={retroPolicyMutation.isPending}
-															className="rounded-md border border-border px-3 py-1.5 text-xs font-semibold text-foreground hover:bg-muted disabled:opacity-60"
-														>
-															{retroPolicyMutation.isPending
-																? "Saving..."
-																: "Save policy"}
-														</button>
-													</div>
-												)}
-											</section>
-
-											<section>
-												<div className="flex items-start justify-between gap-4">
-													<div>
-														<p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-															Member rates
-														</p>
-														<p className="mt-1 max-w-xl text-xs text-muted-foreground">
-															{hasRates
-																? "Hours carry an internal cost: each member has a rate card, and logged time accrues a value you can report on."
-																: "This team tracks hours only. Turn this on to give members rate cards so their logged time carries a cost."}
-														</p>
-													</div>
-													<SettingSwitch
-														checked={hasRates}
-														disabled={ratesMutation.isPending}
-														onChange={(next) => ratesMutation.mutate(next)}
-														label="Enable member rates for this team"
-													/>
-												</div>
-
-												{!hasRates && (
-													<p className="mt-2 max-w-xl text-xs text-muted-foreground">
-														While this is off, the Manage Rates tab is hidden
-														and new logs record no fee. Existing rate cards and
-														past amounts are kept, and reappear unchanged if you
-														turn it back on.
-													</p>
-												)}
-
-												{/* Payouts is nested because a payout is priced from a rate: with
-												    no rates a payout would record a zero-value payment, which the
-												    DB refuses outright. */}
-												<div className="mt-5 border-l-2 border-border pl-4">
-													<div className="flex items-start justify-between gap-4">
-														<div>
-															<p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-																Payouts
-															</p>
-															<p className="mt-1 max-w-xl text-xs text-muted-foreground">
-																{!hasRates
-																	? "Needs member rates — a payout is priced from each member's rate."
-																	: canPay
-																		? "Record payments you have made against cut-off periods, and mark the hours they covered as paid."
-																		: "This team prices its hours but settles pay outside Proyekto. Turn this on to track cut-off periods and record payments here."}
-															</p>
-														</div>
-														<SettingSwitch
-															checked={canPay}
-															disabled={!hasRates || payoutsMutation.isPending}
-															onChange={(next) => payoutsMutation.mutate(next)}
-															label="Enable payouts for this team"
-														/>
-													</div>
-
-													{canPay && (
-														<div className="mt-5 border-t border-border pt-5">
-															<PayPeriodSettingsCard
-																teamId={teamId}
-																config={team?.pay_period_config}
-																canManage={isOwner}
-															/>
-														</div>
-													)}
-												</div>
-											</section>
-										</div>
-									)}
-								</div>
-							)}
+							{!isManager ? (
+								<p className="text-xs text-muted-foreground">
+									{COPY.managersOnly}
+								</p>
+							) : null}
 						</div>
-					</div>
-				)}
-			</section>
+					</SettingsSection>
+
+					{enabled && isManager ? (
+						<TeamRulesSection
+							teamId={teamId}
+							workspace={planWorkspace}
+							memberRatesEnabled={team.member_rates_enabled === true}
+						/>
+					) : null}
+
+					{enabled && isManager && !native ? (
+						<TeamMoneySection
+							team={team}
+							isOwner={isOwner}
+							workspace={planWorkspace}
+							workspaceSlug={workspaceSlug}
+						/>
+					) : null}
+				</>
+			)}
 		</TeamSettingsLayout>
 	);
 }
