@@ -68,12 +68,14 @@ import { Route as ExecutionCommandCenterRouteImport } from './routes/_execution/
 import { Route as WWorkspaceSlugRouteRouteImport } from './routes/w/$workspaceSlug/route'
 import { Route as MarketplaceFinanceRouteRouteImport } from './routes/marketplace/finance/route'
 import { Route as MarketplaceCategoryRouteRouteImport } from './routes/marketplace/category/route'
+import { Route as ExecutionTimeRouteRouteImport } from './routes/_execution/time/route'
 import { Route as ExecutionEngagementsRouteRouteImport } from './routes/_execution/engagements/route'
 import { Route as WorkspaceSettingsIndexRouteImport } from './routes/workspace/settings/index'
 import { Route as MarketplaceTalentIndexRouteImport } from './routes/marketplace/talent/index'
 import { Route as MarketplaceServicesIndexRouteImport } from './routes/marketplace/services/index'
 import { Route as MarketplaceConsultantIndexRouteImport } from './routes/marketplace/consultant/index'
 import { Route as MarketplaceBriefsIndexRouteImport } from './routes/marketplace/briefs/index'
+import { Route as ExecutionTimeIndexRouteImport } from './routes/_execution/time/index'
 import { Route as ExecutionTeamsIndexRouteImport } from './routes/_execution/teams/index'
 import { Route as ExecutionEngagementsIndexRouteImport } from './routes/_execution/engagements/index'
 import { Route as WorkspaceSettingsMembersRouteImport } from './routes/workspace/settings/members'
@@ -112,12 +114,14 @@ import { Route as ExecutionEngagementsFinanceIndexRouteImport } from './routes/_
 import { Route as ExecutionEngagementsContractsIndexRouteImport } from './routes/_execution/engagements/contracts/index'
 import { Route as ExecutionBriefBriefIdIndexRouteImport } from './routes/_execution/brief/$briefId/index'
 import { Route as WWorkspaceSlugSettingsUsageRouteImport } from './routes/w/$workspaceSlug/settings/usage'
+import { Route as WWorkspaceSlugSettingsTimeRouteImport } from './routes/w/$workspaceSlug/settings/time'
 import { Route as WWorkspaceSlugSettingsMembersRouteImport } from './routes/w/$workspaceSlug/settings/members'
 import { Route as WWorkspaceSlugSettingsBillingRouteImport } from './routes/w/$workspaceSlug/settings/billing'
 import { Route as MarketplaceServicesServiceIdEditRouteImport } from './routes/marketplace/services/$serviceId/edit'
 import { Route as MarketplaceFinanceInvoicesNewRouteImport } from './routes/marketplace/finance/invoices/new'
 import { Route as MarketplaceFinancePortfolioInvoicesRouteImport } from './routes/marketplace/finance/_portfolio/invoices'
 import { Route as MarketplaceFinancePortfolioContractsRouteImport } from './routes/marketplace/finance/_portfolio/contracts'
+import { Route as ExecutionTimeTimesheetsTimesheetIdRouteImport } from './routes/_execution/time/timesheets/$timesheetId'
 import { Route as ExecutionTeamsMeInvitesRouteImport } from './routes/_execution/teams/me/invites'
 import { Route as ExecutionRoadmapSharedTokenRouteImport } from './routes/_execution/roadmap/shared/$token'
 import { Route as ExecutionProjectProjectIdWorkItemsRouteImport } from './routes/_execution/project/$projectId/work-items'
@@ -506,6 +510,11 @@ const MarketplaceCategoryRouteRoute =
     path: '/category',
     getParentRoute: () => MarketplaceRouteRoute,
   } as any)
+const ExecutionTimeRouteRoute = ExecutionTimeRouteRouteImport.update({
+  id: '/time',
+  path: '/time',
+  getParentRoute: () => ExecutionRoute,
+} as any)
 const ExecutionEngagementsRouteRoute =
   ExecutionEngagementsRouteRouteImport.update({
     id: '/engagements',
@@ -538,6 +547,11 @@ const MarketplaceBriefsIndexRoute = MarketplaceBriefsIndexRouteImport.update({
   id: '/briefs/',
   path: '/briefs/',
   getParentRoute: () => MarketplaceRouteRoute,
+} as any)
+const ExecutionTimeIndexRoute = ExecutionTimeIndexRouteImport.update({
+  id: '/',
+  path: '/',
+  getParentRoute: () => ExecutionTimeRouteRoute,
 } as any)
 const ExecutionTeamsIndexRoute = ExecutionTeamsIndexRouteImport.update({
   id: '/teams/',
@@ -755,6 +769,12 @@ const WWorkspaceSlugSettingsUsageRoute =
     path: '/usage',
     getParentRoute: () => WWorkspaceSlugSettingsRouteRoute,
   } as any)
+const WWorkspaceSlugSettingsTimeRoute =
+  WWorkspaceSlugSettingsTimeRouteImport.update({
+    id: '/time',
+    path: '/time',
+    getParentRoute: () => WWorkspaceSlugSettingsRouteRoute,
+  } as any)
 const WWorkspaceSlugSettingsMembersRoute =
   WWorkspaceSlugSettingsMembersRouteImport.update({
     id: '/members',
@@ -790,6 +810,12 @@ const MarketplaceFinancePortfolioContractsRoute =
     id: '/contracts',
     path: '/contracts',
     getParentRoute: () => MarketplaceFinancePortfolioRoute,
+  } as any)
+const ExecutionTimeTimesheetsTimesheetIdRoute =
+  ExecutionTimeTimesheetsTimesheetIdRouteImport.update({
+    id: '/timesheets/$timesheetId',
+    path: '/timesheets/$timesheetId',
+    getParentRoute: () => ExecutionTimeRouteRoute,
   } as any)
 const ExecutionTeamsMeInvitesRoute = ExecutionTeamsMeInvitesRouteImport.update({
   id: '/teams/me/invites',
@@ -1362,6 +1388,7 @@ export interface FileRoutesByFullPath {
   '/unsubscribe': typeof UnsubscribeRoute
   '/welcome': typeof WelcomeRoute
   '/engagements': typeof ExecutionEngagementsRouteRouteWithChildren
+  '/time': typeof ExecutionTimeRouteRouteWithChildren
   '/marketplace/category': typeof MarketplaceCategoryRouteRouteWithChildren
   '/marketplace/finance': typeof MarketplaceFinancePortfolioRouteWithChildren
   '/w/$workspaceSlug': typeof WWorkspaceSlugRouteRouteWithChildren
@@ -1425,6 +1452,7 @@ export interface FileRoutesByFullPath {
   '/workspace/settings/members': typeof WorkspaceSettingsMembersRoute
   '/engagements/': typeof ExecutionEngagementsIndexRoute
   '/teams': typeof ExecutionTeamsIndexRoute
+  '/time/': typeof ExecutionTimeIndexRoute
   '/marketplace/briefs': typeof MarketplaceBriefsIndexRoute
   '/marketplace/consultant': typeof MarketplaceConsultantIndexRoute
   '/marketplace/services': typeof MarketplaceServicesIndexRoute
@@ -1451,12 +1479,14 @@ export interface FileRoutesByFullPath {
   '/project/$projectId/work-items': typeof ExecutionProjectProjectIdWorkItemsRouteWithChildren
   '/roadmap/shared/$token': typeof ExecutionRoadmapSharedTokenRoute
   '/teams/me/invites': typeof ExecutionTeamsMeInvitesRoute
+  '/time/timesheets/$timesheetId': typeof ExecutionTimeTimesheetsTimesheetIdRoute
   '/marketplace/finance/contracts': typeof MarketplaceFinancePortfolioContractsRoute
   '/marketplace/finance/invoices': typeof MarketplaceFinancePortfolioInvoicesRoute
   '/marketplace/finance/invoices/new': typeof MarketplaceFinanceInvoicesNewRoute
   '/marketplace/services/$serviceId/edit': typeof MarketplaceServicesServiceIdEditRoute
   '/w/$workspaceSlug/settings/billing': typeof WWorkspaceSlugSettingsBillingRoute
   '/w/$workspaceSlug/settings/members': typeof WWorkspaceSlugSettingsMembersRoute
+  '/w/$workspaceSlug/settings/time': typeof WWorkspaceSlugSettingsTimeRoute
   '/w/$workspaceSlug/settings/usage': typeof WWorkspaceSlugSettingsUsageRoute
   '/brief/$briefId': typeof ExecutionBriefBriefIdIndexRoute
   '/engagements/contracts': typeof ExecutionEngagementsContractsIndexRoute
@@ -1617,6 +1647,7 @@ export interface FileRoutesByTo {
   '/workspace/settings/members': typeof WorkspaceSettingsMembersRoute
   '/engagements': typeof ExecutionEngagementsIndexRoute
   '/teams': typeof ExecutionTeamsIndexRoute
+  '/time': typeof ExecutionTimeIndexRoute
   '/marketplace/briefs': typeof MarketplaceBriefsIndexRoute
   '/marketplace/consultant': typeof MarketplaceConsultantIndexRoute
   '/marketplace/services': typeof MarketplaceServicesIndexRoute
@@ -1642,12 +1673,14 @@ export interface FileRoutesByTo {
   '/project/$projectId/work-items': typeof ExecutionProjectProjectIdWorkItemsRouteWithChildren
   '/roadmap/shared/$token': typeof ExecutionRoadmapSharedTokenRoute
   '/teams/me/invites': typeof ExecutionTeamsMeInvitesRoute
+  '/time/timesheets/$timesheetId': typeof ExecutionTimeTimesheetsTimesheetIdRoute
   '/marketplace/finance/contracts': typeof MarketplaceFinancePortfolioContractsRoute
   '/marketplace/finance/invoices': typeof MarketplaceFinancePortfolioInvoicesRoute
   '/marketplace/finance/invoices/new': typeof MarketplaceFinanceInvoicesNewRoute
   '/marketplace/services/$serviceId/edit': typeof MarketplaceServicesServiceIdEditRoute
   '/w/$workspaceSlug/settings/billing': typeof WWorkspaceSlugSettingsBillingRoute
   '/w/$workspaceSlug/settings/members': typeof WWorkspaceSlugSettingsMembersRoute
+  '/w/$workspaceSlug/settings/time': typeof WWorkspaceSlugSettingsTimeRoute
   '/w/$workspaceSlug/settings/usage': typeof WWorkspaceSlugSettingsUsageRoute
   '/brief/$briefId': typeof ExecutionBriefBriefIdIndexRoute
   '/engagements/contracts': typeof ExecutionEngagementsContractsIndexRoute
@@ -1753,6 +1786,7 @@ export interface FileRoutesById {
   '/unsubscribe': typeof UnsubscribeRoute
   '/welcome': typeof WelcomeRoute
   '/_execution/engagements': typeof ExecutionEngagementsRouteRouteWithChildren
+  '/_execution/time': typeof ExecutionTimeRouteRouteWithChildren
   '/marketplace/category': typeof MarketplaceCategoryRouteRouteWithChildren
   '/marketplace/finance': typeof MarketplaceFinanceRouteRouteWithChildren
   '/w/$workspaceSlug': typeof WWorkspaceSlugRouteRouteWithChildren
@@ -1817,6 +1851,7 @@ export interface FileRoutesById {
   '/workspace/settings/members': typeof WorkspaceSettingsMembersRoute
   '/_execution/engagements/': typeof ExecutionEngagementsIndexRoute
   '/_execution/teams/': typeof ExecutionTeamsIndexRoute
+  '/_execution/time/': typeof ExecutionTimeIndexRoute
   '/marketplace/briefs/': typeof MarketplaceBriefsIndexRoute
   '/marketplace/consultant/': typeof MarketplaceConsultantIndexRoute
   '/marketplace/services/': typeof MarketplaceServicesIndexRoute
@@ -1843,12 +1878,14 @@ export interface FileRoutesById {
   '/_execution/project/$projectId/work-items': typeof ExecutionProjectProjectIdWorkItemsRouteWithChildren
   '/_execution/roadmap/shared/$token': typeof ExecutionRoadmapSharedTokenRoute
   '/_execution/teams/me/invites': typeof ExecutionTeamsMeInvitesRoute
+  '/_execution/time/timesheets/$timesheetId': typeof ExecutionTimeTimesheetsTimesheetIdRoute
   '/marketplace/finance/_portfolio/contracts': typeof MarketplaceFinancePortfolioContractsRoute
   '/marketplace/finance/_portfolio/invoices': typeof MarketplaceFinancePortfolioInvoicesRoute
   '/marketplace/finance/invoices/new': typeof MarketplaceFinanceInvoicesNewRoute
   '/marketplace/services/$serviceId/edit': typeof MarketplaceServicesServiceIdEditRoute
   '/w/$workspaceSlug/settings/billing': typeof WWorkspaceSlugSettingsBillingRoute
   '/w/$workspaceSlug/settings/members': typeof WWorkspaceSlugSettingsMembersRoute
+  '/w/$workspaceSlug/settings/time': typeof WWorkspaceSlugSettingsTimeRoute
   '/w/$workspaceSlug/settings/usage': typeof WWorkspaceSlugSettingsUsageRoute
   '/_execution/brief/$briefId/': typeof ExecutionBriefBriefIdIndexRoute
   '/_execution/engagements/contracts/': typeof ExecutionEngagementsContractsIndexRoute
@@ -1956,6 +1993,7 @@ export interface FileRouteTypes {
     | '/unsubscribe'
     | '/welcome'
     | '/engagements'
+    | '/time'
     | '/marketplace/category'
     | '/marketplace/finance'
     | '/w/$workspaceSlug'
@@ -2019,6 +2057,7 @@ export interface FileRouteTypes {
     | '/workspace/settings/members'
     | '/engagements/'
     | '/teams'
+    | '/time/'
     | '/marketplace/briefs'
     | '/marketplace/consultant'
     | '/marketplace/services'
@@ -2045,12 +2084,14 @@ export interface FileRouteTypes {
     | '/project/$projectId/work-items'
     | '/roadmap/shared/$token'
     | '/teams/me/invites'
+    | '/time/timesheets/$timesheetId'
     | '/marketplace/finance/contracts'
     | '/marketplace/finance/invoices'
     | '/marketplace/finance/invoices/new'
     | '/marketplace/services/$serviceId/edit'
     | '/w/$workspaceSlug/settings/billing'
     | '/w/$workspaceSlug/settings/members'
+    | '/w/$workspaceSlug/settings/time'
     | '/w/$workspaceSlug/settings/usage'
     | '/brief/$briefId'
     | '/engagements/contracts'
@@ -2211,6 +2252,7 @@ export interface FileRouteTypes {
     | '/workspace/settings/members'
     | '/engagements'
     | '/teams'
+    | '/time'
     | '/marketplace/briefs'
     | '/marketplace/consultant'
     | '/marketplace/services'
@@ -2236,12 +2278,14 @@ export interface FileRouteTypes {
     | '/project/$projectId/work-items'
     | '/roadmap/shared/$token'
     | '/teams/me/invites'
+    | '/time/timesheets/$timesheetId'
     | '/marketplace/finance/contracts'
     | '/marketplace/finance/invoices'
     | '/marketplace/finance/invoices/new'
     | '/marketplace/services/$serviceId/edit'
     | '/w/$workspaceSlug/settings/billing'
     | '/w/$workspaceSlug/settings/members'
+    | '/w/$workspaceSlug/settings/time'
     | '/w/$workspaceSlug/settings/usage'
     | '/brief/$briefId'
     | '/engagements/contracts'
@@ -2346,6 +2390,7 @@ export interface FileRouteTypes {
     | '/unsubscribe'
     | '/welcome'
     | '/_execution/engagements'
+    | '/_execution/time'
     | '/marketplace/category'
     | '/marketplace/finance'
     | '/w/$workspaceSlug'
@@ -2410,6 +2455,7 @@ export interface FileRouteTypes {
     | '/workspace/settings/members'
     | '/_execution/engagements/'
     | '/_execution/teams/'
+    | '/_execution/time/'
     | '/marketplace/briefs/'
     | '/marketplace/consultant/'
     | '/marketplace/services/'
@@ -2436,12 +2482,14 @@ export interface FileRouteTypes {
     | '/_execution/project/$projectId/work-items'
     | '/_execution/roadmap/shared/$token'
     | '/_execution/teams/me/invites'
+    | '/_execution/time/timesheets/$timesheetId'
     | '/marketplace/finance/_portfolio/contracts'
     | '/marketplace/finance/_portfolio/invoices'
     | '/marketplace/finance/invoices/new'
     | '/marketplace/services/$serviceId/edit'
     | '/w/$workspaceSlug/settings/billing'
     | '/w/$workspaceSlug/settings/members'
+    | '/w/$workspaceSlug/settings/time'
     | '/w/$workspaceSlug/settings/usage'
     | '/_execution/brief/$briefId/'
     | '/_execution/engagements/contracts/'
@@ -2977,6 +3025,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof MarketplaceCategoryRouteRouteImport
       parentRoute: typeof MarketplaceRouteRoute
     }
+    '/_execution/time': {
+      id: '/_execution/time'
+      path: '/time'
+      fullPath: '/time'
+      preLoaderRoute: typeof ExecutionTimeRouteRouteImport
+      parentRoute: typeof ExecutionRoute
+    }
     '/_execution/engagements': {
       id: '/_execution/engagements'
       path: '/engagements'
@@ -3018,6 +3073,13 @@ declare module '@tanstack/react-router' {
       fullPath: '/marketplace/briefs'
       preLoaderRoute: typeof MarketplaceBriefsIndexRouteImport
       parentRoute: typeof MarketplaceRouteRoute
+    }
+    '/_execution/time/': {
+      id: '/_execution/time/'
+      path: '/'
+      fullPath: '/time/'
+      preLoaderRoute: typeof ExecutionTimeIndexRouteImport
+      parentRoute: typeof ExecutionTimeRouteRoute
     }
     '/_execution/teams/': {
       id: '/_execution/teams/'
@@ -3285,6 +3347,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof WWorkspaceSlugSettingsUsageRouteImport
       parentRoute: typeof WWorkspaceSlugSettingsRouteRoute
     }
+    '/w/$workspaceSlug/settings/time': {
+      id: '/w/$workspaceSlug/settings/time'
+      path: '/time'
+      fullPath: '/w/$workspaceSlug/settings/time'
+      preLoaderRoute: typeof WWorkspaceSlugSettingsTimeRouteImport
+      parentRoute: typeof WWorkspaceSlugSettingsRouteRoute
+    }
     '/w/$workspaceSlug/settings/members': {
       id: '/w/$workspaceSlug/settings/members'
       path: '/members'
@@ -3326,6 +3395,13 @@ declare module '@tanstack/react-router' {
       fullPath: '/marketplace/finance/contracts'
       preLoaderRoute: typeof MarketplaceFinancePortfolioContractsRouteImport
       parentRoute: typeof MarketplaceFinancePortfolioRoute
+    }
+    '/_execution/time/timesheets/$timesheetId': {
+      id: '/_execution/time/timesheets/$timesheetId'
+      path: '/timesheets/$timesheetId'
+      fullPath: '/time/timesheets/$timesheetId'
+      preLoaderRoute: typeof ExecutionTimeTimesheetsTimesheetIdRouteImport
+      parentRoute: typeof ExecutionTimeRouteRoute
     }
     '/_execution/teams/me/invites': {
       id: '/_execution/teams/me/invites'
@@ -4250,6 +4326,20 @@ const ExecutionEngagementsRouteRouteWithChildren =
     ExecutionEngagementsRouteRouteChildren,
   )
 
+interface ExecutionTimeRouteRouteChildren {
+  ExecutionTimeIndexRoute: typeof ExecutionTimeIndexRoute
+  ExecutionTimeTimesheetsTimesheetIdRoute: typeof ExecutionTimeTimesheetsTimesheetIdRoute
+}
+
+const ExecutionTimeRouteRouteChildren: ExecutionTimeRouteRouteChildren = {
+  ExecutionTimeIndexRoute: ExecutionTimeIndexRoute,
+  ExecutionTimeTimesheetsTimesheetIdRoute:
+    ExecutionTimeTimesheetsTimesheetIdRoute,
+}
+
+const ExecutionTimeRouteRouteWithChildren =
+  ExecutionTimeRouteRoute._addFileChildren(ExecutionTimeRouteRouteChildren)
+
 interface ExecutionProjectProjectIdChangeRequestsRouteChildren {
   ExecutionProjectProjectIdChangeRequestsChangeRequestIdRoute: typeof ExecutionProjectProjectIdChangeRequestsChangeRequestIdRoute
 }
@@ -4480,6 +4570,7 @@ const ExecutionTeamsTeamIdRouteWithChildren =
 
 interface ExecutionRouteChildren {
   ExecutionEngagementsRouteRoute: typeof ExecutionEngagementsRouteRouteWithChildren
+  ExecutionTimeRouteRoute: typeof ExecutionTimeRouteRouteWithChildren
   ExecutionCommandCenterRoute: typeof ExecutionCommandCenterRoute
   ExecutionDashboardRoute: typeof ExecutionDashboardRoute
   ExecutionInboxRoute: typeof ExecutionInboxRoute
@@ -4503,6 +4594,7 @@ interface ExecutionRouteChildren {
 
 const ExecutionRouteChildren: ExecutionRouteChildren = {
   ExecutionEngagementsRouteRoute: ExecutionEngagementsRouteRouteWithChildren,
+  ExecutionTimeRouteRoute: ExecutionTimeRouteRouteWithChildren,
   ExecutionCommandCenterRoute: ExecutionCommandCenterRoute,
   ExecutionDashboardRoute: ExecutionDashboardRoute,
   ExecutionInboxRoute: ExecutionInboxRoute,
@@ -4556,6 +4648,7 @@ const AdminRouteWithChildren = AdminRoute._addFileChildren(AdminRouteChildren)
 interface WWorkspaceSlugSettingsRouteRouteChildren {
   WWorkspaceSlugSettingsBillingRoute: typeof WWorkspaceSlugSettingsBillingRoute
   WWorkspaceSlugSettingsMembersRoute: typeof WWorkspaceSlugSettingsMembersRoute
+  WWorkspaceSlugSettingsTimeRoute: typeof WWorkspaceSlugSettingsTimeRoute
   WWorkspaceSlugSettingsUsageRoute: typeof WWorkspaceSlugSettingsUsageRoute
   WWorkspaceSlugSettingsIndexRoute: typeof WWorkspaceSlugSettingsIndexRoute
 }
@@ -4564,6 +4657,7 @@ const WWorkspaceSlugSettingsRouteRouteChildren: WWorkspaceSlugSettingsRouteRoute
   {
     WWorkspaceSlugSettingsBillingRoute: WWorkspaceSlugSettingsBillingRoute,
     WWorkspaceSlugSettingsMembersRoute: WWorkspaceSlugSettingsMembersRoute,
+    WWorkspaceSlugSettingsTimeRoute: WWorkspaceSlugSettingsTimeRoute,
     WWorkspaceSlugSettingsUsageRoute: WWorkspaceSlugSettingsUsageRoute,
     WWorkspaceSlugSettingsIndexRoute: WWorkspaceSlugSettingsIndexRoute,
   }

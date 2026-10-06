@@ -5,6 +5,7 @@ import { Bell } from "lucide-react";
 import { type MouseEvent, useState } from "react";
 import { useNotificationsRealtime } from "@/hooks/useNotificationsRealtime";
 import { isNotificationShownInApp } from "@/lib/appNotifications";
+import { notificationBody, notificationLabel } from "@/lib/notificationLabels";
 import { openNotificationTarget } from "@/lib/notificationNavigation";
 import { isNativeApp } from "@/lib/platform";
 import {
@@ -12,50 +13,6 @@ import {
 	notificationsService,
 } from "@/services/notifications.service";
 import { useAuthStore } from "@/stores/authStore";
-
-function notificationTitle(typeName?: string) {
-	if (typeName === "project_invite_received") return "New project invite";
-	if (typeName === "project_invite_responded") return "Invite response";
-	if (typeName === "project_team_invite_received")
-		return "Your team is invited";
-	if (typeName === "project_team_invite_responded") return "Invite response";
-	if (typeName === "marketplace_profile_live") return "Profile is live";
-	if (typeName === "task_assigned") return "Task assigned";
-	if (typeName === "time_log_approval_requested")
-		return "Time approval requested";
-	if (typeName === "time_log_approved") return "Time log approved";
-	if (typeName === "time_log_rejected") return "Time log rejected";
-	if (typeName === "time_log_pending") return "Time log reset to pending";
-	if (typeName === "time_log_day_rejected") return "Daily logs rejected";
-	if (typeName === "time_log_comment_added") return "Time log comment";
-	if (typeName === "chat_mention") return "Mention";
-	if (typeName === "chat_dm_received") return "New message";
-	if (typeName === "task_comment_mention") return "Mentioned in task";
-	if (typeName === "feature_comment_mention") return "Mentioned in feature";
-	if (typeName === "epic_comment_mention") return "Mentioned in epic";
-	return "Notification";
-}
-
-function notificationBody(content: Record<string, unknown> | null | undefined) {
-	const messageValue = content?.message;
-	if (typeof messageValue === "string" && messageValue.trim())
-		return messageValue;
-	const reasonValue = content?.reason;
-	if (typeof reasonValue === "string" && reasonValue.trim())
-		return `Reason: ${reasonValue}`;
-	const dayValue = content?.day;
-	if (typeof dayValue === "string" && dayValue.trim())
-		return `Day: ${dayValue}`;
-	const statusValue = content?.status;
-	if (typeof statusValue === "string") {
-		if (statusValue === "approved") return "Your logged time was approved.";
-		if (statusValue === "rejected") return "Your logged time was rejected.";
-		if (statusValue === "pending")
-			return "A time log was moved back to pending.";
-		return `Invite was ${statusValue}.`;
-	}
-	return "You have a new update.";
-}
 
 export function NotificationBell() {
 	const { isAuthenticated, profile } = useAuthStore();
@@ -180,8 +137,7 @@ export function NotificationBell() {
 					</div>
 				) : (
 					recentNotifications.map((notification) => {
-						const typeName = notification.type?.name;
-						const title = notificationTitle(typeName);
+						const title = notificationLabel(notification.type?.name);
 						const message = notificationBody(notification.content ?? null);
 
 						return (

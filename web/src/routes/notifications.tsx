@@ -1,19 +1,14 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { createFileRoute, redirect } from "@tanstack/react-router";
 import { AnimatePresence, motion } from "framer-motion";
-import {
-	Bell,
-	Briefcase,
-	Check,
-	CheckCircle2,
-	Clock3,
-	Info,
-	MessageCircle,
-	Trash2,
-	XCircle,
-} from "lucide-react";
+import { Bell, Check, Trash2 } from "lucide-react";
 import { useNotificationsRealtime } from "@/hooks/useNotificationsRealtime";
 import { isNotificationShownInApp } from "@/lib/appNotifications";
+import {
+	notificationBody,
+	notificationLabelFor,
+	notificationToneClass,
+} from "@/lib/notificationLabels";
 import { openNotificationTarget } from "@/lib/notificationNavigation";
 import { isNativeApp } from "@/lib/platform";
 import {
@@ -21,6 +16,11 @@ import {
 	notificationsService,
 } from "@/services/notifications.service";
 import { useAuthStore } from "@/stores/authStore";
+
+function NotificationIcon({ item }: { item: NotificationItem }) {
+	const { icon: Icon, tone } = notificationLabelFor(item.type?.name);
+	return <Icon className={`h-5 w-5 ${notificationToneClass(tone)}`} />;
+}
 
 const SKELETON_NOTIFICATION_ROWS = [
 	"notification-skeleton-1",
@@ -36,86 +36,6 @@ export const Route = createFileRoute("/notifications")({
 	},
 	component: NotificationsPage,
 });
-
-function getNotificationTitle(item: NotificationItem) {
-	const name = item.type?.name;
-	if (name === "project_invite_received") return "New project invite";
-	if (name === "project_invite_responded") return "Invite response";
-	if (name === "marketplace_profile_live") return "Profile is live";
-	if (name === "task_assigned") return "Task assigned";
-	if (name === "time_log_approval_requested") return "Time approval requested";
-	if (name === "time_log_approved") return "Time log approved";
-	if (name === "time_log_rejected") return "Time log rejected";
-	if (name === "time_log_pending") return "Time log reset to pending";
-	if (name === "time_log_day_rejected") return "Daily logs rejected";
-	if (name === "time_log_comment_added") return "Time log comment";
-	if (name === "chat_dm_received") return "New message";
-	// chat_mention was never mapped here — it rendered as a bare "Notification".
-	if (name === "chat_mention") return "Mention";
-	if (name === "task_comment_mention") return "Mentioned in task";
-	if (name === "feature_comment_mention") return "Mentioned in feature";
-	if (name === "epic_comment_mention") return "Mentioned in epic";
-	return "Notification";
-}
-
-function getNotificationBody(item: NotificationItem) {
-	const message = item.content?.message;
-	if (typeof message === "string" && message.trim()) return message;
-	const reason = item.content?.reason;
-	if (typeof reason === "string" && reason.trim()) {
-		return `Reason: ${reason}`;
-	}
-	const day = item.content?.day;
-	if (typeof day === "string" && day.trim()) {
-		return `Day: ${day}`;
-	}
-	const status = item.content?.status;
-	if (typeof status === "string") {
-		if (status === "approved") return "Your logged time was approved.";
-		if (status === "rejected") return "Your logged time was rejected.";
-		if (status === "pending") return "A time log was moved back to pending.";
-		return `Invite was ${status}.`;
-	}
-	return "You have an update.";
-}
-
-function getNotificationIcon(item: NotificationItem) {
-	const name = item.type?.name;
-	if (
-		name === "project_invite_received" ||
-		name === "project_invite_responded"
-	) {
-		return <Briefcase className="h-5 w-5 text-primary" />;
-	}
-	if (name === "marketplace_profile_live") {
-		return <CheckCircle2 className="h-5 w-5 text-success" />;
-	}
-	if (name === "task_assigned") {
-		return <Briefcase className="h-5 w-5 text-info" />;
-	}
-	if (name === "time_log_approval_requested") {
-		return <Clock3 className="h-5 w-5 text-warning" />;
-	}
-	if (name === "time_log_approved") {
-		return <CheckCircle2 className="h-5 w-5 text-success" />;
-	}
-	if (name === "time_log_rejected" || name === "time_log_day_rejected") {
-		return <XCircle className="h-5 w-5 text-destructive" />;
-	}
-	if (name === "time_log_comment_added") {
-		return <MessageCircle className="h-5 w-5 text-info" />;
-	}
-	if (
-		name === "task_comment_mention" ||
-		name === "feature_comment_mention" ||
-		name === "epic_comment_mention" ||
-		name === "chat_mention" ||
-		name === "chat_dm_received"
-	) {
-		return <MessageCircle className="h-5 w-5 text-primary" />;
-	}
-	return <Info className="h-5 w-5 text-muted-foreground" />;
-}
 
 function NotificationsPage() {
 	const queryClient = useQueryClient();
@@ -315,7 +235,7 @@ function NotificationsPage() {
 													: "bg-card shadow-sm ring-1 ring-primary/20"
 											}`}
 										>
-											{getNotificationIcon(item)}
+											<NotificationIcon item={item} />
 										</div>
 
 										{/* Content */}
@@ -324,7 +244,7 @@ function NotificationsPage() {
 												<h2
 													className={`text-base font-semibold truncate ${item.is_read ? "text-card-foreground" : "text-primary"}`}
 												>
-													{getNotificationTitle(item)}
+													{notificationLabelFor(item.type?.name).label}
 												</h2>
 												{!item.is_read && (
 													<span className="mt-2 h-2 w-2 shrink-0 rounded-full bg-primary shadow-sm shadow-primary/50" />
@@ -332,7 +252,7 @@ function NotificationsPage() {
 											</div>
 
 											<p className="text-sm text-muted-foreground leading-relaxed mb-3">
-												{getNotificationBody(item)}
+												{notificationBody(item.content ?? null)}
 											</p>
 
 											<p className="text-xs font-medium text-muted-foreground">

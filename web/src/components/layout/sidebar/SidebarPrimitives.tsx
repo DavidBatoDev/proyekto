@@ -11,6 +11,9 @@ export function SidebarSectionHeader({ children }: { children: ReactNode }) {
 	);
 }
 
+/** Counts above this read "99+", so a pill never outgrows the rail. */
+const BADGE_CAP = 99;
+
 export function SidebarNavLink({
 	to,
 	icon: Icon,
@@ -18,6 +21,8 @@ export function SidebarNavLink({
 	active,
 	params,
 	tone = "solid",
+	badge,
+	badgeLabel,
 }: {
 	to: string;
 	icon: React.ElementType;
@@ -30,11 +35,31 @@ export function SidebarNavLink({
 	 * rather than modes, where a solid bar on every level is too heavy.
 	 */
 	tone?: "solid" | "tint";
+	/**
+	 * A count pill at the row's end (Time's "approvals waiting"). Hidden at
+	 * zero, null or undefined, so callers can pass the raw number.
+	 */
+	badge?: number | null;
+	/**
+	 * What the count means, for screen readers ("3 timesheets waiting").
+	 * Defaults to the bare number.
+	 */
+	badgeLabel?: string;
 }) {
 	const activeClass =
 		tone === "tint"
 			? "bg-primary/10 font-semibold text-primary"
 			: "bg-sidebar-primary text-sidebar-primary-foreground shadow-sm";
+	const count =
+		typeof badge === "number" && Number.isFinite(badge) && badge > 0
+			? Math.floor(badge)
+			: 0;
+	// On the solid active row the pill inverts, so it stays visible against
+	// the filled background; everywhere else it is the primary accent.
+	const badgeClass =
+		active && tone === "solid"
+			? "bg-sidebar-primary-foreground text-sidebar-primary"
+			: "bg-primary text-primary-foreground";
 	return (
 		<Link
 			to={to}
@@ -47,6 +72,17 @@ export function SidebarNavLink({
 		>
 			<Icon className="h-5 w-5 shrink-0" />
 			<span className="truncate">{label}</span>
+			{count > 0 ? (
+				<span
+					data-testid="sidebar-nav-badge"
+					className={`ml-auto inline-flex h-5 min-w-5 shrink-0 items-center justify-center rounded-full px-1.5 text-[11px] font-semibold tabular-nums ${badgeClass}`}
+				>
+					<span aria-hidden="true">
+						{count > BADGE_CAP ? `${BADGE_CAP}+` : count}
+					</span>
+					<span className="sr-only">{badgeLabel ?? String(count)}</span>
+				</span>
+			) : null}
 		</Link>
 	);
 }

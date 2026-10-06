@@ -7,9 +7,10 @@
  * `DEFAULT_PLAN_LIMITS` is the seed of that table, copied here so /pricing has
  * something honest to render on the first frame and during an API outage. It
  * must stay identical to the seed in
- * supabase/migrations/20260922120000_workspace_plan_limits.sql — a test pins
- * the literal so a drift shows up as a failing diff rather than a pricing page
- * that quietly disagrees with enforcement.
+ * supabase/migrations/20260922120000_workspace_plan_limits.sql and the later
+ * migrations that add keys to it (most recently 20261003090000_time_plan_keys,
+ * the time ladder) — a test pins the literal so a drift shows up as a failing
+ * diff rather than a pricing page that quietly disagrees with enforcement.
  *
  * The key names are canonical across the DB, the backend and here. A server
  * response is never trusted blindly: `normalizePlanLimits` validates every cell
@@ -67,6 +68,12 @@ export const LIMIT_KEYS = [
 	"decisions",
 	"custom_register_fields",
 	"time_tracking",
+	"time_billable_invoices",
+	"time_team_rules",
+	"time_payouts",
+	"time_reports_export",
+	"time_approval_chains",
+	"time_audit_export",
 	"private_teams_guests",
 	"roles_permissions",
 	"activity_retention_days",
@@ -234,9 +241,61 @@ export const LIMIT_DEFINITIONS: readonly LimitDefinition[] = [
 		enforced: false,
 		unit: null,
 	},
+	// The time ladder (20261003090000_time_plan_keys.sql, sort 120–126). Free
+	// keeps the personal timer, which needs no key; contract time is never
+	// plan-gated, so it has none either.
 	{
 		key: "time_tracking",
-		label: "Time tracking and timesheets",
+		label: "Timesheets and approvals",
+		group: "team",
+		kind: "feature",
+		enforced: true,
+		unit: null,
+	},
+	{
+		key: "time_billable_invoices",
+		label: "Billable hours on invoices",
+		group: "team",
+		kind: "feature",
+		enforced: true,
+		unit: null,
+	},
+	{
+		key: "time_team_rules",
+		label: "Team approvers and time rules",
+		group: "team",
+		kind: "feature",
+		enforced: true,
+		unit: null,
+	},
+	{
+		key: "time_payouts",
+		label: "Payouts",
+		group: "team",
+		kind: "feature",
+		enforced: true,
+		unit: null,
+	},
+	{
+		key: "time_reports_export",
+		label: "Workspace time reports and export",
+		group: "team",
+		kind: "feature",
+		enforced: true,
+		unit: null,
+	},
+	{
+		key: "time_approval_chains",
+		label: "Custom approval chains",
+		group: "team",
+		kind: "feature",
+		// Reserved: published on /pricing, enforced by nothing yet (D40).
+		enforced: false,
+		unit: null,
+	},
+	{
+		key: "time_audit_export",
+		label: "Time audit export",
 		group: "team",
 		kind: "feature",
 		enforced: true,
@@ -401,6 +460,12 @@ export const DEFAULT_PLAN_LIMITS: Record<PlanId, PlanLimits> = deepFreeze({
 		decisions: feature(false),
 		custom_register_fields: feature(false),
 		time_tracking: feature(false),
+		time_billable_invoices: feature(false),
+		time_team_rules: feature(false),
+		time_payouts: feature(false),
+		time_reports_export: feature(false),
+		time_approval_chains: feature(false),
+		time_audit_export: feature(false),
 		private_teams_guests: feature(false),
 		roles_permissions: feature(false),
 		activity_retention_days: days(7),
@@ -425,6 +490,12 @@ export const DEFAULT_PLAN_LIMITS: Record<PlanId, PlanLimits> = deepFreeze({
 		decisions: feature(true),
 		custom_register_fields: feature(false),
 		time_tracking: feature(true),
+		time_billable_invoices: feature(true),
+		time_team_rules: feature(false),
+		time_payouts: feature(false),
+		time_reports_export: feature(false),
+		time_approval_chains: feature(false),
+		time_audit_export: feature(false),
 		private_teams_guests: feature(false),
 		roles_permissions: feature(false),
 		activity_retention_days: days(90),
@@ -449,6 +520,12 @@ export const DEFAULT_PLAN_LIMITS: Record<PlanId, PlanLimits> = deepFreeze({
 		decisions: feature(true),
 		custom_register_fields: feature(false),
 		time_tracking: feature(true),
+		time_billable_invoices: feature(true),
+		time_team_rules: feature(true),
+		time_payouts: feature(true),
+		time_reports_export: feature(true),
+		time_approval_chains: feature(false),
+		time_audit_export: feature(false),
 		private_teams_guests: feature(true),
 		roles_permissions: feature(true),
 		activity_retention_days: days(null),
@@ -473,6 +550,12 @@ export const DEFAULT_PLAN_LIMITS: Record<PlanId, PlanLimits> = deepFreeze({
 		decisions: feature(true),
 		custom_register_fields: feature(true),
 		time_tracking: feature(true),
+		time_billable_invoices: feature(true),
+		time_team_rules: feature(true),
+		time_payouts: feature(true),
+		time_reports_export: feature(true),
+		time_approval_chains: feature(true),
+		time_audit_export: feature(true),
 		private_teams_guests: feature(true),
 		roles_permissions: feature(true, "Granular"),
 		activity_retention_days: days(null),

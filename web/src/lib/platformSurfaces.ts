@@ -44,6 +44,11 @@ export const NOT_AVAILABLE_PATH = "/not-available";
  *
  * Order matters the same way `legacyRoutePaths.ts` needs it to: a specific
  * path must beat a shorter one that is also a prefix of it.
+ *
+ * Rules match whole segments. A `*` segment matches exactly one segment of
+ * any value (a team id, or a `$teamId` route template), never zero and never
+ * two — so the team payouts rule covers `/teams/t1/time/payouts` and its
+ * children, but not `/teams/time/payouts` or `/teams/a/b/time/payouts`.
  */
 const SURFACE_RULES: ReadonlyArray<
 	readonly [prefix: string, surface: Surface]
@@ -118,7 +123,17 @@ const SURFACE_RULES: ReadonlyArray<
 	// children are listed at the top of this table and keep their own rule.
 	["/settings", "app"],
 	["/task-board", "app"],
+	// A team's money pages: Rates and Payouts are money surfaces (L54), so the
+	// app drops them from the team sub-nav and sends a stray link home without
+	// an explanation — the app's own chrome never points at them. Listed
+	// before ["/teams", "app"]: the team report under …/time stays visible.
+	["/teams/*/time/payouts", "silent"],
+	["/teams/*/time/manage-rates", "silent"],
 	["/teams", "app"],
+	// The personal Time page and the timesheet review screen. A talent's own
+	// hours are execution work, so agreement sheets stay in the app too; the
+	// pages strip amounts and agreement-money words on native themselves.
+	["/time", "app"],
 	["/unsubscribe", "app"],
 	["/welcome", "app"],
 	["/work-items", "app"],
@@ -130,9 +145,21 @@ function withoutSuffix(path: string): string {
 	return cut === -1 ? path : path.slice(0, cut);
 }
 
-/** A prefix only matches at a segment boundary: `/brief` must not eat `/briefly`. */
-function isUnder(pathname: string, prefix: string): boolean {
-	return pathname === prefix || pathname.startsWith(`${prefix}/`);
+/**
+ * Whether `pathname` is the rule's path or under it, compared segment by
+ * segment: `/brief` must not eat `/briefly`, and a `*` stands for exactly one
+ * non-empty segment. Without a `*` this is the plain "equal, or followed by a
+ * slash" prefix test.
+ */
+function isUnder(pathname: string, rule: string): boolean {
+	const ruleSegments = rule.split("/");
+	const pathSegments = pathname.split("/");
+	if (pathSegments.length < ruleSegments.length) return false;
+	return ruleSegments.every((segment, index) =>
+		segment === "*"
+			? pathSegments[index] !== ""
+			: segment === pathSegments[index],
+	);
 }
 
 /**

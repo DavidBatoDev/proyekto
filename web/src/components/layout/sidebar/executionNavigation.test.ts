@@ -1,8 +1,18 @@
 import { describe, expect, it } from "vitest";
+import { classifySurface } from "@/lib/platformSurfaces";
+import { toWorkspacePath } from "@/lib/workspacePaths";
 import {
 	EXECUTION_PRIMARY_NAV_ITEMS,
 	isExecutionNavItemActive,
+	isTimeNavVisible,
+	visibleExecutionNavItems,
 } from "./executionNavigation";
+
+function item(key: string) {
+	const found = EXECUTION_PRIMARY_NAV_ITEMS.find((entry) => entry.key === key);
+	if (!found) throw new Error(`${key} nav item missing`);
+	return found;
+}
 
 describe("EXECUTION_PRIMARY_NAV_ITEMS", () => {
 	it("carries an icon on every item", () => {
@@ -29,5 +39,91 @@ describe("EXECUTION_PRIMARY_NAV_ITEMS", () => {
 		if (!dashboard) throw new Error("dashboard nav item missing");
 		expect(isExecutionNavItemActive(dashboard, "/dashboard")).toBe(true);
 		expect(isExecutionNavItemActive(dashboard, "/dashboard/extra")).toBe(false);
+	});
+
+	it("matches prefix items on whole segments only", () => {
+		const time = item("time");
+		expect(isExecutionNavItemActive(time, "/time")).toBe(true);
+		expect(isExecutionNavItemActive(time, "/time/timesheets/s1")).toBe(true);
+		expect(isExecutionNavItemActive(time, "/timeline")).toBe(false);
+		expect(isExecutionNavItemActive(item("meetings"), "/meetings")).toBe(true);
+		expect(isExecutionNavItemActive(item("inbox"), "/inbox/dm-1")).toBe(true);
+	});
+});
+
+describe("the Time item", () => {
+	it("sits right after Meetings, gated on time", () => {
+		const keys = EXECUTION_PRIMARY_NAV_ITEMS.map((entry) => entry.key);
+		expect(keys.indexOf("time")).toBe(keys.indexOf("meetings") + 1);
+		expect(item("time")).toMatchObject({
+			to: "/time",
+			label: "Time",
+			match: "prefix",
+			gate: "time",
+		});
+	});
+
+	it("stays a bare path the installed app shows", () => {
+		// /time is personal (ux.md › Routes): never gains a /w/<slug>/ prefix.
+		expect(toWorkspacePath(item("time").to, "acme")).toBe("/time");
+		expect(classifySurface(item("time").to)).toBe("app");
+	});
+});
+
+describe("visibleExecutionNavItems", () => {
+	it("hides gated items unless their gate is open", () => {
+		const keysFor = (gates: Parameters<typeof visibleExecutionNavItems>[0]) =>
+			visibleExecutionNavItems(gates).map((entry) => entry.key);
+
+		expect(keysFor({})).toEqual([
+			"dashboard",
+			"inbox",
+			"command-center",
+			"meetings",
+		]);
+		expect(keysFor({ time: false })).not.toContain("time");
+		expect(keysFor({ time: true })).toEqual([
+			"dashboard",
+			"inbox",
+			"command-center",
+			"meetings",
+			"time",
+		]);
+	});
+
+	it("filters a caller-supplied list too", () => {
+		expect(
+			visibleExecutionNavItems({ time: false }, [item("time"), item("inbox")]),
+		).toEqual([item("inbox")]);
+	});
+});
+
+describe("isTimeNavVisible", () => {
+	it("opens for loggers, deciders with work waiting, and policy admins", () => {
+		expect(isTimeNavVisible({ can_log: true })).toBe(true);
+		expect(isTimeNavVisible({ can_log: false, approvals_waiting: 3 })).toBe(
+			true,
+		);
+		expect(
+			isTimeNavVisible({
+				can_log: false,
+				approvals_waiting: 0,
+				workspace_time_admin: [{ workspace_id: "w1" }],
+			}),
+		).toBe(true);
+	});
+
+	it("stays closed for guests, empty overviews and while loading", () => {
+		// A guest's overview is the empty shape with can_log: false.
+		expect(
+			isTimeNavVisible({
+				can_log: false,
+				approvals_waiting: 0,
+				workspace_time_admin: [],
+			}),
+		).toBe(false);
+		expect(isTimeNavVisible({})).toBe(false);
+		expect(isTimeNavVisible(null)).toBe(false);
+		expect(isTimeNavVisible(undefined)).toBe(false);
 	});
 });

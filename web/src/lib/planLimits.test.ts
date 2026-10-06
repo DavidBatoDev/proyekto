@@ -38,7 +38,8 @@ describe("plan limit catalogue", () => {
 		const defined = LIMIT_DEFINITIONS.map((definition) => definition.key);
 		expect(new Set(defined).size).toBe(defined.length);
 		expect([...defined].sort()).toEqual([...LIMIT_KEYS].sort());
-		expect(LIMIT_KEYS).toHaveLength(22);
+		// 22 before the time ladder, plus its six new keys (M0).
+		expect(LIMIT_KEYS).toHaveLength(28);
 		for (const plan of PLAN_ORDER) {
 			expect(Object.keys(DEFAULT_PLAN_LIMITS[plan]).sort()).toEqual(
 				[...LIMIT_KEYS].sort(),
@@ -69,6 +70,11 @@ describe("plan limit catalogue", () => {
 			"risks",
 			"decisions",
 			"time_tracking",
+			"time_billable_invoices",
+			"time_team_rules",
+			"time_payouts",
+			"time_reports_export",
+			"time_audit_export",
 			"activity_retention_days",
 			"mcp_server",
 			"contract_counterparty_authoring",
@@ -76,6 +82,101 @@ describe("plan limit catalogue", () => {
 			"document_intake_pages_monthly",
 			"document_intake_onboarding_pages",
 		]);
+	});
+
+	/**
+	 * The time ladder from 20261003090000_time_plan_keys.sql. Unknown keys fail
+	 * OPEN on the web (`isEnabled` on a missing cell is true), so a key missing
+	 * here would silently unlock its gate on every plan.
+	 */
+	it("carries the time ladder in the team group, in seed order", () => {
+		const time = LIMIT_DEFINITIONS.filter((definition) =>
+			definition.key.startsWith("time_"),
+		);
+		expect(
+			time.map(({ key, label, group, kind, enforced }) => ({
+				key,
+				label,
+				group,
+				kind,
+				enforced,
+			})),
+		).toEqual([
+			{
+				key: "time_tracking",
+				label: "Timesheets and approvals",
+				group: "team",
+				kind: "feature",
+				enforced: true,
+			},
+			{
+				key: "time_billable_invoices",
+				label: "Billable hours on invoices",
+				group: "team",
+				kind: "feature",
+				enforced: true,
+			},
+			{
+				key: "time_team_rules",
+				label: "Team approvers and time rules",
+				group: "team",
+				kind: "feature",
+				enforced: true,
+			},
+			{
+				key: "time_payouts",
+				label: "Payouts",
+				group: "team",
+				kind: "feature",
+				enforced: true,
+			},
+			{
+				key: "time_reports_export",
+				label: "Workspace time reports and export",
+				group: "team",
+				kind: "feature",
+				enforced: true,
+			},
+			{
+				key: "time_approval_chains",
+				label: "Custom approval chains",
+				group: "team",
+				kind: "feature",
+				// Reserved (D40): published, never enforced.
+				enforced: false,
+			},
+			{
+				key: "time_audit_export",
+				label: "Time audit export",
+				group: "team",
+				kind: "feature",
+				enforced: true,
+			},
+		]);
+	});
+
+	it("names the first plan that unlocks each time key", () => {
+		expect(nextPlanWith("time_tracking", "free", DEFAULT_PLAN_LIMITS)).toBe(
+			"pro",
+		);
+		expect(
+			nextPlanWith("time_billable_invoices", "free", DEFAULT_PLAN_LIMITS),
+		).toBe("pro");
+		expect(nextPlanWith("time_team_rules", "pro", DEFAULT_PLAN_LIMITS)).toBe(
+			"business",
+		);
+		expect(nextPlanWith("time_payouts", "pro", DEFAULT_PLAN_LIMITS)).toBe(
+			"business",
+		);
+		expect(
+			nextPlanWith("time_reports_export", "free", DEFAULT_PLAN_LIMITS),
+		).toBe("business");
+		expect(
+			nextPlanWith("time_approval_chains", "business", DEFAULT_PLAN_LIMITS),
+		).toBe("enterprise");
+		expect(nextPlanWith("time_audit_export", "pro", DEFAULT_PLAN_LIMITS)).toBe(
+			"enterprise",
+		);
 	});
 
 	it("labels plans for display", () => {
@@ -152,6 +253,13 @@ describe("DEFAULT_PLAN_LIMITS matches the seed", () => {
 		decisions: row(f(false), f(true), f(true), f(true)),
 		custom_register_fields: row(f(false), f(false), f(false), f(true)),
 		time_tracking: row(f(false), f(true), f(true), f(true)),
+		// 20261003090000_time_plan_keys (M0)
+		time_billable_invoices: row(f(false), f(true), f(true), f(true)),
+		time_team_rules: row(f(false), f(false), f(true), f(true)),
+		time_payouts: row(f(false), f(false), f(true), f(true)),
+		time_reports_export: row(f(false), f(false), f(true), f(true)),
+		time_approval_chains: row(f(false), f(false), f(false), f(true)),
+		time_audit_export: row(f(false), f(false), f(false), f(true)),
 		private_teams_guests: row(f(false), f(false), f(true), f(true)),
 		roles_permissions: row(f(false), f(false), f(true), f(true, "Granular")),
 		activity_retention_days: row(

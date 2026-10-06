@@ -19,6 +19,10 @@ const Header = () => {
 		"/inbox",
 		"/command-center",
 		"/meetings",
+		// The personal Time page and the timesheet review screen. A prefix
+		// test, so it would also admit a future top-level `/timeline`; nothing
+		// lives there today (the project timeline is under /project).
+		"/time",
 		"/marketplace",
 		"/teams",
 		"/project",

@@ -6,6 +6,7 @@ const NOTIFICATION_SURFACES = [
 	"routes/notifications.tsx",
 	"components/layout/NotificationBell.tsx",
 	"contexts/ToastContext.tsx",
+	"lib/notificationLabels.ts",
 ];
 
 const FIXED_COLOR =
@@ -33,10 +34,17 @@ describe("notification theme surfaces", () => {
 			resolve(process.cwd(), "src/contexts/ToastContext.tsx"),
 			"utf8",
 		);
+		// The page and the bell read each notification type's tone from one
+		// shared table, so the status tokens live there.
+		const labels = readFileSync(
+			resolve(process.cwd(), "src/lib/notificationLabels.ts"),
+			"utf8",
+		);
 
-		expect(page).toContain("text-success");
-		expect(page).toContain("text-warning");
-		expect(page).toContain("text-destructive");
+		expect(page).toContain("notificationToneClass");
+		expect(labels).toContain("text-success");
+		expect(labels).toContain("text-warning");
+		expect(labels).toContain("text-destructive");
 		expect(page).toContain("bg-primary/10");
 		expect(toast).toContain("bg-popover");
 		expect(toast).toContain("text-popover-foreground");

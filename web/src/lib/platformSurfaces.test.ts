@@ -89,7 +89,14 @@ describe("classifySurface", () => {
 			"/work-items",
 			"/project/p1/roadmap",
 			"/project/new",
-			"/teams/t1/time/payouts",
+			"/teams/t1/time",
+			"/teams/t1/time/my-logs",
+			"/time",
+			"/time/timesheets/s1",
+			"/time?for=team:t1&entry=e1",
+			"/time#waiting",
+			"/w/acme/settings/time",
+			"/w/acme/settings/time?tab=report",
 			"/settings/appearance",
 			"/settings/mcp-tokens",
 			"/w/acme/dashboard",
@@ -104,6 +111,40 @@ describe("classifySurface", () => {
 		]) {
 			expect(classifySurface(path), path).toBe("app");
 		}
+	});
+
+	it("hides a team's money pages silently, under either URL shape", () => {
+		// Rates and Payouts are money surfaces (L54). The team report under
+		// …/time stays; only these two sub-pages go.
+		for (const path of [
+			"/teams/t1/time/payouts",
+			"/teams/t1/time/manage-rates",
+			"/teams/t1/time/manage-rates/u1",
+			"/w/acme/teams/t1/time/payouts",
+			"/w/acme/teams/t1/time/manage-rates/u1?x=1",
+			// Route templates, as the generated route table and nav items spell them.
+			"/teams/$teamId/time/payouts",
+			"/w/$workspaceSlug/teams/$teamId/time/manage-rates/$userId",
+		]) {
+			expect(classifySurface(path), path).toBe("silent");
+		}
+	});
+
+	it("lets a * stand for exactly one segment", () => {
+		// No team segment: the wildcard needs one, so the broader /teams rule wins.
+		expect(classifySurface("/teams/time/payouts")).toBe("app");
+		// Two segments where the wildcard allows one.
+		expect(classifySurface("/teams/a/b/time/payouts")).toBe("app");
+		// An empty segment is not a team id.
+		expect(classifySurface("/teams//time/payouts")).toBe("app");
+		// Whole segments after the wildcard, too.
+		expect(classifySurface("/teams/t1/time/payoutsx")).toBe("app");
+	});
+
+	it("does not confuse /time with /timeline or /timesheets", () => {
+		expect(classifySurface("/timeline")).toBe(null);
+		expect(classifySurface("/timesheets")).toBe(null);
+		expect(classifySurface("/project/p1/timeline")).toBe("app");
 	});
 
 	it("resolves a bare /w/<slug> to its own route rather than flattening it", () => {
@@ -149,6 +190,17 @@ describe("nativeDestinationFor", () => {
 
 	it("sends the landing home silently", () => {
 		expect(nativeDestinationFor("/home")).toBe("/dashboard");
+	});
+
+	it("sends a team money page home silently", () => {
+		// Old push payloads and notification links still carry these paths.
+		expect(nativeDestinationFor("/w/acme/teams/t1/time/payouts")).toBe(
+			"/dashboard",
+		);
+		expect(nativeDestinationFor("/teams/t1/time/manage-rates/u1")).toBe(
+			"/dashboard",
+		);
+		expect(nativeDestinationFor("/time/timesheets/s1")).toBeNull();
 	});
 
 	it("gives the staff console the generic wording", () => {
@@ -203,5 +255,19 @@ describe("filterNavByPlatform", () => {
 			{ to: "/w/acme/settings/billing" },
 		];
 		expect(filterNavByPlatform(items, true)).toEqual([{ to: "/dashboard" }]);
+	});
+
+	it("leaves a team's time sub-nav with the Report only", () => {
+		// ux.md › Mobile: the team sub-nav shows Report on native; Rates and
+		// Payouts drop out, whether written as paths or as route templates.
+		const items = [
+			{ to: "/w/$workspaceSlug/teams/$teamId/time" },
+			{ to: "/w/$workspaceSlug/teams/$teamId/time/manage-rates" },
+			{ to: "/w/acme/teams/t1/time/payouts" },
+		];
+		expect(filterNavByPlatform(items, true)).toEqual([
+			{ to: "/w/$workspaceSlug/teams/$teamId/time" },
+		]);
+		expect(filterNavByPlatform(items, false)).toEqual(items);
 	});
 });

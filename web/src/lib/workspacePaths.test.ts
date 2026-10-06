@@ -69,6 +69,29 @@ describe("toWorkspacePath", () => {
 		);
 	});
 
+	/**
+	 * The Time page is personal — its sheets span workspaces — so it keeps the
+	 * bare path (ux.md › Routes and Redirects). Only workspace settings and the
+	 * team report carry a slug, and they are built slugged already.
+	 */
+	it("leaves /time and the timesheet review screen bare", () => {
+		expect(toWorkspacePath("/time", "acme")).toBe("/time");
+		expect(toWorkspacePath("/time?for=team:t1&entry=e1", "acme")).toBe(
+			"/time?for=team:t1&entry=e1",
+		);
+		expect(toWorkspacePath("/time#waiting", "acme")).toBe("/time#waiting");
+		expect(toWorkspacePath("/time/timesheets/s1", "acme")).toBe(
+			"/time/timesheets/s1",
+		);
+		// The team report is still a /teams path, so it does move.
+		expect(toWorkspacePath("/teams/t1/time?person=u1", "acme")).toBe(
+			"/w/acme/teams/t1/time?person=u1",
+		);
+		expect(stripWorkspacePrefix("/w/acme/settings/time?tab=report")).toBe(
+			"/settings/time?tab=report",
+		);
+	});
+
 	it("returns the bare path when no slug is known", () => {
 		expect(toWorkspacePath("/dashboard", null)).toBe("/dashboard");
 	});

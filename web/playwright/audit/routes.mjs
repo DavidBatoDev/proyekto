@@ -6,6 +6,7 @@
  * is recorded as `skipped` in the manifest rather than silently dropped.
  *
  * Placeholders: :projectId :roadmapId :chatRef :teamId :profileId :token :workspaceSlug
+ * :timesheetId (not discovered yet, so the review screen is recorded as skipped)
  *
  * Organizational pages live under /w/:workspaceSlug/…; their bare twins
  * (/dashboard, /teams/…, /workspace/…) are still generated routes — redirect
@@ -43,6 +44,8 @@ export const STATIC_ROUTES = [
   { path: "/onboarding", group: "global", auth: true },
   { path: "/dashboard", group: "global", auth: true },
   { path: "/meetings", group: "global", auth: true },
+  // The personal Time page (bare, never workspace-scoped).
+  { path: "/time", group: "global", auth: true },
   { path: "/engagements", group: "global", auth: true },
   { path: "/notifications", group: "global", auth: true },
   { path: "/inbox", group: "global", auth: true },
@@ -101,6 +104,34 @@ export const STATIC_ROUTES = [
   { path: "/admin/plans", group: "admin", auth: true },
   { path: "/admin/workspaces", group: "admin", auth: true },
   { path: "/admin/settings", group: "admin", auth: true },
+
+  // ── coverage backfill (generated routes the manifest had fallen behind on) ──
+  { path: "/command-center", group: "global", auth: true },
+  { path: "/invites", group: "global", auth: true },
+  { path: "/task-board", group: "global", auth: true },
+  { path: "/get-started", group: "public", auth: false },
+  { path: "/unsubscribe", group: "public", auth: false },
+  { path: "/oauth/authorize", group: "global", auth: true },
+  { path: "/roadmap-templates", group: "roadmap", auth: false },
+  { path: "/start-selling", group: "talent", auth: true },
+  { path: "/brief/new", group: "consultant", auth: true },
+  { path: "/marketplace/briefs", group: "public", auth: false },
+  { path: "/marketplace/category", group: "public", auth: false },
+  { path: "/marketplace/project-posting", group: "consultant", auth: true },
+  { path: "/marketplace/services", group: "consultant", auth: true },
+  { path: "/marketplace/talent/settings", group: "talent", auth: true },
+  { path: "/engagements/contracts", group: "engagements", auth: true },
+  { path: "/engagements/intake", group: "engagements", auth: true },
+  { path: "/engagements/finance", group: "engagements", auth: true },
+  { path: "/engagements/finance/contracts", group: "engagements", auth: true },
+  { path: "/engagements/finance/imports", group: "engagements", auth: true },
+  { path: "/engagements/finance/invoices", group: "engagements", auth: true },
+  { path: "/engagements/finance/invoices/new", group: "engagements", auth: true },
+  { path: "/engagements/finance/me", group: "engagements", auth: true },
+  { path: "/engagements/finance/portfolio", group: "engagements", auth: true },
+  { path: "/engagements/finance/setup/team", group: "engagements", auth: true },
+  { path: "/engagements/finance/shared", group: "engagements", auth: true },
+  { path: "/engagements/finance/teams", group: "engagements", auth: true },
 ];
 
 export const DYNAMIC_ROUTES = [
@@ -155,6 +186,7 @@ export const DYNAMIC_ROUTES = [
   { tpl: "/w/:workspaceSlug/settings/members", needs: ["workspaceSlug"], group: "workspace", auth: true },
   { tpl: "/w/:workspaceSlug/settings/usage", needs: ["workspaceSlug"], group: "workspace", auth: true },
   { tpl: "/w/:workspaceSlug/settings/billing", needs: ["workspaceSlug"], group: "workspace", auth: true },
+  { tpl: "/w/:workspaceSlug/settings/time", needs: ["workspaceSlug"], group: "workspace", auth: true },
   { tpl: "/w/:workspaceSlug/teams", needs: ["workspaceSlug"], group: "teams", auth: true },
   { tpl: "/w/:workspaceSlug/teams/:teamId", needs: ["workspaceSlug", "teamId"], group: "teams", auth: true },
   { tpl: "/w/:workspaceSlug/teams/:teamId/settings", needs: ["workspaceSlug", "teamId"], group: "teams", auth: true },
@@ -169,6 +201,52 @@ export const DYNAMIC_ROUTES = [
   { tpl: "/w/:workspaceSlug/teams/:teamId/time/payouts", needs: ["workspaceSlug", "teamId"], group: "teams", auth: true },
   { tpl: "/w/:workspaceSlug/teams/:teamId/time/log/:logId", needs: ["workspaceSlug", "teamId", "logId"], group: "teams", auth: true },
   { tpl: "/w/:workspaceSlug/teams/:teamId/time/manage-rates/:userId", needs: ["workspaceSlug", "teamId", "userId"], group: "teams", auth: true },
+
+  // ── time (the review screen needs a timesheet the account can open) ─────
+  { tpl: "/time/timesheets/:timesheetId", needs: ["timesheetId"], group: "global", auth: true },
+
+  // ── coverage backfill (ids the discoverer does not find yet are skipped) ──
+  { tpl: "/project/:projectId/time", needs: ["projectId"], group: "project", auth: true },
+  { tpl: "/project/:projectId/settings/time", needs: ["projectId"], group: "project", auth: true },
+  { tpl: "/project/:projectId/deliverables", needs: ["projectId"], group: "project", auth: true },
+  { tpl: "/project/:projectId/deliverables/:deliverableId", needs: ["projectId", "deliverableId"], group: "project", auth: true },
+  { tpl: "/project/:projectId/change-requests", needs: ["projectId"], group: "project", auth: true },
+  { tpl: "/project/:projectId/change-requests/:changeRequestId", needs: ["projectId", "changeRequestId"], group: "project", auth: true },
+  { tpl: "/project/:projectId/risks", needs: ["projectId"], group: "project", auth: true },
+  { tpl: "/project/:projectId/decisions", needs: ["projectId"], group: "project", auth: true },
+  { tpl: "/project/:projectId/decisions/:decisionId", needs: ["projectId", "decisionId"], group: "project", auth: true },
+  { tpl: "/roadmap-templates/:slug", needs: ["templateSlug"], group: "roadmap", auth: false },
+  { tpl: "/brief/:briefId", needs: ["briefId"], group: "consultant", auth: true },
+  { tpl: "/brief/:briefId/edit", needs: ["briefId"], group: "consultant", auth: true },
+  // A contract-signing token, not the roadmap share token that fills :token.
+  { tpl: "/contract/sign/:token", needs: ["contractSignToken"], group: "public", auth: false },
+  { tpl: "/marketplace/category/:categorySlug", needs: ["categorySlug"], group: "public", auth: false },
+  { tpl: "/marketplace/category/:categorySlug/:subcategorySlug", needs: ["categorySlug", "subcategorySlug"], group: "public", auth: false },
+  { tpl: "/marketplace/category/:categorySlug/:subcategorySlug/:topicSlug", needs: ["categorySlug", "subcategorySlug", "topicSlug"], group: "public", auth: false },
+  { tpl: "/marketplace/services/:serviceId", needs: ["serviceId"], group: "consultant", auth: true },
+  { tpl: "/marketplace/services/:serviceId/edit", needs: ["serviceId"], group: "consultant", auth: true },
+  { tpl: "/marketplace/talent/:profileId", needs: ["profileId"], group: "profile", auth: false },
+  { tpl: "/marketplace/finance/:contractId", needs: ["contractId"], group: "consultant", auth: true },
+  { tpl: "/marketplace/finance/invoices/:invoiceId/edit", needs: ["invoiceId"], group: "consultant", auth: true },
+  { tpl: "/engagements/:engagementId", needs: ["engagementId"], group: "engagements", auth: true },
+  { tpl: "/engagements/contracts/:contractId", needs: ["contractId"], group: "engagements", auth: true },
+  { tpl: "/engagements/finance/:contractId", needs: ["contractId"], group: "engagements", auth: true },
+  { tpl: "/engagements/finance/book/:bookId", needs: ["bookId"], group: "engagements", auth: true },
+  { tpl: "/engagements/finance/imports/:documentId", needs: ["documentId"], group: "engagements", auth: true },
+  { tpl: "/engagements/finance/invite/:token", needs: ["financeInviteToken"], group: "engagements", auth: true },
+  { tpl: "/engagements/finance/invoices/:invoiceId/edit", needs: ["invoiceId"], group: "engagements", auth: true },
+  { tpl: "/engagements/finance/team/:teamId", needs: ["teamId"], group: "engagements", auth: true },
+  { tpl: "/engagements/finance/team/:teamId/addons", needs: ["teamId"], group: "engagements", auth: true },
+  { tpl: "/engagements/finance/team/:teamId/contracts", needs: ["teamId"], group: "engagements", auth: true },
+  { tpl: "/engagements/finance/team/:teamId/expenses", needs: ["teamId"], group: "engagements", auth: true },
+  { tpl: "/engagements/finance/team/:teamId/imports", needs: ["teamId"], group: "engagements", auth: true },
+  { tpl: "/engagements/finance/team/:teamId/invoices", needs: ["teamId"], group: "engagements", auth: true },
+  { tpl: "/engagements/finance/team/:teamId/members", needs: ["teamId"], group: "engagements", auth: true },
+  { tpl: "/engagements/finance/team/:teamId/payouts", needs: ["teamId"], group: "engagements", auth: true },
+  { tpl: "/engagements/finance/team/:teamId/rates", needs: ["teamId"], group: "engagements", auth: true },
+  { tpl: "/engagements/finance/team/:teamId/time-logs", needs: ["teamId"], group: "engagements", auth: true },
+  { tpl: "/engagements/finance/team/:teamId/project/:bookId", needs: ["teamId", "bookId"], group: "engagements", auth: true },
+  { tpl: "/engagements/finance/team/:teamId/project/:bookId/imports/:documentId", needs: ["teamId", "bookId", "documentId"], group: "engagements", auth: true },
 
   // ── profile ─────────────────────────────────────────────────────────────
   { tpl: "/profile/:profileId", needs: ["profileId"], group: "profile", auth: true },
