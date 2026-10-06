@@ -10,8 +10,11 @@
 //   radio list in place (agreements first, "Use for new time on this project"),
 //   and the button names the choice ("Add for Acme Corp").
 // - Start and end are wall-clock times in the context's timezone (the
-//   context's policy, or the person's own for "Just me"); the start defaults
-//   to the end of that day's last entry, or 09:00.
+//   context's policy, or the person's own for "Just me"), on the 24-hour clock
+//   ("09:00", ux.md › Entries, forms). Start sits above End so each date reads
+//   in full ("Tue, Oct 6, 2026") beside its time. The start defaults to the end
+//   of that day's last entry, or 09:00; the end to an hour later, never past
+//   now on today (`defaultEntryWindow`).
 // - Inline, before anything is sent: "Manual time is off in your agreement
 //   with Acme." (MANUAL_ENTRIES_DISABLED) and "Prodigitality accepts time up
 //   to 7 days back." (RETROACTIVE_WINDOW). The server's own refusals, and a
@@ -55,6 +58,7 @@ import {
 } from "./TaskPickerModal";
 import {
 	type CreateEntryFlow,
+	defaultEntryWindow,
 	forRequestFields,
 	fromWallClock,
 	manualEntryRule,
@@ -322,14 +326,24 @@ function ManualEntryForm({
 		day: exact ? null : (initial.day ?? todayIn(timezone)),
 		timezone,
 	});
-	const seededStart = exact
+	// "Now" for the defaults is when the form opened, so they hold still.
+	const [openedAt] = useState(() => new Date());
+	const startFrom = exact
 		? new Date(initial.startedAt as string)
 		: defaultStart;
+	const seeded =
+		startFrom && !initial.endedAt
+			? defaultEntryWindow({
+					start: startFrom,
+					timezone,
+					now: openedAt,
+					fixedStart: exact,
+				})
+			: null;
+	const seededStart = seeded ? seeded.start : startFrom;
 	const seededEnd = initial.endedAt
 		? new Date(initial.endedAt)
-		: seededStart
-			? new Date(seededStart.getTime() + 3600_000)
-			: null;
+		: (seeded?.end ?? null);
 	const shownStart = touched ? startText : toWallClock(seededStart, timezone);
 	const shownEnd = touched ? endText : toWallClock(seededEnd, timezone);
 	const editStart = (value: string) => {
@@ -529,7 +543,9 @@ function ManualEntryForm({
 						</div>
 					) : null}
 
-					<div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+					{/* Stacked at every width: side by side in this dialog, the time
+					    box left the date about one letter (APP-1). */}
+					<div className="grid grid-cols-1 gap-3" data-testid="entry-times">
 						<DateTimeField
 							label={MANUAL_ENTRY_COPY.start}
 							ariaLabel={MANUAL_ENTRY_COPY.start}
@@ -538,6 +554,7 @@ function ManualEntryForm({
 							onChange={editStart}
 							disabled={busy}
 							zIndex={zIndex + 100}
+							hourCycle="h23"
 						/>
 						<DateTimeField
 							label={MANUAL_ENTRY_COPY.end}
@@ -547,6 +564,7 @@ function ManualEntryForm({
 							onChange={editEnd}
 							disabled={busy}
 							zIndex={zIndex + 100}
+							hourCycle="h23"
 						/>
 					</div>
 					{tzHint ? (

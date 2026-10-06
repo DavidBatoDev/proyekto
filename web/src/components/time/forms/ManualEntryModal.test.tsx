@@ -424,6 +424,101 @@ describe("ManualEntryModal", () => {
 			work_item: "review",
 		});
 	});
+	it("reads 24-hour times, the full date, and Start above End", async () => {
+		vi.spyOn(timeService, "getLoggingFor").mockResolvedValue(
+			forResult({ options: [team], selected: team }),
+		);
+		renderWithClient(
+			<ManualEntryModal open initial={initial} onClose={vi.fn()} />,
+		);
+		await screen.findByText("1h 30m added");
+		const start = screen.getByLabelText("Start time") as HTMLInputElement;
+		expect(start.value).toBe("09:00");
+		expect(start.placeholder).toBe("09:00");
+		expect((screen.getByLabelText("End time") as HTMLInputElement).value).toBe(
+			"10:30",
+		);
+		expect(screen.getByRole("button", { name: "Start date" }).textContent).toBe(
+			"Mon, Oct 5, 2026",
+		);
+		expect(screen.getByRole("button", { name: "End date" }).textContent).toBe(
+			"Mon, Oct 5, 2026",
+		);
+		expect(screen.getByTestId("entry-times").className).not.toMatch(
+			/grid-cols-2/,
+		);
+		// The option list runs 00:00, 00:15… on the 24-hour clock.
+		fireEvent.focus(start);
+		const list = await screen.findByRole("dialog", { name: "Time options" });
+		const slots = within(list)
+			.getAllByRole("button")
+			.map((b) => b.textContent);
+		expect(slots.slice(0, 2)).toEqual(["00:00", "00:15"]);
+		expect(slots).toContain("14:30");
+		expect(slots.some((t) => /AM|PM/.test(t ?? ""))).toBe(false);
+	});
+
+	it("O3: today's default end is clamped to now", async () => {
+		// 09:30:40 in Manila on Oct 6; the empty day starts at 09:00.
+		vi.setSystemTime(new Date("2026-10-06T01:30:40.000Z"));
+		vi.spyOn(timeService, "getLoggingFor").mockResolvedValue(
+			forResult({ options: [team], selected: team }),
+		);
+		const create = vi
+			.spyOn(timeService, "createEntry")
+			.mockResolvedValue(created);
+		renderWithClient(
+			<ManualEntryModal
+				open
+				initial={{ projectId: "p1", workItem: "review" }}
+				onClose={vi.fn()}
+			/>,
+		);
+		await screen.findByText("30m added");
+		expect((screen.getByLabelText("End time") as HTMLInputElement).value).toBe(
+			"09:30",
+		);
+		await waitFor(() => expect(saveButton().disabled).toBe(false));
+		fireEvent.click(saveButton());
+		await waitFor(() => expect(create).toHaveBeenCalled());
+		expect(create.mock.calls[0][0]).toMatchObject({
+			started_at: "2026-10-06T01:00:00.000Z",
+			ended_at: "2026-10-06T01:30:00.000Z",
+		});
+	});
+
+	it("O3: a default start still ahead of now becomes the last full hour", async () => {
+		// 02:54 in Manila on Oct 6: 09:00 is ahead, so 01:00–02:00.
+		vi.setSystemTime(new Date("2026-10-05T18:54:00.000Z"));
+		vi.spyOn(timeService, "getLoggingFor").mockResolvedValue(
+			forResult({ options: [team], selected: team }),
+		);
+		const create = vi
+			.spyOn(timeService, "createEntry")
+			.mockResolvedValue(created);
+		renderWithClient(
+			<ManualEntryModal
+				open
+				initial={{ projectId: "p1", workItem: "review", day: "2026-10-06" }}
+				onClose={vi.fn()}
+			/>,
+		);
+		await screen.findByText("1h added");
+		expect(
+			(screen.getByLabelText("Start time") as HTMLInputElement).value,
+		).toBe("01:00");
+		expect((screen.getByLabelText("End time") as HTMLInputElement).value).toBe(
+			"02:00",
+		);
+		await waitFor(() => expect(saveButton().disabled).toBe(false));
+		fireEvent.click(saveButton());
+		await waitFor(() => expect(create).toHaveBeenCalled());
+		expect(create.mock.calls[0][0]).toMatchObject({
+			started_at: "2026-10-05T17:00:00.000Z",
+			ended_at: "2026-10-05T18:00:00.000Z",
+		});
+	});
+
 	it("a failed project read says so above the Project field, with Try again", async () => {
 		vi.spyOn(timeService, "listMyProjects").mockRejectedValue(
 			new TimeApiError({ status: 403, code: "HTTP_403", message: "" }),

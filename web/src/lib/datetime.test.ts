@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
 	diffMinutes,
 	formatTime12h,
+	formatTime24h,
 	parseTimeInput,
 	timeOptions,
 	timeZoneOffsetLabel,
@@ -77,6 +78,16 @@ describe("formatTime12h", () => {
 		expect(formatTime12h("00:30")).toBe("12:30 AM");
 		expect(formatTime12h("12:00")).toBe("12:00 PM");
 		expect(formatTime12h("09:05")).toBe("9:05 AM");
+	});
+});
+
+describe("formatTime24h", () => {
+	it("renders 24h times padded, with no AM/PM", () => {
+		expect(formatTime24h("16:00")).toBe("16:00");
+		expect(formatTime24h("00:30")).toBe("00:30");
+		expect(formatTime24h("9:5")).toBe("09:05");
+		expect(formatTime24h("23:45")).toBe("23:45");
+		expect(formatTime24h("nope")).toBe("nope");
 	});
 });
 

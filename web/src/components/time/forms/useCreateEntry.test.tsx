@@ -33,6 +33,7 @@ import {
 	createEntryBody,
 	dayAt,
 	defaultEntryStart,
+	defaultEntryWindow,
 	deriveForChoice,
 	entryAddedToast,
 	forRequestFields,
@@ -315,6 +316,130 @@ describe("defaultEntryStart", () => {
 				entries,
 			}).toISOString(),
 		).toBe("2026-10-04T17:30:00.000Z");
+	});
+});
+
+describe("defaultEntryWindow (O3: Add time never defaults into the future)", () => {
+	const tz = "Asia/Manila";
+	const iso = (w: { start: Date; end: Date }) => [
+		w.start.toISOString(),
+		w.end.toISOString(),
+	];
+
+	it("keeps start + 1 h when that hour is already over", () => {
+		// 09:00 Manila; now 12:00 Manila.
+		const now = new Date("2026-10-06T04:00:00.000Z");
+		expect(
+			iso(
+				defaultEntryWindow({
+					start: new Date("2026-10-06T01:00:00.000Z"),
+					timezone: tz,
+					now,
+				}),
+			),
+		).toEqual(["2026-10-06T01:00:00.000Z", "2026-10-06T02:00:00.000Z"]);
+	});
+
+	it("clamps today's end to now, rounded down to the minute", () => {
+		// 09:00 Manila; now 09:30:40 Manila.
+		const now = new Date("2026-10-06T01:30:40.000Z");
+		expect(
+			iso(
+				defaultEntryWindow({
+					start: new Date("2026-10-06T01:00:00.000Z"),
+					timezone: tz,
+					now,
+				}),
+			),
+		).toEqual(["2026-10-06T01:00:00.000Z", "2026-10-06T01:30:00.000Z"]);
+	});
+
+	it("keeps at least 1 minute when the start is under a minute ago", () => {
+		// The last entry ended at 09:30:20; now 09:30:40.
+		const now = new Date("2026-10-06T01:30:40.000Z");
+		const start = new Date("2026-10-06T01:30:20.000Z");
+		expect(iso(defaultEntryWindow({ start, timezone: tz, now }))).toEqual([
+			"2026-10-06T01:30:20.000Z",
+			"2026-10-06T01:31:20.000Z",
+		]);
+	});
+
+	it("a default start in the future becomes the last full hour before now", () => {
+		// 09:00 Manila on an empty day; now 02:54 Manila → 01:00–02:00.
+		const now = new Date("2026-10-05T18:54:00.000Z");
+		expect(
+			iso(
+				defaultEntryWindow({
+					start: new Date("2026-10-06T01:00:00.000Z"),
+					timezone: tz,
+					now,
+				}),
+			),
+		).toEqual(["2026-10-05T17:00:00.000Z", "2026-10-05T18:00:00.000Z"]);
+	});
+
+	it("counts the hour on the context's wall clock (a +05:30 zone)", () => {
+		// Kolkata: now 09:40 (04:10Z); the default 10:00 is ahead → 08:00–09:00.
+		const now = new Date("2026-10-06T04:10:00.000Z");
+		expect(
+			iso(
+				defaultEntryWindow({
+					start: new Date("2026-10-06T04:30:00.000Z"),
+					timezone: "Asia/Kolkata",
+					now,
+				}),
+			),
+		).toEqual(["2026-10-06T02:30:00.000Z", "2026-10-06T03:30:00.000Z"]);
+	});
+
+	it("before 01:00 the last full hour would be yesterday, so it starts at midnight", () => {
+		// Now 00:40 on Oct 6 Manila (16:40Z on Oct 5).
+		const now = new Date("2026-10-05T16:40:00.000Z");
+		expect(
+			iso(
+				defaultEntryWindow({
+					start: new Date("2026-10-06T01:00:00.000Z"),
+					timezone: tz,
+					now,
+				}),
+			),
+		).toEqual(["2026-10-05T16:00:00.000Z", "2026-10-05T16:40:00.000Z"]);
+	});
+
+	it("leaves other days, and a start that was given exactly, as start + 1 h", () => {
+		const now = new Date("2026-10-06T01:30:00.000Z"); // 09:30 Manila
+		// Yesterday 09:00.
+		expect(
+			iso(
+				defaultEntryWindow({
+					start: new Date("2026-10-05T01:00:00.000Z"),
+					timezone: tz,
+					now,
+				}),
+			),
+		).toEqual(["2026-10-05T01:00:00.000Z", "2026-10-05T02:00:00.000Z"]);
+		// A given 11:00 today stays (the person chose it).
+		expect(
+			iso(
+				defaultEntryWindow({
+					start: new Date("2026-10-06T03:00:00.000Z"),
+					timezone: tz,
+					now,
+					fixedStart: true,
+				}),
+			),
+		).toEqual(["2026-10-06T03:00:00.000Z", "2026-10-06T04:00:00.000Z"]);
+		// A given 09:00 today still has its end clamped to now.
+		expect(
+			iso(
+				defaultEntryWindow({
+					start: new Date("2026-10-06T01:00:00.000Z"),
+					timezone: tz,
+					now,
+					fixedStart: true,
+				}),
+			),
+		).toEqual(["2026-10-06T01:00:00.000Z", "2026-10-06T01:30:00.000Z"]);
 	});
 });
 

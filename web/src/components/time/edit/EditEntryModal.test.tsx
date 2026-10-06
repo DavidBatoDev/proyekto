@@ -332,13 +332,23 @@ describe("entryLockCopy (the entries kit's copy, shared by Edit, Delete and the 
 });
 
 describe("EditEntryModal", () => {
-	it("shows the entry's times in the view's timezone", () => {
+	it("shows the entry's times in the view's timezone, on the 24-hour clock", () => {
 		renderModal();
 		expect(
 			(screen.getByLabelText("Start time") as HTMLInputElement).value,
-		).toBe("9:00 AM");
+		).toBe("09:00");
 		expect((screen.getByLabelText("End time") as HTMLInputElement).value).toBe(
-			"12:30 PM",
+			"12:30",
+		);
+		expect(
+			(screen.getByLabelText("Start time") as HTMLInputElement).placeholder,
+		).toBe("09:00");
+		// APP-1: the date reads in full, and Start sits above End.
+		expect(screen.getByRole("button", { name: "Start date" }).textContent).toBe(
+			"Mon, Oct 5, 2026",
+		);
+		expect(screen.getByTestId("entry-times").className).not.toMatch(
+			/grid-cols-2/,
 		);
 		expect(screen.getByText("Fix login bug")).toBeTruthy();
 		expect(screen.getByText("3h 30m logged")).toBeTruthy();
@@ -375,7 +385,10 @@ describe("EditEntryModal", () => {
 			.spyOn(timeService, "updateEntry")
 			.mockResolvedValue({ ...entry(), warnings: [] });
 		const { onClose } = renderModal();
-		commitTime("End time", "1:00 PM");
+		commitTime("End time", "13:00");
+		expect((screen.getByLabelText("End time") as HTMLInputElement).value).toBe(
+			"13:00",
+		);
 		expect(screen.getByText("4h logged")).toBeTruthy();
 		fireEvent.click(screen.getByRole("button", { name: /Save changes/ }));
 		await waitFor(() => expect(onClose).toHaveBeenCalled());
@@ -545,13 +558,13 @@ describe("EditEntryModal", () => {
 		await waitFor(() =>
 			expect(
 				(screen.getByLabelText("Start time") as HTMLInputElement).value,
-			).toBe("9:00 PM"),
+			).toBe("21:00"),
 		);
 		expect((screen.getByLabelText("End time") as HTMLInputElement).value).toBe(
-			"12:30 AM",
+			"00:30",
 		);
 		expect(screen.getByText("Times are in America/New_York.")).toBeTruthy();
-		commitTime("End time", "1:00 AM");
+		commitTime("End time", "01:00");
 		fireEvent.click(screen.getByRole("button", { name: /Save changes/ }));
 		await waitFor(() => expect(onClose).toHaveBeenCalled());
 		expect(update).toHaveBeenCalledWith("e1", {
@@ -576,7 +589,7 @@ describe("EditEntryModal", () => {
 		);
 		expect(
 			(screen.getByLabelText("Start time") as HTMLInputElement).value,
-		).toBe("9:00 AM");
+		).toBe("09:00");
 	});
 
 	it("keeps what was typed when the policy's zone arrives after it", async () => {
@@ -591,6 +604,7 @@ describe("EditEntryModal", () => {
 			.mockResolvedValue({ ...entry(), warnings: [] });
 		const { onClose } = renderModal();
 		// Typed in Manila before the zone is known: 13:00 Manila is 05:00Z.
+		// A 12-hour time still parses; it shows on the 24-hour clock.
 		commitTime("End time", "1:00 PM");
 		await act(async () => {
 			answer(policy({ timezone: "America/New_York" }));
@@ -599,7 +613,7 @@ describe("EditEntryModal", () => {
 		await waitFor(() =>
 			expect(
 				(screen.getByLabelText("End time") as HTMLInputElement).value,
-			).toBe("1:00 AM"),
+			).toBe("01:00"),
 		);
 		fireEvent.click(screen.getByRole("button", { name: /Save changes/ }));
 		await waitFor(() => expect(onClose).toHaveBeenCalled());

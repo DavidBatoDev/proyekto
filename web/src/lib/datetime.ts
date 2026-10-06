@@ -102,6 +102,13 @@ export function formatTime12h(hhmm: string): string {
 	return `${h12}:${String(m).padStart(2, "0")} ${period}`;
 }
 
+/** "HH:mm" (24h, loosely padded: "9:5") → "09:05" for display. */
+export function formatTime24h(hhmm: string): string {
+	const [h, m] = hhmm.split(":").map(Number);
+	if (Number.isNaN(h) || Number.isNaN(m)) return hhmm;
+	return `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}`;
+}
+
 /**
  * Parse a loosely-typed time ("4pm", "4:30 PM", "16:00", "0930", "9") into a
  * canonical "HH:mm" (24h), or null when it isn't a valid time.

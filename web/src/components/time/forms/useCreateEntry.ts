@@ -143,6 +143,60 @@ export function defaultEntryStart(input: {
 	return last === null ? dayAt(input.day, tz) : new Date(last);
 }
 
+const MINUTE_MS = 60_000;
+const HOUR_MS = 3_600_000;
+
+/**
+ * Add time's default block (ux.md › Quick add › More options): the start (see
+ * `defaultEntryStart`) and an end one hour later. On today, in `timezone`, the
+ * end never lands in the future:
+ *
+ * - The end is clamped to now, rounded down to the minute, keeping at least
+ *   1 minute ("02:30–02:54" at 02:54:40).
+ * - A start that is itself in the future (09:00 at 02:54) becomes the last
+ *   full hour before now (01:00–02:00). Before 01:00 that hour would be
+ *   yesterday, so it starts at midnight instead (00:00–00:40).
+ *
+ * `fixedStart`: the start was given exactly (not a default), so only the end
+ * may move; a given future start keeps start + 1 h. Other days are unchanged.
+ */
+export function defaultEntryWindow(input: {
+	start: Date;
+	timezone: string;
+	now?: Date;
+	fixedStart?: boolean;
+}): { start: Date; end: Date } {
+	const tz = safeTimezone(input.timezone);
+	const start = input.start;
+	const plain = { start, end: new Date(start.getTime() + HOUR_MS) };
+	if (Number.isNaN(start.getTime())) return plain;
+	const now = input.now ?? new Date();
+	const today = localDate(now, tz);
+	if (localDate(start, tz) !== today) return plain;
+	const nowMinute = Math.floor(now.getTime() / MINUTE_MS) * MINUTE_MS;
+	if (start.getTime() > now.getTime()) {
+		if (input.fixedStart) return plain;
+		// The hour boundary on the context's wall clock (a +05:30 zone's hour
+		// is not UTC's).
+		const hourWall = formatInTimeZone(now, tz, "yyyy-MM-dd'T'HH':00'");
+		const hour = fromWallClock(hourWall, tz)?.getTime() ?? nowMinute;
+		const lastHour = hour - HOUR_MS;
+		if (localDate(new Date(lastHour), tz) === today) {
+			return { start: new Date(lastHour), end: new Date(hour) };
+		}
+		const midnight = dayAt(today, tz, "00:00");
+		return {
+			start: midnight,
+			end: new Date(Math.max(nowMinute, midnight.getTime() + MINUTE_MS)),
+		};
+	}
+	const end = Math.max(
+		start.getTime() + MINUTE_MS,
+		Math.min(plain.end.getTime(), nowMinute),
+	);
+	return { start, end: new Date(end) };
+}
+
 // ── Inline rules ────────────────────────────────────────────────────────────
 
 export interface ManualEntryRule {

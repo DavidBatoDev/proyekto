@@ -12,6 +12,11 @@
  * Both popovers portal through `AnchoredPopover`, so they escape a scrolling
  * dialog's overflow. `zIndex` defaults above `AppDialog` (1200) for that reason
  * — see the z-index ladder in AppDialog.
+ *
+ * Times read 12-hour ("9:00 AM") by default. `hourCycle="h23"` is the opt-in
+ * 24-hour clock ("09:00", options from 00:00) the time-entry forms use
+ * (ux.md › Entries, forms: "24-hour times throughout"). Typing accepts both
+ * forms either way.
  */
 import {
 	addMonths,
@@ -31,7 +36,12 @@ import {
 import { CalendarDays, ChevronLeft, ChevronRight, Clock } from "lucide-react";
 import { type ReactNode, useEffect, useMemo, useRef, useState } from "react";
 import { AnchoredPopover } from "@/components/common/AnchoredPopover";
-import { formatTime12h, parseTimeInput, timeOptions } from "@/lib/datetime";
+import {
+	formatTime12h,
+	formatTime24h,
+	parseTimeInput,
+	timeOptions,
+} from "@/lib/datetime";
 
 const WEEKDAYS = ["Su", "Mo", "Tu", "We", "Th", "Fr", "Sa"];
 /** Used when a date is picked before any time has been set. */
@@ -66,6 +76,11 @@ export interface DateTimeFieldProps {
 	stepMin?: number;
 	zIndex?: number;
 	ariaLabel?: string;
+	/**
+	 * "h12" (default): "9:00 AM". "h23": the 24-hour clock, "09:00", with the
+	 * option list running 00:00, 00:15… The value stays "HH:mm" either way.
+	 */
+	hourCycle?: "h12" | "h23";
 }
 
 export function DateTimeField({
@@ -77,7 +92,10 @@ export function DateTimeField({
 	stepMin = 15,
 	zIndex = 1300,
 	ariaLabel,
+	hourCycle = "h12",
 }: DateTimeFieldProps) {
+	const h23 = hourCycle === "h23";
+	const formatTime = h23 ? formatTime24h : formatTime12h;
 	const { date, time } = useMemo(() => splitValue(value), [value]);
 	const minParts = useMemo(() => (min ? splitValue(min) : null), [min]);
 
@@ -87,11 +105,11 @@ export function DateTimeField({
 	const timeRef = useRef<HTMLDivElement>(null);
 	const selectedOptRef = useRef<HTMLButtonElement>(null);
 
-	const [draft, setDraft] = useState(() => (time ? formatTime12h(time) : ""));
+	const [draft, setDraft] = useState(() => (time ? formatTime(time) : ""));
 	// Keep the visible text in sync with the value except while being edited.
 	useEffect(() => {
-		if (!timeOpen) setDraft(time ? formatTime12h(time) : "");
-	}, [time, timeOpen]);
+		if (!timeOpen) setDraft(time ? formatTime(time) : "");
+	}, [time, timeOpen, formatTime]);
 
 	const selected = useMemo(() => parseDatePart(date), [date]);
 	const [viewMonth, setViewMonth] = useState<Date>(
@@ -184,9 +202,9 @@ export function DateTimeField({
 		const parsed = parseTimeInput(raw);
 		if (parsed) {
 			emit(date || format(new Date(), "yyyy-MM-dd"), parsed);
-			setDraft(formatTime12h(parsed));
+			setDraft(formatTime(parsed));
 		} else {
-			setDraft(time ? formatTime12h(time) : ""); // revert unparseable input
+			setDraft(time ? formatTime(time) : ""); // revert unparseable input
 		}
 		setTimeOpen(false);
 	};
@@ -225,7 +243,8 @@ export function DateTimeField({
 
 				<div
 					ref={timeRef}
-					className={`flex w-[7.5rem] shrink-0 items-center gap-1.5 px-3 py-2 text-sm ${
+					// "14:30" needs less room than "12:30 PM": the date gets the rest.
+					className={`flex ${h23 ? "w-[6rem]" : "w-[7.5rem]"} shrink-0 items-center gap-1.5 px-3 py-2 text-sm ${
 						disabled ? "opacity-60" : ""
 					}`}
 				>
@@ -234,7 +253,7 @@ export function DateTimeField({
 						value={draft}
 						disabled={disabled}
 						aria-label={ariaLabel ? `${ariaLabel} time` : "Pick a time"}
-						placeholder="9:00 AM"
+						placeholder={h23 ? "09:00" : "9:00 AM"}
 						onFocus={() => setTimeOpen(true)}
 						onClick={() => setTimeOpen(true)}
 						onChange={(e) => setDraft(e.target.value)}
@@ -360,7 +379,7 @@ export function DateTimeField({
 								onMouseDown={(e) => e.preventDefault()}
 								onClick={() => {
 									emit(date || format(new Date(), "yyyy-MM-dd"), opt);
-									setDraft(formatTime12h(opt));
+									setDraft(formatTime(opt));
 									setTimeOpen(false);
 								}}
 								className={`flex w-full items-center px-3 py-1.5 text-left text-sm transition ${
@@ -371,7 +390,7 @@ export function DateTimeField({
 											: "text-foreground hover:bg-muted"
 								}`}
 							>
-								{formatTime12h(opt)}
+								{formatTime(opt)}
 							</button>
 						);
 					})}

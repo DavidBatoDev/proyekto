@@ -6,7 +6,8 @@
 // - Times are shown and typed in the entry's context zone, as Add time does
 //   (ux.md › Entries › Times): a governed entry's policy timezone, else
 //   `timeZone` (the caller's view zone, the person's own for personal time);
-//   never the device's by accident.
+//   never the device's by accident. They read on the 24-hour clock ("09:00"),
+//   and Start sits above End so each date shows in full beside its time.
 // - Only the fields that changed are sent, always with `expected_updated_at`
 //   (D42). A 409 STALE_REVISION reads "This entry changed. Reload to see the
 //   latest version." with a Reload that re-reads the entry and resets the form.
@@ -618,7 +619,9 @@ export function EditEntryModal({
 						<TimeReasonCard variant="inline" tone="warning" title={lockText} />
 					) : null}
 
-					<div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+					{/* Stacked at every width: side by side in this dialog, the time
+					    box left the date about one letter (APP-1). */}
+					<div className="grid grid-cols-1 gap-3" data-testid="entry-times">
 						<DateTimeField
 							label={EDIT_ENTRY_COPY.start}
 							ariaLabel={EDIT_ENTRY_COPY.start}
@@ -627,6 +630,7 @@ export function EditEntryModal({
 							onChange={(value) => set({ start: value })}
 							disabled={busy || locked}
 							zIndex={zIndex + 100}
+							hourCycle="h23"
 						/>
 						<div className="space-y-1">
 							<DateTimeField
@@ -637,6 +641,7 @@ export function EditEntryModal({
 								onChange={(value) => set({ end: value })}
 								disabled={busy || locked}
 								zIndex={zIndex + 100}
+								hourCycle="h23"
 							/>
 							{running && !locked ? (
 								<p className="text-[11px] text-muted-foreground">
