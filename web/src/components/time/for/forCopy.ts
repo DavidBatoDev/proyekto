@@ -7,23 +7,19 @@
 // names through `workItemLabel`. Server text that could carry a banned word
 // goes through `lib/timeErrors` `nativeSafe`. The locked chip's sentence comes
 // from its host (`entries/entryRules` `entryLockCopy`, built on `lib/timeErrors`
-// `lockedChipCopy`).
+// `lockedChipCopy`). The locked-period sentence and the write-time warning
+// toasts are `lib/timeErrors`' too (`lockedPeriodCopy`, `entryWarningsCopy`),
+// so the timer, Add time and edits all say the same thing.
 //
 // Native rules (ux.md › Mobile): never the words contract, rate, payout or
 // invoice; no amounts on agreement contexts; no `/engagements` links. The
 // agreement copy here says "agreement" everywhere.
 
 import { isNativeApp } from "@/lib/platform";
-import { timeErrorMessage } from "@/lib/timeErrors";
-import {
-	capitalize,
-	formatDurationText,
-	scopePhrase,
-	workItemLabel,
-} from "@/lib/timeFormat";
+import { lockedPeriodCopy, timeErrorMessage } from "@/lib/timeErrors";
+import { formatDurationText, workItemLabel } from "@/lib/timeFormat";
 import { isTimeApiError } from "@/services/time.service";
 import type {
-	EntryWarning,
 	PeriodKind,
 	PolicySource,
 	ResolvedTimePolicy,
@@ -497,25 +493,17 @@ export function switchPromptText(workLabel: string, duration: string): string {
 	return `Stop ${workLabel || "your timer"} (${duration}) and start this?`;
 }
 
-/** TIMESHEET_LOCKED {period} on a start (ux.md › Timer › Locked period). */
+/**
+ * TIMESHEET_LOCKED {period} on a start (ux.md › Timer › Locked period). The
+ * sentence is `lib/timeErrors` `lockedPeriodCopy`'s, so Start timer and Add
+ * time word the same sheet the same way.
+ */
 export function periodLockedText(input: {
 	label?: string | null;
 	periodKind?: PeriodKind | null;
 	sheetStatus?: TimesheetStatus | null;
 }): string {
-	const label = input.label?.trim();
-	if (input.sheetStatus && input.sheetStatus !== "submitted") {
-		return label
-			? `This period's ${label} timesheet is approved, so its time can't change.`
-			: "This period's timesheet is approved, so its time can't change.";
-	}
-	const when =
-		!input.periodKind || input.periodKind === "weekly"
-			? "This week's"
-			: "This period's";
-	return label
-		? `${when} ${label} timesheet is submitted. Withdraw it to add time.`
-		: `${when} timesheet is submitted. Withdraw it to add time.`;
+	return lockedPeriodCopy(input);
 }
 
 export const LOGGING_FOR_INVALID_TEXT =
@@ -542,26 +530,6 @@ export function hourCapText(
 	return Number.isFinite(hours) && hours > 0
 		? `This goes past the ${hours}h ${window} limit for ${who}.`
 		: `This goes past the ${window} limit for ${who}.`;
-}
-
-/** A write's warnings as toasts (indicators only; nothing was refused). */
-export function entryWarningText(
-	warning: EntryWarning,
-	label?: string | null,
-): string {
-	const who = label?.trim() || "";
-	switch (warning.code) {
-		case "CONTRACT_WEEKLY_LIMIT":
-			return `${capitalize(scopePhrase("engagement", who))} allows ${sentenceDuration(warning.limit_minutes * 60)} a week. You've logged ${sentenceDuration(warning.logged_minutes * 60)}.`;
-		case "POLICY_WEEKLY_LIMIT":
-			return `${warning.label?.trim() || who || "This timesheet"} has a ${sentenceDuration(
-				warning.limit_minutes * 60,
-			)} weekly limit. You've logged ${sentenceDuration(warning.logged_minutes * 60)} this week.`;
-		case "OVERLAP":
-			return "This time overlaps another entry.";
-		default:
-			return "";
-	}
 }
 
 /**

@@ -92,6 +92,20 @@ An issued invoice that should not have gone out can be **voided**, which creates
 a replacement draft to correct — issued invoices are not edited in place, because
 the client already has the original.
 
+## Hours on invoices
+
+On an hourly contract, an invoice bills approved time logged for the work the
+contract covers, and each time entry only once: an hour on one invoice, even a
+draft, cannot go on another, so two drafts never bill the same hour. Hours
+dated before the invoice's period get their own **Earlier hours** lines. The
+lines show hours at no more detail than the agreement allows the client, and
+never who logged them. The client sees the same approved hours on the
+project's Time page, under **Client hours**.
+
+Time on an invoice is locked. Its timesheet cannot be reopened until the hours
+come off the draft, or the issued invoice is voided without a replacement. See
+[Approving time](/docs/teams-time-and-rates/approving-time).
+
 ## Where they live and who sees them
 
 Contracts and invoices appear in two places, and it is the same data in both:
@@ -111,7 +125,7 @@ signing by link sees the one document that link opens, and nothing more.
 
 - [The marketplace](/docs/clients-and-marketplace/marketplace) — finding the
   people you end up contracting with
-- [Time tracking](/docs/teams-time-and-rates/time-tracking) — where billable time
-  comes from
+- [Tracking time](/docs/teams-time-and-rates/time-tracking) — where billable
+  time comes from
 - [Payouts](/docs/teams-time-and-rates/payouts) — paying your own people, which
   is a separate record

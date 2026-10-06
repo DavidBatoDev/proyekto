@@ -99,6 +99,15 @@ describe("docs manifest", () => {
 		}
 	});
 
+	it("keeps the team money articles web-only", () => {
+		// platformSurfaces makes the team Rates and Payouts pages silent in the
+		// app (L54), so the app's docs leave their articles out too.
+		for (const slug of ["rates-and-currency", "payouts"]) {
+			const article = DOC_ARTICLES.find((a) => a.slug === slug);
+			expect(article?.surface, slug).toBe("web");
+		}
+	});
+
 	it("gives every article a one-sentence description", () => {
 		for (const article of DOC_ARTICLES) {
 			expect(article.description.length, article.slug).toBeGreaterThan(30);

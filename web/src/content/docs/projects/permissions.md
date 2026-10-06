@@ -40,7 +40,7 @@ surface:
 | **Chat** | Project channels |
 | **Resources** | The file and link library |
 | **Project Settings** | The gear and everything behind it |
-| **Time** | Time logs for this project |
+| **Time** | Time on this project; logging it and seeing everyone's take their own switches, below |
 | **Delivery** | The delivery and governance surfaces |
 
 Turning one off **hides that surface from the sidebar entirely**. The person does
@@ -60,6 +60,10 @@ shape almost everywhere — **view, edit, comment** — applied to:
 - **Chat** — reading channels versus posting in them.
 - **Delivery** — reading the registers versus creating and updating entries.
 - **Logs** — the project's activity trail.
+- **Time** — **Log time** (start timers and add time on this project) and
+  **View everyone's time** (see everyone's time here, not just your own). Both
+  need the Time switch above; turning either on turns Time on with it. Editors
+  and above can log time by default; owners and admins also see everyone's.
 
 Splitting view from comment from edit is what makes a useful read-only seat.
 A client stakeholder who should follow the plan and leave remarks, but never

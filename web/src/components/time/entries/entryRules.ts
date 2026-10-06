@@ -436,12 +436,7 @@ export function needsReviewCopy(
 	const reason = needsReviewReason(entry, options.nowMs);
 	if (!reason) return null;
 	if (reason === "long") return ENTRY_COPY.overTenHours;
-	const agreementLabel =
-		entry.context_kind === "assignment" ? entry.context_label_snapshot : null;
-	return (
-		flaggedReasonCopy(entry.flagged_reason, { agreementLabel }) ??
-		ENTRY_COPY.overTenHours
-	);
+	return flaggedReasonCopy(entry.flagged_reason) ?? ENTRY_COPY.overTenHours;
 }
 
 /** "one entry ran over 10h · 2 timers were stopped automatically". */

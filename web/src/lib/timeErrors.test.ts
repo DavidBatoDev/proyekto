@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { PlanLimitError } from "@/lib/planLimitErrors";
 import { TimeApiError } from "@/services/time.service";
 import {
+	type EntryWarning,
 	TIME_ERROR_CODES,
 	type TimeApiErrorCode,
 	type TimesheetTransitionInvalidReason,
@@ -326,6 +327,23 @@ describe("context-dependent rows", () => {
 		expect(lockedPeriodCopy({ label: "Acme", sheetStatus: "approved" })).toBe(
 			"This week's Acme timesheet is approved, so its time can't change.",
 		);
+		expect(
+			lockedPeriodCopy({
+				label: "Acme",
+				periodKind: "monthly",
+				sheetStatus: "approved",
+			}),
+		).toBe(
+			"This period's Acme timesheet is approved, so its time can't change.",
+		);
+		// Only approved reads as approved: a submitted sheet keeps Withdraw.
+		expect(
+			lockedPeriodCopy({
+				label: "Acme",
+				periodKind: "weekly",
+				sheetStatus: "submitted",
+			}),
+		).toBe("This week's Acme timesheet is submitted. Withdraw it to add time.");
 	});
 
 	it("words hour caps by window", () => {
@@ -835,16 +853,16 @@ describe("warnings", () => {
 				{ code: "OVERLAP", entry_ids: ["a"] },
 				{ native: false },
 			),
-		).toBe("This overlaps another entry.");
+		).toBe("This time overlaps another entry.");
 		expect(
 			entryWarningCopy(
 				{ code: "OVERLAP", entry_ids: ["a", "b"] },
 				{ native: false },
 			),
-		).toBe("This overlaps 2 other entries.");
+		).toBe("This time overlaps 2 other entries.");
 	});
 
-	it("words the agreement limit as ux.md does", () => {
+	it("words the agreement limit as ux.md does: You've logged in the toast, You logged on the Submit sheet", () => {
 		expect(
 			entryWarningCopy(
 				{
@@ -854,7 +872,9 @@ describe("warnings", () => {
 				},
 				{ agreementLabel: "Acme", native: false },
 			),
-		).toBe("Your agreement with Acme allows 40h a week. You logged 43h 30m.");
+		).toBe(
+			"Your agreement with Acme allows 40h a week. You've logged 43h 30m.",
+		);
 		expect(
 			contractLimitCopy({
 				label: "Acme",
@@ -902,10 +922,20 @@ describe("warnings", () => {
 				{ native: false },
 			),
 		).toEqual([
-			"This overlaps another entry.",
+			"This time overlaps another entry.",
 			"Acme has a 40h weekly limit. You've logged 41h this week.",
 		]);
 		expect(entryWarningsCopy(null)).toEqual([]);
+	});
+
+	it("gives a warning code it doesn't know no toast", () => {
+		const unknown = { code: "SOMETHING_NEW" } as unknown as EntryWarning;
+		expect(entryWarningCopy(unknown, { native: false })).toBeNull();
+		expect(
+			entryWarningsCopy([unknown, { code: "OVERLAP", entry_ids: ["a"] }], {
+				native: false,
+			}),
+		).toEqual(["This time overlaps another entry."]);
 	});
 
 	it("writes the review screen's weekly-limit lines", () => {
@@ -1105,11 +1135,9 @@ describe("small builders", () => {
 		expect(flaggedReasonCopy("auto_stopped_24h")).toBe(
 			"Stopped automatically after 24 hours. Check the end time.",
 		);
-		expect(
-			flaggedReasonCopy("stopped_by_assignment_end", {
-				agreementLabel: "Acme",
-			}),
-		).toBe("Stopped when your agreement with Acme ended.");
+		expect(flaggedReasonCopy("stopped_by_assignment_end")).toBe(
+			"Stopped when the assignment ended.",
+		);
 		expect(flaggedReasonCopy(null)).toBeNull();
 		expect(beforeAgreementCopy("2026-09-15", DATES)).toBe(
 			"Logged before this agreement started on Sep 15.",
@@ -1342,13 +1370,13 @@ describe("native sweep", () => {
 					logged_minutes: 2610,
 				},
 				{ agreementLabel: "Acme" },
-			),
+			) ?? "",
 			entryWarningCopy({
 				code: "POLICY_WEEKLY_LIMIT",
 				limit_minutes: 2400,
 				logged_minutes: 2610,
 				label: "Acme",
-			}),
+			}) ?? "",
 			weeklyLimitLine({
 				source: "agreement",
 				label: "Acme Corp",
@@ -1356,9 +1384,7 @@ describe("native sweep", () => {
 				loggedSeconds: 156600,
 			}),
 			overLimitCopy({ overSeconds: 12600, payableSeconds: 144000 }).hint,
-			flaggedReasonCopy("stopped_by_assignment_end", {
-				agreementLabel: "Acme",
-			}) ?? "",
+			flaggedReasonCopy("stopped_by_assignment_end") ?? "",
 			lockedChipCopy("submitted", "Oct 6"),
 			switchTimerPrompt("Fix login bug", 4364).text,
 			bulkApproveFailedCopy("Leo Cruz").message,

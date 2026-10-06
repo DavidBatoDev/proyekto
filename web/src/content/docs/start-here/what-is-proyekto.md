@@ -60,8 +60,8 @@ permissions — it can never do something in a project that you could not do
 yourself. See [The AI assistant](/docs/ai-assistant/overview) and
 [Reviewing and committing AI changes](/docs/ai-assistant/reviewing-changes).
 
-The rest of Proyekto is not AI-driven. Tasks, statuses, time logs, meetings and
-registers are yours to write.
+The rest of Proyekto is not AI-driven. Tasks, statuses, time entries, meetings
+and registers are yours to write.
 
 ## Who it is for
 

@@ -221,12 +221,8 @@ export function submitChecks(input: SubmitChecksInput): SubmitChecks {
 		warnings.push({
 			id: "flagged",
 			text:
-				flaggedReasonCopy(flagged[0].flagged_reason, {
-					agreementLabel:
-						sheet.scope_kind === "engagement"
-							? sheet.scope_label_snapshot
-							: null,
-				}) ?? "1 entry was stopped automatically. Check its end time.",
+				flaggedReasonCopy(flagged[0].flagged_reason) ??
+				"1 entry was stopped automatically. Check its end time.",
 			ack: true,
 		});
 	} else if (flagged.length > 1) {

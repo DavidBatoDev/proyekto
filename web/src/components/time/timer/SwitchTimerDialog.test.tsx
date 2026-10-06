@@ -277,7 +277,7 @@ describe("StartTimerPrompts", () => {
 		const flow = fakeFlow({
 			step: "locked",
 			request: { projectId: "p2" },
-			error: "This period's timesheet is approved, so its time can't change.",
+			error: "This week's timesheet is approved, so its time can't change.",
 			locked: {
 				timesheetId: "s1",
 				sheetStatus: "approved",
@@ -285,8 +285,7 @@ describe("StartTimerPrompts", () => {
 				periodKind: null,
 				canWithdraw: false,
 				withdrawing: false,
-				message:
-					"This period's timesheet is approved, so its time can't change.",
+				message: "This week's timesheet is approved, so its time can't change.",
 			},
 		});
 		render(<StartTimerPrompts flow={flow} />);
@@ -333,7 +332,7 @@ describe("StartTimerPrompts", () => {
 	it("names a locked popover by its sentence, not by a Withdraw it may not offer", () => {
 		const anchor = createRef<HTMLButtonElement>();
 		const message =
-			"This period's timesheet is approved, so its time can't change.";
+			"This week's timesheet is approved, so its time can't change.";
 		const flow = fakeFlow({
 			step: "locked",
 			request: { projectId: "p2" },

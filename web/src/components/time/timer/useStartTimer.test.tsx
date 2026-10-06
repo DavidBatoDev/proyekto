@@ -7,6 +7,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { timeKeys } from "@/queries/time";
 import { TimeApiError, timeService } from "@/services/time.service";
 import type {
+	EntryWarning,
 	EntryWithWarnings,
 	LoggingForResult,
 	LoggingOption,
@@ -288,6 +289,36 @@ describe("option counts", () => {
 		expect(toast.warning).toHaveBeenCalledWith(
 			"Prodigitality has a 40h weekly limit. You've logged 40h this week.",
 		);
+	});
+
+	it("words an agreement start's warnings as Add time and edits do (lib/timeErrors)", async () => {
+		vi.spyOn(timeService, "getLoggingFor").mockResolvedValue(
+			forResult({ options: [agreement], selected: agreement }),
+		);
+		const row = started({
+			context_kind: "assignment",
+			context_ref: ASG,
+			context_label_snapshot: "Acme Corp",
+		});
+		row.warnings = [
+			{
+				code: "CONTRACT_WEEKLY_LIMIT",
+				limit_minutes: 2400,
+				logged_minutes: 2610,
+			},
+			{ code: "OVERLAP", entry_ids: ["e9", "e8"] },
+			// A code this build doesn't know: no toast.
+			{ code: "SOMETHING_NEW" } as unknown as EntryWarning,
+		];
+		vi.spyOn(timeService, "startEntry").mockResolvedValue(row);
+		const { result } = setup();
+		await act(async () => {
+			expect(await result.current.start(request)).toBe("started");
+		});
+		expect(toast.warning.mock.calls.map((call) => call[0])).toEqual([
+			"Your agreement with Acme Corp allows 40h a week. You've logged 43h 30m.",
+			"This time overlaps 2 other entries.",
+		]);
 	});
 
 	it("Just me as the only option starts as personal", async () => {
@@ -950,7 +981,7 @@ describe("locked period (TIMESHEET_LOCKED {period})", () => {
 		expect(withdraw).not.toHaveBeenCalled();
 		expect(result.current.state.locked?.canWithdraw).toBe(false);
 		expect(result.current.state.error).toBe(
-			"This period's Prodigitality timesheet is approved, so its time can't change.",
+			"This week's Prodigitality timesheet is approved, so its time can't change.",
 		);
 	});
 

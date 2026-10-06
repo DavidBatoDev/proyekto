@@ -59,13 +59,6 @@ const VIEWPORTS = DESKTOP_ONLY
     ];
 const NARROW = { name: "narrow", width: 320, height: 844 };
 
-// Old team time pages that only redirect to /time now (routes.mjs still lists
-// them, because every route file must stay represented).
-const RETIRED_NARROW = new Set([
-  "/w/:workspaceSlug/teams/:teamId/time/my-logs",
-  "/w/:workspaceSlug/teams/:teamId/time/team-logs",
-]);
-
 const slug = (p) =>
   p.replace(/^\//, "").replace(/[/:]/g, "_").replace(/_+$/, "") || "root";
 
@@ -309,14 +302,8 @@ async function main() {
     await ctx.close();
   }
 
-  // 320px narrow-stress pass for known offenders only. The old team My Logs
-  // and Team Logs pages are redirect stubs now (both land on /time), so the
-  // pass stresses /time itself instead of capturing the stubs.
-  const narrowSet = new Set(
-    DESKTOP_ONLY
-      ? []
-      : [...NARROW_STRESS.filter((tpl) => !RETIRED_NARROW.has(tpl)), "/time"],
-  );
+  // 320px narrow-stress pass for known offenders only (routes.mjs NARROW_STRESS).
+  const narrowSet = new Set(DESKTOP_ONLY ? [] : NARROW_STRESS);
   const narrowRoutes = routes.filter((r) => narrowSet.has(r.template) && r.status === "ready");
   if (narrowRoutes.length) {
     const ctx = await browser.newContext({

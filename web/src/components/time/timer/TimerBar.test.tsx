@@ -163,43 +163,11 @@ describe("TimerBar (full)", () => {
 		}
 	});
 
-	it("idle: Start timer and Add time, plus the page's controls", () => {
-		const onStartTimer = vi.fn();
-		const onAddTime = vi.fn();
-		renderBar(
-			<TimerBar
-				timer={timer({ entry: null })}
-				onStartTimer={onStartTimer}
-				onAddTime={onAddTime}
-				idleExtra={<span>List | Month</span>}
-			/>,
-		);
-		fireEvent.click(screen.getByRole("button", { name: "Start timer" }));
-		expect(onStartTimer).toHaveBeenCalled();
-		fireEvent.click(screen.getByRole("button", { name: "Add time" }));
-		expect(onAddTime).toHaveBeenCalled();
-		expect(screen.getByText("List | Month")).toBeTruthy();
-	});
-
-	it("idle without actions renders nothing", () => {
+	it("idle renders nothing: the page's toolbar has Start timer and Add time", () => {
 		const { container } = renderBar(
-			<TimerBar timer={timer({ entry: null })} />,
+			<TimerBar timer={timer({ entry: null })} onStartTimer={vi.fn()} />,
 		);
 		expect(container.innerHTML).toBe("");
-	});
-
-	it("the start button waits on the start flow", () => {
-		renderBar(
-			<TimerBar
-				timer={timer({ entry: null })}
-				onStartTimer={vi.fn()}
-				starting
-			/>,
-		);
-		expect(
-			(screen.getByRole("button", { name: "Start timer" }) as HTMLButtonElement)
-				.disabled,
-		).toBe(true);
 	});
 });
 
@@ -211,7 +179,6 @@ describe("TimerBar (pill, approver mode)", () => {
 				variant="pill"
 				timer={timer({ entry: null })}
 				onStartTimer={onStartTimer}
-				onAddTime={vi.fn()}
 			/>,
 		);
 		expect(screen.getAllByRole("button")).toHaveLength(1);

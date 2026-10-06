@@ -281,9 +281,7 @@ describe("native: timesheets kit", () => {
 				"Your agreement with Acme Corp allows 40h a week. You logged 43h 30m. The 3h 30m over needs Ana's approval.",
 			),
 		).toBeTruthy();
-		expect(
-			screen.getByText("Stopped when your agreement with Acme Corp ended."),
-		).toBeTruthy();
+		expect(screen.getByText("Stopped when the assignment ended.")).toBeTruthy();
 		expect(screen.getByText("Goes to Ana Reyes")).toBeTruthy();
 		assertNativeSafe();
 	});

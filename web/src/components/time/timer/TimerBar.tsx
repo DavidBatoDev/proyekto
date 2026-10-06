@@ -4,9 +4,10 @@
 //
 //   ● 01:12:44  Fix login bug · Acme Website   For: [Prodigitality Servic… ▾]
 //                                                          [❚❚ Pause] [■ Stop]
-//   [▶ Start timer]  [+ Add time]               (idle; page controls on the right)
 //
-// - `full`: the bar above. Below 640 px it is a sticky top card.
+// - `full`: the bar above, only while a timer runs. Idle, it renders nothing:
+//   the page's own toolbar holds Start timer and Add time. Below 640 px it is
+//   a sticky top card.
 // - `pill`: approver mode collapses the bar to one "Start timer" pill, or a
 //   compact running pill while a timer runs.
 //
@@ -14,13 +15,11 @@
 // (`useStartTimer` behind `onStartTimer`), so the page's picker, the For step
 // and the Switch prompt stay in one place.
 
-import { Coffee, Loader2, Pause, Play, Plus, Square } from "lucide-react";
-import type { ReactNode } from "react";
+import { Coffee, Loader2, Pause, Play, Square } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { TimeEntryView } from "@/services/time.types";
 import { ForChip } from "../for/ForChip";
 import {
-	ADD_TIME_LABEL,
 	entryWorkLabel,
 	ON_BREAK_LABEL,
 	PAUSE_LABEL,
@@ -35,14 +34,8 @@ import { type ActiveTimer, useActiveTimer } from "./useActiveTimer";
 
 export interface TimerBarProps {
 	variant?: "full" | "pill";
-	/** Idle: the "Start timer" button (the caller runs the start flow). */
+	/** Idle (pill only): the "Start timer" pill (the caller runs the start flow). */
 	onStartTimer?: () => void;
-	/** Idle (full only): the "Add time" button. */
-	onAddTime?: () => void;
-	/** The start flow is busy (picker resolving, starting). */
-	starting?: boolean;
-	/** Idle (full only): page controls on the right (For filter, List | Month). */
-	idleExtra?: ReactNode;
 	projectWorkspaceName?: string | null;
 	/**
 	 * The running chip's ▾: change who the running time is for (a PATCH with
@@ -73,9 +66,6 @@ const BUTTON =
 function TimerBarView({
 	variant = "full",
 	onStartTimer,
-	onAddTime,
-	starting = false,
-	idleExtra,
 	projectWorkspaceName,
 	onChangeFor,
 	stickyOnMobile = true,
@@ -98,18 +88,12 @@ function TimerBarView({
 		<button
 			type="button"
 			onClick={onStartTimer}
-			disabled={starting}
 			className={cn(
 				BUTTON,
-				"bg-primary text-primary-foreground hover:bg-primary/90",
-				variant === "pill" && "rounded-full",
+				"rounded-full bg-primary text-primary-foreground hover:bg-primary/90",
 			)}
 		>
-			{starting ? (
-				<Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden="true" />
-			) : (
-				<Play className="h-3.5 w-3.5 fill-current" aria-hidden="true" />
-			)}
+			<Play className="h-3.5 w-3.5 fill-current" aria-hidden="true" />
 			{START_TIMER_LABEL}
 		</button>
 	) : null;
@@ -219,43 +203,10 @@ function TimerBarView({
 	}
 
 	// ── Full bar ─────────────────────────────────────────────────────────────
+	// Idle: nothing. The page's toolbar holds Start timer and Add time.
+	if (!entry) return null;
+
 	const sticky = stickyOnMobile ? "max-sm:sticky max-sm:top-0 max-sm:z-30" : "";
-
-	if (!entry) {
-		if (!startButton && !onAddTime && !idleExtra) return null;
-		return (
-			<section
-				aria-label={START_TIMER_LABEL}
-				data-variant="full"
-				className={cn(
-					"flex flex-wrap items-center gap-2 rounded-2xl border border-border bg-card px-4 py-3 shadow-sm",
-					sticky,
-					className,
-				)}
-			>
-				{startButton}
-				{onAddTime ? (
-					<button
-						type="button"
-						onClick={onAddTime}
-						className={cn(
-							BUTTON,
-							"border border-border text-foreground hover:bg-muted",
-						)}
-					>
-						<Plus className="h-3.5 w-3.5" aria-hidden="true" />
-						{ADD_TIME_LABEL}
-					</button>
-				) : null}
-				{idleExtra ? (
-					<div className="ml-auto flex flex-wrap items-center gap-2">
-						{idleExtra}
-					</div>
-				) : null}
-			</section>
-		);
-	}
-
 	const work = entryWorkLabel(entry);
 	const project = entry.project?.title?.trim() || "";
 	return (

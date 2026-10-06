@@ -6,7 +6,8 @@
  * is recorded as `skipped` in the manifest rather than silently dropped.
  *
  * Placeholders: :projectId :roadmapId :chatRef :teamId :profileId :token :workspaceSlug
- * :timesheetId (not discovered yet, so the review screen is recorded as skipped)
+ * :timesheetId (discovered from the /time page's timesheet links; an account
+ * with no timesheet records the review screen as skipped)
  *
  * Organizational pages live under /w/:workspaceSlug/…; their bare twins
  * (/dashboard, /teams/…, /workspace/…) are still generated routes — redirect
@@ -264,8 +265,10 @@ export const NARROW_STRESS = [
   "/dashboard",
   "/work-items",
   "/w/:workspaceSlug/dashboard",
-  "/w/:workspaceSlug/teams/:teamId/time/team-logs",
-  "/w/:workspaceSlug/teams/:teamId/time/my-logs",
+  // The Time page and the timesheet review screen (the old team My Logs and
+  // Team Logs pages only redirect to /time now).
+  "/time",
+  "/time/timesheets/:timesheetId",
   "/w/:workspaceSlug/teams/:teamId/settings/logs",
   "/project/:projectId/payments",
   "/project/:projectId/logs",

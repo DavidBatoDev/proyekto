@@ -83,8 +83,12 @@ plan's retention allows; see [Activity](/docs/delivery-governance/activity).
 
 ## Behind the gear
 
-**Time logs** — time recorded against this project's work, with its approval
-state. See [Time tracking](/docs/teams-time-and-rates/time-tracking).
+**Time** — the time recorded on this project, for people allowed to see it.
+**Everyone** splits it by team, workspace and agreement; **Client hours** is
+the client's view, approved hours at the detail their agreement allows.
+"Your time on this project →" opens your own entries on Time, and someone who
+can only log is taken straight there. See
+[Tracking time](/docs/teams-time-and-rates/time-tracking).
 
 **Settings**, in five tabs:
 
@@ -94,8 +98,9 @@ state. See [Time tracking](/docs/teams-time-and-rates/time-tracking).
 - **Teams** — which reusable teams are attached, and which of their members
   participate. Curating that list grants project access automatically; see
   [Teams](/docs/teams-time-and-rates/teams).
-- **Time** — how time is treated here, including rates that override the
-  defaults. See [Rates and currency](/docs/teams-time-and-rates/rates-and-currency).
+- **Time settings** — who can log time here, and the hour limits for each team
+  member with a rate on this project. Shown to people who can see everyone's
+  time. See [Tracking time](/docs/teams-time-and-rates/time-tracking).
 
 ## Why a page is missing for you
 
@@ -105,7 +110,7 @@ reasons, and it is worth checking them in this order:
 1. **A permission is off.** Page-level visibility is set per person in
    **Settings → Permissions**. Turning one off hides that surface from the
    sidebar entirely rather than showing a locked page.
-2. **Your plan does not include it.** The registers, time tracking and a few
+2. **Your plan does not include it.** The registers, timesheets and a few
    other surfaces belong to specific tiers. See
    [Plans](/docs/workspaces-and-plans/plans).
 

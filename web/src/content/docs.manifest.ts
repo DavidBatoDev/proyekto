@@ -53,6 +53,8 @@ export interface DocArticle {
 	 * "web" hides the article in the installed app. The whole
 	 * clients-and-marketplace section is already hidden by a platformSurfaces
 	 * prefix rule; this flag is what makes the sidebar and home page agree.
+	 * Outside that section it marks an article whose pages the app leaves out
+	 * (the team Rates and Payouts pages are `silent` there).
 	 */
 	surface?: "web";
 	/** Renders the plan callout (R1) naming the tier and the limit invariant. */
@@ -145,7 +147,10 @@ export const DOC_SECTIONS: DocSection[] = [
 ];
 
 const UPDATED = "2026-09-23";
-/** The time rebuild: the Time page, timesheets, approvals and policies. */
+/**
+ * The time rebuild: the Time page, timesheets, approvals and policies, and the
+ * articles elsewhere that name them.
+ */
 const TIME_UPDATED = "2026-10-06";
 
 export const DOC_ARTICLES: DocArticle[] = [
@@ -158,7 +163,7 @@ export const DOC_ARTICLES: DocArticle[] = [
 		title: "What is Proyekto",
 		description:
 			"An AI-assisted delivery platform: a roadmap, the team delivering it, and the governance around it, all in one project.",
-		updated: UPDATED,
+		updated: TIME_UPDATED,
 		related: ["core-concepts", "quickstart"],
 	},
 	{
@@ -191,7 +196,7 @@ export const DOC_ARTICLES: DocArticle[] = [
 		title: "Finding your way around",
 		description:
 			"A map of every surface: the dashboard, the workspace switcher, the in-project sidebar, and the pages behind the gear.",
-		updated: UPDATED,
+		updated: TIME_UPDATED,
 		keywords: ["navigation", "sidebar", "menu", "where is"],
 		related: ["permissions", "limits-and-usage", "inside-a-project"],
 	},
@@ -218,7 +223,7 @@ export const DOC_ARTICLES: DocArticle[] = [
 		title: "Deleting your account",
 		description:
 			"What happens when you delete a Proyekto account: what goes, what is handed to your teammates, and what stays behind as a deleted user.",
-		updated: UPDATED,
+		updated: TIME_UPDATED,
 		keywords: [
 			"delete account",
 			"close account",
@@ -256,7 +261,7 @@ export const DOC_ARTICLES: DocArticle[] = [
 		title: "Notifications",
 		description:
 			"Where Proyekto tells you something happened — the in-app list, push on mobile, and email — and how to tune each.",
-		updated: UPDATED,
+		updated: TIME_UPDATED,
 		keywords: ["email", "push", "alerts", "unsubscribe", "mentions"],
 		related: ["mobile-app", "project-chat", "activity"],
 	},
@@ -267,7 +272,7 @@ export const DOC_ARTICLES: DocArticle[] = [
 		title: "The Proyekto mobile app",
 		description:
 			"The iOS and Android apps run the same Proyekto you use on the web, with a few surfaces deliberately left out.",
-		updated: UPDATED,
+		updated: TIME_UPDATED,
 		keywords: ["ios", "android", "phone", "tablet", "offline"],
 		related: ["notifications", "plans"],
 	},
@@ -352,7 +357,7 @@ export const DOC_ARTICLES: DocArticle[] = [
 		title: "Inside a project",
 		description:
 			"A tour of every page in a project — Overview, the three nav groups, Resources, and the settings behind the gear.",
-		updated: UPDATED,
+		updated: TIME_UPDATED,
 		keywords: ["overview", "resources", "files", "tabs", "settings"],
 		related: ["navigating-proyekto", "permissions", "overview-governance"],
 	},
@@ -364,7 +369,7 @@ export const DOC_ARTICLES: DocArticle[] = [
 		title: "Project access and roles",
 		description:
 			"Access to a project is granted person by person, on a ladder from viewer to owner — and it is entirely separate from workspace membership.",
-		updated: UPDATED,
+		updated: TIME_UPDATED,
 		keywords: ["permission", "share", "owner", "editor", "viewer", "invite"],
 		related: ["permissions", "members-and-seats", "teams", "sharing-a-roadmap"],
 	},
@@ -375,7 +380,7 @@ export const DOC_ARTICLES: DocArticle[] = [
 		title: "Fine-tuning permissions",
 		description:
 			"On top of a role, each person can have individual permissions switched on or off, page by page and action by action.",
-		updated: UPDATED,
+		updated: TIME_UPDATED,
 		keywords: ["capability", "restrict", "hide page", "sensitive"],
 		related: ["access-and-roles", "members-and-seats", "teams"],
 	},
@@ -526,7 +531,7 @@ export const DOC_ARTICLES: DocArticle[] = [
 		title: "Giving the assistant context",
 		description:
 			"Point the assistant at exactly the right thing with @-references to projects, roadmaps, work items and people.",
-		updated: UPDATED,
+		updated: TIME_UPDATED,
 		keywords: ["mention", "reference", "scope", "@"],
 		related: ["overview", "knowledge-base"],
 	},
@@ -797,6 +802,8 @@ export const DOC_ARTICLES: DocArticle[] = [
 		section: "teams-time-and-rates",
 		order: 30,
 		plan: "business",
+		// The team Rates page is silent in the app (L54), so its article is too.
+		surface: "web",
 		title: "Rates and currency",
 		description:
 			"Set a team's default currency and member rates, and see how approval fixes each entry's amount from the rate in force on its day.",
@@ -809,6 +816,8 @@ export const DOC_ARTICLES: DocArticle[] = [
 		section: "teams-time-and-rates",
 		order: 40,
 		plan: "business",
+		// The team Payouts page is silent in the app (L54), so its article is too.
+		surface: "web",
 		title: "Payouts",
 		description:
 			"Record that a member's approved, unpaid team time — in one currency — was paid, and void the record if it was wrong.",
@@ -856,7 +865,7 @@ export const DOC_ARTICLES: DocArticle[] = [
 		title: "Contracts and invoices",
 		description:
 			"Agree terms with a contract that can be signed in-app or by link, then record what was invoiced and what was paid.",
-		updated: UPDATED,
+		updated: TIME_UPDATED,
 		keywords: ["contract", "sign", "invoice", "paid", "overdue"],
 		related: ["payouts", "marketplace", "mobile-app"],
 	},

@@ -20,9 +20,11 @@ Three things are missing on purpose:
   work inside it.
 - **Every page that shows a price or sells a plan.** Plan and billing management
   happen in a browser.
-- **Payout details and verification documents.** Where you want to be paid, and
-  any identity document, are added and viewed on the web. You can still record a
-  payout from the app — it just goes without the member's stored payout details.
+- **A team's rates and payouts, payout details and verification documents.**
+  Member rates, recording a payment, where you want to be paid and any identity
+  document are all set and viewed on the web. Time itself is in the app — the
+  timer, time entries, timesheets and approvals — with no amounts on time
+  under an agreement.
 
 > Your workspace's plan applies in the app in full. It simply is not managed
 > from your phone.
@@ -69,12 +71,13 @@ Inside a project, a **bottom bar** carries the five places people go most:
 
 Everything else lives behind **More**, which opens a sheet with Resources, the
 four governance registers (Deliverables, Change Requests, Risks & Issues,
-Decisions), Team, Activity, Time logs and project Settings. The split is purely
+Decisions), Team, Activity, Time and project Settings. The split is purely
 about how many labels fit legibly on a phone — the More sheet is not a
 second-class area, and the pages in it are the same pages.
 
 Outside a project, the navigation drawer reaches your dashboard, teams,
-[Command center](/docs/roadmaps-and-work/command-center) and inbox.
+[Command center](/docs/roadmaps-and-work/command-center) and inbox, plus
+[Time](/docs/teams-time-and-rates/time-tracking) once you track time.
 
 ## What a phone is good at, and what it is not
 

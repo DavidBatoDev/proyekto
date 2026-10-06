@@ -78,7 +78,7 @@ The assistant reads as you, through your own access, on every request.
 - **Projects you have no access to** do not appear in the picker and are not
   readable. Pasting in a name or a link does not change that.
 - **Surfaces a permission has hidden from you** stay hidden. If a fine-grained
-  permission keeps you out of a project's time logs or a register, asking the
+  permission keeps you out of a project's time entries or a register, asking the
   assistant does not route around it.
 - **Private channels and direct messages you are not part of** are not
   readable, even where the knowledge base is switched on.

@@ -26,6 +26,12 @@ they interrupt you, so they carry less.
   deliverable submitted for review or reviewed, and the equivalent moments in
   risks and decisions. These are the points where someone is waiting on someone
   else. See [Governance overview](/docs/delivery-governance/overview-governance).
+- **Time** — a timesheet waiting for your review, or a request to reopen one;
+  your own timesheet returned, approved or reopened; a reminder that it is
+  time to submit; a timer still running after 10 hours, or one that was
+  stopped for you; a comment on a time entry of yours, or on one you approve;
+  and a payment recorded for your time, which never shows an amount. See
+  [Timesheets](/docs/teams-time-and-rates/timesheets).
 - **Invitations** — being invited to a project or a workspace.
 - **Meeting reminders** — see below.
 

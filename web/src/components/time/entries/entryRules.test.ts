@@ -397,7 +397,7 @@ describe("needs review", () => {
 					flagged_reason: "stopped_by_assignment_end",
 				}),
 			),
-		).toBe("Stopped when your agreement with Acme Corp ended.");
+		).toBe("Stopped when the assignment ended.");
 		expect(needsReviewCopy(entry())).toBeNull();
 
 		expect(

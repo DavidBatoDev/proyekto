@@ -230,7 +230,17 @@ export function timePlanDowngradeCopy(
 
 // ── Builders the copy table points at ───────────────────────────────────────
 
-/** `TIMESHEET_LOCKED {period}`: "This week's Prodigitality timesheet is submitted. Withdraw it to add time." */
+/**
+ * `TIMESHEET_LOCKED {period}`: "This week's Prodigitality timesheet is
+ * submitted. Withdraw it to add time." The one source for this sentence:
+ * Add time, Change For and the timer (`forCopy.periodLockedText`) all say it.
+ *
+ * - "This week's" for a weekly sheet, or while the kind is still unknown;
+ *   "This period's" for every other kind (ux.md › Copy › Errors).
+ * - Only `approved` reads as approved. A submitted sheet, or one whose status
+ *   hasn't loaded, gets the submitted line; the caller offers Withdraw only
+ *   when the sheet really is submitted.
+ */
 export function lockedPeriodCopy(
 	options: {
 		label?: string | null;
@@ -522,16 +532,19 @@ export function lockedChipCopy(
 		: "Submitted. Withdraw to change.";
 }
 
-/** Why a long timer stopped (`flagged_reason`). */
+/**
+ * Why the system stopped a timer (`flagged_reason`). The assignment line names
+ * the assignment, not the agreement: the M3 guard fires when the assignment
+ * ends, and ending an agreement doesn't end its assignments.
+ */
 export function flaggedReasonCopy(
 	reason: FlaggedReason | (string & {}) | null | undefined,
-	options: { agreementLabel?: string | null } = {},
 ): string | null {
 	if (reason === "auto_stopped_24h") {
 		return "Stopped automatically after 24 hours. Check the end time.";
 	}
 	if (reason === "stopped_by_assignment_end") {
-		return `Stopped when ${scopePhrase("engagement", options.agreementLabel)} ended.`;
+		return "Stopped when the assignment ended.";
 	}
 	return null;
 }
@@ -568,8 +581,10 @@ export const TIME_ACCOUNT_DELETION_COPY = {
 // ── Warnings ────────────────────────────────────────────────────────────────
 
 /**
- * The agreement's own weekly limit (L12): "Your agreement with Acme allows
- * 40h a week. You logged 43h 30m. The 3h 30m over needs Ana's approval."
+ * The agreement's own weekly limit (L12) on the Submit sheet, a warning the
+ * member ticks: "Your agreement with Acme allows 40h a week. You logged 43h
+ * 30m. The 3h 30m over needs Ana's approval." (ux.md › Submit flow). The
+ * write-time toast says "You've logged" instead; see `entryWarningCopy`.
  */
 export function contractLimitCopy(options: {
 	label?: string | null;
@@ -605,27 +620,34 @@ export function policyLimitCopy(options: {
 	return `${head} You've logged ${formatMinutesText(options.loggedMinutes)} this week.`;
 }
 
-/** One write-time warning (`warnings[]` on start, create and PATCH). */
+/**
+ * One write-time warning (`warnings[]` on start, create and PATCH) as its
+ * toast. The timer, Add time and every edit say the same sentences (ux.md ›
+ * Copy › Timer and For):
+ *
+ * - "Your agreement with Acme allows 40h a week. You've logged 43h 30m."
+ * - "<label> has a 40h weekly limit. You've logged 41h this week."
+ * - "This time overlaps another entry." ("…overlaps 2 other entries.")
+ *
+ * A code this build doesn't know gets no toast (null): the write went
+ * through, and a sentence that names nothing would only alarm.
+ */
 export function entryWarningCopy(
 	warning: EntryWarning,
 	options: { agreementLabel?: string | null; native?: boolean } = {},
-): string {
+): string | null {
 	let text: string;
 	switch (warning.code) {
 		case "OVERLAP": {
 			const n = Array.isArray(warning.entry_ids) ? warning.entry_ids.length : 0;
 			text =
 				n > 1
-					? `This overlaps ${n} other entries.`
-					: "This overlaps another entry.";
+					? `This time overlaps ${n} other entries.`
+					: "This time overlaps another entry.";
 			break;
 		}
 		case "CONTRACT_WEEKLY_LIMIT":
-			text = contractLimitCopy({
-				label: options.agreementLabel,
-				limitMinutes: warning.limit_minutes,
-				loggedMinutes: warning.logged_minutes,
-			});
+			text = `${capitalize(scopePhrase("engagement", options.agreementLabel))} allows ${formatMinutesText(warning.limit_minutes)} a week. You've logged ${formatMinutesText(warning.logged_minutes)}.`;
 			break;
 		case "POLICY_WEEKLY_LIMIT":
 			text = policyLimitCopy({
@@ -635,12 +657,12 @@ export function entryWarningCopy(
 			});
 			break;
 		default:
-			text = "Check this entry before you submit.";
+			return null;
 	}
 	return nativeSafe(text, { native: options.native });
 }
 
-/** Every warning, in order, skipping repeats. */
+/** Every warning's toast, in order, skipping repeats and unknown codes. */
 export function entryWarningsCopy(
 	warnings: readonly EntryWarning[] | null | undefined,
 	options: { agreementLabel?: string | null; native?: boolean } = {},
@@ -648,7 +670,7 @@ export function entryWarningsCopy(
 	const out: string[] = [];
 	for (const warning of warnings ?? []) {
 		const text = entryWarningCopy(warning, options);
-		if (!out.includes(text)) out.push(text);
+		if (text && !out.includes(text)) out.push(text);
 	}
 	return out;
 }

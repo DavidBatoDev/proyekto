@@ -29,6 +29,7 @@
 import { type QueryClient, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useRef, useState } from "react";
 import { useToast } from "@/hooks/useToast";
+import { entryWarningsCopy } from "@/lib/timeErrors";
 import { invalidateTime, timeKeys, timeQueries } from "@/queries/time";
 import { isTimeApiError, timeService } from "@/services/time.service";
 import type {
@@ -45,7 +46,6 @@ import type {
 } from "@/services/time.types";
 import {
 	CANT_LOG_TITLE,
-	entryWarningText,
 	hourCapText,
 	LOGGING_FOR_INVALID_TEXT,
 	periodLockedText,
@@ -345,9 +345,11 @@ export function createStartTimerController(
 		const startedLabel = autoChoice
 			? row.context_label_snapshot?.trim() || choiceLabel
 			: choiceLabel;
-		for (const warning of row.warnings ?? []) {
-			const text = entryWarningText(warning, startedLabel);
-			if (text) deps.toast.warning(text);
+		// The same toasts Add time and edits show (lib/timeErrors).
+		for (const text of entryWarningsCopy(row.warnings, {
+			agreementLabel: row.context_kind === "assignment" ? startedLabel : null,
+		})) {
+			deps.toast.warning(text);
 		}
 		setIfLive(attempt.flow, IDLE);
 		deps.onStarted?.(row);
@@ -755,6 +757,7 @@ export function createStartTimerController(
 			return fail(
 				periodLockedText({
 					label: notSubmitted.sheet.scope_label_snapshot,
+					periodKind: notSubmitted.sheet.period_kind,
 					sheetStatus: "approved",
 				}),
 				{ canWithdraw: false, sheetStatus: "approved" },

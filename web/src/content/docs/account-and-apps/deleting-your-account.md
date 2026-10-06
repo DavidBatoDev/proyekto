@@ -21,9 +21,9 @@ If you are the only owner of a workspace or a team that other people are still u
 - **Hand it to one of its members.** You pick who from a list of the people already in it. Whoever you choose gets full ownership — its members, its projects and anything attached to it. They are not asked first and cannot refuse, so choose deliberately.
 - **Delete it, with everything inside.** Its projects, roadmaps, tasks, chat and files go, and its other members lose access.
 
-Some cannot be deleted, only handed on — a workspace with a plan attached to it, or a team with payout records that have to be kept. The screen says so on the row.
+Some cannot be deleted, only handed on — a workspace with a plan attached to it, or a team with payout records that have to be kept. So is a team or workspace with time still waiting for approval or payment, until that time is decided and paid. The screen says so on the row.
 
-A workspace or team that **nobody else is in** needs no decision. It is deleted with your account.
+A workspace or team that **nobody else is in** needs no decision. It is deleted with your account — unless it still has time waiting for approval or payment, which holds the deletion back until that time is decided and paid.
 
 If you only want to leave a workspace rather than delete your whole account, ask one of its owners to remove you instead — see [Members and seats](/docs/workspaces-and-plans/members-and-seats).
 
@@ -33,6 +33,10 @@ A project you own that **other people have access to** is handed to someone who 
 
 A project that **nobody else has access to** is private by definition, so it is deleted with your account.
 
+## Your time
+
+Your open timesheets are sent for approval when you delete your account, so whoever approves your time can still decide it. Any timer you have running is stopped first. Your time entries stay with the rest of your work, under "Deleted user".
+
 ## What stays, as a deleted user
 
 Work in a shared project belongs to the team, not only to you. The following stays exactly where it is, with your name on it replaced by "Deleted user" — your email address and your profile do not stay with it:
@@ -41,6 +45,7 @@ Work in a shared project belongs to the team, not only to you. The following sta
 - comments on tasks, epics and features;
 - decisions, deliverables, change requests and risks you recorded;
 - your entries in project activity history;
+- your time entries and timesheets;
 - files you added to someone else's project, task or conversation.
 
 A team's record of how something was decided should not grow holes because one person left. Nothing in that list identifies you afterwards.

@@ -39,6 +39,11 @@ individual permissions can narrow any cell for a specific person, which is what
 plan does not include are simply not there for anyone, whatever their role; see
 [Plans](/docs/workspaces-and-plans/plans).
 
+Time follows the ladder too: editors and above can track time on the project,
+while commenters and viewers can only read their own past entries. Owners and
+admins also see everyone's time there. See
+[Tracking time](/docs/teams-time-and-rates/time-tracking).
+
 Pick the lowest role that lets someone do their job. It is far easier to raise
 someone later than to explain why they could edit something they should not
 have.
@@ -86,8 +91,8 @@ remove someone:
 - **They lose the project.** It disappears from their sidebar, and their tasks,
   chat and files there stop being reachable.
 - **The project keeps their work.** Their comments, the register entries they
-  authored, the tasks they created, their chat messages and their time logs all
-  stay exactly where they are, still attributed to them. Removing a person is
+  authored, the tasks they created, their chat messages and their time entries
+  all stay exactly where they are, still attributed to them. Removing a person is
   not a way to remove what they contributed.
 
 If they had access through a team, remove them from the project's participating
@@ -100,7 +105,7 @@ a project grant:
 
 - It grants **viewer or commenter only** — never edit, on any plan.
 - It reaches **the roadmap and nothing else**. Not chat, not Resources, not the
-  registers, not the board, not time logs.
+  registers, not the board, not time.
 - The recipient needs no account and never appears as a project member.
 
 That makes it the right tool for showing a client the plan and the wrong tool

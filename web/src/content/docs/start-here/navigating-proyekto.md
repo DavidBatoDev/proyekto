@@ -54,8 +54,10 @@ work actually runs: build it, talk about it, keep a record of it.
 | **Management** | Change Requests, Decisions, Risks & Issues, Activity |
 
 **Behind the gear**, pinned at the bottom of the rail, are the two pages you
-visit far less often: **Time logs** and **Settings**. They are deliberately out
+visit far less often: **Time** and **Settings**. They are deliberately out
 of the main list — settings is not a destination you navigate to by accident.
+A project's Time page is for seeing everyone's time there; your own timers and
+time entries live on **Time** in the main sidebar (below).
 
 A full tour of each page is in
 [Inside a project](/docs/projects/inside-a-project).
@@ -72,6 +74,11 @@ project:
   messages and mentions from every project in one list.
 - **[Meetings](/docs/chat-and-meetings/meetings)** — your whole calendar in day,
   week, month or year, not just one project's.
+- **[Time](/docs/teams-time-and-rates/time-tracking)** — your timers, time
+  entries and timesheets from every project, at `/time`. It is your own page,
+  so its address carries no workspace. It shows in the sidebar once you can
+  track time on a project, have timesheets to approve, or look after a
+  workspace's time policy.
 - **Teams** — your reusable groups, at `/w/<slug>/teams`. See
   [Teams](/docs/teams-time-and-rates/teams).
 - **[Notifications](/docs/account-and-apps/notifications)** — the bell in the
@@ -91,8 +98,8 @@ hides that page from the sidebar entirely rather than showing a locked screen �
 so the page does not exist as far as your sidebar is concerned. See
 [Fine-tuning permissions](/docs/projects/permissions).
 
-**Your plan does not include it.** Some surfaces — the governance registers, time
-tracking and a few others — belong to particular tiers. See
+**Your plan does not include it.** Some surfaces — the governance registers,
+timesheets and a few others — belong to particular tiers. See
 [Plans](/docs/workspaces-and-plans/plans). Worth saying plainly: a plan limit
 only ever blocks something *new*. Nothing you already have is removed, hidden or
 downgraded by reaching one, and everything already there stays readable and
@@ -107,7 +114,7 @@ The iOS and Android apps run the same Proyekto, so the map above still holds —
 it just folds differently. Inside a project, the bottom bar carries five items:
 **Overview, Roadmap, Board, Timeline, Chat**. Everything else in the three
 groups — Resources, Deliverables, Change Requests, Risks & Issues, Decisions,
-Team, Activity, Time logs and Settings — is one tap away under **More**.
+Team, Activity, Time and Settings — is one tap away under **More**.
 
 Five is the ceiling because a sixth label stops being legible, not because the
 other pages are less important.

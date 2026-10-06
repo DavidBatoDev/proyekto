@@ -5,7 +5,6 @@ vi.mock("@/lib/platform", () => ({ isNativeApp: () => false }));
 import { TimeApiError } from "@/services/time.service";
 import type { ResolvedTimePolicy } from "@/services/time.types";
 import {
-	entryWarningText,
 	entryWorkLabel,
 	GENERIC_ERROR,
 	goesToText,
@@ -390,42 +389,28 @@ describe("timer copy", () => {
 		expect(periodLockedText({ periodKind: "monthly" })).toBe(
 			"This period's timesheet is submitted. Withdraw it to add time.",
 		);
+		// One sentence with Add time (lib/timeErrors): a weekly or unknown kind
+		// says "This week's", and only approved reads as approved.
 		expect(periodLockedText({ sheetStatus: "approved" })).toBe(
-			"This period's timesheet is approved, so its time can't change.",
+			"This week's timesheet is approved, so its time can't change.",
+		);
+		expect(
+			periodLockedText({ periodKind: "biweekly", sheetStatus: "approved" }),
+		).toBe("This period's timesheet is approved, so its time can't change.");
+		expect(periodLockedText({ label: "Acme", sheetStatus: "submitted" })).toBe(
+			"This week's Acme timesheet is submitted. Withdraw it to add time.",
+		);
+		expect(periodLockedText({ label: "Acme", sheetStatus: "returned" })).toBe(
+			"This week's Acme timesheet is submitted. Withdraw it to add time.",
 		);
 	});
 
-	it("words caps, warnings and resume toasts", () => {
+	it("words caps and resume toasts", () => {
 		expect(
 			hourCapText({ limit_hours: 40, limit_window: "weekly" }, "Prodigitality"),
 		).toBe("This goes past the 40h weekly limit for Prodigitality.");
 		expect(hourCapText({}, null)).toBe(
 			"This goes past the weekly limit for this team.",
-		);
-		expect(
-			entryWarningText(
-				{
-					code: "CONTRACT_WEEKLY_LIMIT",
-					limit_minutes: 2400,
-					logged_minutes: 2610,
-				},
-				"Acme",
-			),
-		).toBe(
-			"Your agreement with Acme allows 40h a week. You've logged 43h 30m.",
-		);
-		expect(
-			entryWarningText({
-				code: "POLICY_WEEKLY_LIMIT",
-				limit_minutes: 2400,
-				logged_minutes: 2295,
-				label: "Prodigitality",
-			}),
-		).toBe(
-			"Prodigitality has a 40h weekly limit. You've logged 38h 15m this week.",
-		);
-		expect(entryWarningText({ code: "OVERLAP", entry_ids: [] })).toBe(
-			"This time overlaps another entry.",
 		);
 		expect(timerResumedToast(300)).toBe("Back to work — 5m of break logged.");
 		expect(timerResumedToast(0)).toBe("Back to work.");
