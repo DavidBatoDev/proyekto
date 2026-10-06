@@ -9,6 +9,7 @@ import {
 	deviceTimeZone,
 	formatClock,
 	formatPeriodRange,
+	submittedAgo,
 } from "@/lib/timeFormat";
 import { cn } from "@/lib/utils";
 import type { ApprovalRow } from "@/services/time.types";
@@ -18,7 +19,6 @@ import {
 	DASHBOARD_APPROVAL_ROWS,
 	moreApprovalsText,
 	policyWorkspaceTag,
-	submittedAgo,
 	TIME_APPROVALS_REVIEW_ALL,
 	TIME_APPROVALS_TITLE,
 	timesheetsWaitingText,

@@ -288,7 +288,7 @@ describe("changeForRowState", () => {
 		expect(
 			changeForRowState(entry({ locked_reason: "billed" }), workspace, ctx)
 				.reason,
-		).toBe("This time is already being billed, so it can't change.");
+		).toBe("This time is on an invoice, so it can't change.");
 		expect(
 			changeForRowState(
 				entry({ timesheet: { ...entry().timesheet!, status: "submitted" } }),

@@ -35,6 +35,7 @@ import {
 } from "lucide-react";
 import { type ReactNode, useEffect, useMemo, useState } from "react";
 import { AppDialog } from "@/components/common/AppDialog";
+import { entryLockCopy } from "@/components/time/entries/entryRules";
 import { ForChip } from "@/components/time/for/ForChip";
 import { ForPicker } from "@/components/time/for/ForPicker";
 import { entryWorkLabel } from "@/components/time/for/forCopy";
@@ -78,7 +79,6 @@ import type {
 	TimesheetSummary,
 } from "@/services/time.types";
 import { entrySpanLine } from "./DeleteEntryModal";
-import { entryLockCopy } from "./EditEntryModal";
 
 // ── Copy ────────────────────────────────────────────────────────────────────
 

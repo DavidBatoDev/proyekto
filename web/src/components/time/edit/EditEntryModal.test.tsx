@@ -27,6 +27,7 @@ import type {
 	TimeEntryView,
 	UpdatedEntry,
 } from "@/services/time.types";
+import { entryLockCopy } from "../entries/entryRules";
 import {
 	buildEntryPatch,
 	checkDraft,
@@ -34,7 +35,6 @@ import {
 	durationPreview,
 	EDIT_ENTRY_COPY,
 	EditEntryModal,
-	entryLockCopy,
 	fromWallClock,
 	timeZoneHint,
 	toWallClock,
@@ -285,25 +285,32 @@ describe("buildEntryPatch", () => {
 	});
 });
 
-describe("entryLockCopy", () => {
+describe("entryLockCopy (the entries kit's copy, shared by Edit, Delete and the day dialog)", () => {
 	it("says why each lock holds", () => {
 		const of = (over: Partial<TimeEntryView>) =>
 			entryLockCopy(entry(over), { timeZone: TZ, native: false });
 		expect(of({})).toBeNull();
-		expect(of({ locked_reason: "paid" })).toBe(
-			"This time has already been paid, so it can't change.",
+		expect(of({ locked_reason: "paid", payout_id: "po1" })).toBe(
+			"This time has been paid, so it can't change.",
 		);
+		expect(
+			entryLockCopy(entry({ locked_reason: "paid", payout_id: "po1" }), {
+				timeZone: TZ,
+				native: true,
+			}),
+		).toBe("This time has already been paid, so it can't change.");
 		expect(of({ locked_reason: "paid", legacy_status: "paid_outside" })).toBe(
-			"Paid outside Proyekto, so it can't change.",
+			"This time was paid outside Proyekto, so it can't change.",
 		);
 		expect(of({ locked_reason: "billed" })).toBe(
-			"This time is already being billed, so it can't change.",
+			"This time is on an invoice, so it can't change.",
 		);
 		expect(of({ locked_reason: "legacy" })).toBe(
-			"Not approved (legacy), so it can't change.",
+			"This is older time from per-entry review, so it can't change.",
 		);
+		// Frozen on a sheet that isn't approved (yet): the plain sentence.
 		expect(of({ locked_reason: "frozen" })).toBe(
-			"This time is approved, so it can't change.",
+			"This time was approved, so it can't change.",
 		);
 		expect(of({ locked_reason: "sheet_submitted" })).toBe(
 			"Submitted. Withdraw to change.",

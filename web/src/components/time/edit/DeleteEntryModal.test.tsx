@@ -215,7 +215,7 @@ describe("DeleteEntryModal", () => {
 			entry: entry({ locked_reason: "paid", payout_id: "po1" }),
 		});
 		expect(
-			screen.getByText("This time has already been paid, so it can't change."),
+			screen.getByText("This time has been paid, so it can't change."),
 		).toBeTruthy();
 		expect(screen.queryByRole("button", { name: "Delete" })).toBeNull();
 		fireEvent.click(screen.getByRole("button", { name: "Close" }));

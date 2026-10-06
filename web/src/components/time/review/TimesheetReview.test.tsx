@@ -630,6 +630,31 @@ describe("TimesheetReview: the submitter", () => {
 		expect(screen.getByRole("button", { name: "Submit" })).toBeTruthy();
 	});
 
+	it("their open self-routed sheet sends itself on the policy's reminder day, as the /time card says (D85)", async () => {
+		serve(
+			memberDetail({
+				sheet: sheet({
+					status: "open",
+					submitted_at: null,
+					approver_scope: "self",
+					reminder_days: 3,
+				}),
+				rules: null,
+				viewer: { is_member: true, can_decide: false, actions: ["submit"] },
+				routing_preview: {
+					approver_scope: "self",
+					cost_money: false,
+					deciders: [],
+				},
+			}),
+		);
+		renderWith(review());
+		// period_end Sep 27 + 3 days, not the default of 1 (Sep 28).
+		expect((await screen.findByTestId("review-status")).textContent).toBe(
+			"Open · sends itself Sep 30",
+		);
+	});
+
 	it("their open agreement sheet names the agreement and where it goes", async () => {
 		serve(
 			memberDetail({

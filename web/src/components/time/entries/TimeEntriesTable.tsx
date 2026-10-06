@@ -66,6 +66,7 @@ import {
 	formatDurationText,
 	formatInstantDateTime,
 	formatInstantTime,
+	workItemLabel,
 } from "@/lib/timeFormat";
 import { localDate, safeTimezone } from "@/lib/timePeriods";
 import { cn } from "@/lib/utils";
@@ -100,7 +101,6 @@ import {
 	isOnBreak,
 	NEEDS_REVIEW_GROUP_KEY,
 	needsReviewCopy,
-	workItemLabel,
 } from "./entryRules";
 
 /** The entrance cascade is capped so a long period doesn't waterfall for seconds. */

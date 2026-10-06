@@ -139,16 +139,23 @@ describe("ReturnSheetDialog", () => {
 		const note = screen.getByPlaceholderText("What should Maria change?");
 		const button = screen.getByRole("button", { name: "Return to Maria" });
 
+		// D83: no note, no Return; the helper says why.
+		const hint = screen.getByText("Add a note so Maria knows what to change.");
+		expect((button as HTMLButtonElement).disabled).toBe(true);
+		expect(note.getAttribute("aria-describedby")).toContain(hint.id);
+		expect(hint.getAttribute("role")).toBeNull();
 		fireEvent.click(button);
-		expect(
-			await screen.findByText("Add a note so Maria knows what to change."),
-		).toBeTruthy();
 		expect(ret).not.toHaveBeenCalled();
+
+		// Blank text is still no note.
+		fireEvent.change(note, { target: { value: "   " } });
+		expect((button as HTMLButtonElement).disabled).toBe(true);
 
 		fireEvent.change(note, { target: { value: "Split Thursday" } });
 		expect(
 			screen.queryByText("Add a note so Maria knows what to change."),
 		).toBeNull();
+		expect((button as HTMLButtonElement).disabled).toBe(false);
 		fireEvent.click(button);
 		await waitFor(() => expect(onClose).toHaveBeenCalled());
 		expect(ret).toHaveBeenCalledWith("s1", {
@@ -159,6 +166,23 @@ describe("ReturnSheetDialog", () => {
 			expect.objectContaining({ status: "returned" }),
 		);
 		expect(toast.success).toHaveBeenCalledWith("Returned to Maria");
+	});
+
+	it("says 'the person' when the sheet names no one", () => {
+		renderWith(
+			<ReturnSheetDialog
+				open
+				onClose={vi.fn()}
+				sheet={sheet({ member_display_name_snapshot: null })}
+			/>,
+		);
+		expect(
+			screen.getByText("Add a note so the person knows what to change."),
+		).toBeTruthy();
+		expect(
+			(screen.getByRole("button", { name: "Return" }) as HTMLButtonElement)
+				.disabled,
+		).toBe(true);
 	});
 
 	it("keeps the note within 2,000 characters", () => {
@@ -270,15 +294,24 @@ describe("ReopenSheetDialog", () => {
 		expect(
 			screen.getByText("It goes back to Maria as Returned, with your note."),
 		).toBeTruthy();
-		fireEvent.click(screen.getByRole("button", { name: "Reopen" }));
+		const button = screen.getByRole("button", {
+			name: "Reopen",
+		}) as HTMLButtonElement;
+		// D83: disabled until there is a note, with the helper line.
+		expect(button.disabled).toBe(true);
 		expect(
-			await screen.findByText("Add a note so Maria knows what to change."),
+			screen.getByText("Add a note so Maria knows what to change."),
 		).toBeTruthy();
+		fireEvent.click(button);
 		expect(reopen).not.toHaveBeenCalled();
 		fireEvent.change(screen.getByPlaceholderText("What should Maria change?"), {
 			target: { value: "Wrong week" },
 		});
-		fireEvent.click(screen.getByRole("button", { name: "Reopen" }));
+		expect(button.disabled).toBe(false);
+		expect(
+			screen.queryByText("Add a note so Maria knows what to change."),
+		).toBeNull();
+		fireEvent.click(button);
 		await waitFor(() => expect(onClose).toHaveBeenCalled());
 		expect(reopen).toHaveBeenCalledWith("s1", {
 			expected_revision: 4,
@@ -305,6 +338,14 @@ describe("ReopenSheetDialog", () => {
 			screen.getByText("It goes back to Open so you can change it."),
 		).toBeTruthy();
 		expect(screen.getByLabelText("Note (optional)")).toBeTruthy();
+		// The member's own reopen needs no note: enabled, no helper line.
+		expect(
+			screen.queryByText(/Add a note so .+ knows what to change\./),
+		).toBeNull();
+		expect(
+			(screen.getByRole("button", { name: "Reopen" }) as HTMLButtonElement)
+				.disabled,
+		).toBe(false);
 		fireEvent.click(screen.getByRole("button", { name: "Reopen" }));
 		await waitFor(() => expect(onClose).toHaveBeenCalled());
 		expect(reopen).toHaveBeenCalledWith("s1", { expected_revision: 4 });

@@ -59,6 +59,13 @@ const VIEWPORTS = DESKTOP_ONLY
     ];
 const NARROW = { name: "narrow", width: 320, height: 844 };
 
+// Old team time pages that only redirect to /time now (routes.mjs still lists
+// them, because every route file must stay represented).
+const RETIRED_NARROW = new Set([
+  "/w/:workspaceSlug/teams/:teamId/time/my-logs",
+  "/w/:workspaceSlug/teams/:teamId/time/team-logs",
+]);
+
 const slug = (p) =>
   p.replace(/^\//, "").replace(/[/:]/g, "_").replace(/_+$/, "") || "root";
 
@@ -139,14 +146,18 @@ async function discoverIds(context) {
   const teamHref = teamHrefs.find((h) => /\/teams\/(?!me\b)[^/?#]+/.test(h));
   ids.teamId = teamHref?.match(/\/teams\/([^/?#]+)/)?.[1] || null;
 
-  if (ids.teamId) {
-    await page
-      .goto(`${BASE}/teams/${ids.teamId}/time/my-logs`, { waitUntil: "domcontentloaded" })
-      .catch(() => {});
-    await settle(page);
-    const logHref = await firstHref(page, 'a[href*="/time/log/"]');
-    ids.logId = logHref?.match(/\/time\/log\/([^/?#]+)/)?.[1] || null;
-  }
+  // logId + timesheetId — from the /time page. The old team my-logs list is
+  // a redirect stub to /time now; entry rows carry data-entry-id, and the
+  // timesheet cards and Waiting for you rows link to /time/timesheets/<id>.
+  await page.goto(`${BASE}/time`, { waitUntil: "domcontentloaded" }).catch(() => {});
+  await settle(page);
+  ids.logId = await page
+    .locator("[data-entry-id]")
+    .first()
+    .getAttribute("data-entry-id", { timeout: 4000 })
+    .catch(() => null);
+  const sheetHref = await firstHref(page, 'a[href*="/time/timesheets/"]');
+  ids.timesheetId = sheetHref?.match(/\/time\/timesheets\/([0-9a-f-]{8,})/i)?.[1] || null;
 
   // share token — first roadmap shared with me, if any.
   await page
@@ -298,8 +309,14 @@ async function main() {
     await ctx.close();
   }
 
-  // 320px narrow-stress pass for known offenders only.
-  const narrowSet = new Set(DESKTOP_ONLY ? [] : NARROW_STRESS);
+  // 320px narrow-stress pass for known offenders only. The old team My Logs
+  // and Team Logs pages are redirect stubs now (both land on /time), so the
+  // pass stresses /time itself instead of capturing the stubs.
+  const narrowSet = new Set(
+    DESKTOP_ONLY
+      ? []
+      : [...NARROW_STRESS.filter((tpl) => !RETIRED_NARROW.has(tpl)), "/time"],
+  );
   const narrowRoutes = routes.filter((r) => narrowSet.has(r.template) && r.status === "ready");
   if (narrowRoutes.length) {
     const ctx = await browser.newContext({

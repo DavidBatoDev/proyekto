@@ -8,8 +8,9 @@
 // on the server (`paused_at`, `break_seconds`), so a break survives a refresh,
 // a crash or a move to another device.
 //
-// Ported from the old `components/team-time/time-utils.ts` helpers (which W3-1
-// trims) so new code never imports the team-time module.
+// Ported from the old `components/team-time/time-utils.ts` helpers, which
+// went with the old team-time pages. The Needs review threshold (10 h) lives in
+// `components/time/entries/entryRules.ts` (`NEEDS_REVIEW_SECONDS`).
 
 import { useEffect, useState } from "react";
 import { serverNow } from "@/lib/serverClock";
@@ -98,9 +99,6 @@ export function formatBreak(totalSeconds: number): string {
 	const safe = Math.max(0, Math.floor(totalSeconds || 0));
 	return `${pad(Math.floor(safe / 60))}:${pad(safe % 60)}`;
 }
-
-/** At 10 hours a running timer joins Needs review (CHANGE-22). */
-export const LONG_TIMER_SECONDS = 10 * 3600;
 
 // ── One shared 1 Hz tick ────────────────────────────────────────────────────
 //

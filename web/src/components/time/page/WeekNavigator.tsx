@@ -12,6 +12,7 @@
 
 import { ChevronLeft, ChevronRight, Info } from "lucide-react";
 import { type ReactNode, useEffect, useRef } from "react";
+import { overlayOpen } from "@/lib/overlayOpen";
 import { formatPeriodRange } from "@/lib/timeFormat";
 import type { LocalRange } from "@/lib/timePeriods";
 import { cn } from "@/lib/utils";
@@ -155,24 +156,6 @@ function isTypingTarget(target: EventTarget | null): boolean {
 		tag === "TEXTAREA" ||
 		tag === "SELECT" ||
 		target.closest("[contenteditable='true']") !== null
-	);
-}
-
-/**
- * A dialog or menu is open: its keys belong to it. Closed overlays that stay
- * mounted don't count: the app header's mobile nav drawer is always in the
- * DOM as an `inert` `role="dialog"`, and anything `hidden` or `aria-hidden`
- * isn't open either.
- */
-export function overlayOpen(): boolean {
-	if (typeof document === "undefined") return false;
-	return Array.from(
-		document.querySelectorAll<HTMLElement>(
-			"[role='dialog'], [role='alertdialog'], [role='menu']",
-		),
-	).some(
-		// `closest` checks the element itself too.
-		(el) => el.closest("[inert], [hidden], [aria-hidden='true']") === null,
 	);
 }
 

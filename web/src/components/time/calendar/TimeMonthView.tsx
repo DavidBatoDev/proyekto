@@ -29,6 +29,10 @@ import { useEffect, useMemo, useState } from "react";
 import { ChangeForDialog } from "@/components/time/edit/ChangeForDialog";
 import { DeleteEntryModal } from "@/components/time/edit/DeleteEntryModal";
 import { EditEntryModal } from "@/components/time/edit/EditEntryModal";
+import {
+	DAY_WARNING_SECONDS,
+	entryWorkSeconds,
+} from "@/components/time/entries/entryRules";
 import { entryWorkLabel } from "@/components/time/for/forCopy";
 import { TimeReasonCard } from "@/components/time/shared/TimeReasonCard";
 import { isNativeApp } from "@/lib/platform";
@@ -62,8 +66,6 @@ import {
 	DAY_ENTRIES_COPY,
 	DayEntriesModal,
 	entryCountText,
-	entrySeconds,
-	LONG_DAY_SECONDS,
 	type OpenEntryContext,
 } from "./DayEntriesModal";
 
@@ -517,10 +519,10 @@ function DayCell({
 	onOpenDay: (date: string, highlight?: string | null) => void;
 }) {
 	const total = entries.reduce(
-		(sum, entry) => sum + entrySeconds(entry, nowMs),
+		(sum, entry) => sum + entryWorkSeconds(entry, nowMs),
 		0,
 	);
-	const longDay = total > LONG_DAY_SECONDS;
+	const longDay = total > DAY_WARNING_SECONDS;
 	const dayNumber = Number(date.slice(8, 10));
 	// The button's name carries everything the cell shows (its header is
 	// hidden from assistive tech so it isn't read twice).

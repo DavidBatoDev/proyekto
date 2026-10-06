@@ -25,7 +25,11 @@ import { type ReactNode, useEffect, useId, useMemo, useState } from "react";
 import { AppDialog } from "@/components/common/AppDialog";
 import { DateTimeField } from "@/components/common/DateTimeField";
 import { Dropdown } from "@/components/common/Dropdown";
-import { deviceTimeZone, formatDurationText } from "@/lib/timeFormat";
+import {
+	deviceTimeZone,
+	formatDurationText,
+	workItemLabel,
+} from "@/lib/timeFormat";
 import { localDate, todayIn } from "@/lib/timePeriods";
 import { cn } from "@/lib/utils";
 import { timeQueries } from "@/queries/time";
@@ -46,7 +50,6 @@ import {
 	forActionLabel,
 	LoggableProjectsError,
 	loggableProjectsFailed,
-	presetLabel,
 	TaskPickerModal,
 	taskTitle,
 } from "./TaskPickerModal";
@@ -132,7 +135,7 @@ export function workOptions(
 	return [
 		...presets.map((preset) => ({
 			value: `preset:${preset}`,
-			label: `◦ ${presetLabel(preset)}`,
+			label: `◦ ${workItemLabel(preset)}`,
 		})),
 		...tasks.map((task) => ({
 			value: `task:${task.id}`,

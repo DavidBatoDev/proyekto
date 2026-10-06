@@ -26,8 +26,11 @@ import {
 	forRefLabel,
 	forRequestOf,
 	onlyPersonal,
+	overviewContextZone,
+	reminderDaysBySheet,
 	resolveViewZone,
 	sheetPeopleNames,
+	sheetReminderDays,
 	sheetsInView,
 	useTimePageData,
 	viewWeekFor,
@@ -214,6 +217,91 @@ describe("resolveViewZone", () => {
 		).toBeNull();
 	});
 
+	it("D85: takes a context's zone from the overview, ahead of its sheets", () => {
+		const zone = resolveViewZone({
+			forRef: { kind: "assignment", id: "a1" },
+			prefs: PREFS,
+			overview: overview({
+				contexts: [
+					{
+						kind: "assignment",
+						id: "a1",
+						label: "Acme Corp",
+						sheet_scope: { kind: "engagement", ref: "eng1" },
+						current_sheet: null,
+						timezone: NY,
+						week_start: 7,
+						period_kind: "monthly",
+						period_anchor: null,
+						reminder_days: 3,
+					},
+				],
+			}),
+			// A sheet cut in another zone no longer decides.
+			sheets: [
+				sheet({
+					scope_kind: "engagement",
+					scope_ref: "eng1",
+					timezone: "Europe/London",
+					week_start: 3,
+				}),
+			],
+		});
+		expect(zone).toEqual({
+			timezone: NY,
+			weekStart: 7,
+			source: "context",
+			periodKind: "monthly",
+			periodAnchor: null,
+			reminderDays: 3,
+		});
+	});
+
+	it("D85: ignores what the overview can't say (personal, no zone, an unknown zone)", () => {
+		const base = {
+			kind: "team" as const,
+			id: "t1",
+			label: "Prodigitality Services Inc. Team",
+			sheet_scope: { kind: "team" as const, ref: "t1" },
+			current_sheet: null,
+		};
+		expect(overviewContextZone(null)).toBeNull();
+		expect(overviewContextZone(base)).toBeNull();
+		expect(overviewContextZone({ ...base, timezone: null })).toBeNull();
+		expect(overviewContextZone({ ...base, timezone: "Not/AZone" })).toBeNull();
+		expect(
+			overviewContextZone({
+				kind: "personal",
+				id: null,
+				label: "Just me",
+				sheet_scope: null,
+				current_sheet: null,
+				timezone: NY,
+			}),
+		).toBeNull();
+		// A missing or odd week start falls back to the person's, then Monday.
+		expect(
+			overviewContextZone(
+				{ ...base, timezone: NY, week_start: 9 },
+				{
+					weekStart: 7,
+				},
+			),
+		).toMatchObject({ timezone: NY, weekStart: 7, reminderDays: null });
+		expect(
+			overviewContextZone({ ...base, timezone: NY, reminder_days: -2 }),
+		).toMatchObject({ weekStart: 1, reminderDays: null });
+		// A context with no zone still reads from its latest sheet.
+		expect(
+			resolveViewZone({
+				forRef: { kind: "team", id: "t1" },
+				prefs: PREFS,
+				overview: overview({ contexts: [base] }),
+				sheets: [sheet({ timezone: NY, week_start: 7 })],
+			}),
+		).toEqual({ timezone: NY, weekStart: 7, source: "context" });
+	});
+
 	it("cleans an invalid zone and week start", () => {
 		expect(
 			resolveViewZone({
@@ -388,6 +476,63 @@ describe("sheets", () => {
 		expect(
 			cardSheetScope({ kind: "personal", id: null }, null, [ws], []),
 		).toBeNull();
+	});
+
+	it("D85: gives each card its reminder days, the sheet's own first", () => {
+		const ctx = overview({
+			contexts: [
+				{
+					kind: "team",
+					id: "t1",
+					label: "Prodigitality Services Inc. Team",
+					sheet_scope: { kind: "team", ref: "t1" },
+					current_sheet: null,
+					reminder_days: 2,
+				},
+				{
+					kind: "workspace",
+					id: "w1",
+					label: "Acme",
+					sheet_scope: { kind: "workspace", ref: "w1" },
+					current_sheet: {
+						id: "ws-current",
+						status: "open",
+						period_start: "2026-10-05",
+						period_end: "2026-10-11",
+						total_seconds: 0,
+					},
+					reminder_days: 0,
+				},
+			],
+		});
+		// The sheet's own (policy_snapshot) wins.
+		expect(sheetReminderDays(sheet({ reminder_days: 5 }), ctx)).toBe(5);
+		// Else the context the sheet is the current sheet of, or whose scope it is.
+		expect(
+			sheetReminderDays(
+				sheet({ id: "ws-current", scope_kind: "workspace", scope_ref: "w1" }),
+				ctx,
+			),
+		).toBe(0);
+		expect(sheetReminderDays(sheet({ scope_ref: "T1" }), ctx)).toBe(2);
+		// Else nothing: the card's default.
+		expect(
+			sheetReminderDays(
+				sheet({ scope_kind: "engagement", scope_ref: "e9" }),
+				ctx,
+			),
+		).toBeNull();
+		expect(sheetReminderDays(sheet({ reminder_days: null }), null)).toBeNull();
+		expect(
+			reminderDaysBySheet(
+				[
+					sheet({ id: "a", reminder_days: 4 }),
+					sheet({ id: "b" }),
+					sheet({ id: "c", scope_kind: "engagement", scope_ref: "e9" }),
+				],
+				ctx,
+			),
+		).toEqual({ a: 4, b: 2 });
 	});
 
 	it("collects decider names from A1 and A2", () => {
@@ -683,6 +828,63 @@ describe("useTimePageData", () => {
 			source: "context",
 		});
 		expect(result.current.zoneText).toBe("Acme Corp time (America/New_York)");
+	});
+
+	it("D85: reads the week in the zone the overview names, with no sheets lookup", async () => {
+		vi.spyOn(timeService, "getOverview").mockResolvedValue(
+			overview({
+				contexts: [
+					{
+						kind: "assignment",
+						id: A1,
+						label: "Acme Corp",
+						sheet_scope: { kind: "engagement", ref: "e1" },
+						current_sheet: null,
+						timezone: NY,
+						week_start: 7,
+						period_kind: "weekly",
+						period_anchor: null,
+						reminder_days: 3,
+					},
+				],
+			}),
+		);
+		const list = vi
+			.spyOn(timeService, "listMyEntries")
+			.mockResolvedValue({ items: [], total: 0, page: 1, limit: 200 });
+		const sheets = vi.spyOn(timeService, "listMyTimesheets").mockResolvedValue([
+			sheet({
+				id: "s-e1",
+				scope_kind: "engagement",
+				scope_ref: "e1",
+				timezone: NY,
+				week_start: 7,
+				period_start: "2026-10-04",
+				period_end: "2026-10-10",
+			}),
+		]);
+
+		const { result } = renderHook(
+			() => useTimePageData({ for: `assignment:${A1}` }, { now: NOW }),
+			{ wrapper },
+		);
+		await waitFor(() => expect(list).toHaveBeenCalled());
+		for (const call of list.mock.calls) {
+			expect(call[0]).toMatchObject({ from: "2026-10-04", to: "2026-10-10" });
+		}
+		await waitFor(() => expect(result.current.sheets).toHaveLength(1));
+		// Only the view week's sheets were read: no 62-day lookback.
+		for (const call of sheets.mock.calls) {
+			expect(call[0]).toEqual({ from: "2026-10-04", to: "2026-10-10" });
+		}
+		expect(result.current.zone).toMatchObject({
+			timezone: NY,
+			weekStart: 7,
+			source: "context",
+		});
+		expect(result.current.zoneText).toBe("Acme Corp time (America/New_York)");
+		// The card's "sends itself" date counts the context's 3 days.
+		expect(result.current.sheetReminders).toEqual({ "s-e1": 3 });
 	});
 
 	it("names a ?for=team: the overview doesn't list from the person's teams, and doesn't narrow the cards on a guess", async () => {

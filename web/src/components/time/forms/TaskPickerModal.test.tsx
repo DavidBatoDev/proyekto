@@ -38,7 +38,6 @@ import { useAuthStore } from "@/stores/authStore";
 import {
 	buildTaskTree,
 	filterTaskTree,
-	presetLabel,
 	TaskPickerModal,
 } from "./TaskPickerModal";
 
@@ -232,11 +231,6 @@ describe("the task tree", () => {
 		);
 		expect(filterTaskTree(tree, "nothing")).toEqual([]);
 		expect(filterTaskTree(tree, "  ")).toHaveLength(2);
-	});
-
-	it("labels the presets", () => {
-		expect(presetLabel("meeting")).toBe("Meeting");
-		expect(presetLabel("other")).toBe("Other");
 	});
 });
 

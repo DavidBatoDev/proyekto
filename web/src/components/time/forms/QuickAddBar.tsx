@@ -26,6 +26,7 @@ import {
 	formatInstantTime,
 	formatLocalDay,
 	parseDurationInput,
+	workItemLabel,
 } from "@/lib/timeFormat";
 import { addDays, retroactiveFloor, todayIn } from "@/lib/timePeriods";
 import { cn } from "@/lib/utils";
@@ -40,7 +41,6 @@ import {
 	forActionLabel,
 	LoggableProjectsError,
 	loggableProjectsFailed,
-	presetLabel,
 	TaskPickerModal,
 	type TaskPickerSelection,
 	usePopoverFocus,
@@ -134,7 +134,7 @@ export function workLabel(
 ): string {
 	if (!selection) return QUICK_ADD_COPY.work;
 	if (selection.taskTitle?.trim()) return selection.taskTitle.trim();
-	if (selection.workItem) return `◦ ${presetLabel(selection.workItem)}`;
+	if (selection.workItem) return `◦ ${workItemLabel(selection.workItem)}`;
 	return QUICK_ADD_COPY.work;
 }
 

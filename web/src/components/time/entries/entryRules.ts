@@ -31,6 +31,7 @@ import {
 	formatLocalDay,
 	formatPeriodRange,
 	sheetScopeLabel,
+	workItemLabel,
 } from "@/lib/timeFormat";
 import { localDate, safeTimezone } from "@/lib/timePeriods";
 import type {
@@ -40,7 +41,6 @@ import type {
 	TimeEntryView,
 	TimesheetStatus,
 	TimesheetSummary,
-	WorkItem,
 } from "@/services/time.types";
 import { liveBreakSeconds, liveWorkSeconds } from "../timer/liveDuration";
 
@@ -107,19 +107,6 @@ const STATUS_WORD: Record<TimesheetStatus, string> = {
 	returned: "Returned",
 	approved: "Approved",
 };
-
-const WORK_ITEM_LABEL: Record<WorkItem, string> = {
-	task: "Task",
-	meeting: "Meeting",
-	review: "Review",
-	admin: "Admin",
-	other: "Other",
-};
-
-/** "Task", "Meeting", "Review", "Admin", "Other". */
-export function workItemLabel(item: WorkItem | null | undefined): string {
-	return (item && WORK_ITEM_LABEL[item]) || WORK_ITEM_LABEL.other;
-}
 
 /** The sheet status word ("Open", "Submitted", "Returned", "Approved"). */
 export function sheetStatusWord(status: TimesheetStatus): string {
@@ -300,9 +287,14 @@ export function entryLockCopy(
 			: null;
 	switch (reason) {
 		case "paid":
-			return entry.payout_id
-				? "This time has been paid, so it can't change."
-				: "This time was paid outside Proyekto, so it can't change.";
+			// Web keeps the ux.md Copy line; native writes "already paid"
+			// (ux.md › Copy), like the billed pair below.
+			if (!entry.payout_id) {
+				return "This time was paid outside Proyekto, so it can't change.";
+			}
+			return native
+				? "This time has already been paid, so it can't change."
+				: "This time has been paid, so it can't change.";
 		case "billed":
 			return native
 				? "This time is already being billed, so it can't change."

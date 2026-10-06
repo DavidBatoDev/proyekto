@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 
 vi.mock("@/lib/platform", () => ({ isNativeApp: () => false }));
 
+import { workItemLabel } from "@/lib/timeFormat";
 import type { TimeEntryView } from "@/services/time.types";
 import {
 	ACCENT_CLASS,
@@ -25,7 +26,6 @@ import {
 	needsReviewCaption,
 	needsReviewCopy,
 	needsReviewReason,
-	workItemLabel,
 } from "./entryRules";
 
 const TZ = "Asia/Manila";
@@ -223,6 +223,18 @@ describe("lock matrix", () => {
 		expect(
 			entryLockCopy(entry({ payout_id: "po1", locked_reason: "paid" })),
 		).toBe("This time has been paid, so it can't change.");
+		expect(
+			entryLockCopy(entry({ payout_id: "po1", locked_reason: "paid" }), {
+				native: true,
+			}),
+		).toBe("This time has already been paid, so it can't change.");
+		// Paid outside Proyekto reads the same on both.
+		expect(
+			entryLockCopy(
+				entry({ legacy_status: "paid_outside", locked_reason: "paid" }),
+				{ native: true },
+			),
+		).toBe("This time was paid outside Proyekto, so it can't change.");
 		expect(
 			entryLockCopy(
 				entry({ legacy_status: "paid_outside", locked_reason: "paid" }),

@@ -687,14 +687,68 @@ describe("TimePage › normal mode", () => {
 		fireEvent.click(screen.getByRole("button", { name: "Month" }));
 		fireEvent.click(screen.getByRole("button", { name: "Go to September" }));
 		expect(onSearchChange).toHaveBeenLastCalledWith(
-			{ week: "2026-09-01" },
+			{ week: "2026-09-01", view: "month" },
 			{ replace: true },
 		);
 		fireEvent.click(screen.getByRole("button", { name: "Go to October" }));
 		expect(onSearchChange).toHaveBeenLastCalledWith(
-			{ week: undefined },
+			{ week: undefined, view: "month" },
 			{ replace: true },
 		);
+	});
+
+	it("D86: picking a view writes it, Month into the URL and List out of it", async () => {
+		const { onSearchChange } = setup();
+		await screen.findByTestId("day-strip");
+		fireEvent.click(screen.getByRole("button", { name: "Month" }));
+		expect(onSearchChange).toHaveBeenLastCalledWith(
+			{ view: "month" },
+			{ replace: true },
+		);
+		expect(window.localStorage.getItem("timeView:me")).toBe("month");
+		fireEvent.click(screen.getByRole("button", { name: "List" }));
+		expect(onSearchChange).toHaveBeenLastCalledWith(
+			{ view: undefined },
+			{ replace: true },
+		);
+		expect(window.localStorage.getItem("timeView:me")).toBe("list");
+		expect(screen.getByTestId("day-strip")).toBeTruthy();
+	});
+
+	it("D86: a Month URL reloads as Month on its month, whatever is remembered", async () => {
+		window.localStorage.setItem("timeView:me", "list");
+		setup({ search: { week: "2026-09-01", view: "month" } });
+		const month = await screen.findByTestId("month-view");
+		expect(month.getAttribute("data-month")).toBe("2026-09-01");
+		expect(screen.queryByTestId("day-strip")).toBeNull();
+		expect(
+			screen
+				.getByRole("button", { name: "Month" })
+				.getAttribute("aria-pressed"),
+		).toBe("true");
+	});
+
+	it("D86: ?view=list opens List even when Month is remembered", async () => {
+		window.localStorage.setItem("timeView:me", "month");
+		setup({ search: { view: "list" } });
+		expect(await screen.findByTestId("day-strip")).toBeTruthy();
+		expect(screen.queryByTestId("month-view")).toBeNull();
+	});
+
+	it("D86: a linked week stays in List when it steps back to this week", async () => {
+		window.localStorage.setItem("timeView:me", "month");
+		const { rerender, onSearchChange } = setup({
+			search: { week: "2026-09-30" },
+		});
+		expect(await screen.findByTestId("day-strip")).toBeTruthy();
+		// "This week" drops ?week=; the visit started on a link, so List stays.
+		rerender(
+			<QueryClientProvider client={client}>
+				<TimePage search={{}} onSearchChange={onSearchChange} now={NOW} />
+			</QueryClientProvider>,
+		);
+		expect(await screen.findByTestId("day-strip")).toBeTruthy();
+		expect(screen.queryByTestId("month-view")).toBeNull();
 	});
 
 	it("opens a linked week in the list even when Month is remembered", async () => {

@@ -27,7 +27,10 @@ import { useQuery } from "@tanstack/react-query";
 import { AlertTriangle, Ban, Info, Loader2, Send } from "lucide-react";
 import { useEffect, useId, useMemo, useState } from "react";
 import { AppDialog } from "@/components/common/AppDialog";
-import { LONG_TIMER_SECONDS } from "@/components/time/timer/liveDuration";
+import {
+	DAY_WARNING_SECONDS,
+	NEEDS_REVIEW_SECONDS,
+} from "@/components/time/entries/entryRules";
 import {
 	contractLimitCopy,
 	flaggedReasonCopy,
@@ -68,9 +71,6 @@ import { StaleRevisionBanner } from "./StaleRevisionBanner";
 import { useTimesheetActions } from "./useTimesheetActions";
 
 // ── Pure checks (exported for tests and the review screen) ─────────────────
-
-/** A day over this many seconds gets ⚠ (the same rule as the live day total). */
-export const DAY_WARNING_SECONDS = 8 * 3600;
 
 export interface SheetDayTotal {
 	/** Local date in the sheet's timezone. */
@@ -237,7 +237,7 @@ export function submitChecks(input: SubmitChecksInput): SubmitChecks {
 		});
 	}
 	const long = entries.filter(
-		(e) => !e.flagged_reason && entrySeconds(e) >= LONG_TIMER_SECONDS,
+		(e) => !e.flagged_reason && entrySeconds(e) >= NEEDS_REVIEW_SECONDS,
 	).length;
 	if (long > 0) {
 		warnings.push({

@@ -27,14 +27,14 @@ import {
 	Users,
 } from "lucide-react";
 import { useRef, useState } from "react";
+import { CHIP_LABEL_MAX } from "@/lib/timeFormat";
 import { cn } from "@/lib/utils";
 import { FOR_LABEL } from "./forCopy";
 import {
-	CHIP_LABEL_MAX,
 	type ForChipOption,
 	type ForIconKind,
 	forIconKind,
-	truncateLabel,
+	truncatedLabel,
 } from "./forOptions";
 import { WhoApprovesPopover } from "./WhoApprovesPopover";
 
@@ -66,7 +66,7 @@ export function ForIcon({
 export function ForWorkspaceTag({ name }: { name: string | null | undefined }) {
 	const tag = name?.trim();
 	if (!tag) return null;
-	const { text, full } = truncateLabel(tag, CHIP_LABEL_MAX);
+	const { text, full } = truncatedLabel(tag, CHIP_LABEL_MAX);
 	return (
 		<span
 			className="inline-flex shrink-0 items-center rounded bg-muted px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground"
@@ -118,7 +118,7 @@ export function ForChip({
 }: ForChipProps) {
 	const anchorRef = useRef<HTMLButtonElement | null>(null);
 	const [popoverOpen, setPopoverOpen] = useState(false);
-	const { text, full } = truncateLabel(option.label, maxLength);
+	const { text, full } = truncatedLabel(option.label, maxLength);
 	const locked = variant === "locked";
 	const menu = variant === "menu" && Boolean(onOpenMenu);
 	const opensPopover = !menu && Boolean(projectId);

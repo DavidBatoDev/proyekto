@@ -30,6 +30,7 @@ import {
 	formatPeriodRange,
 	labelWithTitle,
 	sheetScopeLabel,
+	workItemLabel,
 } from "@/lib/timeFormat";
 import {
 	addDays,
@@ -58,7 +59,6 @@ import type {
 	ReportSummaryGroup,
 	TimeEntryView,
 	TimesheetStatus,
-	WorkItem,
 } from "@/services/time.types";
 import type { Workspace } from "@/services/workspaces.service";
 
@@ -146,14 +146,6 @@ export const REPORT_FOR_LABEL: Record<TimeReportForKind, string> = {
 	team: "For: team",
 	workspace: "For: workspace",
 	assignment: "For: agreement",
-};
-
-export const WORK_ITEM_LABEL: Record<WorkItem, string> = {
-	task: "Task",
-	meeting: "Meeting",
-	review: "Review",
-	admin: "Admin",
-	other: "Other",
 };
 
 /**
@@ -625,7 +617,7 @@ export function entryWorkLabels(entry: TimeEntryView): {
 	work: string;
 	hidden: boolean;
 } {
-	const kind = WORK_ITEM_LABEL[entry.work_item] ?? WORK_ITEM_LABEL.other;
+	const kind = workItemLabel(entry.work_item);
 	if (entry.content === "hidden") {
 		return {
 			project: entry.content_label?.trim() || REPORT_COPY.hiddenProject,

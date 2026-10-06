@@ -1,4 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { retryUnlessAccessDenied } from "@/lib/apiErrors";
 import {
 	fetchAllRoadmapsFull,
 	fetchLinkedRoadmap,
@@ -44,7 +45,9 @@ export function useProjectMyPermissionsQuery(projectId: string) {
 		enabled: Boolean(projectId),
 		staleTime: STALE_60S,
 		refetchOnWindowFocus: true,
-		retry: 1,
+		// A 401/403/404 is an answer ("not yours"): asking again only held the
+		// refusal card back by a second. Anything else gets one retry.
+		retry: retryUnlessAccessDenied(1),
 	});
 }
 

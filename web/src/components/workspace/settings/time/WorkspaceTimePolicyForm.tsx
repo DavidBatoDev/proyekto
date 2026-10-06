@@ -21,7 +21,6 @@ import {
 	retroSummary,
 } from "@/components/team/settings/time/TeamRulesSection";
 import { SettingSwitch } from "@/components/team-time/SettingSwitch";
-import { workItemLabel } from "@/components/time/entries/entryRules";
 import {
 	SettingsNotice,
 	SettingsRow,
@@ -43,6 +42,7 @@ import {
 	formatMinutesText,
 	periodKindTitle,
 	weekdayName,
+	workItemLabel,
 } from "@/lib/timeFormat";
 import { addDays, isLocalDate, isoDow } from "@/lib/timePeriods";
 import { featureNoteCopy } from "@/lib/usageCopy";

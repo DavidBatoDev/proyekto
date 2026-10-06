@@ -664,6 +664,12 @@ export function weeklyLimitLine(options: {
 	label?: string | null;
 	limitMinutes: number;
 	loggedSeconds: number;
+	/**
+	 * The hours over, when they come from elsewhere: the over-the-limit panel
+	 * reads them from the freeze preview (after rounding), so its head agrees
+	 * with the checkbox under it. Defaults to logged minus the limit.
+	 */
+	overSeconds?: number;
 }): string {
 	const label = options.label?.trim();
 	const limit = formatMinutesText(options.limitMinutes);
@@ -675,7 +681,10 @@ export function weeklyLimitLine(options: {
 			: label
 				? ` (${label})`
 				: "";
-	const over = Math.max(0, options.loggedSeconds - options.limitMinutes * 60);
+	const over = Math.max(
+		0,
+		options.overSeconds ?? options.loggedSeconds - options.limitMinutes * 60,
+	);
 	const tail = over > 0 ? `${formatClock(over)} over` : "within limit";
 	return `Weekly limit ${limit}${where} · ${formatClock(options.loggedSeconds)} logged · ${tail}`;
 }

@@ -176,6 +176,40 @@ describe("GlobalSearchBar", () => {
 		dialog.remove();
 	});
 
+	it("still focuses on '/' past closed overlays that stay mounted (the inert nav drawer)", () => {
+		render(<GlobalSearchBar />);
+		const input = getInput();
+		// The header's MobileNavDrawer: always in the DOM, `inert` while closed.
+		const drawer = document.createElement("div");
+		drawer.setAttribute("role", "dialog");
+		drawer.setAttribute("aria-modal", "true");
+		drawer.setAttribute("inert", "");
+		document.body.appendChild(drawer);
+		const hiddenMenu = document.createElement("div");
+		hiddenMenu.setAttribute("role", "menu");
+		hiddenMenu.hidden = true;
+		document.body.appendChild(hiddenMenu);
+		try {
+			fireEvent.keyDown(window, { key: "/" });
+			expect(document.activeElement).toBe(input);
+
+			// Opened, the drawer owns the keys again.
+			input.blur();
+			drawer.removeAttribute("inert");
+			fireEvent.keyDown(window, { key: "/" });
+			expect(document.activeElement).not.toBe(input);
+
+			// An open menu blocks it too.
+			drawer.setAttribute("inert", "");
+			hiddenMenu.hidden = false;
+			fireEvent.keyDown(window, { key: "/" });
+			expect(document.activeElement).not.toBe(input);
+		} finally {
+			drawer.remove();
+			hiddenMenu.remove();
+		}
+	});
+
 	it("offers the Time page to someone the sidebar shows it to", () => {
 		timeState.overview = { can_log: true };
 		render(<GlobalSearchBar />);

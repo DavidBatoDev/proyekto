@@ -564,6 +564,13 @@ export interface TimesheetSummary extends TimesheetRow {
 	routing_preview?: SheetRoutingPreview;
 	/** A2: the member's submitted sheet. At most 5. */
 	deciders?: TimeDecider[];
+	/**
+	 * D85, so "sends itself <date>" is exact. Submitted and approved sheets: the
+	 * `policy_snapshot` frozen at submit. Open and returned sheets: the sheet
+	 * scope's live policy, which the auto-submit and reminder checks read (an
+	 * open sheet's snapshot is empty; A-5 deviation 1). Absent when unknown.
+	 */
+	reminder_days?: number | null;
 }
 
 export interface TimesheetDetail {
@@ -632,6 +639,16 @@ export interface OverviewContext {
 		period_end: string;
 		total_seconds: number;
 	} | null;
+	/**
+	 * D85: the context's resolved policy, so the page needn't guess it from
+	 * sheets. Null for `personal` (the person's preferences apply); absent
+	 * from a server without D85.
+	 */
+	timezone?: string | null;
+	week_start?: number | null;
+	period_kind?: PeriodKind | null;
+	period_anchor?: string | null;
+	reminder_days?: number | null;
 }
 
 export interface WorkspaceTimeAdmin {

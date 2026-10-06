@@ -1,17 +1,10 @@
-import { useQuery } from "@tanstack/react-query";
 import { createFileRoute, redirect, useNavigate } from "@tanstack/react-router";
-import { Loader2 } from "lucide-react";
-import { useState } from "react";
-import { useTeamMoneyAccess } from "@/components/team-time/useTeamMoneyAccess";
-import { TimeEntryDetailModal } from "@/components/time/entries/TimeEntryDetailModal";
-import { TimeReport } from "@/components/time/report/TimeReport";
+import { TeamTimeReport } from "@/components/time/report/TeamTimeReport";
 import {
 	validateTeamTimeReportSearch,
 	validateTimePageSearch,
 } from "@/lib/timeSearch";
-import { timeQueries } from "@/queries/time";
 import { getTeam, listTeamMembers } from "@/services/teams.service";
-import type { TimeEntryView } from "@/services/time.types";
 import { useAuthStore } from "@/stores/authStore";
 
 /**
@@ -61,76 +54,23 @@ export const Route = createFileRoute("/w/$workspaceSlug/teams/$teamId/time/")({
 /**
  * The Report body. The layout (`route.tsx`) has already checked that the
  * caller manages the team and that team time is on, so this only mounts the
- * shared `TimeReport` on the team scope, in the team's policy timezone.
+ * shared team Report (`components/time/report/TeamTimeReport`).
  */
 function TeamTimeReportPage() {
 	const { teamId } = Route.useParams();
 	const search = Route.useSearch();
 	const navigate = useNavigate({ from: Route.fullPath });
-	const access = useTeamMoneyAccess(teamId);
-	const [openEntry, setOpenEntry] = useState<TimeEntryView | null>(null);
-
-	// Team policy reads are manager-only (404 otherwise); the layout only
-	// renders this page for managers, the guard keeps a stray mount quiet.
-	const policyQuery = useQuery(
-		timeQueries.teamPolicy(access.isApprover ? teamId : null),
-	);
-
-	// The default range is counted in the team's timezone, so wait for it
-	// once; a failed read falls back to the device's.
-	if (policyQuery.isLoading) {
-		return (
-			<div className="flex justify-center p-12" role="status">
-				<Loader2
-					className="h-6 w-6 animate-spin text-muted-foreground"
-					aria-hidden="true"
-				/>
-				<span className="sr-only">Loading</span>
-			</div>
-		);
-	}
-
-	const policy = policyQuery.data?.effective;
-	const planWorkspace = access.planWorkspace;
 
 	return (
-		<>
-			<TimeReport
-				scope={{ kind: "team", id: teamId }}
-				search={search}
-				onSearchChange={(patch) =>
-					void navigate({
-						search: (prev) => ({ ...prev, ...patch }),
-						replace: true,
-					})
-				}
-				timezone={policy?.timezone ?? null}
-				weekStart={policy?.week_start ?? null}
-				planWorkspace={
-					access.planWorkspaceId
-						? {
-								id: access.planWorkspaceId,
-								name: planWorkspace?.name,
-								slug: planWorkspace?.slug,
-								my_role: planWorkspace?.my_role,
-							}
-						: null
-				}
-				// The pay cut-offs are presets only where the team records payments.
-				cutoffs={
-					access.canPay
-						? { config: access.team?.pay_period_config ?? null }
-						: null
-				}
-				onOpenEntry={setOpenEntry}
-			/>
-			<TimeEntryDetailModal
-				entryId={openEntry?.id ?? null}
-				entry={openEntry}
-				mode="readonly"
-				timeZone={policy?.timezone}
-				onClose={() => setOpenEntry(null)}
-			/>
-		</>
+		<TeamTimeReport
+			teamId={teamId}
+			search={search}
+			onSearchChange={(patch) =>
+				void navigate({
+					search: (prev) => ({ ...prev, ...patch }),
+					replace: true,
+				})
+			}
+		/>
 	);
 }

@@ -40,10 +40,13 @@ import {
 	sheetScopeLabel,
 	sheetStatusLine,
 	sheetStatusView,
+	submittedAgo,
 	timesheetRulesLine,
 	truncateLabel,
+	WORK_ITEM_LABEL,
 	weekdayName,
 	weekdayShort,
+	workItemLabel,
 } from "./timeFormat";
 
 const platform = vi.hoisted(() => ({ native: false }));
@@ -155,6 +158,22 @@ describe("parseDurationInput", () => {
 });
 
 describe("dates and periods", () => {
+	it("says when a sheet was sent, counted in the viewer's zone", () => {
+		// Tue Oct 6, 2026, 11:00 in Manila.
+		const now = new Date("2026-10-06T03:00:00.000Z");
+		const ago = (iso: string | null, timezone = "Asia/Manila") =>
+			submittedAgo(iso, { now, timezone });
+		expect(ago("2026-10-06T00:30:00.000Z")).toBe("today");
+		expect(ago("2026-10-05T03:00:00.000Z")).toBe("yesterday");
+		expect(ago("2026-10-03T03:00:00.000Z")).toBe("3 days ago");
+		expect(ago("2026-09-22T03:00:00.000Z")).toBe("Sep 22");
+		// 23:30Z on Oct 5 is already Oct 6 in Manila, still Oct 5 in UTC.
+		expect(ago("2026-10-05T23:30:00.000Z")).toBe("today");
+		expect(ago("2026-10-05T23:30:00.000Z", "UTC")).toBe("yesterday");
+		expect(ago(null)).toBe("");
+		expect(ago("not a date")).toBe("");
+	});
+
 	it("writes periods with an en dash and no year this year", () => {
 		expect(formatPeriodRange("2026-09-22", "2026-09-28", dates)).toBe(
 			"Sep 22–28",
@@ -348,6 +367,19 @@ describe("money", () => {
 
 describe("labels", () => {
 	const team = "Prodigitality Services Inc. Team";
+
+	it("names every work item, and anything unknown as Other", () => {
+		expect(WORK_ITEM_LABEL).toEqual({
+			task: "Task",
+			meeting: "Meeting",
+			review: "Review",
+			admin: "Admin",
+			other: "Other",
+		});
+		expect(workItemLabel("meeting")).toBe("Meeting");
+		expect(workItemLabel(null)).toBe("Other");
+		expect(workItemLabel(undefined)).toBe("Other");
+	});
 
 	it("cuts chips at 22 characters and cards at 32, each + …", () => {
 		expect(CHIP_LABEL_MAX).toBe(22);
@@ -704,6 +736,39 @@ describe("sheetStatusView", () => {
 		expect(sheetStatusView(acme, { now: NOW, reminderDays: 0 }).sublabel).toBe(
 			"sends itself Oct 16",
 		);
+	});
+
+	it("reads the sheet's own reminder_days (D85) when the caller passes none", () => {
+		const acme = sheet({
+			scope_kind: "workspace",
+			scope_label_snapshot: "Acme",
+			period_start: "2026-10-01",
+			period_end: "2026-10-15",
+			approver_scope: "auto",
+			reminder_days: 3,
+		});
+		// The review screen and the approval rows pass no reminderDays.
+		expect(sheetStatusView(acme, { now: NOW })).toMatchObject({
+			sublabel: "sends itself Oct 18",
+			sendsItselfOn: "2026-10-18",
+		});
+		expect(
+			sheetStatusView(acme, { now: NOW, reminderDays: null }).sendsItselfOn,
+		).toBe("2026-10-18");
+		// A value the caller passes wins (the /time cards pass the overview's).
+		expect(
+			sheetStatusView(acme, { now: NOW, reminderDays: 2 }).sendsItselfOn,
+		).toBe("2026-10-17");
+		// 0 still means the next day, as the RPC and the cron read it.
+		expect(
+			sheetStatusView({ ...acme, reminder_days: 0 }, { now: NOW })
+				.sendsItselfOn,
+		).toBe("2026-10-16");
+		// Unknown on the sheet and from the caller: 1 day.
+		expect(
+			sheetStatusView({ ...acme, reminder_days: null }, { now: NOW })
+				.sendsItselfOn,
+		).toBe("2026-10-16");
 	});
 
 	it("notes a member reopen of an own auto/self sheet", () => {

@@ -6,12 +6,11 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 vi.mock("@/lib/platform", () => ({ isNativeApp: () => false }));
 
 import type { TimeEntryView } from "@/services/time.types";
+import { entryWorkSeconds, needsReview } from "../entries/entryRules";
 import {
 	DAY_ENTRIES_COPY,
 	DayEntriesModal,
 	entryCountText,
-	entrySeconds,
-	needsReview,
 } from "./DayEntriesModal";
 
 const TZ = "Asia/Manila";
@@ -130,9 +129,9 @@ describe("helpers", () => {
 			break_seconds: 600,
 		});
 		// 6 h since 01:00Z, minus a 10 min break.
-		expect(entrySeconds(running, NOW)).toBe(6 * 3600 - 600);
+		expect(entryWorkSeconds(running, NOW)).toBe(6 * 3600 - 600);
 		const paused = { ...running, paused_at: "2026-10-05T03:00:00.000Z" };
-		expect(entrySeconds(paused, NOW)).toBe(2 * 3600 - 600);
+		expect(entryWorkSeconds(paused, NOW)).toBe(2 * 3600 - 600);
 	});
 
 	it("flags entries of 10 h or more, and cron-flagged ones", () => {

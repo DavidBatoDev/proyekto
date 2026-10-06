@@ -7,6 +7,7 @@ import {
 	timeHref,
 	timeReportGroupBy,
 	timesheetHref,
+	validateLegacyTeamTimeReportSearch,
 	validateTeamTimeReportSearch,
 	validateTimePageSearch,
 	validateTimesheetReviewSearch,
@@ -123,6 +124,17 @@ describe("validateTimePageSearch", () => {
 	it("ignores params it does not own", () => {
 		expect(validateTimePageSearch({ member: T, preset: "week" })).toEqual({});
 	});
+
+	it("keeps the view (D86) and drops anything but list or month", () => {
+		expect(
+			validateTimePageSearch({ week: "2026-09-01", view: "month" }),
+		).toEqual({ week: "2026-09-01", view: "month" });
+		expect(validateTimePageSearch({ view: "list" })).toEqual({ view: "list" });
+		expect(validateTimePageSearch({ view: "calendar" })).toEqual({});
+		expect(validateTimePageSearch({ view: " month " })).toEqual({
+			view: "month",
+		});
+	});
 });
 
 describe("validateTimesheetReviewSearch", () => {
@@ -191,6 +203,32 @@ describe("validateTeamTimeReportSearch", () => {
 		).toEqual({ from: "2026-09-01", to: "2026-09-30" });
 	});
 
+	it("answers old Team Logs links on the legacy reader: member → person, a uuid log kept", () => {
+		expect(
+			validateLegacyTeamTimeReportSearch({
+				person: T,
+				from: "2026-09-01",
+				to: "2026-09-15",
+				preset: "custom",
+				cutoff_month: "2026-09",
+				status: "pending",
+				log: E,
+			}),
+		).toEqual({ person: T, from: "2026-09-01", to: "2026-09-15", log: E });
+		expect(validateLegacyTeamTimeReportSearch({ member: T })).toEqual({
+			person: T,
+		});
+		// `person` wins over an old `member`; junk drops.
+		expect(
+			validateLegacyTeamTimeReportSearch({ person: T, member: P }),
+		).toEqual({ person: T });
+		expect(
+			validateLegacyTeamTimeReportSearch({ member: "someone", log: "nope" }),
+		).toEqual({});
+		// The plain Report reader never keeps either.
+		expect(validateTeamTimeReportSearch({ member: T, log: E })).toEqual({});
+	});
+
 	it("maps the person group to the API's member group", () => {
 		expect(timeReportGroupBy("person")).toBe("member");
 		expect(timeReportGroupBy("week")).toBe("week");
@@ -223,6 +261,14 @@ describe("string links", () => {
 		expect(
 			validateTimePageSearch(Object.fromEntries(url.searchParams.entries())),
 		).toEqual({ for: "personal", week: "2026-09-29" });
+		const month = new URL(
+			timeHref({ week: "2026-09-01", view: "month" }),
+			"https://proyekto.test",
+		);
+		expect(month.searchParams.get("view")).toBe("month");
+		expect(
+			validateTimePageSearch(Object.fromEntries(month.searchParams.entries())),
+		).toEqual({ week: "2026-09-01", view: "month" });
 	});
 
 	it("builds a timesheet link, optionally opening an entry", () => {

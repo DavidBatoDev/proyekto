@@ -17,6 +17,7 @@ import { useConfirm } from "@/hooks/useConfirm";
 import { useToast } from "@/hooks/useToast";
 import { chatKeys } from "@/queries/chat";
 import { projectKeys } from "@/queries/project";
+import { invalidateTime } from "@/queries/time";
 import { projectService } from "@/services/project.service";
 import { describeAccess } from "./accessLanguage";
 import type { PersonAccess } from "./useProjectPeople";
@@ -67,6 +68,9 @@ export function PersonAccessDrawer({
 			toast.success("Removed from the project");
 			void qc.invalidateQueries({ queryKey: projectKeys.members(projectId) });
 			void qc.invalidateQueries({ queryKey: ["project", projectId, "teams"] });
+			// A removed member can no longer log time here: Who can log
+			// (loggers), the For picker, the loggable projects and the overview.
+			void invalidateTime(qc, "policy");
 			onClose();
 		},
 		onError: (err) => toast.error((err as Error).message),

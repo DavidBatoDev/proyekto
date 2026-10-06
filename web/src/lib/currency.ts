@@ -2,10 +2,11 @@
  * Shared currency list + a canonical formatter.
  *
  * The codebase historically grew two `formatMoney` helpers with REVERSED
- * argument order and different output — `time-utils.ts` (`(amount, currency)`,
- * Intl currency style) and `contract-term.ts` (`(currency, amount)`, "USD 1,200.00"
- * string). Both are load-bearing at many call sites, and silently swapping
- * either would mis-render every amount. So this module does NOT replace them; it
+ * argument order and different output — the old team-time `time-utils.ts`
+ * (`(amount, currency)`, Intl currency style; retired with the old team-time
+ * pages) and `contract-term.ts` (`(currency, amount)`, "USD 1,200.00"
+ * string). The survivor is load-bearing at many call sites, and silently
+ * swapping it would mis-render every amount. So this module does NOT replace it; it
  * adds the one thing that was missing everywhere — a single source of truth for
  * the selectable currency list — plus a clearly-named formatter for NEW code
  * that has no reason to prefer one legacy style.

@@ -50,6 +50,7 @@ import {
 	formatInstantDay,
 	formatInstantTime,
 	formatMoneyLine,
+	workItemLabel,
 } from "@/lib/timeFormat";
 import { localDate, safeTimezone } from "@/lib/timePeriods";
 import { isUuid } from "@/lib/timeSearch";
@@ -85,7 +86,6 @@ import {
 	isOnBreak,
 	needsReviewCopy,
 	sheetStatusWord,
-	workItemLabel,
 } from "./entryRules";
 
 /** The comment DTO's limit (`CreateCommentDto.body`). */

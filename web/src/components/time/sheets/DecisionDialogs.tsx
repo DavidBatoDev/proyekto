@@ -11,6 +11,10 @@
 // | RequestReopenSheetDialog | Member, sheet approved by someone else | Optional, to the deciders  | Ask to reopen      |
 // | ApproveSelectedDialog    | Decider, bulk (no overtime: over-limit rows can't be selected) | Optional | Approve |
 //
+// A required note (Return, a decider's Reopen) keeps the confirm button
+// disabled until the note has non-blank text, with the helper line "Add a
+// note so Maria knows what to change." under the field (D83).
+//
 // Every dialog runs through `useTimesheetActions` (toast, invalidation, copy)
 // and keeps refusals inline: a stale revision shows the StaleRevisionBanner
 // ("Maria changed this timesheet while you were looking. [Review the
@@ -123,6 +127,7 @@ function NoteField({
 	value,
 	onChange,
 	required = false,
+	hint,
 	error,
 	disabled,
 }: {
@@ -131,11 +136,17 @@ function NoteField({
 	value: string;
 	onChange: (value: string) => void;
 	required?: boolean;
+	/** A helper line under the field (why the confirm button waits). */
+	hint?: string | null;
 	error?: string | null;
 	disabled?: boolean;
 }) {
 	const id = useId();
+	const hintId = useId();
 	const errorId = useId();
+	const describedBy =
+		[hint ? hintId : null, error ? errorId : null].filter(Boolean).join(" ") ||
+		undefined;
 	return (
 		<div className="space-y-1">
 			<label
@@ -152,12 +163,17 @@ function NoteField({
 				required={required}
 				aria-required={required || undefined}
 				aria-invalid={error ? true : undefined}
-				aria-describedby={error ? errorId : undefined}
+				aria-describedby={describedBy}
 				maxLength={SHEET_NOTE_MAX}
 				rows={3}
 				disabled={disabled}
 				className="w-full resize-y rounded-lg border border-input bg-background px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring disabled:opacity-60"
 			/>
+			{hint ? (
+				<p id={hintId} className="text-xs text-muted-foreground">
+					{hint}
+				</p>
+			) : null}
 			{error ? (
 				<p id={errorId} role="alert" className="text-xs text-destructive">
 					{error}
@@ -165,6 +181,16 @@ function NoteField({
 			) : null}
 		</div>
 	);
+}
+
+/**
+ * D83: the helper under a required note while it is blank, naming the person
+ * ("Add a note so Maria knows what to change."; "the person" without a name).
+ */
+function requiredNoteHint(note: string, personName: string | null) {
+	return note.trim()
+		? null
+		: transitionReasonCopy("note_required", { personName });
 }
 
 /** A refusal, inline: stale → banner; settled → copy (+ web link); else the sentence. */
@@ -264,14 +290,12 @@ function ConfirmButton({
 /** Note state that resets each time the dialog opens. */
 function useDialogNote(open: boolean, clear: () => void) {
 	const [note, setNote] = useState("");
-	const [noteError, setNoteError] = useState<string | null>(null);
 	useEffect(() => {
 		if (!open) return;
 		setNote("");
-		setNoteError(null);
 		clear();
 	}, [open, clear]);
-	return { note, setNote, noteError, setNoteError };
+	return { note, setNote };
 }
 
 function finish(
@@ -408,20 +432,15 @@ export function ReturnSheetDialog({
 	userTimezone,
 }: DecisionDialogBaseProps) {
 	const actions = useTimesheetActions();
-	const { note, setNote, noteError, setNoteError } = useDialogNote(
-		open,
-		actions.clearFailure,
-	);
+	const { note, setNote } = useDialogNote(open, actions.clearFailure);
 	const busy = actions.isPending("return", sheet.id);
 	const personName = personNameProp ?? sheetPersonName(sheet);
 	const first = firstName(personName);
+	const noteMissing = !note.trim();
 
 	const confirm = async () => {
-		if (!note.trim()) {
-			setNoteError(transitionReasonCopy("note_required", { personName }));
-			return;
-		}
-		setNoteError(null);
+		// The button waits for a note (D83); this only guards a stray call.
+		if (noteMissing) return;
 		const outcome = await actions.returnSheet(sheet, { note });
 		finish(outcome, onDone, onClose);
 	};
@@ -442,6 +461,7 @@ export function ReturnSheetDialog({
 						<ConfirmButton
 							label={first ? `Return to ${first}` : "Return"}
 							busy={busy}
+							disabled={noteMissing}
 							onClick={() => void confirm()}
 						/>
 					}
@@ -461,14 +481,10 @@ export function ReturnSheetDialog({
 						first ? `What should ${first} change?` : "What should change?"
 					}
 					value={note}
-					onChange={(value) => {
-						setNote(value);
-						if (noteError && value.trim()) setNoteError(null);
-					}}
+					onChange={setNote}
 					required
-					error={
-						noteError ?? (failure?.kind === "note" ? failure.message : null)
-					}
+					hint={requiredNoteHint(note, personName)}
+					error={failure?.kind === "note" ? failure.message : null}
 					disabled={busy}
 				/>
 				<SheetFailureNotice
@@ -517,22 +533,17 @@ export function ReopenSheetDialog({
 		(viewerId != null &&
 			sheet.member_user_id != null &&
 			sheet.member_user_id === viewerId);
-	const { note, setNote, noteError, setNoteError } = useDialogNote(
-		open,
-		actions.clearFailure,
-	);
+	const { note, setNote } = useDialogNote(open, actions.clearFailure);
 	const busy = actions.isPending("reopen", sheet.id);
 	const personName = asMember
 		? null
 		: (personNameProp ?? sheetPersonName(sheet));
 	const first = firstName(personName);
+	// A decider's reopen needs a note (D83); the member's own is optional.
+	const noteMissing = !asMember && !note.trim();
 
 	const confirm = async () => {
-		if (!asMember && !note.trim()) {
-			setNoteError(transitionReasonCopy("note_required", { personName }));
-			return;
-		}
-		setNoteError(null);
+		if (noteMissing) return;
 		const outcome = await actions.reopen(sheet, { note });
 		finish(outcome, onDone, onClose);
 	};
@@ -552,6 +563,7 @@ export function ReopenSheetDialog({
 						<ConfirmButton
 							label="Reopen"
 							busy={busy}
+							disabled={noteMissing}
 							onClick={() => void confirm()}
 						/>
 					}
@@ -582,12 +594,12 @@ export function ReopenSheetDialog({
 								: "What should change?"
 					}
 					value={note}
-					onChange={(value) => {
-						setNote(value);
-						if (noteError && value.trim()) setNoteError(null);
-					}}
+					onChange={setNote}
 					required={!asMember}
-					error={noteError}
+					hint={asMember ? null : requiredNoteHint(note, personName)}
+					error={
+						actions.failure?.kind === "note" ? actions.failure.message : null
+					}
 					disabled={busy}
 				/>
 				<SheetFailureNotice

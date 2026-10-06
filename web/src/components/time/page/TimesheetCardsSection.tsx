@@ -35,6 +35,12 @@ export interface TimesheetCardsSectionProps {
 	workspaceNames?: Readonly<Record<string, string>>;
 	/** The sheet being fixed (its card is marked). */
 	fixingId?: string | null;
+	/**
+	 * Each sheet's `reminder_days` by id, for "sends itself <date>" (D85; see
+	 * `reminderDaysBySheet`). A sheet missing here uses its own
+	 * `reminder_days`, else the card's default of 1 day.
+	 */
+	reminderDays?: Readonly<Record<string, number>>;
 	now?: Date;
 	userTimezone?: string;
 	className?: string;
@@ -52,6 +58,7 @@ export function TimesheetCardsSection({
 	names,
 	workspaceNames,
 	fixingId,
+	reminderDays,
 	now,
 	userTimezone,
 	className,
@@ -121,6 +128,7 @@ export function TimesheetCardsSection({
 									? (workspaceNames?.[sheet.policy_workspace_id] ?? null)
 									: null
 							}
+							reminderDays={reminderDays?.[sheet.id] ?? sheet.reminder_days}
 							now={now}
 							userTimezone={userTimezone}
 							className={

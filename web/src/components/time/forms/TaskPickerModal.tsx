@@ -50,7 +50,7 @@ import { AnchoredPopover } from "@/components/common/AnchoredPopover";
 import { AppDialog } from "@/components/common/AppDialog";
 import { SidePanel } from "@/components/roadmap/panels/SidePanel";
 import { timeErrorMessage } from "@/lib/timeErrors";
-import { truncateLabel } from "@/lib/timeFormat";
+import { CHIP_LABEL_MAX, truncateLabel, workItemLabel } from "@/lib/timeFormat";
 import { cn } from "@/lib/utils";
 import { timeQueries } from "@/queries/time";
 import {
@@ -74,7 +74,6 @@ import {
 	sameApproverNote,
 	TRY_AGAIN_BUTTON,
 } from "../for/forCopy";
-import { CHIP_LABEL_MAX } from "../for/forOptions";
 import { TimeReasonCard } from "../shared/TimeReasonCard";
 import { StartTimerPrompts } from "../timer/SwitchTimerDialog";
 import { useStartTimer } from "../timer/useStartTimer";
@@ -93,18 +92,6 @@ import {
 } from "./useTimeTaskCreation";
 
 // ── Copy ────────────────────────────────────────────────────────────────────
-
-const PRESET_LABEL: Record<PresetWorkItem, string> = {
-	meeting: "Meeting",
-	review: "Review",
-	admin: "Admin",
-	other: "Other",
-};
-
-/** "Meeting", "Review", "Admin", "Other". */
-export function presetLabel(item: PresetWorkItem): string {
-	return PRESET_LABEL[item] ?? "Other";
-}
 
 export const TASK_PICKER_COPY = {
 	startTitle: "Start timer",
@@ -1356,7 +1343,7 @@ function TaskPicker({
 													>
 														◦
 													</span>
-													{presetLabel(preset)}
+													{workItemLabel(preset)}
 												</Row>
 											))}
 											<div className="my-1.5 h-px w-full bg-border" />

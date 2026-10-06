@@ -18,10 +18,11 @@
  *
  * | Route                                   | Params                                          |
  * |-----------------------------------------|-------------------------------------------------|
- * | `/time`                                 | `for`, `project`, `week`, `entry`               |
+ * | `/time`                                 | `for`, `project`, `week`, `view`, `entry`       |
  * | `/time/timesheets/$timesheetId`         | `entry`                                         |
  * | `/w/$workspaceSlug/settings/time`       | `tab` (`policy` default, `report`)              |
  * | `/w/$workspaceSlug/teams/$teamId/time`  | `person`, `project`, `for`, `status`, `from`, `to`, `group` |
+ * | `/engagements/finance/team/$teamId/time-logs` | the team Report's, plus old `member` (→ `person`) and `log` |
  */
 
 // ── Primitives ──────────────────────────────────────────────────────────────
@@ -156,6 +157,10 @@ function entryParam(value: unknown): string | undefined {
 
 // ── /time ───────────────────────────────────────────────────────────────────
 
+/** `[List | Month]` (D86). */
+export const TIME_PAGE_VIEWS = ["list", "month"] as const;
+export type TimePageView = (typeof TIME_PAGE_VIEWS)[number];
+
 export interface TimePageSearch {
 	/** Filters to one context and sets the day strip's timezone and week start. */
 	for?: TimeForParam;
@@ -163,6 +168,13 @@ export interface TimePageSearch {
 	project?: string;
 	/** Any day in the view week, `YYYY-MM-DD`; the page snaps it to the week start. */
 	week?: string;
+	/**
+	 * D86: the view the link opens. Month's own navigation writes `month`, so a
+	 * reload stays in Month. Omitted, a `?week=` link opens List (the
+	 * dashboard's "Submit last week" needs its card) and a bare `/time` opens
+	 * the person's remembered view.
+	 */
+	view?: TimePageView;
 	/** Opens that entry's detail modal. */
 	entry?: string;
 }
@@ -174,6 +186,7 @@ export function validateTimePageSearch(
 		for: forParam(search.for),
 		project: uuidParam(search.project),
 		week: dateParam(search.week),
+		view: oneOf(search.view, TIME_PAGE_VIEWS),
 		entry: entryParam(search.entry),
 	});
 }
@@ -281,6 +294,29 @@ export function validateTeamTimeReportSearch(
 	});
 }
 
+/** The team Report's search plus an old Team Logs `?log=` entry to open in place. */
+export type LegacyTeamTimeReportSearch = TeamTimeReportSearch & {
+	log?: string;
+};
+
+/**
+ * The team Report's search for a page that still answers old Team Logs links
+ * (Finance › team › Time keeps the `time-logs` tab id): `?member=U` filters to
+ * that person (`person` wins when both are there), and a uuid `?log=X` is kept
+ * so the page can open that entry over the Report. Old `preset`/`cutoff_*`
+ * params and the old log statuses (`pending`, `paid`, …) drop.
+ */
+export function validateLegacyTeamTimeReportSearch(
+	search: Record<string, unknown>,
+): LegacyTeamTimeReportSearch {
+	const report = validateTeamTimeReportSearch({
+		...search,
+		person: search.person ?? search.member,
+	});
+	const log = uuidParam(search.log);
+	return log ? { ...report, log } : report;
+}
+
 // ── String links ────────────────────────────────────────────────────────────
 
 /**
@@ -298,6 +334,7 @@ export function timeHref(
 	if (parsed.for) params.set("for", parsed.for);
 	if (parsed.project) params.set("project", parsed.project);
 	if (parsed.week) params.set("week", parsed.week);
+	if (parsed.view) params.set("view", parsed.view);
 	if (parsed.entry) params.set("entry", parsed.entry);
 	const query = params.toString();
 	return `/time${query ? `?${query}` : ""}${hash ? `#${hash}` : ""}`;

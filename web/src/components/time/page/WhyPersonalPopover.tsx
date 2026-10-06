@@ -38,18 +38,11 @@ export type PersonalReason = NonNullable<LoggingForResult["personal_reason"]>;
 export const WHY_PERSONAL_ARIA_LABEL = `Why ${PERSONAL_LABEL}`;
 
 /**
- * A-4: a team row names the workspace it answers to (backend
- * `UnavailableOption.workspace_name?`). Typed here until the web mirror in
- * `services/time.types.ts` carries the field; the intersection stays exact
- * once it does.
+ * The workspace a team row answers to: the row's own name (A-4
+ * `UnavailableOption.workspace_name`), else the caller's.
  */
-type NamedUnavailableOption = UnavailableOption & {
-	workspace_name?: string | null;
-};
-
-/** The workspace a team row answers to: the row's own name, else the caller's. */
 function teamOwnerName(
-	item: NamedUnavailableOption,
+	item: UnavailableOption,
 	fallback: string | null | undefined,
 ): string | null | undefined {
 	if (item.kind !== "team") return undefined;
@@ -71,7 +64,7 @@ export function whyPersonalLines(
 ): string[] {
 	const native = options.native ?? isNativeApp();
 	const lines = [personalReasonText(reason ?? null)];
-	for (const item of unavailable as readonly NamedUnavailableOption[]) {
+	for (const item of unavailable) {
 		if (reason === "plan" && item.reason === "plan") continue;
 		const line = unavailableReasonText(item, {
 			ownerName: teamOwnerName(item, options.ownerName),

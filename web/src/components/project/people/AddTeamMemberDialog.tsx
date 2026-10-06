@@ -10,6 +10,7 @@ import {
 import { useConfirm } from "@/hooks/useConfirm";
 import { useToast } from "@/hooks/useToast";
 import { projectKeys } from "@/queries/project";
+import { invalidateTime } from "@/queries/time";
 import {
 	addCuratedMember,
 	listAvailableTeamMembers,
@@ -61,6 +62,9 @@ export function AddTeamMemberDialog({
 		onSuccess: () => {
 			void qc.invalidateQueries({ queryKey: ["project", projectId, "teams"] });
 			void qc.invalidateQueries({ queryKey: projectKeys.members(projectId) });
+			// The added person can now log time here: Who can log (loggers),
+			// the For picker, the loggable projects and the overview.
+			void invalidateTime(qc, "policy");
 			toast.success("Member added to the project");
 			onClose();
 		},

@@ -161,6 +161,41 @@ describe("TimesheetCardsSection", () => {
 		expect(screen.getByLabelText("Working")).toBeTruthy();
 	});
 
+	it("D85: dates 'sends itself' from each sheet's reminder days", () => {
+		const auto = {
+			approver_scope: "auto" as const,
+			routing_preview: {
+				approver_scope: "auto" as const,
+				cost_money: false,
+				deciders: [],
+			},
+		};
+		render(
+			<TimesheetCardsSection
+				sheets={[
+					// The page's map (the sheet's own, else its context's policy).
+					sheet({ id: "mapped", ...auto }),
+					// No map entry: the sheet's own policy_snapshot value.
+					sheet({ id: "own", ...auto, reminder_days: 2 }),
+					// Neither: the default of one day.
+					sheet({ id: "plain", ...auto }),
+				]}
+				reminderDays={{ mapped: 3 }}
+				now={NOW}
+				userTimezone={TZ}
+			/>,
+		);
+		expect(
+			screen
+				.getAllByTestId("timesheet-card-sublabel")
+				.map((el) => el.textContent),
+		).toEqual([
+			"sends itself Oct 7",
+			"sends itself Oct 6",
+			"sends itself Oct 5",
+		]);
+	});
+
 	it("shows a skeleton while loading and a reason card with Try again on failure", () => {
 		const { rerender } = render(<TimesheetCardsSection sheets={[]} loading />);
 		expect(

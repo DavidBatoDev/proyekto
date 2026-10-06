@@ -31,9 +31,11 @@ import type {
 	TimesheetEventRow,
 	TimesheetStatus,
 	TimesheetSummary,
+	WorkItem,
 } from "@/services/time.types";
 import {
 	autoSubmitDate,
+	daysBetween,
 	isLocalDate,
 	isValidTimezone,
 	localDate,
@@ -338,6 +340,31 @@ export function formatInstantDateTime(
 	return `${day}, ${formatInstantTime(iso, tz)}`;
 }
 
+/**
+ * When a sheet was sent, from the reader's side (Waiting for you, the home
+ * card): "today", "yesterday", "2 days ago", then the date ("Sep 15"). Days
+ * are counted in `timezone` (the viewer's). Empty when unknown or unreadable.
+ */
+export function submittedAgo(
+	iso: string | null | undefined,
+	options: { now?: Date; timezone?: string } = {},
+): string {
+	if (!iso) return "";
+	const tz = options.timezone ?? deviceTimeZone();
+	try {
+		const now = options.now ?? new Date();
+		const today = localDate(now, tz);
+		const day = localDate(iso, tz);
+		const days = daysBetween(day, today);
+		if (days <= 0) return "today";
+		if (days === 1) return "yesterday";
+		if (days < 7) return `${days} days ago`;
+		return formatLocalDay(day, { now, userTimezone: tz });
+	} catch {
+		return "";
+	}
+}
+
 // ── Money ───────────────────────────────────────────────────────────────────
 
 function fractionDigits(currency: string): number {
@@ -409,6 +436,20 @@ export function canShowAmounts(options: {
 }
 
 // ── Labels ──────────────────────────────────────────────────────────────────
+
+/** A work item's name: the entries table, the For pickers, the Report, policy settings. */
+export const WORK_ITEM_LABEL: Record<WorkItem, string> = {
+	task: "Task",
+	meeting: "Meeting",
+	review: "Review",
+	admin: "Admin",
+	other: "Other",
+};
+
+/** "Task", "Meeting", "Review", "Admin", "Other" (unknown or missing: "Other"). */
+export function workItemLabel(item: WorkItem | null | undefined): string {
+	return (item && WORK_ITEM_LABEL[item]) || WORK_ITEM_LABEL.other;
+}
 
 /** For chips (the For chip, approval rows). */
 export const CHIP_LABEL_MAX = 22;
@@ -790,13 +831,17 @@ export type SheetStatusInput = Pick<
 			| "member_user_id"
 			| "routing_preview"
 			| "deciders"
+			| "reminder_days"
 		>
 	>;
 
 export interface SheetStatusContext extends DateFormatOptions {
 	/** The signed-in user ("Returned by you", "Reopened by you"). */
 	viewerId?: string | null;
-	/** The policy's `reminder_days` (default 1) for "sends itself" dates. */
+	/**
+	 * The policy's `reminder_days` for "sends itself" dates. Unset, the sheet's
+	 * own `reminder_days` (D85) is used, else 1 day.
+	 */
 	reminderDays?: number | null;
 	/** The sheet's history (detail only); tells a return from a reopen. */
 	events?: readonly TimesheetEventRow[] | null;
@@ -910,7 +955,13 @@ export function sheetStatusView(
 				sublabels.push(who ? `Reopened by ${who}` : "Reopened");
 			}
 			if (sendsItself && isLocalDate(sheet.period_end)) {
-				sendsItselfOn = autoSubmitDate(sheet.period_end, ctx.reminderDays);
+				// D85: the sheet carries its reminder_days (the snapshot once
+				// submitted, the live policy while open), so every screen that
+				// shows "sends itself" agrees without passing it in.
+				sendsItselfOn = autoSubmitDate(
+					sheet.period_end,
+					ctx.reminderDays ?? sheet.reminder_days,
+				);
 				sublabels.push(
 					`sends itself ${formatLocalDay(sendsItselfOn, dateOptions)}`,
 				);

@@ -15,6 +15,7 @@
 
 import { Loader2 } from "lucide-react";
 import { useId } from "react";
+import { CARD_LABEL_MAX, CHIP_LABEL_MAX } from "@/lib/timeFormat";
 import { cn } from "@/lib/utils";
 import type {
 	LoggingForRequest,
@@ -34,15 +35,12 @@ import {
 	unavailableReasonText,
 } from "./forCopy";
 import {
-	CARD_LABEL_MAX,
-	CHIP_LABEL_MAX,
 	forOptionKey,
 	isSameFor,
 	sortForOptions,
 	sortUnavailable,
-	truncateLabel,
+	truncatedLabel,
 } from "./forOptions";
-
 export interface ForPickerProps {
 	/** A resolver answer (or one rebuilt from a 409/422 body). */
 	result: Pick<LoggingForResult, "options" | "unavailable"> &
@@ -80,7 +78,7 @@ export function ForPicker({
 			{options.map((option) => {
 				const key = forOptionKey(option);
 				const checked = isSameFor(option, value);
-				const { text, full } = truncateLabel(option.label, CARD_LABEL_MAX);
+				const { text, full } = truncatedLabel(option.label, CARD_LABEL_MAX);
 				return (
 					<label
 						key={key}
@@ -136,7 +134,7 @@ export function ForPicker({
 }
 
 function UnavailableRow({ item }: { item: UnavailableOption }) {
-	const { text, full } = truncateLabel(item.label || "", CARD_LABEL_MAX);
+	const { text, full } = truncatedLabel(item.label || "", CARD_LABEL_MAX);
 	return (
 		<div
 			className="flex items-start gap-2.5 rounded-lg border border-dashed border-border px-3 py-2 opacity-60"
@@ -195,7 +193,7 @@ export function ForPickerPanel({
 		picker.result.options.find((option) => isSameFor(option, picker.value)) ??
 		null;
 	const label = chosen
-		? truncateLabel(chosen.label, CHIP_LABEL_MAX).text
+		? truncatedLabel(chosen.label, CHIP_LABEL_MAX).text
 		: null;
 	return (
 		<div className="space-y-3 p-3">

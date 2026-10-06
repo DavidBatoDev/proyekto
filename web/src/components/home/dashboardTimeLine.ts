@@ -20,7 +20,6 @@ import { useMemo } from "react";
 import {
 	deviceTimeZone,
 	formatDurationText,
-	formatLocalDay,
 	formatPeriodRange,
 	sheetStatusView,
 } from "@/lib/timeFormat";
@@ -67,30 +66,6 @@ export function timesheetsWaitingText(count: number): string {
 /** "+1 more" under the card's rows. */
 export function moreApprovalsText(count: number): string {
 	return `+${Math.max(0, Math.floor(count))} more`;
-}
-
-/**
- * When a waiting sheet was sent, from the reader's side: "today",
- * "yesterday", "2 days ago", then the date ("Sep 15"). Empty when unknown.
- */
-export function submittedAgo(
-	iso: string | null | undefined,
-	options: { now?: Date; timezone?: string } = {},
-): string {
-	if (!iso) return "";
-	const tz = options.timezone ?? deviceTimeZone();
-	try {
-		const now = options.now ?? new Date();
-		const today = localDate(now, tz);
-		const day = localDate(iso, tz);
-		const days = daysBetween(day, today);
-		if (days <= 0) return "today";
-		if (days === 1) return "yesterday";
-		if (days < 7) return `${days} days ago`;
-		return formatLocalDay(day, { now, userTimezone: tz });
-	} catch {
-		return "";
-	}
 }
 
 /** A waiting sheet's hours: the total frozen at submit, else what is logged now. */

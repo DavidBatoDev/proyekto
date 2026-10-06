@@ -26,6 +26,7 @@ import type {
 	ResolvedTimePolicy,
 	TimeEntryView,
 } from "@/services/time.types";
+import { entryLockCopy } from "../entries/entryRules";
 import {
 	CHANGE_FOR_COPY,
 	ChangeForDialog,
@@ -33,7 +34,7 @@ import {
 	changeForRowState,
 } from "./ChangeForDialog";
 import { DeleteEntryModal } from "./DeleteEntryModal";
-import { EditEntryModal, entryLockCopy } from "./EditEntryModal";
+import { EditEntryModal } from "./EditEntryModal";
 
 const BANNED = /\b(contracts?|rates?|payouts?|invoices?)\b/i;
 const AMOUNT = /\b[A-Z]{3}\s?[\d,]+(\.\d+)?\b|[$€£₱]\s?\d/;

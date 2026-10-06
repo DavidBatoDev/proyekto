@@ -23,6 +23,7 @@ import {
 	monthlyRevenue,
 	monthlyTeamPool,
 } from "@/lib/rate-budget";
+import { invalidateTime } from "@/queries/time";
 import {
 	type AllocationMode,
 	contractService,
@@ -333,8 +334,13 @@ export function BudgetSplitPanel({ projectId }: { projectId: string }) {
 													return;
 												}
 												removeMember.mutate(accessRowId, {
-													onSuccess: () =>
-														toast.success("Removed from project"),
+													onSuccess: () => {
+														// A removed member can no longer log time here: Who
+														// can log, the For picker, the loggable projects and
+														// the overview.
+														void invalidateTime(qc, "policy");
+														toast.success("Removed from project");
+													},
 													onError: (err) => toast.error((err as Error).message),
 												});
 											}}

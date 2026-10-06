@@ -34,6 +34,7 @@ vi.mock("@tanstack/react-router", async (importOriginal) => {
 	};
 });
 
+import { nativeSafe } from "@/lib/timeErrors";
 import { TimeApiError } from "@/services/time.service";
 import type {
 	LoggingForResult,
@@ -42,7 +43,7 @@ import type {
 } from "@/services/time.types";
 import { ForChip } from "./ForChip";
 import { ForPicker, ForPickerPanel } from "./ForPicker";
-import { nativeSafe, sameApproverNote, timerErrorText } from "./forCopy";
+import { sameApproverNote, timerErrorText } from "./forCopy";
 import { WhoApprovesContent } from "./WhoApprovesPopover";
 
 const BANNED = /\b(contracts?|rates?|payouts?|invoices?)\b/i;

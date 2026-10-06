@@ -22,25 +22,24 @@ import { Loader2, Save, XCircle } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { AppDialog } from "@/components/common/AppDialog";
 import { DateTimeField } from "@/components/common/DateTimeField";
+import {
+	ENTRY_COPY,
+	entryLockCopy,
+} from "@/components/time/entries/entryRules";
 import { ForChip } from "@/components/time/for/ForChip";
-import { entryWorkLabel } from "@/components/time/for/forCopy";
+import { entryWorkLabel, FOR_LABEL } from "@/components/time/for/forCopy";
 import { forChipOptionFromEntry } from "@/components/time/for/forOptions";
 import { TimeReasonCard } from "@/components/time/shared/TimeReasonCard";
 import { useToast } from "@/hooks/useToast";
 import { isNativeApp } from "@/lib/platform";
 import {
 	entryWarningsCopy,
-	lockedChipCopy,
 	nativeSafe,
 	retroactiveWindowCopy,
 	staleRevisionCopy,
 	timeErrorCopy,
 } from "@/lib/timeErrors";
-import {
-	deviceTimeZone,
-	formatDurationText,
-	formatInstantDay,
-} from "@/lib/timeFormat";
+import { deviceTimeZone, formatDurationText } from "@/lib/timeFormat";
 import { retroactiveFloor, safeTimezone } from "@/lib/timePeriods";
 import { invalidateTime, timeKeys, timeQueries } from "@/queries/time";
 import { isTimeApiError, timeService } from "@/services/time.service";
@@ -65,8 +64,8 @@ export const EDIT_ENTRY_COPY = {
 	save: "Save changes",
 	cancel: "Cancel",
 	close: "Close",
-	changeFor: "Change For…",
-	forLabel: "For",
+	changeFor: ENTRY_COPY.changeFor,
+	forLabel: FOR_LABEL,
 	saved: "Time entry updated.",
 	startRequired: "Pick a start time.",
 	endRequired: "Pick an end time.",
@@ -82,55 +81,6 @@ export const NOTE_MAX_LENGTH = 2000;
 /** "Times are in Asia/Manila." when the view's zone isn't the device's. */
 export function timeZoneHint(timeZone: string, device = deviceTimeZone()) {
 	return timeZone === device ? null : `Times are in ${timeZone}.`;
-}
-
-/**
- * Why an entry can't change, in the backend's lock order (paid → billed →
- * legacy → frozen → sheet status). Null when it can. Native-safe: "already
- * paid" / "already being billed" (ux.md › Copy).
- */
-export function entryLockCopy(
-	entry: Pick<
-		TimeEntryView,
-		"locked_reason" | "legacy_status" | "timesheet"
-	> | null,
-	options: { timeZone?: string; native?: boolean } = {},
-): string | null {
-	if (!entry?.locked_reason) return null;
-	const native = options.native ?? isNativeApp();
-	const tz = options.timeZone ?? deviceTimeZone();
-	let text: string;
-	switch (entry.locked_reason) {
-		case "paid":
-			text =
-				entry.legacy_status === "paid_outside"
-					? "Paid outside Proyekto, so it can't change."
-					: "This time has already been paid, so it can't change.";
-			break;
-		case "billed":
-			text = "This time is already being billed, so it can't change.";
-			break;
-		case "legacy":
-			text = "Not approved (legacy), so it can't change.";
-			break;
-		case "frozen":
-			text = "This time is approved, so it can't change.";
-			break;
-		case "sheet_submitted":
-			text = lockedChipCopy("submitted", null);
-			break;
-		case "sheet_approved": {
-			const decided = entry.timesheet?.decided_at;
-			text = lockedChipCopy(
-				"approved",
-				decided ? formatInstantDay(decided, tz) : null,
-			);
-			break;
-		}
-		default:
-			text = "This entry is on a submitted or approved timesheet.";
-	}
-	return nativeSafe(text, { native });
 }
 
 // ── Wall clock ↔ instant ────────────────────────────────────────────────────
@@ -389,7 +339,7 @@ export function EditEntryModal({
 		retry: false,
 	});
 
-	const lockText = entryLockCopy(base, { timeZone: tz, native });
+	const lockText = base ? entryLockCopy(base, { timeZone: tz, native }) : null;
 	const locked = Boolean(lockText);
 	const running = Boolean(base && !base.ended_at);
 	const check = base && draft ? checkDraft(base, draft, tz) : null;

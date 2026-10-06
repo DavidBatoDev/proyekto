@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { submittedAgo } from "@/lib/timeFormat";
 import { DASHBOARD_DEMO_DATASET } from "@/lib/tours/demo/dashboardDemoDataset";
 import type { ApprovalRow, TimesheetSummary } from "@/services/time.types";
 import {
@@ -8,7 +9,6 @@ import {
 	moreApprovalsText,
 	policyWorkspaceTag,
 	submitNudge,
-	submittedAgo,
 	TIME_APPROVALS_REVIEW_ALL,
 	TIME_APPROVALS_TITLE,
 	TIME_DEMO_KEYS,

@@ -15,6 +15,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import { Loader2, Trash2 } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { AppDialog } from "@/components/common/AppDialog";
+import { entryLockCopy } from "@/components/time/entries/entryRules";
 import { entryWorkLabel } from "@/components/time/for/forCopy";
 import { TimeReasonCard } from "@/components/time/shared/TimeReasonCard";
 import { useToast } from "@/hooks/useToast";
@@ -31,7 +32,6 @@ import { invalidateTime, timeKeys } from "@/queries/time";
 import { timeService, toTimeApiError } from "@/services/time.service";
 import type { TimeEntryView } from "@/services/time.types";
 import { useAuthStore } from "@/stores/authStore";
-import { entryLockCopy } from "./EditEntryModal";
 
 export const DELETE_ENTRY_COPY = {
 	title: "Delete time entry?",
@@ -105,7 +105,9 @@ export function DeleteEntryModal({
 		setError(null);
 	}, [open, entryId]);
 
-	const lockText = entryLockCopy(entry, { timeZone: tz, native });
+	const lockText = entry
+		? entryLockCopy(entry, { timeZone: tz, native })
+		: null;
 	const running = Boolean(entry && !entry.ended_at);
 
 	const finish = (target: TimeEntryView) => {

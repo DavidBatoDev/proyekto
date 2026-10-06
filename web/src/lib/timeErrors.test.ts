@@ -927,6 +927,18 @@ describe("warnings", () => {
 		).toBe(
 			"Weekly limit 40h in the agreement with Acme Corp · 43:30 logged · 3:30 over",
 		);
+		// The over-the-limit panel's head: the hours over from the freeze preview.
+		expect(
+			weeklyLimitLine({
+				source: "agreement",
+				label: "Acme Corp",
+				limitMinutes: 2400,
+				loggedSeconds: 43 * 3600 + 30 * 60,
+				overSeconds: 3 * 3600 + 45 * 60,
+			}),
+		).toBe(
+			"Weekly limit 40h in the agreement with Acme Corp · 43:30 logged · 3:45 over",
+		);
 	});
 
 	it("writes the over-the-limit panel", () => {

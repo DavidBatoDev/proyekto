@@ -18,13 +18,13 @@
 // in the W2-2 report.
 
 import { serverNow } from "@/lib/serverClock";
+import { weeklyLimitLine } from "@/lib/timeErrors";
 import {
 	formatClock,
 	formatDurationText,
 	formatInstantDateTime,
 	formatInstantDay,
 	formatLocalDay,
-	formatMinutesText,
 	manualTimeLine,
 	periodKindLabel,
 	roundingLine,
@@ -655,10 +655,13 @@ export function overLimitHead(
 	if (reading?.source !== "agreement") {
 		return `${formatClock(overtime.overSeconds)} ${REVIEW_COPY.overLimitHead}`;
 	}
-	const label = reading.label?.trim();
-	const where = label ? ` in the agreement with ${label}` : " in the agreement";
-	const logged = overtime.countedSeconds ?? reading.loggedSeconds;
-	return `Weekly limit ${formatMinutesText(reading.limitMinutes)}${where} · ${formatClock(logged)} logged · ${formatClock(overtime.overSeconds)} over`;
+	return weeklyLimitLine({
+		source: "agreement",
+		label: reading.label,
+		limitMinutes: reading.limitMinutes,
+		loggedSeconds: overtime.countedSeconds ?? reading.loggedSeconds,
+		overSeconds: overtime.overSeconds,
+	});
 }
 
 export interface SheetCost {

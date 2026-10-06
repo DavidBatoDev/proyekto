@@ -11,6 +11,7 @@ import {
 } from "@testing-library/react";
 import type { ReactNode } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { submittedAgo } from "@/lib/timeFormat";
 import { TimeApiError, timeService } from "@/services/time.service";
 import type { ApprovalRow, Paged, TimesheetRow } from "@/services/time.types";
 import { useAuthStore } from "@/stores/authStore";
@@ -57,7 +58,6 @@ import {
 	APPROVAL_FLAGS_PAGE_MAX,
 	approvalRowBlock,
 	groupApprovalRows,
-	submittedAgo,
 	WaitingForYouList,
 } from "./WaitingForYouList";
 

@@ -157,12 +157,19 @@ export function TimePage({
 	} = data;
 	const isPhone = useIsMobile(639);
 	const running = useRunningEntry({ enabled: false }).entry;
-	const [view, setView] = useTimeViewMode();
-	// A linked week (`?week=`, as the dashboard's "Submit last week" sends)
-	// opens the list for this visit even when Month is remembered, so its
-	// cards and Submit are there. The stored choice stays until the person
-	// picks a view.
-	const [weekLinked, setWeekLinked] = useState(() => Boolean(search.week));
+	const [storedView, setStoredView] = useTimeViewMode();
+	// The view (D86): `?view=` wins, so a Month URL reloads as Month. A linked
+	// week without a view (`?week=`, as the dashboard's "Submit last week"
+	// sends) opens the list for this visit even when Month is remembered, so
+	// its cards and Submit are there; stepping back to this week keeps it.
+	// Otherwise the remembered view. The stored choice changes only when the
+	// person picks a view.
+	const [weekLinked, setWeekLinked] = useState(
+		() => Boolean(search.week) && !search.view,
+	);
+	const listView = search.view
+		? search.view === "list"
+		: weekLinked || storedView === "list";
 	const userTimezone = data.prefs.timezone;
 
 	// ── Page state ──
@@ -555,7 +562,6 @@ export function TimePage({
 
 	// ── Normal mode ──
 	const waitingCount = overview?.approvals_waiting ?? 0;
-	const listView = view === "list" || weekLinked;
 	return (
 		<div className={cn(PAGE, "pb-28 sm:pb-8")}>
 			<TimePageHeader
@@ -638,7 +644,13 @@ export function TimePage({
 						value={listView ? "list" : "month"}
 						onChange={(mode) => {
 							setWeekLinked(false);
-							setView(mode);
+							setStoredView(mode);
+							// Month goes in the URL so a reload keeps it (D86); List is
+							// the default reading, so its URL stays clean.
+							onSearchChange(
+								{ view: mode === "month" ? "month" : undefined },
+								{ replace: true },
+							);
 						}}
 					/>
 				</div>
@@ -695,6 +707,7 @@ export function TimePage({
 						names={data.sheetNames}
 						workspaceNames={workspaceNames}
 						fixingId={fixSheet?.id ?? null}
+						reminderDays={data.sheetReminders}
 						now={now}
 						userTimezone={userTimezone}
 					/>
@@ -759,12 +772,14 @@ export function TimePage({
 					timeZone={zone.timezone}
 					weekStart={zone.weekStart}
 					month={search.week ?? today}
-					// The month's ‹ › pass its 1st; back in this month the URL
-					// stays clean, so List opens on this week.
+					// The month's ‹ › pass its 1st and keep `?view=month`, so a
+					// reload stays in Month (D86). Back in this month the week
+					// drops, so List opens on this week.
 					onMonthChange={(date) =>
 						onSearchChange(
 							{
 								week: date.slice(0, 7) === today.slice(0, 7) ? undefined : date,
+								view: "month",
 							},
 							{ replace: true },
 						)

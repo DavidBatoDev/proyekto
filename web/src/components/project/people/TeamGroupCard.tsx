@@ -5,6 +5,7 @@ import { TeamAvatar } from "@/components/team/TeamAvatar";
 import { useConfirm } from "@/hooks/useConfirm";
 import { useToast } from "@/hooks/useToast";
 import { projectKeys } from "@/queries/project";
+import { invalidateTime } from "@/queries/time";
 import { updateProjectTeam } from "@/services/teams.service";
 import { DetachTeamDialog } from "./DetachTeamDialog";
 import { PersonRow } from "./PersonRow";
@@ -64,6 +65,10 @@ export function TeamGroupCard({
 		onSuccess: () => {
 			toast.success(`${teamName} is now the primary team`);
 			invalidate();
+			// The resolver tries curated teams primary first, so for someone on
+			// two attached teams this moves Who can log's reason and the For
+			// picker's default.
+			void invalidateTime(qc, "policy");
 		},
 		onError: (err) => toast.error((err as Error).message),
 	});

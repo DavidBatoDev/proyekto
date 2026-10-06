@@ -5,7 +5,6 @@ import {
 	retroSummary,
 	roundingSummary,
 } from "@/components/team/settings/time/TeamRulesSection";
-import { workItemLabel } from "@/components/time/entries/entryRules";
 import {
 	SettingsSection,
 	settingsButton,
@@ -20,6 +19,7 @@ import {
 	formatMinutesText,
 	periodKindLabel,
 	weekdayName,
+	workItemLabel,
 } from "@/lib/timeFormat";
 import { isLocalDate } from "@/lib/timePeriods";
 import { cn } from "@/lib/utils";

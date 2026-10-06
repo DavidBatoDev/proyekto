@@ -13,6 +13,7 @@ import { isTimeNavVisible } from "@/components/layout/sidebar/executionNavigatio
 import { useDashboardProjectsQuery } from "@/hooks/useDashboardProjectsQuery";
 import { useAllRoadmapsFullQuery } from "@/hooks/useProjectQueries";
 import { isActiveConsultant } from "@/lib/auth-utils";
+import { overlayOpen } from "@/lib/overlayOpen";
 import { isNativeApp } from "@/lib/platform";
 import { useTimeOverview } from "@/queries/time";
 import type { Project } from "@/services/project.service";
@@ -125,7 +126,10 @@ function GlobalSearchBarInner({
 		return () => document.removeEventListener("mousedown", onMouseDown);
 	}, [active, close]);
 
-	// "/" focuses the search from anywhere that isn't already a text field.
+	// "/" focuses the search from anywhere that isn't already a text field,
+	// unless a dialog or menu is open. `overlayOpen` skips closed overlays that
+	// stay mounted (the header's mobile nav drawer is an `inert` dialog that is
+	// always in the DOM, which used to block the shortcut on every page).
 	useEffect(() => {
 		const onKeyDown = (event: KeyboardEvent) => {
 			if (event.key !== "/" || event.ctrlKey || event.metaKey || event.altKey)
@@ -136,7 +140,7 @@ function GlobalSearchBarInner({
 				target.closest("input, textarea, select, [contenteditable]")
 			)
 				return;
-			if (document.querySelector('[role="dialog"]')) return;
+			if (overlayOpen()) return;
 			event.preventDefault();
 			inputRef.current?.focus();
 		};

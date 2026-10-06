@@ -2,18 +2,25 @@
 //
 // Every sentence the For chip, the For picker, the "Who approves this time"
 // popover and the timer flow show (ux.md › The Time Page › Timer, › For Chip,
-// › Copy). W0-B's `lib/timeErrors.ts` / `lib/timeFormat.ts` were written in
-// parallel; this module keeps its own copy until W3-1 folds the two together,
-// except failed-call copy, which goes through `timeErrorMessage` so both
-// modules filter server text the same way.
+// › Copy). Shared rules come from `lib/`: failed-call copy goes through
+// `timeErrorMessage`, durations through `formatDurationText` and work-item
+// names through `workItemLabel`. Server text that could carry a banned word
+// goes through `lib/timeErrors` `nativeSafe`. The locked chip's sentence comes
+// from its host (`entries/entryRules` `entryLockCopy`, built on `lib/timeErrors`
+// `lockedChipCopy`).
 //
 // Native rules (ux.md › Mobile): never the words contract, rate, payout or
 // invoice; no amounts on agreement contexts; no `/engagements` links. The
-// agreement copy here says "agreement" everywhere, and `nativeSafe` guards
-// server text that could carry one of the banned words.
+// agreement copy here says "agreement" everywhere.
 
 import { isNativeApp } from "@/lib/platform";
 import { timeErrorMessage } from "@/lib/timeErrors";
+import {
+	capitalize,
+	formatDurationText,
+	scopePhrase,
+	workItemLabel,
+} from "@/lib/timeFormat";
 import { isTimeApiError } from "@/services/time.service";
 import type {
 	EntryWarning,
@@ -29,73 +36,19 @@ import { type ForChipOption, governingEngagementId } from "./forOptions";
 
 // ── Formats (local copies of the ux.md rules) ───────────────────────────────
 
-/** "38h 15m", "40h", "45m" (sentences; tables use h:mm). */
+/**
+ * "38h 15m", "40h", "45m" (sentences; tables use h:mm): `formatDurationText`
+ * on the nearest whole minute (the timer's toasts round, never floor).
+ */
 export function sentenceDuration(totalSeconds: number): string {
 	const minutes = Math.max(0, Math.round((totalSeconds || 0) / 60));
-	const h = Math.floor(minutes / 60);
-	const m = minutes % 60;
-	if (h === 0) return `${m}m`;
-	return m === 0 ? `${h}h` : `${h}h ${m}m`;
+	return formatDurationText(minutes * 60);
 }
 
-/** "Oct 6" (with the year only when it is not the current one). */
-export function shortDate(
-	value: string | Date | null | undefined,
-	timeZone?: string,
-): string {
-	if (!value) return "";
-	const date = value instanceof Date ? value : new Date(value);
-	if (Number.isNaN(date.getTime())) return "";
-	const options: Intl.DateTimeFormatOptions = {
-		month: "short",
-		day: "numeric",
-	};
-	if (timeZone) options.timeZone = timeZone;
-	const yearOf = (d: Date) =>
-		new Intl.DateTimeFormat("en-US", {
-			year: "numeric",
-			...(timeZone ? { timeZone } : {}),
-		}).format(d);
-	if (yearOf(date) !== yearOf(new Date())) options.year = "numeric";
-	try {
-		return new Intl.DateTimeFormat("en-US", options).format(date);
-	} catch {
-		return new Intl.DateTimeFormat("en-US", {
-			month: "short",
-			day: "numeric",
-		}).format(date);
-	}
-}
-
-// ── Native guard ────────────────────────────────────────────────────────────
-
-const BANNED_ON_NATIVE = /\b(contracts?|rates?|payouts?|invoices?)\b/i;
-
-/** True when the text is safe to show in the installed app. */
-export function isNativeSafe(text: string): boolean {
-	return !BANNED_ON_NATIVE.test(text);
-}
+// ── Errors ─────────────────────────────────────────────────────────────────
 
 /** Generic copy when a server sentence cannot be shown as is. */
 export const GENERIC_ERROR = "Proyekto couldn't finish this. Try again.";
-
-/**
- * Server text, made safe for the installed app: "contract" reads
- * "agreement"; anything still naming a rate, payout or invoice falls back.
- */
-export function nativeSafe(
-	text: string,
-	native: boolean = isNativeApp(),
-	fallback: string = GENERIC_ERROR,
-): string {
-	if (!native) return text;
-	const replaced = text
-		.replace(/\bcontracts\b/g, "agreements")
-		.replace(/\bcontract\b/g, "agreement")
-		.replace(/\bContracts\b/g, "Agreements")
-		.replace(/\bContract\b/g, "Agreement");
-	return isNativeSafe(replaced) ? replaced : fallback;
-}
 
 // ── Chip and picker ─────────────────────────────────────────────────────────
 
@@ -118,21 +71,6 @@ export function primaryActionLabel(
 ): string {
 	const name = label.trim() || PERSONAL_LABEL;
 	return `${mode === "start" ? "Start" : "Add"} for ${name}`;
-}
-
-/** 🔒 chip tooltip: "Submitted Oct 6. Withdraw to change." */
-export function lockedChipText(input: {
-	status: TimesheetStatus | null | undefined;
-	at?: string | null;
-	timeZone?: string;
-}): string {
-	const when = shortDate(input.at ?? null, input.timeZone);
-	if (input.status === "approved") {
-		return when ? `Approved ${when}.` : "Approved.";
-	}
-	return when
-		? `Submitted ${when}. Withdraw to change.`
-		: "Submitted. Withdraw to change.";
 }
 
 /**
@@ -543,13 +481,6 @@ export const STOP_LABEL = "Stop";
 export const ON_BREAK_LABEL = "On break";
 export const TIMER_RUNNING_LABEL = "Timer running";
 
-const PRESET_LABELS: Record<string, string> = {
-	meeting: "Meeting",
-	review: "Review",
-	admin: "Admin",
-	other: "Other",
-};
-
 /** What a running entry is on: its task, else its preset ("Meeting"). */
 export function entryWorkLabel(
 	entry: Pick<TimeEntryView, "task" | "work_item" | "content_label"> | null,
@@ -558,7 +489,7 @@ export function entryWorkLabel(
 	const title = entry.task?.title?.trim();
 	if (title) return title;
 	if (entry.content_label?.trim()) return entry.content_label.trim();
-	return PRESET_LABELS[entry.work_item] ?? "Other";
+	return workItemLabel(entry.work_item);
 }
 
 /** "Stop *Fix login bug* (1:12) and start this?" (ux.md › Timer › Switching). */
@@ -621,9 +552,7 @@ export function entryWarningText(
 	const who = label?.trim() || "";
 	switch (warning.code) {
 		case "CONTRACT_WEEKLY_LIMIT":
-			return `${
-				who ? `Your agreement with ${who}` : "Your agreement"
-			} allows ${sentenceDuration(warning.limit_minutes * 60)} a week. You've logged ${sentenceDuration(warning.logged_minutes * 60)}.`;
+			return `${capitalize(scopePhrase("engagement", who))} allows ${sentenceDuration(warning.limit_minutes * 60)} a week. You've logged ${sentenceDuration(warning.logged_minutes * 60)}.`;
 		case "POLICY_WEEKLY_LIMIT":
 			return `${warning.label?.trim() || who || "This timesheet"} has a ${sentenceDuration(
 				warning.limit_minutes * 60,

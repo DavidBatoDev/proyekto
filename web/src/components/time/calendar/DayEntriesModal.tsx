@@ -28,7 +28,14 @@ import {
 	type ActionMenuItem,
 	RowActionsMenu,
 } from "@/components/team-time/RowActionsMenu";
-import { entryLockCopy } from "@/components/time/edit/EditEntryModal";
+import {
+	BADGE_LABEL,
+	DAY_WARNING_SECONDS,
+	ENTRY_COPY,
+	entryLockCopy,
+	entryWorkSeconds,
+	needsReview,
+} from "@/components/time/entries/entryRules";
 import { ForChip } from "@/components/time/for/ForChip";
 import { entryWorkLabel } from "@/components/time/for/forCopy";
 import { forChipOptionFromEntry } from "@/components/time/for/forOptions";
@@ -43,11 +50,6 @@ import { todayIn } from "@/lib/timePeriods";
 import { cn } from "@/lib/utils";
 import type { TimeEntryView } from "@/services/time.types";
 
-/** A day over this many seconds shows ⚠ (the day strip's rule, ux.md › Day strip). */
-export const LONG_DAY_SECONDS = 8 * 3600;
-/** An entry this long or longer joins Needs review (ux.md › Timer, CHANGE-22). */
-export const NEEDS_REVIEW_SECONDS = 10 * 3600;
-
 export const DAY_ENTRIES_COPY = {
 	task: "Task",
 	project: "Project",
@@ -60,66 +62,22 @@ export const DAY_ENTRIES_COPY = {
 	addTime: "Add time",
 	startTimer: "Start timer",
 	close: "Close",
-	viewDetails: "View details",
-	comment: "Comment",
-	edit: "Edit",
-	changeFor: "Change For…",
-	delete: "Delete",
-	needsReview: "Needs review",
+	// The list's row actions and badges, word for word (entries kit).
+	viewDetails: ENTRY_COPY.viewDetails,
+	comment: ENTRY_COPY.comment,
+	edit: ENTRY_COPY.edit,
+	changeFor: ENTRY_COPY.changeFor,
+	delete: ENTRY_COPY.delete,
+	needsReview: ENTRY_COPY.needsReview,
 	longDay: "Over 8 hours",
-	paid: "Paid",
-	billed: "Billed",
+	paid: BADGE_LABEL.paid,
+	billed: BADGE_LABEL.billed,
 	actions: "Entry actions",
 } as const;
 
 /** "1 entry" / "3 entries". */
 export function entryCountText(count: number): string {
 	return `${count} ${count === 1 ? "entry" : "entries"}`;
-}
-
-/**
- * An entry's seconds as of `nowMs`: its stored duration, or for a running
- * timer the time since it started (frozen at the break while paused) minus
- * the banked break.
- */
-export function entrySeconds(
-	entry: Pick<
-		TimeEntryView,
-		| "started_at"
-		| "ended_at"
-		| "paused_at"
-		| "duration_seconds"
-		| "break_seconds"
-	>,
-	nowMs: number = Date.now(),
-): number {
-	if (entry.ended_at) return Math.max(0, entry.duration_seconds ?? 0);
-	const start = Date.parse(entry.started_at);
-	const until = entry.paused_at ? Date.parse(entry.paused_at) : nowMs;
-	if (!Number.isFinite(start) || !Number.isFinite(until)) return 0;
-	return Math.max(
-		0,
-		Math.floor((until - start) / 1000) - Math.max(0, entry.break_seconds ?? 0),
-	);
-}
-
-/** ≥ 10 h, or flagged by the cron (auto-stopped, agreement ended). */
-export function needsReview(
-	entry: Pick<
-		TimeEntryView,
-		| "started_at"
-		| "ended_at"
-		| "paused_at"
-		| "duration_seconds"
-		| "break_seconds"
-		| "flagged_reason"
-	>,
-	nowMs?: number,
-): boolean {
-	return (
-		Boolean(entry.flagged_reason) ||
-		entrySeconds(entry, nowMs) >= NEEDS_REVIEW_SECONDS
-	);
 }
 
 /**
@@ -183,8 +141,11 @@ export function DayEntriesModal({
 	const rows = [...entries].sort(
 		(a, b) => Date.parse(a.started_at) - Date.parse(b.started_at),
 	);
-	const total = rows.reduce((sum, entry) => sum + entrySeconds(entry, now), 0);
-	const longDay = total > LONG_DAY_SECONDS;
+	const total = rows.reduce(
+		(sum, entry) => sum + entryWorkSeconds(entry, now),
+		0,
+	);
+	const longDay = total > DAY_WARNING_SECONDS;
 	const isToday = date ? todayIn(timeZone, new Date(now)) === date : false;
 	const childZ = zIndex + 10;
 
@@ -498,7 +459,7 @@ function DayEntryRow({
 						</span>
 					) : null}
 					<span className="font-semibold tabular-nums text-foreground">
-						{formatClock(entrySeconds(entry, nowMs), "0:00")}
+						{formatClock(entryWorkSeconds(entry, nowMs), "0:00")}
 					</span>
 				</span>
 			</td>

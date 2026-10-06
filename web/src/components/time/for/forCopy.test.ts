@@ -10,11 +10,8 @@ import {
 	GENERIC_ERROR,
 	goesToText,
 	hourCapText,
-	isNativeSafe,
 	limitsLine,
-	lockedChipText,
 	manualLine,
-	nativeSafe,
 	periodLine,
 	periodLockedText,
 	personalReasonText,
@@ -165,27 +162,6 @@ describe("chip copy", () => {
 		expect(primaryActionLabel("add", " ")).toBe("Add for Just me");
 	});
 
-	it("words the locked chip", () => {
-		const thisYear = new Date().getFullYear();
-		expect(
-			lockedChipText({
-				status: "submitted",
-				at: `${thisYear}-10-06T03:00:00Z`,
-				timeZone: "UTC",
-			}),
-		).toBe("Submitted Oct 6. Withdraw to change.");
-		expect(lockedChipText({ status: "submitted" })).toBe(
-			"Submitted. Withdraw to change.",
-		);
-		expect(
-			lockedChipText({
-				status: "approved",
-				at: "2020-01-02T00:00:00Z",
-				timeZone: "UTC",
-			}),
-		).toBe("Approved Jan 2, 2020.");
-	});
-
 	it("drops 'rate' from the same-approver note on native", () => {
 		expect(sameApproverNote(false)).toBe("Same approver and rate either way");
 		expect(sameApproverNote(true)).toBe("Same approver either way");
@@ -318,7 +294,12 @@ describe("whoApprovesView", () => {
 		expect(web.viewTermsEngagementId).toBe("eng-1");
 		const native = whoApprovesView(agreement, terms, { native: true });
 		expect(native.viewTermsEngagementId).toBeNull();
-		for (const line of native.lines) expect(isNativeSafe(line.text)).toBe(true);
+		for (const line of native.lines) {
+			// Word boundaries, so "separate" or "accurate" can't trip it.
+			expect(line.text).not.toMatch(
+				/\b(contracts?|rates?|payouts?|invoices?)\b/i,
+			);
+		}
 	});
 
 	it("falls back to A8 policy.engagement_id and to the defaults line", () => {
@@ -449,21 +430,16 @@ describe("timer copy", () => {
 		expect(timerResumedToast(300)).toBe("Back to work — 5m of break logged.");
 		expect(timerResumedToast(0)).toBe("Back to work.");
 		expect(sentenceDuration(45 * 60)).toBe("45m");
+		// The lib format on the nearest minute (toasts round, tables floor).
+		expect(sentenceDuration(38 * 3600 + 15 * 60)).toBe("38h 15m");
+		expect(sentenceDuration(40 * 3600)).toBe("40h");
+		expect(sentenceDuration(59)).toBe("1m");
+		expect(sentenceDuration(29)).toBe("0m");
+		expect(sentenceDuration(Number.NaN)).toBe("0m");
 	});
 });
 
 describe("native safety", () => {
-	it("rewrites contract and falls back on the other banned words", () => {
-		expect(nativeSafe("Your contract ended.", true)).toBe(
-			"Your agreement ended.",
-		);
-		expect(nativeSafe("Set the rate first.", true)).toBe(GENERIC_ERROR);
-		expect(nativeSafe("Set the rate first.", false)).toBe(
-			"Set the rate first.",
-		);
-		expect(isNativeSafe("separate approvers")).toBe(true);
-	});
-
 	it("maps timer errors to their copy", () => {
 		const invalid = new TimeApiError({
 			status: 422,

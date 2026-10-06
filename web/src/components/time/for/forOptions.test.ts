@@ -18,7 +18,7 @@ import {
 	sortForOptions,
 	sortUnavailable,
 	toForRequest,
-	truncateLabel,
+	truncatedLabel,
 } from "./forOptions";
 
 const TEAM = "11111111-1111-4111-8111-111111111111";
@@ -194,16 +194,16 @@ describe("resultFromErrorExtras", () => {
 
 describe("chip helpers", () => {
 	it("cuts labels at 22 characters plus an ellipsis, keeping the full label", () => {
-		expect(truncateLabel("Prodigitality Services Inc. Team")).toEqual({
+		expect(truncatedLabel("Prodigitality Services Inc. Team")).toEqual({
 			text: "Prodigitality Services…",
 			full: "Prodigitality Services Inc. Team",
 			truncated: true,
 		});
-		expect(truncateLabel("Acme").truncated).toBe(false);
+		expect(truncatedLabel("Acme").truncated).toBe(false);
 		expect(
-			truncateLabel("Prodigitality Services Inc. Team", 32).truncated,
+			truncatedLabel("Prodigitality Services Inc. Team", 32).truncated,
 		).toBe(false);
-		expect(truncateLabel(null).text).toBe("");
+		expect(truncatedLabel(null).text).toBe("");
 	});
 
 	it("maps kinds to icon families", () => {

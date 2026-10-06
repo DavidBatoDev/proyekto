@@ -5,8 +5,9 @@
 //   overview    → normal or approver mode, the Waiting pill, the For filter's
 //                 contexts, the one-time cards
 //   view zone   → the day strip's timezone and week start (L29):
-//                   `?for=` a context → that context's sheet timezone and
-//                                       week start
+//                   `?for=` a context → that context's policy timezone and
+//                                       week start (D85: the overview says;
+//                                       else its latest sheet)
 //                   All (default)     → the person's preferences, falling back
 //                                       to the device and Monday
 //   view week   → `?week=` snapped to its week start, else this week
@@ -15,12 +16,13 @@
 //
 // The pure helpers are exported for tests; the hook only wires queries.
 //
-// A context's zone comes from its timesheets: every governed entry sits on a
-// sheet, and a sheet carries the timezone and week start its period was cut
-// in. The server reads `me/entries?for=` in that same context timezone, so the
-// day cuts here match its range. A context with no sheet in the last two
-// months (a `?for=` link for someone who never logged there) falls back to
-// the person's own zone, and the zone label stays hidden.
+// A context's zone is its resolved policy's timezone and week start, which the
+// overview carries per context (D85). The server reads `me/entries?for=` in
+// that same timezone, so the day cuts here match its range. Two fallbacks, for
+// a server without D85 and for a `?for=` the overview doesn't list (no entry
+// in 30 days and no open sheet): the context's latest sheet, which carries the
+// timezone and week start its period was cut in; and with no sheet in the
+// last two months, the person's own zone, with the zone label hidden.
 
 import { useQuery } from "@tanstack/react-query";
 import { useMemo } from "react";
@@ -41,6 +43,7 @@ import {
 	addDays,
 	eachDay,
 	isLocalDate,
+	isValidTimezone,
 	type LocalRange,
 	rangeContains,
 	rangesOverlap,
@@ -68,6 +71,7 @@ import type {
 	LoggingForRequest,
 	MyEntriesQuery,
 	OverviewContext,
+	PeriodKind,
 	SheetScopeRef,
 	TimeEntryView,
 	TimeOverview,
@@ -94,16 +98,54 @@ export interface ViewZone {
 	/** ISO weekday, 1 = Monday. */
 	weekStart: number;
 	/**
-	 * `preferences`: All (the person's own zone). `context`: read from the
-	 * `?for=` context's sheets. `fallback`: a context whose zone is unknown,
-	 * shown in the person's own zone.
+	 * `preferences`: All (the person's own zone). `context`: the `?for=`
+	 * context's policy (the overview's, D85) or its latest sheet's. `fallback`:
+	 * a context whose zone is unknown, shown in the person's own zone.
 	 */
 	source: "preferences" | "context" | "fallback";
+	/** D85: the context's period cut, when the overview gives it. */
+	periodKind?: PeriodKind | null;
+	periodAnchor?: string | null;
+	/** D85: the context's policy `reminder_days`, when the overview gives it. */
+	reminderDays?: number | null;
 }
 
 export interface PrefsZone {
 	timezone: string;
 	weekStart: number;
+}
+
+/** A usable `reminder_days` (0 means "on the last day"); anything else is null. */
+export function validReminderDays(value: unknown): number | null {
+	return typeof value === "number" && Number.isInteger(value) && value >= 0
+		? value
+		: null;
+}
+
+/**
+ * D85: the zone the overview gives a governed context, or null when it gives
+ * none (a server without D85, or `personal`, whose policy is the person's own).
+ */
+export function overviewContextZone(
+	context: OverviewContext | null | undefined,
+	prefs?: Pick<PrefsZone, "weekStart">,
+): ViewZone | null {
+	if (!context || context.kind === "personal") return null;
+	const timezone =
+		typeof context.timezone === "string" ? context.timezone.trim() : "";
+	// An unknown zone name would read the week in UTC: let the sheets decide.
+	if (!timezone || !isValidTimezone(timezone)) return null;
+	return {
+		timezone,
+		weekStart:
+			validWeekStart(context.week_start) ??
+			validWeekStart(prefs?.weekStart) ??
+			1,
+		source: "context",
+		periodKind: context.period_kind ?? null,
+		periodAnchor: context.period_anchor ?? null,
+		reminderDays: validReminderDays(context.reminder_days),
+	};
 }
 
 function validWeekStart(value: unknown): number | null {
@@ -200,10 +242,10 @@ export function resolveViewZone(options: {
 	};
 	const { forRef } = options;
 	if (!forRef || forRef.kind === "personal") return prefs;
-	const scope = contextSheetScope(
-		forRef,
-		findOverviewContext(options.overview, forRef),
-	);
+	const context = findOverviewContext(options.overview, forRef);
+	const fromOverview = overviewContextZone(context, prefs);
+	if (fromOverview) return fromOverview;
+	const scope = contextSheetScope(forRef, context);
 	if (scope) {
 		const latest = [...(options.sheets ?? [])]
 			.filter((sheet) => sameScope(sheet, scope))
@@ -307,6 +349,41 @@ export function sheetsInView(
 					b.scope_label_snapshot ?? "",
 				),
 		);
+}
+
+/**
+ * A sheet's `reminder_days` for "sends itself <date>" (D85): the sheet's own
+ * (its `policy_snapshot`), else the policy of the overview context the sheet
+ * belongs to, else null (the card's default, 1 day).
+ */
+export function sheetReminderDays(
+	sheet: Pick<TimesheetSummary, "id" | "scope_kind" | "scope_ref"> & {
+		reminder_days?: number | null;
+	},
+	overview?: Pick<TimeOverview, "contexts"> | null,
+): number | null {
+	const own = validReminderDays(sheet.reminder_days);
+	if (own !== null) return own;
+	const contexts = overview?.contexts ?? [];
+	const context =
+		contexts.find((item) => item.current_sheet?.id === sheet.id) ??
+		contexts.find(
+			(item) => item.sheet_scope && sameScope(sheet, item.sheet_scope),
+		);
+	return validReminderDays(context?.reminder_days);
+}
+
+/** `sheetReminderDays` for each sheet that has one, by sheet id. */
+export function reminderDaysBySheet(
+	sheets: readonly TimesheetSummary[],
+	overview?: Pick<TimeOverview, "contexts"> | null,
+): Record<string, number> {
+	const out: Record<string, number> = {};
+	for (const sheet of sheets) {
+		const days = sheetReminderDays(sheet, overview);
+		if (days !== null) out[sheet.id] = days;
+	}
+	return out;
 }
 
 /** Display names of the people the sheets name (A1/A2 deciders): "Returned by Ana". */
@@ -524,6 +601,8 @@ export interface TimePageData {
 	/** The cards: `weekSheets` narrowed to the `?for=` context. */
 	sheets: TimesheetSummary[];
 	sheetNames: Record<string, string>;
+	/** D85: each card's `reminder_days` for "sends itself <date>", by sheet id. */
+	sheetReminders: Record<string, number>;
 	zoneText: string | null;
 	forOptions: ForFilterOption[];
 }
@@ -544,16 +623,22 @@ export function useTimePageData(
 
 	const forRef = useMemo(() => parseTimeForParam(search.for), [search.for]);
 	const governed = Boolean(forRef && forRef.kind !== "personal");
+	const context = findOverviewContext(overview, forRef);
+	// D85: the overview names the context's zone; no sheets lookup then.
+	const knownZone = Boolean(overviewContextZone(context));
 
-	// The context's zone: its recent sheets (only under a governed `?for=`).
-	// Counted from today in UTC, so the key doesn't move when preferences load.
+	// Otherwise (a server without D85, or a context the overview doesn't
+	// list) the context's zone comes from its recent sheets: read only under a
+	// governed `?for=`, once the overview has answered without a zone. Counted
+	// from today in UTC, so the key doesn't move when preferences load.
 	const lookbackFrom = addDays(
 		todayIn("UTC", now),
 		-CONTEXT_SHEETS_LOOKBACK_DAYS,
 	);
 	const recentSheetsQuery = useQuery({
 		...timeQueries.myTimesheets(userId, { from: lookbackFrom }),
-		enabled: Boolean(userId) && governed,
+		enabled:
+			Boolean(userId) && governed && !overviewQuery.isPending && !knownZone,
 	});
 
 	const zone = useMemo(
@@ -568,7 +653,9 @@ export function useTimePageData(
 	);
 	const zoneReady =
 		!prefs.isLoading &&
-		(!governed || (!recentSheetsQuery.isPending && !overviewQuery.isPending));
+		(!governed ||
+			(!overviewQuery.isPending &&
+				(knownZone || !recentSheetsQuery.isPending)));
 
 	const week = useMemo(
 		() => viewWeekFor(search.week, zone, now),
@@ -605,7 +692,6 @@ export function useTimePageData(
 
 	const entries = useMemo(() => entriesQuery.data ?? [], [entriesQuery.data]);
 
-	const context = findOverviewContext(overview, forRef);
 	const weekSheets = useMemo(
 		() => sheetsInView(sheetsQuery.data ?? [], week),
 		[sheetsQuery.data, week],
@@ -619,6 +705,10 @@ export function useTimePageData(
 		[weekSheets, week, forRef, scope],
 	);
 	const sheetNames = useMemo(() => sheetPeopleNames(weekSheets), [weekSheets]);
+	const sheetReminders = useMemo(
+		() => reminderDaysBySheet(sheets, overview),
+		[sheets, overview],
+	);
 
 	// A `?for=team:` the overview doesn't list: the team's name from the
 	// person's teams (the sidebar's cached read), so the For choice and the
@@ -684,6 +774,7 @@ export function useTimePageData(
 		weekSheets,
 		sheets,
 		sheetNames,
+		sheetReminders,
 		zoneText,
 		forOptions,
 	};

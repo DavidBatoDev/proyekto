@@ -11,6 +11,7 @@ import {
 } from "@/lib/detachOutcomes";
 import { projectKeys } from "@/queries/project";
 import { teamKeys } from "@/queries/teams";
+import { invalidateTime } from "@/queries/time";
 import {
 	detachTeam,
 	type ProjectTeam,
@@ -85,6 +86,10 @@ export function DetachTeamDialog({
 				queryKey: ["project", projectId, "teams", teamId, "curated-members"],
 			});
 			void qc.invalidateQueries({ queryKey: teamKeys.projects(teamId) });
+			// Detaching changes who can log time here: Who can log (loggers),
+			// the For picker (logging-for), the loggable projects and the
+			// overview. The "policy" event covers all of them.
+			void invalidateTime(qc, "policy");
 			toast.success(
 				mode === "keep"
 					? `${teamName} detached — members kept`

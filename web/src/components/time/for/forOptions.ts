@@ -9,6 +9,7 @@
 // the remembered default awaiting one tap (L38). The web never applies the
 // prefill silently: it preselects it and the person confirms.
 
+import { CHIP_LABEL_MAX, truncateLabel } from "@/lib/timeFormat";
 import type {
 	ContextKind,
 	LoggingForRequest,
@@ -17,10 +18,6 @@ import type {
 	TimeEntryView,
 	UnavailableOption,
 } from "@/services/time.types";
-
-/** Chips cut labels at 22 characters, cards at 32 (ux.md › Chip details). */
-export const CHIP_LABEL_MAX = 22;
-export const CARD_LABEL_MAX = 32;
 
 /**
  * How a project's For choice behaves:
@@ -204,18 +201,17 @@ export function forChipOptionFromEntry(
 	};
 }
 
-/** `{ text, full, truncated }`: the label cut to `max` characters plus "…". */
-export function truncateLabel(
+/**
+ * `{ text, full, truncated }`: `lib/timeFormat` `truncateLabel` (the label cut
+ * to `max` characters plus "…") with the full label beside it for the tooltip.
+ */
+export function truncatedLabel(
 	label: string | null | undefined,
 	max: number = CHIP_LABEL_MAX,
 ): { text: string; full: string; truncated: boolean } {
 	const full = (label ?? "").trim();
-	if (full.length <= max) return { text: full, full, truncated: false };
-	return {
-		text: `${full.slice(0, max).trimEnd()}…`,
-		full,
-		truncated: true,
-	};
+	const text = truncateLabel(full, max);
+	return { text, full, truncated: text !== full };
 }
 
 /** The chip's icon family (Users, Building, Briefcase, User). */

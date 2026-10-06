@@ -28,6 +28,7 @@ import { AlertTriangle, Check, Loader2, Timer } from "lucide-react";
 import { useEffect, useId, useMemo, useState } from "react";
 import { Avatar } from "@/components/common/Avatar";
 import { ForWorkspaceTag } from "@/components/time/for/ForChip";
+import { TIME_EMPTY_COPY } from "@/components/time/page/TimeEmptyStates";
 import { TimeReasonCard } from "@/components/time/shared/TimeReasonCard";
 import { ApproveSelectedDialog } from "@/components/time/sheets/DecisionDialogs";
 import { StaleRevisionBanner } from "@/components/time/sheets/StaleRevisionBanner";
@@ -42,10 +43,9 @@ import {
 	deviceTimeZone,
 	formatClock,
 	formatDurationText,
-	formatLocalDay,
 	formatPeriodRange,
+	submittedAgo,
 } from "@/lib/timeFormat";
-import { daysBetween, localDate } from "@/lib/timePeriods";
 import { cn } from "@/lib/utils";
 import { timeQueries } from "@/queries/time";
 import type { ProfileSummary } from "@/services/teams.service";
@@ -68,8 +68,8 @@ export const APPROVAL_UNCHECKED_COPY =
 export const APPROVAL_FLAGS_PAGE_MAX = 50;
 
 /** P5's empty state. */
-export const WAITING_EMPTY_COPY =
-	"You're all caught up. Timesheets sent to you will show up here.";
+/** P5's empty line, the same words as the Time page's caught-up state. */
+export const WAITING_EMPTY_COPY = `${TIME_EMPTY_COPY.caughtUp} ${TIME_EMPTY_COPY.caughtUpHint}`;
 
 export type ApprovalBlockKind = "flags" | "over_limit" | "unchecked";
 
@@ -90,26 +90,6 @@ export function approvalRowBlock(
 		return { kind: "unchecked", reason: APPROVAL_UNCHECKED_COPY };
 	}
 	return null;
-}
-
-/** When a sheet arrived, as the list says it: "today", "yesterday", "2 days ago", then the date. */
-export function submittedAgo(
-	iso: string | null | undefined,
-	options: { now?: Date; timezone?: string } = {},
-): string {
-	if (!iso) return "";
-	const tz = options.timezone ?? deviceTimeZone();
-	try {
-		const today = localDate(options.now ?? new Date(), tz);
-		const day = localDate(iso, tz);
-		const days = daysBetween(day, today);
-		if (days <= 0) return "today";
-		if (days === 1) return "yesterday";
-		if (days < 7) return `${days} days ago`;
-		return formatLocalDay(day, { now: options.now, userTimezone: tz });
-	} catch {
-		return "";
-	}
 }
 
 export interface ApprovalGroup {
