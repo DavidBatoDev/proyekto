@@ -218,8 +218,73 @@ export function sheetWeek(alias: string): string {
 
 /** Ticks every acknowledgement in SubmitSheetDialog (W1-4) so Submit can continue. */
 export async function tickAcknowledgements(dialog: Locator): Promise<void> {
+	// The checks render only once the sheet detail has loaded (the day list and its total), and the
+	// over-limit ones once the policy read answers; ticking earlier misses boxes that appear later.
+	await expect(dialog.getByTestId("submit-total")).toBeVisible();
+	await expect(dialog.getByTestId("submit-limits-pending")).toHaveCount(0);
 	const boxes = dialog.getByTestId("submit-warnings").getByRole("checkbox");
 	for (const box of await boxes.all()) await box.check();
+}
+
+/**
+ * Picks a task in W1-2's TaskPickerModal: four columns (Project, Epic, Feature, Task) of
+ * aria-pressed buttons. "Start timer" (the start flow) starts from its footer button
+ * ("Start timer" / "Start for <X>"); "Choose a task" (quick add, select mode) confirms with "Choose".
+ * The search box narrows the tree to the task, so its epic and feature open on their own.
+ */
+export async function pickTask(
+	page: Page,
+	opts: {
+		title: "Start timer" | "Choose a task";
+		task: string;
+		project?: string;
+	},
+): Promise<Locator> {
+	const picker = page.getByRole("dialog", { name: opts.title });
+	await expect(picker).toBeVisible();
+	if (opts.project) {
+		const row = picker
+			.getByRole("region", { name: "Project" })
+			.getByRole("button", { name: opts.project });
+		await expect(row).toBeVisible();
+		if ((await row.getAttribute("aria-pressed")) !== "true") await row.click();
+	}
+	await picker.getByRole("searchbox", { name: "Find a task" }).fill(opts.task);
+	const task = picker
+		.getByRole("region", { name: "Task" })
+		.getByRole("button", { name: opts.task, exact: true });
+	await task.click();
+	await expect(task).toHaveAttribute("aria-pressed", "true");
+	return picker;
+}
+
+/** Start timer → pick the task → the footer's start button (one option: no For step). */
+export async function startTimerOn(
+	page: Page,
+	opts: { task: string; project?: string },
+): Promise<void> {
+	await page.getByRole("button", { name: "Start timer" }).first().click();
+	const picker = await pickTask(page, { title: "Start timer", ...opts });
+	await picker.getByRole("button", { name: /^Start\b/ }).click();
+	await expect(picker).toHaveCount(0);
+	await expect(page.getByTestId("timer-clock").first()).toBeVisible();
+}
+
+/**
+ * Clicks a timer's Stop (in `scope`, default the page) and waits for the server's
+ * answer. The clock leaves the screen optimistically, before the request goes out,
+ * so a test that ends on the clock alone can close its page first and leave the
+ * timer running for the next spec and the next run.
+ */
+export async function stopTimer(page: Page, scope: Page | Locator = page): Promise<void> {
+	const stopped = page.waitForResponse(
+		(res) =>
+			res.request().method() === "POST" &&
+			/\/api\/time\/entries\/[^/]+\/stop$/.test(new URL(res.url()).pathname),
+	);
+	await scope.getByRole("button", { name: /^Stop\b/ }).first().click();
+	expect((await stopped).ok()).toBe(true);
+	await expect(page.getByTestId("timer-clock")).toHaveCount(0);
 }
 
 /** ux.md › For chip: labels are cut at 22 characters + "…". */
@@ -239,7 +304,29 @@ export async function personaPage(
 		timezoneId: TIME_TIMEZONE,
 		locale: "en-US",
 	});
+	await hideDevOverlays(context);
 	return { context, page: await context.newPage() };
+}
+
+/**
+ * The Vite dev server mounts the TanStack Devtools trigger bottom-right (`routes/__root.tsx`,
+ * `import.meta.env.DEV` only). At 390 px it sits on the Time page's FAB and intercepts its taps;
+ * production has no such button, so the harness hides it.
+ */
+export async function hideDevOverlays(target: Page | BrowserContext): Promise<void> {
+	await target.addInitScript(() => {
+		const add = () => {
+			const style = document.createElement("style");
+			style.textContent =
+				'button[aria-label="Open TanStack Devtools"] { display: none !important; }';
+			(document.head ?? document.documentElement).appendChild(style);
+		};
+		if (document.readyState === "loading") {
+			document.addEventListener("DOMContentLoaded", add, { once: true });
+		} else {
+			add();
+		}
+	});
 }
 
 /** Opens /time and waits for the page shell. */

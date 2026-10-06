@@ -1,9 +1,12 @@
 import { expect, test } from "@playwright/test";
 import {
 	gotoTime,
+	pickTask,
 	personaState,
 	project,
 	shouldSkip,
+	startTimerOn,
+	stopTimer,
 	TIME_E2E_SKIP_REASON,
 } from "./timePersonas";
 
@@ -73,11 +76,24 @@ test.describe("Solo Free owner (P1)", () => {
 		// W1-2 QuickAddBar: a "Quick add" region; the work button opens TaskPickerModal.
 		const quickAdd = page.getByRole("region", { name: "Quick add" });
 		await quickAdd.getByRole("button", { name: /Task or preset/ }).click();
-		// SELECTOR: TaskPickerModal's task row.
-		await page.getByRole("dialog").getByText(solo.tasks[0].title).first().click();
+		// The work button opens TaskPickerModal in select mode ("Choose a task"), confirmed with Choose.
+		const picker = await pickTask(page, {
+			title: "Choose a task",
+			task: solo.tasks[0].title,
+		});
+		await picker.getByRole("button", { name: "Choose", exact: true }).click();
+		await expect(picker).toHaveCount(0);
 		await quickAdd.getByLabel("Duration").fill("1:30");
+		// Yesterday, not the default Today: early in the day 09:00 + 1:30 would end in the future.
+		await quickAdd.getByRole("button", { name: /^Day:/ }).click();
+		await page
+			.getByRole("listbox", { name: "Day" })
+			.getByRole("option", { name: "Yesterday" })
+			.click();
 		await expect(quickAdd.getByText("Just me")).toBeVisible();
 		await quickAdd.getByRole("button", { name: "Add", exact: true }).click();
+		// ux.md › Copy the build added › Forms: "Added 1h 30m."
+		await expect(page.getByText("Added 1h 30m.")).toBeVisible();
 		await expect(
 			page.getByRole("row").filter({ hasText: solo.tasks[0].title }).filter({
 				hasText: "1:30",
@@ -88,13 +104,11 @@ test.describe("Solo Free owner (P1)", () => {
 	test("a timer starts and stops on a task, for Just me", async ({ page }) => {
 		const solo = project("solo");
 		await gotoTime(page, `?project=${solo.id}`);
-		await page.getByRole("button", { name: "Start timer" }).first().click();
-		// One option: picked automatically, never asked (ux.md › For chip).
-		// SELECTOR: the W0-D start flow's task picker.
-		await page.getByRole("option", { name: solo.tasks[1].title }).click();
-		await expect(page.getByTestId("timer-clock")).toBeVisible();
-		await expect(page.getByText("Just me").first()).toBeVisible();
-		await page.getByRole("button", { name: /^Stop\b/ }).first().click();
-		await expect(page.getByTestId("timer-clock")).toHaveCount(0);
+		// One option: picked automatically, never asked (ux.md › For chip), so Start goes straight on.
+		await startTimerOn(page, { task: solo.tasks[1].title, project: solo.title });
+		const bar = page.getByRole("region", { name: "Timer running" });
+		await expect(bar).toContainText(solo.tasks[1].title);
+		await expect(bar.getByText("Just me")).toBeVisible();
+		await stopTimer(page, bar);
 	});
 });

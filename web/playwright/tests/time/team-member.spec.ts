@@ -50,20 +50,42 @@ test.describe("Team member (P3)", () => {
 		// The open last week, so the entry lands on an Open sheet (w-1 Friday, which the seed left empty).
 		const day = seed().weeks["w-1"];
 		await gotoTime(page, `?week=${day}`);
-		// SELECTOR: W1-2 QuickAddBar "More options →" opens ManualEntryModal ("Add time").
-		await page.getByRole("button", { name: /More options/ }).click();
+		// W1-2 QuickAddBar "More options →" opens ManualEntryModal ("Add time"). Its Project and
+		// "Task or preset" controls are the shared Dropdown (a button + listbox); Start and End are
+		// DateTimeField (a calendar button "<Start|End> date" + a typeable "<Start|End> time").
+		await page
+			.getByRole("region", { name: "Quick add" })
+			.getByRole("button", { name: /More options/ })
+			.click();
 		const dialog = page.getByRole("dialog", { name: "Add time" });
-		await dialog.getByRole("combobox", { name: /project/i }).click();
+		await dialog.getByRole("button", { name: "Project", exact: true }).click();
 		await page.getByRole("option", { name: web.title }).click();
-		await dialog.getByRole("combobox", { name: /task/i }).click();
+		await dialog.getByRole("button", { name: "Task or preset", exact: true }).click();
 		await page.getByRole("option", { name: web.tasks[0].title }).click();
-		await dialog.getByLabel(/date/i).fill(addDays(day, 4));
-		await dialog.getByLabel(/^in$|start/i).fill("10:00");
-		await dialog.getByLabel(/^out$|end/i).fill("11:30");
-		await dialog.getByRole("button", { name: /^(Add|Save)\b/ }).click();
+		const friday = addDays(day, 4);
+		for (const edge of ["Start", "End"] as const) {
+			await dialog.getByRole("button", { name: `${edge} date` }).click();
+			await page.getByRole("button", { name: calendarDayName(friday), exact: true }).click();
+		}
+		for (const [edge, time] of [
+			["Start", "10:00"],
+			["End", "11:30"],
+		] as const) {
+			const field = dialog.getByRole("textbox", { name: `${edge} time` });
+			await field.fill(time);
+			await field.press("Enter");
+		}
+		await expect(dialog.getByText("1h 30m added")).toBeVisible();
+		await dialog.getByRole("button", { name: /^Add (time|for)\b/ }).click();
 		await expect(dialog).toHaveCount(0);
+		// The view week is w-1, so Friday's new row shows: in 10:00, out 11:30, 1:30.
 		await expect(
-			page.getByRole("row").filter({ hasText: web.tasks[0].title }).filter({ hasText: "1:30" }).first(),
+			page
+				.getByRole("row")
+				.filter({ hasText: web.tasks[0].title })
+				.filter({ hasText: "10:00" })
+				.filter({ hasText: "11:30" })
+				.first(),
 		).toBeVisible();
 	});
 
@@ -84,18 +106,29 @@ test.describe("Team member (P3)", () => {
 		);
 		await tickAcknowledgements(dialog);
 		await dialog.getByRole("button", { name: /^Submit\b/ }).click();
+		// ux.md › Copy toast table: "Sent to <approver> for approval.". The build names the approver the
+		// way the Goes-to line does ("<team>'s owners and admins", lib/timeFormat goesToTarget, unit
+		// tested); ux.md:406's example shortens it to the team name, so accept both.
 		await expect(
-			page.getByText(`Sent to ${delivery.name} for approval.`),
+			page.getByText(
+				new RegExp(
+					`^Sent to ${escapeRegExp(delivery.name)}(?:'s owners and admins)? for approval\\.$`,
+				),
+			),
 		).toBeVisible();
 		await expect(card.getByTestId("timesheet-card-status")).toContainText(
 			"Submitted",
 		);
 		// Locked rows keep only "View details" and "Comment" in ⋯ (ux.md › Submit, Return, Reopen).
+		// The ⋯ trigger is "Entry actions" (RowActionsMenu); its items are plain buttons in a portal.
+		// A locked row has no hover quick actions either, so no Edit or Delete button exists at all.
 		const row = page.getByRole("row").filter({ hasText: project("web").tasks[0].title }).first();
-		await row.getByRole("button", { name: /more|actions|⋯/i }).click();
-		await expect(page.getByRole("menuitem", { name: "View details" })).toBeVisible();
-		await expect(page.getByRole("menuitem", { name: /^Edit/ })).toHaveCount(0);
-		await expect(page.getByRole("menuitem", { name: /^Delete/ })).toHaveCount(0);
+		await expect(row.getByRole("button", { name: "Edit", exact: true })).toHaveCount(0);
+		await row.getByRole("button", { name: "Entry actions" }).click();
+		await expect(page.getByRole("button", { name: "View details", exact: true })).toBeVisible();
+		await expect(page.getByRole("button", { name: "Comment", exact: true })).toBeVisible();
+		await expect(page.getByRole("button", { name: "Edit", exact: true })).toHaveCount(0);
+		await expect(page.getByRole("button", { name: "Delete", exact: true })).toHaveCount(0);
 		await page.keyboard.press("Escape");
 	});
 
@@ -120,6 +153,16 @@ function addDays(date: string, days: number): string {
 	return new Date(Date.parse(`${date}T00:00:00Z`) + days * 86_400_000)
 		.toISOString()
 		.slice(0, 10);
+}
+
+/** DateTimeField's calendar day buttons are named "October 2, 2026" (date-fns "MMMM d, yyyy"). */
+function calendarDayName(date: string): string {
+	return new Date(`${date}T00:00:00Z`).toLocaleDateString("en-US", {
+		month: "long",
+		day: "numeric",
+		year: "numeric",
+		timeZone: "UTC",
+	});
 }
 
 function escapeRegExp(text: string): string {

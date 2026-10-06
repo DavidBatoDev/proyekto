@@ -46,6 +46,10 @@ export default defineConfig({
 		// The seed writes Asia/Manila weeks and preferences; the browser must agree.
 		timezoneId: "Asia/Manila",
 		locale: "en-US",
+		// A control that isn't actionable in 20 s is a real failure; without this a missed click
+		// waits out the whole 120 s test timeout (Phase C round 1).
+		actionTimeout: 20_000,
+		navigationTimeout: 30_000,
 		trace: "retain-on-failure",
 		screenshot: "only-on-failure",
 		video: "retain-on-failure",

@@ -33,9 +33,21 @@ test.describe("Client (P8)", () => {
 		page,
 	}) => {
 		const rebrand = project("rebrand");
-		await page.goto(`/project/${rebrand.id}/time?view=client`);
-		await expect(page.getByText("Delivery team").first()).toBeVisible();
-		// Summary level: hours by week per agreement; 18:00 approved, the waiting week absent.
+		// The view's default range is the current month; the approved week (w-2) can sit in the
+		// previous one, so ask for w-2 through w-1 (the report search takes ?from=&to=).
+		const weeks = seed().weeks;
+		const to = addDays(weeks["w-1"], 6);
+		await page.goto(
+			`/project/${rebrand.id}/time?view=client&from=${weeks["w-2"]}&to=${to}`,
+		);
+		// ux.md › Copy the build added › Project.
+		await expect(
+			page.getByText(
+				"Approved hours from the delivery team, at the detail your agreement allows.",
+			),
+		).toBeVisible();
+		// Summary level: hours by week per agreement; w-2's 18:00 is approved. w-1 is Submitted
+		// until consultant-talent.spec.ts approves it, so its 15:00 shows only on a re-run.
 		await expect(page.getByText("18:00").first()).toBeVisible();
 		const body = page.locator("main");
 		await expect(body).not.toContainText(persona("talent").displayName);
@@ -61,3 +73,9 @@ test.describe("Client (P8)", () => {
 		).toBeVisible();
 	});
 });
+
+function addDays(date: string, days: number): string {
+	return new Date(Date.parse(`${date}T00:00:00Z`) + days * 86_400_000)
+		.toISOString()
+		.slice(0, 10);
+}

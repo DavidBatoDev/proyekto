@@ -34,14 +34,24 @@ test.describe("Team lead (P4)", () => {
 	}) => {
 		await gotoTime(page);
 		// SidebarNavLink badge (W0-C): screen readers get "N timesheets waiting".
+		// The badge is part of the link's name ("Time 3 timesheets waiting"): the count is visible and
+		// its sr-only label reads it out.
 		await expect(sidebarTimeLink(page)).toBeVisible();
-		await expect(page.getByLabel(/\d+ timesheets? waiting/).first()).toBeVisible();
+		await expect(sidebarTimeLink(page)).toHaveAccessibleName(
+			/^Time\b.*\b\d+ timesheets? waiting$/,
+		);
 		const waiting = page.getByTestId("waiting-for-you");
 		await expect(waiting).toBeVisible();
 		await expect(page.getByText(/Waiting for you \(\d+\)/).first()).toBeVisible();
-		await expect(waiting.getByTestId("waiting-row").filter({ hasText: persona("member").displayName })).toHaveCount(2);
+		// Rows are grouped per person (ux.md › Bulk approve: the per-member grouping); a grouped row
+		// names the person only in its checkbox label, so match rows by that.
+		const rowsOf = (name: string) =>
+			waiting.getByTestId("waiting-row").filter({
+				has: page.getByRole("checkbox", { name: `Select ${name}'s timesheet,` }),
+			});
+		await expect(rowsOf(persona("member").displayName)).toHaveCount(2);
 		// Flagged sheets can't be selected (ux.md › Bulk approve).
-		const flagged = waiting.getByTestId("waiting-row").filter({ hasText: persona("member2").displayName });
+		const flagged = rowsOf(persona("member2").displayName);
 		await expect(flagged.getByRole("checkbox")).toBeDisabled();
 		await expect(flagged).toContainText(/Has flags|⚠/);
 	});
@@ -100,9 +110,10 @@ test.describe("Team lead (P4)", () => {
 			});
 			await row.getByRole("checkbox").check();
 		}
-		await page.getByRole("button", { name: "Approve selected" }).click();
-		const dialog = page.getByRole("dialog");
-		await dialog.getByRole("button", { name: /^Approve\b/ }).click();
+		// The list header's button reads "Approve selected (2)"; the floating bar repeats it.
+		await waiting.getByRole("button", { name: /^Approve selected/ }).first().click();
+		const dialog = page.getByRole("dialog", { name: "Approve 2 timesheets" });
+		await dialog.getByRole("button", { name: "Approve", exact: true }).click();
 		await expect(page.getByText("Approved 2 timesheets")).toBeVisible();
 	});
 

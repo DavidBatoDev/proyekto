@@ -7,7 +7,9 @@ import {
 	project,
 	seed,
 	shouldSkip,
+	startTimerOn,
 	sheet,
+	stopTimer,
 	TIME_E2E_SKIP_REASON,
 } from "./timePersonas";
 
@@ -52,12 +54,16 @@ test.describe("Consultant and talent (P5, P6)", () => {
 		test.skip(!talentEngagement, "the talent engagement was not seeded");
 		await page.goto(`/engagements/${talentEngagement}`);
 		await page.getByRole("button", { name: "Assign to project" }).click();
-		const dialog = page.getByRole("dialog");
-		// SELECTOR: W1-13's project picker.
-		await dialog.getByRole("combobox").first().click();
+		const dialog = page.getByRole("dialog", { name: "Assign to project" });
+		// W1-13's project picker is the shared Dropdown: a button named "Project" that opens a listbox.
+		await dialog.getByRole("button", { name: "Project", exact: true }).click();
 		await page.getByRole("option", { name: mobile.title }).click();
-		await dialog.getByRole("button", { name: /^Assign\b/ }).click();
-		await expect(page.getByText(mobile.title).first()).toBeVisible();
+		await dialog.getByRole("button", { name: "Assign", exact: true }).click();
+		await expect(dialog).toHaveCount(0);
+		// The new assignment row links the project (ux.md › Engagement page).
+		await expect(
+			page.getByRole("listitem").filter({ hasText: mobile.title }).first(),
+		).toBeVisible();
 		// "End assignment" warns about a running timer (L37) without ending anything here.
 		await expect(page.getByRole("button", { name: /End assignment/ }).first()).toBeVisible();
 	});
@@ -67,15 +73,18 @@ test.describe("Consultant and talent (P5, P6)", () => {
 		const { context, page } = await personaPage(browser, "talent", baseURL);
 		try {
 			await gotoTime(page, `?project=${mobile.id}`);
-			await page.getByRole("button", { name: "Start timer" }).first().click();
-			// SELECTOR: the W0-D start flow's task picker.
-			await page.getByRole("option", { name: mobile.tasks[0].title }).click();
-			await expect(page.getByTestId("timer-clock")).toBeVisible();
+			// One option (the agreement), so Start goes straight on (ux.md › For chip).
+			await startTimerOn(page, { task: mobile.tasks[0].title, project: mobile.title });
+			const bar = page.getByRole("region", { name: "Timer running" });
+			await expect(bar).toContainText(mobile.tasks[0].title);
 			// Agreement chip: Briefcase + counterparty (ux.md › Chip details), never "contract".
 			const consultantName = persona("consultant").displayName;
-			await expect(page.getByText(new RegExp(`${consultantName.slice(0, 12)}|agreement`)).first()).toBeVisible();
-			await page.getByRole("button", { name: /^Stop\b/ }).first().click();
-			await expect(page.getByTestId("timer-clock")).toHaveCount(0);
+			const studio = seed().teams.studio?.name ?? consultantName;
+			await expect(bar).toContainText(
+				new RegExp(`${escapeRegExp(consultantName.slice(0, 12))}|${escapeRegExp(studio.slice(0, 12))}`),
+			);
+			await expect(bar).not.toContainText(/contract/i);
+			await stopTimer(page, bar);
 		} finally {
 			await context.close();
 		}
@@ -94,3 +103,7 @@ test.describe("Consultant and talent (P5, P6)", () => {
 		await expect(page.getByText(/^Approved · 15:00 frozen$/)).toBeVisible();
 	});
 });
+
+function escapeRegExp(text: string): string {
+	return text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}

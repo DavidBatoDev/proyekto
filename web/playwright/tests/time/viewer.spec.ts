@@ -33,8 +33,11 @@ test.describe("Viewer (P10)", () => {
 		await expect(page.getByText(web.tasks[0].title).first()).toBeVisible();
 		// TaskTimerButton is not rendered with 0 options (ux.md › For chip).
 		await expect(page.getByRole("button", { name: /Start timer/ })).toHaveCount(0);
-		// SELECTOR: open a task so TaskTimerInline explains.
+		// Open a task: TaskTimerInline says "You can't log time on this project" with a Why? popover
+		// that gives the reason (ux.md › For chip, 0 options; Why? reasons).
 		await page.getByText(web.tasks[0].title).first().click();
+		await expect(page.getByText("You can't log time on this project")).toBeVisible();
+		await page.getByRole("button", { name: "Why?" }).click();
 		await expect(
 			page.getByText(
 				"You're a viewer on this project. Ask a project admin for editor access to log time.",
