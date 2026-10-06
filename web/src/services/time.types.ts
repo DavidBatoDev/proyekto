@@ -632,6 +632,18 @@ export interface OverviewContext {
 	id: string | null;
 	label: string;
 	sheet_scope: SheetScopeRef | null;
+	/**
+	 * V10, assignment contexts: the assignment's project, so two assignments
+	 * under one agreement (same label, same sheet scope) can be told apart.
+	 * Null for every other kind, once the project is deleted, and when the
+	 * lookup failed; absent from an older server.
+	 */
+	project_id?: string | null;
+	/**
+	 * V10, assignment contexts: that project's title (the assignment's
+	 * snapshot once the project is deleted). Null or absent as `project_id`.
+	 */
+	project_title?: string | null;
 	current_sheet: {
 		id: string;
 		status: TimesheetStatus;

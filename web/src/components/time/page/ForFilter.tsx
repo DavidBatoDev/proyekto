@@ -3,7 +3,10 @@
 // The page's "For: [All ▾]" filter (ux.md › The Time Page). It writes
 // `?for=` (`team:<id>`, `workspace:<id>`, `assignment:<id>`, `personal`),
 // which narrows the list, the cards and the month, and sets the day strip's
-// timezone and week start to that context's.
+// timezone and week start to that context's. The options come from
+// `forFilterOptions` (useTimePageData): two assignments under one agreement
+// read the same, so they add their project ("Cora Villanueva · agreement ·
+// Rebrand", V10).
 //
 // When everything the person tracks is "Just me" (the project resolver gives
 // them only the personal option), there is nothing to filter: the control

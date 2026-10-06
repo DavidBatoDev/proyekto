@@ -664,6 +664,67 @@ describe("labels", () => {
 		);
 	});
 
+	it("V10: tells two assignments under one agreement apart by their project", () => {
+		const twin = (id: string, project_title?: string | null) => ({
+			kind: "assignment" as const,
+			id,
+			label: "Cora Villanueva",
+			sheet_scope: { kind: "engagement" as const, ref: "e1" },
+			project_id: project_title ? `p-${id}` : null,
+			project_title,
+			current_sheet: null,
+		});
+		const both = overview({
+			contexts: [
+				twin("a2", "[QA] Acme Corp Mobile App"),
+				twin("a1", "Rebrand"),
+				{
+					kind: "team",
+					id: "t1",
+					label: "Design",
+					sheet_scope: { kind: "team", ref: "t1" },
+					project_id: null,
+					project_title: null,
+					current_sheet: null,
+				},
+			],
+		});
+		expect(
+			forFilterOptions(both, null, { native: false }).map((o) => [
+				o.value,
+				o.label,
+			]),
+		).toEqual([
+			[
+				"assignment:a2",
+				"Cora Villanueva · agreement · [QA] Acme Corp Mobile App",
+			],
+			["assignment:a1", "Cora Villanueva · agreement · Rebrand"],
+			["team:t1", "Design"],
+		]);
+		expect(
+			forFilterOptions(both, null, { native: true }).map((o) => o.label),
+		).toEqual([
+			"Cora Villanueva · [QA] Acme Corp Mobile App",
+			"Cora Villanueva · Rebrand",
+			"Design",
+		]);
+		// A label nobody shares stays short, even with a project.
+		expect(
+			forFilterOptions(overview({ contexts: [twin("a1", "Rebrand")] }), null, {
+				native: false,
+			})[0].label,
+		).toBe("Cora Villanueva · agreement");
+		// An older server (no project): nothing to add, the labels stay.
+		expect(
+			forFilterOptions(
+				overview({ contexts: [twin("a1"), twin("a2", null)] }),
+				null,
+				{ native: false },
+			).map((o) => o.label),
+		).toEqual(["Cora Villanueva · agreement", "Cora Villanueva · agreement"]);
+	});
+
 	it("keeps the current ?for= when the overview doesn't list it", () => {
 		const options = forFilterOptions(
 			overview(),

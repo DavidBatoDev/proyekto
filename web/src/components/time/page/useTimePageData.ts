@@ -490,6 +490,9 @@ const KIND_ORDER: Record<TimeForRef["kind"], number> = {
  * The For filter's choices: the overview's contexts (agreements first, Just
  * me last), plus the current `?for=` when the overview doesn't list it.
  * Agreement labels read "Acme Corp · agreement" on web, "Acme Corp" on native.
+ * Contexts that would read the same (two assignments under one agreement)
+ * add their project when the overview names it (V10): "Cora Villanueva ·
+ * agreement · Rebrand".
  */
 export function forFilterOptions(
 	overview: Pick<TimeOverview, "contexts"> | null | undefined,
@@ -502,12 +505,18 @@ export function forFilterOptions(
 ): ForFilterOption[] {
 	const seen = new Set<string>();
 	const out: ForFilterOption[] = [];
-	const add = (ref: TimeForRef, label: string) => {
+	// The project title of each listed context, for labels that collide.
+	const projectOf = new Map<string, string>();
+	const add = (ref: TimeForRef, label: string, project?: string | null) => {
 		const value = timeForParam(ref);
 		const key = value.toLowerCase();
 		if (seen.has(key)) return;
 		seen.add(key);
 		out.push({ value, label, kind: ref.kind });
+		const title = project?.trim()
+			? nativeSafe(project.trim(), { native: options.native })
+			: "";
+		if (title) projectOf.set(value, title);
 	};
 	const labelOf = (kind: TimeForRef["kind"], raw: string): string => {
 		if (kind === "personal") return contextLabel("personal", null);
@@ -527,7 +536,7 @@ export function forFilterOptions(
 					: null;
 		if (!ref) continue;
 		const label = labelOf(context.kind, context.label ?? "");
-		if (label) add(ref, label);
+		if (label) add(ref, label, context.project_title);
 	}
 	if (current) {
 		const raw =
@@ -537,6 +546,17 @@ export function forFilterOptions(
 				names: options.names,
 			}) ?? "";
 		add(current, labelOf(current.kind, raw) || unnamedForLabel(current.kind));
+	}
+	// V10: a shared label alone can't tell two choices apart.
+	const count = new Map<string, number>();
+	for (const option of out) {
+		count.set(option.label, (count.get(option.label) ?? 0) + 1);
+	}
+	for (const option of out) {
+		const project = projectOf.get(option.value);
+		if (project && (count.get(option.label) ?? 0) > 1) {
+			option.label = `${option.label} · ${project}`;
+		}
 	}
 	return out.sort(
 		(a, b) =>
