@@ -1,5 +1,6 @@
 import {
 	Building2,
+	Clock,
 	CreditCard,
 	Gauge,
 	type LucideIcon,
@@ -17,7 +18,9 @@ import { filterNavByPlatform } from "@/lib/platformSurfaces";
  * in the other.
  *
  * Usage and Billing are commerce surfaces and drop out in the installed app;
- * `lib/platformSurfaces.ts` is the one place that decides that.
+ * `lib/platformSurfaces.ts` is the one place that decides that. Time (the
+ * workspace time policy and report, ux.md › Settings) is a `/settings` app
+ * surface, so it stays.
  */
 export interface WorkspaceSettingsNavItem {
 	label: string;
@@ -43,7 +46,7 @@ export function workspaceSettingsNavItems(
 			label: "General",
 			to: `/w/${workspaceSlug}/settings`,
 			icon: Building2,
-			// Exact match — Members, Usage and Billing live under this prefix.
+			// Exact match — Members, Time, Usage and Billing live under this prefix.
 			active: currentPath === "/settings" || currentPath === "/settings/",
 			exact: true,
 		},
@@ -52,6 +55,15 @@ export function workspaceSettingsNavItems(
 			to: `/w/${workspaceSlug}/settings/members`,
 			icon: Users,
 			active: currentPath.startsWith("/settings/members"),
+		},
+		{
+			// Between Members and Usage (ux.md › Workspace Time Policy). Owners
+			// and admins edit the policy; members read it.
+			label: "Time",
+			to: `/w/${workspaceSlug}/settings/time`,
+			icon: Clock,
+			// Segment-safe: a future /settings/timeline must not light it up.
+			active: /^\/settings\/time(?:\/|$)/.test(currentPath),
 		},
 		{
 			label: "Usage",
