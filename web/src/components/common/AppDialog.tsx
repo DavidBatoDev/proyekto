@@ -73,6 +73,11 @@ export interface AppDialogProps {
 	open: boolean;
 	onClose: () => void;
 	title?: ReactNode;
+	/**
+	 * The dialog's accessible name when it has no `title` (a bare prompt whose
+	 * question is its body). Ignored when `title` is set: the title names it.
+	 */
+	ariaLabel?: string;
 	description?: ReactNode;
 	size?: AppDialogSize;
 	variant?: AppDialogVariant;
@@ -95,6 +100,7 @@ export function AppDialog({
 	open,
 	onClose,
 	title,
+	ariaLabel,
 	description,
 	size = "md",
 	variant = "center",
@@ -224,6 +230,7 @@ export function AppDialog({
 						role="dialog"
 						aria-modal="true"
 						aria-labelledby={title ? titleId : undefined}
+						aria-label={title ? undefined : ariaLabel || undefined}
 						aria-describedby={description ? descId : undefined}
 						tabIndex={-1}
 						initial={

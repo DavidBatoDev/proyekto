@@ -1,4 +1,3 @@
-import { useQuery } from "@tanstack/react-query";
 import { Loader2 } from "lucide-react";
 import {
 	type DragEvent,
@@ -8,6 +7,7 @@ import {
 	useState,
 } from "react";
 import { CollaborationCursorsOverlay } from "@/components/roadmap/collaboration/CollaborationCursorsOverlay";
+import { useRunningTaskId } from "@/components/time/timer/useActiveTimer";
 import { featureFlags } from "@/config/featureFlags";
 import { useRecentAssignees } from "@/hooks/useRecentAssignees";
 import type {
@@ -16,8 +16,6 @@ import type {
 	RemoteDrag,
 } from "@/hooks/useRoadmapCollaboration";
 import { useCommentSummaryByNodeId } from "@/hooks/useRoadmapCommentSummary";
-import { teamTimeService } from "@/services/team-time.service";
-import { useUser } from "@/stores/authStore";
 import type {
 	Roadmap,
 	RoadmapEpic,
@@ -166,7 +164,6 @@ const RoadmapCanvasShell = ({
 	focusTransition,
 	performanceMode = "normal",
 }: RoadmapViewProps) => {
-	const user = useUser();
 	const DEFAULT_ZOOM = 0.67;
 	const [zoom, setZoom] = useState(DEFAULT_ZOOM);
 	const [pulseNodeFocus, setPulseNodeFocus] = useState<{
@@ -202,17 +199,9 @@ const RoadmapCanvasShell = ({
 	const DEFAULT_VIEWPORT_X = -50;
 	const DEFAULT_VIEWPORT_Y = 0;
 	const MAX_ZOOM = 1.5;
-	const runningLogQuery = useQuery({
-		queryKey: ["team-time", "running-log", user?.id ?? "anonymous"],
-		queryFn: () => teamTimeService.getMyRunningLog(),
-		enabled: Boolean(user?.id),
-		// Fast 3s poll only while a timer runs (to highlight the active task);
-		// lazy 30s heartbeat otherwise, and never poll a hidden tab.
-		refetchInterval: (query) => (query.state.data ? 3_000 : 30_000),
-		refetchIntervalInBackground: false,
-		retry: 1,
-	});
-	const runningTaskId = runningLogQuery.data?.task_id ?? null;
+	// The shared running-timer query (3 s poll while a timer runs, 30 s
+	// otherwise, never in a hidden tab), to highlight the timed task.
+	const runningTaskId = useRunningTaskId();
 	const MIN_ZOOM = minZoom;
 	const isReducedMotion = performanceMode === "reducedMotion";
 	const edgeAnimationsEnabled = !isReducedMotion;

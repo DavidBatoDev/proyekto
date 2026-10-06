@@ -116,6 +116,7 @@ export function SwitchTimerDialog({
 			hideCloseButton
 			bare
 			zIndex={zIndex}
+			ariaLabel={SWITCH_BUTTON}
 		>
 			<SwitchTimerPanel {...panel} active={open} />
 		</AppDialog>
@@ -304,6 +305,7 @@ export function StartTimerPrompts({
 			hideCloseButton
 			bare
 			zIndex={zIndex}
+			ariaLabel={label}
 		>
 			{content}
 		</AppDialog>

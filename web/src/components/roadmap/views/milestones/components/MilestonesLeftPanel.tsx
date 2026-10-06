@@ -24,7 +24,7 @@ import {
 } from "lucide-react";
 import type { ReactNode, RefObject } from "react";
 import { type MouseEvent as ReactMouseEvent, useRef, useState } from "react";
-import { TaskTimerButton } from "@/components/team-time/TaskTimerButton";
+import { TaskTimerButton } from "@/components/time/timer/TaskTimerButton";
 import type { RoadmapEpic } from "@/types/roadmap";
 import {
 	type ExplorerSearchResult,

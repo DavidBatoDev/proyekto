@@ -24,7 +24,7 @@ import {
 } from "react";
 import { createPortal } from "react-dom";
 import { RichTextEditor } from "@/components/common/RichTextEditor";
-import { TaskTimerInline } from "@/components/team-time/TaskTimerInline";
+import { TaskTimerInline } from "@/components/time/timer/TaskTimerInline";
 import { useDraftAutosave } from "@/hooks/useAutosave";
 import { useMentionUsers } from "@/hooks/useMentionUsers";
 import {

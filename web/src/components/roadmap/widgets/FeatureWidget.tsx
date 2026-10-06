@@ -28,7 +28,7 @@ import {
 import { createPortal } from "react-dom";
 import { FeatureGlyph, TaskGlyph } from "@/components/common/NodeGlyph";
 import { TaskStatusBadge } from "@/components/common/SemanticBadge";
-import { TaskTimerButton } from "@/components/team-time/TaskTimerButton";
+import { TaskTimerButton } from "@/components/time/timer/TaskTimerButton";
 import type { CollaboratorInfo } from "@/hooks/useRoadmapCollaboration";
 import { useToast } from "@/hooks/useToast";
 import { buildRoadmapPreviewUrl } from "@/lib/roadmapPreviewLink";

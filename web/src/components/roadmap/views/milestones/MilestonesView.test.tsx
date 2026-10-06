@@ -1,6 +1,12 @@
 // @vitest-environment jsdom
-import { render, screen } from "@testing-library/react";
-import { describe, expect, it, vi } from "vitest";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { cleanup, render, screen } from "@testing-library/react";
+import type { ReactElement } from "react";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { timeKeys } from "@/queries/time";
+import { timeService } from "@/services/time.service";
+import type { LoggingForResult, LoggingOption } from "@/services/time.types";
+import { useAuthStore } from "@/stores/authStore";
 import type { Roadmap, RoadmapEpic } from "@/types/roadmap";
 import { MilestonesView } from "./MilestonesView";
 
@@ -8,19 +14,59 @@ vi.mock("@/hooks/useToast", () => ({
 	useToast: () => ({
 		showToast: vi.fn(),
 		toast: vi.fn(),
+		success: vi.fn(),
+		error: vi.fn(),
+		warning: vi.fn(),
+		info: vi.fn(),
 	}),
 }));
 
-vi.mock("@/components/team-time/useActiveTimer", () => ({
-	useActiveTimer: () => ({
-		runningTaskId: null,
-		isRunning: false,
-		isPaused: false,
-		isBusy: false,
-		start: vi.fn(),
-		stop: vi.fn(),
-	}),
-}));
+// The timer buttons (components/time/timer/TaskTimerButton) render only on a
+// project the person can log on: seed its For options, and no timer running.
+const USER = "user-1";
+const teamOption: LoggingOption = {
+	kind: "team",
+	id: "team-1",
+	label: "Prodigitality Services Inc. Team",
+	sheet_scope: { kind: "team", ref: "team-1" },
+	rate_source: "none",
+	workspace_tag: null,
+	approver_hint: "team",
+};
+
+function renderWithTime(ui: ReactElement) {
+	const client = new QueryClient({
+		defaultOptions: { queries: { retry: false } },
+	});
+	client.setQueryData(timeKeys.running(USER), null);
+	client.setQueryData<LoggingForResult>(timeKeys.loggingFor("project-1"), {
+		options: [teamOption],
+		selected: teamOption,
+		prefill: null,
+		unavailable: [],
+	});
+	return render(
+		<QueryClientProvider client={client}>{ui}</QueryClientProvider>,
+	);
+}
+
+beforeEach(() => {
+	useAuthStore.setState({ user: { id: USER } as never });
+	// No network: the running poll and the For read answer from here.
+	vi.spyOn(timeService, "getRunning").mockResolvedValue(null);
+	vi.spyOn(timeService, "getLoggingFor").mockResolvedValue({
+		options: [teamOption],
+		selected: teamOption,
+		prefill: null,
+		unavailable: [],
+	});
+});
+
+afterEach(() => {
+	cleanup();
+	useAuthStore.setState({ user: null });
+	vi.restoreAllMocks();
+});
 
 describe("MilestonesView Timer Integration", () => {
 	const mockRoadmap: Roadmap = {
@@ -75,7 +121,7 @@ describe("MilestonesView Timer Integration", () => {
 	];
 
 	it("renders TaskTimerButton for features with tasks in Milestones view", () => {
-		render(
+		renderWithTime(
 			<MilestonesView
 				roadmap={mockRoadmap}
 				milestones={[]}

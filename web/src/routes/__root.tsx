@@ -12,7 +12,7 @@ import { NotFoundRoute } from "../components/layout/NotFoundRoute";
 import { MigrationHandler } from "../components/migration";
 import { AppUpdateGate } from "../components/mobile/AppUpdateGate";
 import { SafetyProvider } from "../components/safety/SafetyProvider";
-import { FloatingActiveTimer } from "../components/team-time/FloatingActiveTimer";
+import { FloatingActiveTimer } from "../components/time/timer/FloatingActiveTimer";
 import { ToastProvider } from "../contexts/ToastContext";
 import { ConfirmProvider } from "../hooks/useConfirm";
 import { usePushNotifications } from "../hooks/usePushNotifications";

@@ -23,8 +23,8 @@ import {
 	SemanticBadge,
 	TaskStatusBadge,
 } from "@/components/common/SemanticBadge";
-import { TaskTimerButton } from "@/components/team-time/TaskTimerButton";
-import { useRunningTaskId } from "@/components/team-time/useActiveTimer";
+import { TaskTimerButton } from "@/components/time/timer/TaskTimerButton";
+import { useRunningTaskId } from "@/components/time/timer/useActiveTimer";
 import { useToast } from "@/contexts/ToastContext";
 import { useProjectMembersQuery } from "@/hooks/useProjectQueries";
 import { recordRecentAssignment } from "@/hooks/useRecentAssignees";

@@ -5,7 +5,7 @@ import {
 	useEffect,
 	useState,
 } from "react";
-import { TaskTimerButton } from "@/components/team-time/TaskTimerButton";
+import { TaskTimerButton } from "@/components/time/timer/TaskTimerButton";
 import type { RoadmapEpic, RoadmapFeature } from "@/types/roadmap";
 import { calculateFeatureProgressFromTasks } from "../../../shared/featureProgress";
 import {
