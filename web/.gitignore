@@ -15,6 +15,13 @@ test-results
 blob-report
 playwright/.auth/user.json
 
+# Time E2E harness (playwright/time): the seed manifest holds the persona passwords, and the
+# persona setup saves one session per persona. playwright/.auth/.gitignore already ignores the
+# folder; these lines keep that true if that file ever changes.
+playwright/.auth/time-seed.json
+playwright/.auth/time-seed.json.tmp
+playwright/.auth/time-*.json
+
 # local playwright run artifacts
 pw-*/
 test-results/
