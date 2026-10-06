@@ -1,0 +1,839 @@
+[
+	{
+		"kind": "weekly",
+		"timezone": "UTC",
+		"week_start": 1,
+		"anchor": null,
+		"at": "2026-10-05T00:00:00Z",
+		"start": "2026-10-05",
+		"end": "2026-10-11"
+	},
+	{
+		"kind": "weekly",
+		"timezone": "UTC",
+		"week_start": 1,
+		"anchor": null,
+		"at": "2026-10-04T23:59:59Z",
+		"start": "2026-09-28",
+		"end": "2026-10-04"
+	},
+	{
+		"kind": "weekly",
+		"timezone": "UTC",
+		"week_start": 1,
+		"anchor": null,
+		"at": "2026-10-11T12:00:00Z",
+		"start": "2026-10-05",
+		"end": "2026-10-11"
+	},
+	{
+		"kind": "weekly",
+		"timezone": "UTC",
+		"week_start": 7,
+		"anchor": null,
+		"at": "2026-10-04T00:00:00Z",
+		"start": "2026-10-04",
+		"end": "2026-10-10"
+	},
+	{
+		"kind": "weekly",
+		"timezone": "UTC",
+		"week_start": 7,
+		"anchor": null,
+		"at": "2026-10-03T23:59:59Z",
+		"start": "2026-09-27",
+		"end": "2026-10-03"
+	},
+	{
+		"kind": "weekly",
+		"timezone": "UTC",
+		"week_start": 7,
+		"anchor": null,
+		"at": "2026-10-10T12:00:00Z",
+		"start": "2026-10-04",
+		"end": "2026-10-10"
+	},
+	{
+		"kind": "weekly",
+		"timezone": "UTC",
+		"week_start": 3,
+		"anchor": null,
+		"at": "2026-10-06T12:00:00Z",
+		"start": "2026-09-30",
+		"end": "2026-10-06"
+	},
+	{
+		"kind": "weekly",
+		"timezone": "UTC",
+		"week_start": 1,
+		"anchor": null,
+		"at": "2026-12-31T23:59:59Z",
+		"start": "2026-12-28",
+		"end": "2027-01-03"
+	},
+	{
+		"kind": "weekly",
+		"timezone": "UTC",
+		"week_start": 1,
+		"anchor": null,
+		"at": "2027-01-01T00:00:00Z",
+		"start": "2026-12-28",
+		"end": "2027-01-03"
+	},
+	{
+		"kind": "weekly",
+		"timezone": "Asia/Manila",
+		"week_start": 1,
+		"anchor": null,
+		"at": "2026-10-04T15:59:59Z",
+		"start": "2026-09-28",
+		"end": "2026-10-04"
+	},
+	{
+		"kind": "weekly",
+		"timezone": "Asia/Manila",
+		"week_start": 1,
+		"anchor": null,
+		"at": "2026-10-04T16:00:00Z",
+		"start": "2026-10-05",
+		"end": "2026-10-11"
+	},
+	{
+		"kind": "weekly",
+		"timezone": "UTC",
+		"week_start": 1,
+		"anchor": null,
+		"at": "2026-10-04T16:00:00Z",
+		"start": "2026-09-28",
+		"end": "2026-10-04"
+	},
+	{
+		"kind": "weekly",
+		"timezone": "Asia/Manila",
+		"week_start": 7,
+		"anchor": null,
+		"at": "2026-10-03T16:00:00Z",
+		"start": "2026-10-04",
+		"end": "2026-10-10"
+	},
+	{
+		"kind": "weekly",
+		"timezone": "Asia/Manila",
+		"week_start": 7,
+		"anchor": null,
+		"at": "2026-10-03T15:59:59Z",
+		"start": "2026-09-27",
+		"end": "2026-10-03"
+	},
+	{
+		"kind": "weekly",
+		"timezone": "America/New_York",
+		"week_start": 7,
+		"anchor": null,
+		"at": "2026-03-08T04:59:59Z",
+		"start": "2026-03-01",
+		"end": "2026-03-07"
+	},
+	{
+		"kind": "weekly",
+		"timezone": "America/New_York",
+		"week_start": 7,
+		"anchor": null,
+		"at": "2026-03-08T05:00:00Z",
+		"start": "2026-03-08",
+		"end": "2026-03-14"
+	},
+	{
+		"kind": "weekly",
+		"timezone": "America/New_York",
+		"week_start": 1,
+		"anchor": null,
+		"at": "2026-03-09T03:59:59Z",
+		"start": "2026-03-02",
+		"end": "2026-03-08"
+	},
+	{
+		"kind": "weekly",
+		"timezone": "America/New_York",
+		"week_start": 1,
+		"anchor": null,
+		"at": "2026-03-09T04:30:00Z",
+		"start": "2026-03-09",
+		"end": "2026-03-15"
+	},
+	{
+		"kind": "weekly",
+		"timezone": "America/New_York",
+		"week_start": 1,
+		"anchor": null,
+		"at": "2026-03-08T07:30:00Z",
+		"start": "2026-03-02",
+		"end": "2026-03-08"
+	},
+	{
+		"kind": "weekly",
+		"timezone": "America/New_York",
+		"week_start": 7,
+		"anchor": null,
+		"at": "2026-11-01T03:59:59Z",
+		"start": "2026-10-25",
+		"end": "2026-10-31"
+	},
+	{
+		"kind": "weekly",
+		"timezone": "America/New_York",
+		"week_start": 7,
+		"anchor": null,
+		"at": "2026-11-01T04:00:00Z",
+		"start": "2026-11-01",
+		"end": "2026-11-07"
+	},
+	{
+		"kind": "weekly",
+		"timezone": "America/New_York",
+		"week_start": 1,
+		"anchor": null,
+		"at": "2026-11-01T05:30:00Z",
+		"start": "2026-10-26",
+		"end": "2026-11-01"
+	},
+	{
+		"kind": "weekly",
+		"timezone": "America/New_York",
+		"week_start": 1,
+		"anchor": null,
+		"at": "2026-11-01T06:30:00Z",
+		"start": "2026-10-26",
+		"end": "2026-11-01"
+	},
+	{
+		"kind": "weekly",
+		"timezone": "America/New_York",
+		"week_start": 1,
+		"anchor": null,
+		"at": "2026-11-02T04:30:00Z",
+		"start": "2026-10-26",
+		"end": "2026-11-01"
+	},
+	{
+		"kind": "weekly",
+		"timezone": "America/New_York",
+		"week_start": 1,
+		"anchor": null,
+		"at": "2026-11-02T05:00:00Z",
+		"start": "2026-11-02",
+		"end": "2026-11-08"
+	},
+	{
+		"kind": "weekly",
+		"timezone": "Asia/Kolkata",
+		"week_start": 1,
+		"anchor": null,
+		"at": "2026-10-04T18:29:59Z",
+		"start": "2026-09-28",
+		"end": "2026-10-04"
+	},
+	{
+		"kind": "weekly",
+		"timezone": "Asia/Kolkata",
+		"week_start": 1,
+		"anchor": null,
+		"at": "2026-10-04T18:30:00Z",
+		"start": "2026-10-05",
+		"end": "2026-10-11"
+	},
+	{
+		"kind": "weekly",
+		"timezone": "Pacific/Auckland",
+		"week_start": 1,
+		"anchor": null,
+		"at": "2026-10-04T10:59:59Z",
+		"start": "2026-09-28",
+		"end": "2026-10-04"
+	},
+	{
+		"kind": "weekly",
+		"timezone": "Pacific/Auckland",
+		"week_start": 1,
+		"anchor": null,
+		"at": "2026-10-04T11:00:00Z",
+		"start": "2026-10-05",
+		"end": "2026-10-11"
+	},
+	{
+		"kind": "weekly",
+		"timezone": "America/Los_Angeles",
+		"week_start": 7,
+		"anchor": null,
+		"at": "2026-10-04T06:59:59Z",
+		"start": "2026-09-27",
+		"end": "2026-10-03"
+	},
+	{
+		"kind": "weekly",
+		"timezone": "America/Los_Angeles",
+		"week_start": 7,
+		"anchor": null,
+		"at": "2026-10-04T07:00:00Z",
+		"start": "2026-10-04",
+		"end": "2026-10-10"
+	},
+	{
+		"kind": "weekly",
+		"timezone": "Not/AZone",
+		"week_start": 1,
+		"anchor": null,
+		"at": "2026-10-04T16:00:00Z",
+		"start": "2026-09-28",
+		"end": "2026-10-04"
+	},
+	{
+		"kind": "monthly",
+		"timezone": "Not/AZone",
+		"week_start": 1,
+		"anchor": null,
+		"at": "2026-09-30T16:00:00Z",
+		"start": "2026-09-01",
+		"end": "2026-09-30"
+	},
+	{
+		"kind": "biweekly",
+		"timezone": "UTC",
+		"week_start": 1,
+		"anchor": null,
+		"at": "2024-01-01T00:00:00Z",
+		"start": "2024-01-01",
+		"end": "2024-01-14"
+	},
+	{
+		"kind": "biweekly",
+		"timezone": "UTC",
+		"week_start": 1,
+		"anchor": null,
+		"at": "2024-01-14T23:59:59Z",
+		"start": "2024-01-01",
+		"end": "2024-01-14"
+	},
+	{
+		"kind": "biweekly",
+		"timezone": "UTC",
+		"week_start": 1,
+		"anchor": null,
+		"at": "2024-01-15T00:00:00Z",
+		"start": "2024-01-15",
+		"end": "2024-01-28"
+	},
+	{
+		"kind": "biweekly",
+		"timezone": "UTC",
+		"week_start": 1,
+		"anchor": null,
+		"at": "2023-12-31T23:59:59Z",
+		"start": "2023-12-18",
+		"end": "2023-12-31"
+	},
+	{
+		"kind": "biweekly",
+		"timezone": "UTC",
+		"week_start": 1,
+		"anchor": null,
+		"at": "2023-12-18T00:00:00Z",
+		"start": "2023-12-18",
+		"end": "2023-12-31"
+	},
+	{
+		"kind": "biweekly",
+		"timezone": "UTC",
+		"week_start": 1,
+		"anchor": null,
+		"at": "2023-12-17T12:00:00Z",
+		"start": "2023-12-04",
+		"end": "2023-12-17"
+	},
+	{
+		"kind": "biweekly",
+		"timezone": "UTC",
+		"week_start": 1,
+		"anchor": null,
+		"at": "2020-02-29T12:00:00Z",
+		"start": "2020-02-17",
+		"end": "2020-03-01"
+	},
+	{
+		"kind": "biweekly",
+		"timezone": "UTC",
+		"week_start": 1,
+		"anchor": null,
+		"at": "2026-10-05T12:00:00Z",
+		"start": "2026-10-05",
+		"end": "2026-10-18"
+	},
+	{
+		"kind": "biweekly",
+		"timezone": "UTC",
+		"week_start": 1,
+		"anchor": null,
+		"at": "2026-10-12T12:00:00Z",
+		"start": "2026-10-05",
+		"end": "2026-10-18"
+	},
+	{
+		"kind": "biweekly",
+		"timezone": "UTC",
+		"week_start": 1,
+		"anchor": null,
+		"at": "2026-10-18T23:59:59Z",
+		"start": "2026-10-05",
+		"end": "2026-10-18"
+	},
+	{
+		"kind": "biweekly",
+		"timezone": "UTC",
+		"week_start": 7,
+		"anchor": null,
+		"at": "2024-01-06T12:00:00Z",
+		"start": "2023-12-24",
+		"end": "2024-01-06"
+	},
+	{
+		"kind": "biweekly",
+		"timezone": "UTC",
+		"week_start": 7,
+		"anchor": null,
+		"at": "2024-01-07T00:00:00Z",
+		"start": "2024-01-07",
+		"end": "2024-01-20"
+	},
+	{
+		"kind": "biweekly",
+		"timezone": "UTC",
+		"week_start": 7,
+		"anchor": null,
+		"at": "2026-10-04T12:00:00Z",
+		"start": "2026-09-27",
+		"end": "2026-10-10"
+	},
+	{
+		"kind": "biweekly",
+		"timezone": "UTC",
+		"week_start": 7,
+		"anchor": null,
+		"at": "2026-10-10T12:00:00Z",
+		"start": "2026-09-27",
+		"end": "2026-10-10"
+	},
+	{
+		"kind": "biweekly",
+		"timezone": "Asia/Manila",
+		"week_start": 1,
+		"anchor": null,
+		"at": "2026-10-04T16:00:00Z",
+		"start": "2026-10-05",
+		"end": "2026-10-18"
+	},
+	{
+		"kind": "biweekly",
+		"timezone": "America/New_York",
+		"week_start": 1,
+		"anchor": null,
+		"at": "2026-03-09T04:30:00Z",
+		"start": "2026-03-09",
+		"end": "2026-03-22"
+	},
+	{
+		"kind": "biweekly",
+		"timezone": "America/New_York",
+		"week_start": 1,
+		"anchor": null,
+		"at": "2026-11-02T04:30:00Z",
+		"start": "2026-10-19",
+		"end": "2026-11-01"
+	},
+	{
+		"kind": "biweekly",
+		"timezone": "UTC",
+		"week_start": 1,
+		"anchor": "2026-09-28",
+		"at": "2026-09-28T00:00:00Z",
+		"start": "2026-09-28",
+		"end": "2026-10-11"
+	},
+	{
+		"kind": "biweekly",
+		"timezone": "UTC",
+		"week_start": 1,
+		"anchor": "2026-09-28",
+		"at": "2026-10-11T23:59:59Z",
+		"start": "2026-09-28",
+		"end": "2026-10-11"
+	},
+	{
+		"kind": "biweekly",
+		"timezone": "UTC",
+		"week_start": 1,
+		"anchor": "2026-09-28",
+		"at": "2026-10-12T00:00:00Z",
+		"start": "2026-10-12",
+		"end": "2026-10-25"
+	},
+	{
+		"kind": "biweekly",
+		"timezone": "UTC",
+		"week_start": 1,
+		"anchor": "2026-09-28",
+		"at": "2026-09-27T12:00:00Z",
+		"start": "2026-09-14",
+		"end": "2026-09-27"
+	},
+	{
+		"kind": "biweekly",
+		"timezone": "UTC",
+		"week_start": 1,
+		"anchor": "2026-09-28",
+		"at": "2025-01-01T12:00:00Z",
+		"start": "2024-12-23",
+		"end": "2025-01-05"
+	},
+	{
+		"kind": "biweekly",
+		"timezone": "Asia/Manila",
+		"week_start": 1,
+		"anchor": "2026-09-28",
+		"at": "2026-10-11T15:59:59Z",
+		"start": "2026-09-28",
+		"end": "2026-10-11"
+	},
+	{
+		"kind": "biweekly",
+		"timezone": "Asia/Manila",
+		"week_start": 1,
+		"anchor": "2026-09-28",
+		"at": "2026-10-11T16:00:00Z",
+		"start": "2026-10-12",
+		"end": "2026-10-25"
+	},
+	{
+		"kind": "biweekly",
+		"timezone": "UTC",
+		"week_start": 7,
+		"anchor": "2026-09-27",
+		"at": "2026-10-10T12:00:00Z",
+		"start": "2026-09-27",
+		"end": "2026-10-10"
+	},
+	{
+		"kind": "biweekly",
+		"timezone": "UTC",
+		"week_start": 7,
+		"anchor": "2026-09-27",
+		"at": "2026-10-11T12:00:00Z",
+		"start": "2026-10-11",
+		"end": "2026-10-24"
+	},
+	{
+		"kind": "biweekly",
+		"timezone": "UTC",
+		"week_start": 1,
+		"anchor": "2026-10-01",
+		"at": "2026-10-20T12:00:00Z",
+		"start": "2026-10-15",
+		"end": "2026-10-28"
+	},
+	{
+		"kind": "semi_monthly",
+		"timezone": "UTC",
+		"week_start": 1,
+		"anchor": null,
+		"at": "2026-10-01T00:00:00Z",
+		"start": "2026-10-01",
+		"end": "2026-10-15"
+	},
+	{
+		"kind": "semi_monthly",
+		"timezone": "UTC",
+		"week_start": 1,
+		"anchor": null,
+		"at": "2026-10-15T23:59:59Z",
+		"start": "2026-10-01",
+		"end": "2026-10-15"
+	},
+	{
+		"kind": "semi_monthly",
+		"timezone": "UTC",
+		"week_start": 1,
+		"anchor": null,
+		"at": "2026-10-16T00:00:00Z",
+		"start": "2026-10-16",
+		"end": "2026-10-31"
+	},
+	{
+		"kind": "semi_monthly",
+		"timezone": "UTC",
+		"week_start": 1,
+		"anchor": null,
+		"at": "2026-10-31T23:59:59Z",
+		"start": "2026-10-16",
+		"end": "2026-10-31"
+	},
+	{
+		"kind": "semi_monthly",
+		"timezone": "UTC",
+		"week_start": 1,
+		"anchor": null,
+		"at": "2026-02-15T12:00:00Z",
+		"start": "2026-02-01",
+		"end": "2026-02-15"
+	},
+	{
+		"kind": "semi_monthly",
+		"timezone": "UTC",
+		"week_start": 1,
+		"anchor": null,
+		"at": "2026-02-16T00:00:00Z",
+		"start": "2026-02-16",
+		"end": "2026-02-28"
+	},
+	{
+		"kind": "semi_monthly",
+		"timezone": "UTC",
+		"week_start": 1,
+		"anchor": null,
+		"at": "2026-02-28T23:59:59Z",
+		"start": "2026-02-16",
+		"end": "2026-02-28"
+	},
+	{
+		"kind": "semi_monthly",
+		"timezone": "UTC",
+		"week_start": 1,
+		"anchor": null,
+		"at": "2028-02-16T12:00:00Z",
+		"start": "2028-02-16",
+		"end": "2028-02-29"
+	},
+	{
+		"kind": "semi_monthly",
+		"timezone": "UTC",
+		"week_start": 1,
+		"anchor": null,
+		"at": "2028-02-29T12:00:00Z",
+		"start": "2028-02-16",
+		"end": "2028-02-29"
+	},
+	{
+		"kind": "semi_monthly",
+		"timezone": "UTC",
+		"week_start": 7,
+		"anchor": null,
+		"at": "2026-04-30T12:00:00Z",
+		"start": "2026-04-16",
+		"end": "2026-04-30"
+	},
+	{
+		"kind": "semi_monthly",
+		"timezone": "UTC",
+		"week_start": 1,
+		"anchor": null,
+		"at": "2026-12-31T23:59:59Z",
+		"start": "2026-12-16",
+		"end": "2026-12-31"
+	},
+	{
+		"kind": "semi_monthly",
+		"timezone": "Asia/Manila",
+		"week_start": 1,
+		"anchor": null,
+		"at": "2026-10-15T15:59:59Z",
+		"start": "2026-10-01",
+		"end": "2026-10-15"
+	},
+	{
+		"kind": "semi_monthly",
+		"timezone": "Asia/Manila",
+		"week_start": 1,
+		"anchor": null,
+		"at": "2026-10-15T16:00:00Z",
+		"start": "2026-10-16",
+		"end": "2026-10-31"
+	},
+	{
+		"kind": "semi_monthly",
+		"timezone": "UTC",
+		"week_start": 1,
+		"anchor": null,
+		"at": "2026-10-15T16:00:00Z",
+		"start": "2026-10-01",
+		"end": "2026-10-15"
+	},
+	{
+		"kind": "semi_monthly",
+		"timezone": "America/New_York",
+		"week_start": 1,
+		"anchor": null,
+		"at": "2026-11-16T04:59:59Z",
+		"start": "2026-11-01",
+		"end": "2026-11-15"
+	},
+	{
+		"kind": "semi_monthly",
+		"timezone": "America/New_York",
+		"week_start": 1,
+		"anchor": null,
+		"at": "2026-11-16T05:00:00Z",
+		"start": "2026-11-16",
+		"end": "2026-11-30"
+	},
+	{
+		"kind": "semi_monthly",
+		"timezone": "America/New_York",
+		"week_start": 1,
+		"anchor": null,
+		"at": "2026-03-16T03:59:59Z",
+		"start": "2026-03-01",
+		"end": "2026-03-15"
+	},
+	{
+		"kind": "semi_monthly",
+		"timezone": "America/New_York",
+		"week_start": 1,
+		"anchor": null,
+		"at": "2026-03-16T04:00:00Z",
+		"start": "2026-03-16",
+		"end": "2026-03-31"
+	},
+	{
+		"kind": "monthly",
+		"timezone": "UTC",
+		"week_start": 1,
+		"anchor": null,
+		"at": "2026-01-31T23:59:59Z",
+		"start": "2026-01-01",
+		"end": "2026-01-31"
+	},
+	{
+		"kind": "monthly",
+		"timezone": "UTC",
+		"week_start": 1,
+		"anchor": null,
+		"at": "2026-02-01T00:00:00Z",
+		"start": "2026-02-01",
+		"end": "2026-02-28"
+	},
+	{
+		"kind": "monthly",
+		"timezone": "UTC",
+		"week_start": 1,
+		"anchor": null,
+		"at": "2026-02-28T23:59:59Z",
+		"start": "2026-02-01",
+		"end": "2026-02-28"
+	},
+	{
+		"kind": "monthly",
+		"timezone": "UTC",
+		"week_start": 7,
+		"anchor": null,
+		"at": "2028-02-29T12:00:00Z",
+		"start": "2028-02-01",
+		"end": "2028-02-29"
+	},
+	{
+		"kind": "monthly",
+		"timezone": "UTC",
+		"week_start": 1,
+		"anchor": null,
+		"at": "2026-04-30T12:00:00Z",
+		"start": "2026-04-01",
+		"end": "2026-04-30"
+	},
+	{
+		"kind": "monthly",
+		"timezone": "UTC",
+		"week_start": 1,
+		"anchor": null,
+		"at": "2026-12-31T23:59:59Z",
+		"start": "2026-12-01",
+		"end": "2026-12-31"
+	},
+	{
+		"kind": "monthly",
+		"timezone": "Asia/Manila",
+		"week_start": 1,
+		"anchor": null,
+		"at": "2026-09-30T15:59:59Z",
+		"start": "2026-09-01",
+		"end": "2026-09-30"
+	},
+	{
+		"kind": "monthly",
+		"timezone": "Asia/Manila",
+		"week_start": 1,
+		"anchor": null,
+		"at": "2026-09-30T16:00:00Z",
+		"start": "2026-10-01",
+		"end": "2026-10-31"
+	},
+	{
+		"kind": "monthly",
+		"timezone": "UTC",
+		"week_start": 1,
+		"anchor": null,
+		"at": "2026-09-30T16:00:00Z",
+		"start": "2026-09-01",
+		"end": "2026-09-30"
+	},
+	{
+		"kind": "monthly",
+		"timezone": "America/New_York",
+		"week_start": 1,
+		"anchor": null,
+		"at": "2026-03-01T04:59:59Z",
+		"start": "2026-02-01",
+		"end": "2026-02-28"
+	},
+	{
+		"kind": "monthly",
+		"timezone": "America/New_York",
+		"week_start": 1,
+		"anchor": null,
+		"at": "2026-03-01T05:00:00Z",
+		"start": "2026-03-01",
+		"end": "2026-03-31"
+	},
+	{
+		"kind": "monthly",
+		"timezone": "America/New_York",
+		"week_start": 1,
+		"anchor": null,
+		"at": "2026-11-01T03:59:59Z",
+		"start": "2026-10-01",
+		"end": "2026-10-31"
+	},
+	{
+		"kind": "monthly",
+		"timezone": "America/New_York",
+		"week_start": 1,
+		"anchor": null,
+		"at": "2026-11-01T04:00:00Z",
+		"start": "2026-11-01",
+		"end": "2026-11-30"
+	},
+	{
+		"kind": "monthly",
+		"timezone": "Pacific/Auckland",
+		"week_start": 1,
+		"anchor": null,
+		"at": "2026-12-31T10:59:59Z",
+		"start": "2026-12-01",
+		"end": "2026-12-31"
+	},
+	{
+		"kind": "monthly",
+		"timezone": "Pacific/Auckland",
+		"week_start": 1,
+		"anchor": null,
+		"at": "2026-12-31T11:00:00Z",
+		"start": "2027-01-01",
+		"end": "2027-01-31"
+	}
+]
