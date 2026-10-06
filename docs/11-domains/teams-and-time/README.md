@@ -95,9 +95,9 @@ once a team is attached (`project_teams`) and its members are curated in
 > (one per person, sheet scope and period), and approval happens on the sheet, never per
 > entry. Approval freezes payable hours and cost per entry. The module is
 > [`backend/src/modules/execution/time/`](../../../backend/src/modules/execution/time/), served
-> at `/api/time`; the current web and older app bundles still call the old routes through the
-> [`/api/team-time` alias](#the-apiteam-time-alias). Design history and the remaining rollout
-> steps: [time management proposal](../../13-proposals/time-management/README.md).
+> at `/api/time`; the web's [Time pages](#on-the-web) call it, and older app bundles still call
+> the old routes through the [`/api/team-time` alias](#the-apiteam-time-alias). Design history
+> and the remaining rollout steps: [time management proposal](../../13-proposals/time-management/README.md).
 
 ### Time entries
 
@@ -193,7 +193,9 @@ browser, else the earliest owner's or the member's saved timezone, else UTC; adm
 once) → team override (only with
 `time_team_rules`; owner-only for approval, approver, retroactive days and rounding) →
 agreement terms in force on the entry's date → member caps. Routes:
-`/api/time/policies/workspaces/:id` and `/api/time/policies/teams/:id`. `PATCH /api/teams/:id`
+`/api/time/policies/workspaces/:id` (managers edit; any workspace member reads it with
+`can_edit: false`, and a member's read never creates the row) with its audit history at
+`…/history` (managers), and `/api/time/policies/teams/:id`. `PATCH /api/teams/:id`
 still accepts `retroactive_log_days` and writes it through to the team override.
 
 | Plan feature | Free | Pro | Business | Enterprise | Checked at |
@@ -226,8 +228,9 @@ Email is selected only in self and team-manager views. Every miss is 404.
 ### Reports, cron and notifications
 
 - **Reports** (`/api/time/reports/*`): scope `team:`, `project:`, `workspace:` or
-  `engagement:<id>`, grouped by day, member, project, task or context; CSV/XLSX export up to
-  10,000 rows; Enterprise audit export of sheet and policy events.
+  `engagement:<id>`, grouped by day, week (in the scope's policy timezone and week start),
+  member, project, task or context; CSV/XLSX export up to 10,000 rows; Enterprise audit
+  export of sheet and policy events.
 - **Cron** (`POST /api/time/cron/run`, `x-cron-secret`; built to run hourly, but its Cloud
   Scheduler job is created only at [rollout step 9](../../13-proposals/time-management/migrations-and-rollout.md#apply-and-deploy-sequence), so until then nothing auto-stops,
   auto-submits or reminds): auto-stop at 24 h, the 10 h notice, auto-submit of `auto`/`self`
@@ -241,7 +244,8 @@ Email is selected only in self and team-manager views. Every miss is 404.
 
 ### The `/api/team-time` alias
 
-The deployed web and older mobile bundles still speak the old per-log API. The alias keeps all
+Older mobile bundles (and any web build from before the time rebuild) still speak the old
+per-log API; the current web never calls it. The alias keeps all
 30 of its routes with the old request bodies and response shapes, served by the new services:
 
 | Old behaviour | Through the alias |
@@ -284,6 +288,38 @@ both are removed in a later contract migration (M5).
 - Approved team time feeds payouts; approved team and agreement time feeds invoices — see
   [Finance](../finance/README.md).
 
+## On the web
+
+> **One personal page, wherever the time is for.** Logging, submitting and approving all
+> happen on the bare `/time` page; a team keeps only a Report with Rates and Payouts, and every
+> old team-time link redirects. Routes, search params and the full redirect map:
+> [Web → Routing → Time](../../04-web/routing-and-access.md#time). Data layer:
+> [Web → the time data layer](../../04-web/state-and-services.md#the-time-data-layer).
+
+| Surface | Path | What it does |
+| --- | --- | --- |
+| Time page | `/time` | A running-timer bar, the toolbar (Start timer, Add time, For filter, List \| Month) with quick add on wide screens, the week navigator and day strip, one card per timesheet in the view week (Submit or Resubmit, Withdraw, Fix), the entries table (For column, Needs review, Change For), a Month view, and **Waiting for you** for deciders. Someone who approves but logged nothing in 30 days gets **approver mode** (Waiting, Decided in the last 30 days, the policy cards) instead of an empty week. Owners and admins see the one-time policy confirm card |
+| Review screen | `/time/timesheets/<id>` | The read-only sheet: project × day grid (hours of projects the reader can't open merge into "Projects you can't open"), flags, the weekly-limit indicator, the over-the-limit panel (only for caps that cut payable time), cost lines for cost viewers, history, and Approve / Return / Reopen for deciders or the member's Submit / Withdraw / Reopen / Ask to reopen |
+| Workspace settings › Time | `/w/<slug>/settings/time` | The workspace time policy (period, week start, timezone, approval, manual time, rounding, reminder, weekly limit, presets) with its change history; members read it. `?tab=report` is the workspace report (`time_reports_export`) |
+| Team settings › Time | `/w/<slug>/teams/<t>/settings/time` | Time on/off, the Business **team rules** (approvers, approval, period, manual time, retroactive window, rounding, each inheriting the workspace until overridden), and **Money**: member rates, payouts, and "Billing and pay cut-offs" |
+| Team › Time | `/w/<slug>/teams/<t>/time` | Team managers only: **Report** · **Rates** · **Payouts**. Members are sent to `/time?for=team:<t>` |
+| Project › Time | `/project/<p>/time` | **Everyone** (`time.view_team_logs`; one section per governed context; rows read-only) and **Client hours** (approved hours at the agreement's detail level, never identity, cost or notes). Someone who only logs there is sent to `/time?project=<p>` |
+| Project settings › Time | `/project/<p>/settings/time` | "Who can log time here" with each person's default For (managers; from `GET /api/time/projects/:id/loggers`), "Client sees" (read-only), and hour limits |
+| Dashboard | `/w/<slug>/dashboard` | "Waiting for your approval" card and the welcome-line nudges ("· 3 timesheets waiting", "· Submit last week (28h 45m)") |
+
+**For on the web.** Starting a timer or adding time resolves the For first: one option is
+used without asking (and never sent, so the server re-resolves); two or more open a picker
+whose remembered choice is preselected but never applied silently; none shows why ("You're a
+viewer on this project. Ask a project admin for editor access to log time."). A timer
+already running asks "Stop *X* and start this?" only after the For is settled, so cancelling
+never leaves you with no timer. The For chip on your own time opens "Who approves this time";
+on someone else's entry it is a plain label.
+
+**In the app.** `/time` and the review screen are `app` surfaces, agreement sheets included;
+the team Rates and Payouts pages are `silent`. Native copy carries no amount on an agreement
+context and never the words contract, rate, payout or invoice
+([Web → What the installed app carries](../../04-web/routing-and-access.md#what-the-installed-app-carries)).
+
 ## The delivery loop
 
 ```
@@ -299,7 +335,7 @@ team ──attach──► project_teams ──curate──► project_team_memb
 ## Code locations
 
 - **Backend:** [`backend/src/modules/execution/teams/`](../../../backend/src/modules/execution/teams/) (3 controllers), [`backend/src/modules/execution/time/`](../../../backend/src/modules/execution/time/) (6 controllers in `controllers/`, including the `/api/team-time` alias, whose reads and mapping live in `legacy/`)
-- **Web:** `web/src/routes/_execution/teams/`, `web/src/components/team/`, `web/src/components/team-time/` (still on `/api/team-time` until the web rebuild ships)
+- **Web:** time in `web/src/components/time/` (page, review, entries, forms, edit, calendar, sheets, approvals, report, timer, for, shared), `web/src/services/time.service.ts` and `web/src/queries/time.ts`, routes `web/src/routes/_execution/time/` and `routes/w/$workspaceSlug/settings/time.tsx`; settings pieces in `components/workspace/settings/time/`, `components/team/settings/time/` and `components/project/time/`. Teams in `web/src/routes/_execution/teams/`, `routes/w/$workspaceSlug/teams/` and `web/src/components/team/`. `web/src/components/team-time/` keeps only the team money pieces (rates, payouts, pay cut-offs, the money gate) and a few shared controls
 - **Migrations:** `20261003090100_time_entries_expand.sql` (M1), `20261003100000_time_timesheets_backfill.sql` (M2: legacy logs grouped into timesheets), `20261003110000_rename_time_entries.sql` (M3: renames, transition engine)
 
 ## See also

@@ -1,6 +1,6 @@
 # Routing & Access
 
-> **Last updated:** 2026-09-29 · **Status:** current
+> **Last updated:** 2026-10-06 · **Status:** current
 
 Routing is **file-based** (TanStack Router): files under
 [`web/src/routes/`](../../web/src/routes/) become routes, and
@@ -17,10 +17,11 @@ gating done in route `beforeLoad` hooks and project components.
 | `marketplace/` | `route.tsx` layout + `index` (redirects to the directory), `category/` (below), `consultant/{index,$profileId,apply,browse,templates}`, `talent`, `finance/{index,$contractId,invoices/new,invoices/$invoiceId/edit}`, `talent/go-live`, `project-posting` (a shim to `/project/new`; see below) |
 | `talent/` | `invites` — a shim to `/invites`; see below |
 | `profile/` | `profile/$profileId` |
-| `w/$workspaceSlug/` | **The workspace segment.** `route.tsx` layout resolves the slug against the caller's own membership list (`ensureQueryData` in an async `beforeLoad`): a retired slug redirects to the current one with the rest of the path intact, an unknown or non-member slug is **not found** (never 403, so slugs do not enumerate organizations), bare `/w/<slug>` goes to `dashboard`. Children: `dashboard`, `teams/{index,$teamId/**}` (settings, time, payouts, rates), `settings/{route,index,members,usage,billing}`. The layout component mirrors the URL's workspace into `useWorkspaceStore` (the "last visited" memory) from an effect, never from `beforeLoad`, which also runs on hover preload |
+| `w/$workspaceSlug/` | **The workspace segment.** `route.tsx` layout resolves the slug against the caller's own membership list (`ensureQueryData` in an async `beforeLoad`): a retired slug redirects to the current one with the rest of the path intact, an unknown or non-member slug is **not found** (never 403, so slugs do not enumerate organizations), bare `/w/<slug>` goes to `dashboard`. Children: `dashboard`, `teams/{index,$teamId/**}` (settings; `time/` is the team Report with Rates and Payouts, plus redirect stubs for the old tabs — see [Time](#time)), `settings/{route,index,members,time,usage,billing}` (`time` is the workspace time policy and report). The layout component mirrors the URL's workspace into `useWorkspaceStore` (the "last visited" memory) from an effect, never from `beforeLoad`, which also runs on hover preload |
 | `teams/` | `me/invites` (personal: invites arrive from workspaces you are not in, so it never gains a tenant segment). `teams/index`, `$teamId.tsx`, and the `$teamId/**` leaves are **permanent redirect stubs**: bare `/teams/<id>/…` forwards to `/w/<slug>/teams/<id>/…` — the team's own workspace when the caller is in it, else the last-visited one — keeping path and query. Bare paths keep arriving from persisted `link_url`s and push payloads, so the stubs are not transitional |
 | `workspace/` | Redirect stub only: `/workspace[/settings/*]` forwards to `/w/<slug>/settings/*` for the last-visited workspace; `settings/{index,members,billing}` are empty shells that keep the bare paths real routes. `usage` is new and has no bare shell, since no persisted link predates it |
 | `project/` | `new` (create a project) + `$projectId` layout and tabs (below) |
+| `time/` | `route.tsx` layout (the auth `beforeLoad` and `DashboardShell`) + `index` (`/time`, the personal Time page) + `timesheets/$timesheetId` (the timesheet review screen). Bare paths, never under `/w/<slug>/`: a person's time spans workspaces. See [Time](#time) |
 | `roadmap/` | `shared/$token` (public), `shared-with-me` |
 | `roadmap-templates/` | `route.tsx` layout + `index`, `$slug` |
 | `settings/` | `appearance`, `mcp-tokens` (MCP Access — PATs + Connected apps), `notifications` |
@@ -32,14 +33,16 @@ Top-level routes: `index` (the landing for anonymous visitors; a signed-in user 
 forwarded to `/dashboard`, GitHub/Vercel style), `home` (the same landing, always reachable;
 the in-app brand mark links here), `dashboard` (a redirect stub to `/w/<slug>/dashboard`;
 it renders a create-workspace card only for an account with no workspace at all), `onboarding`,
-`welcome`, `inbox`, `notifications`, `meetings`, `work-items`, `invites`, `unsubscribe`,
+`welcome`, `inbox`, `notifications`, `meetings`, `time`, `work-items`, `invites`, `unsubscribe`,
 `command-center`, `product` and `contact` (both public marketing pages).
 
 Which URLs carry the `/w/<slug>/` segment is decided once, in
 `web/src/lib/workspacePaths.ts`: only the organizational surfaces (`/dashboard`, `/teams/**`
 except `/teams/me/**`, `/workspace/**` → `/settings/**`). Entity pages (`/project/**`, roadmap
 URLs) stay global because a consultant reaches a client's project through `project_access`
-without holding a seat in that workspace. Every path matcher in the chrome (`Header.tsx`
+without holding a seat in that workspace. `/time` and `/time/timesheets/<id>` stay global too
+(`workspacePaths.test.ts` pins it): one person's timesheets come from every workspace they
+log in. Every path matcher in the chrome (`Header.tsx`
 `validPaths`, the sidebar, the floating timer, the invite prompt) runs `stripWorkspacePrefix`
 first, and string-built links go through `toWorkspacePath`, so both URL shapes keep working.
 The seam for components is `useCurrentWorkspace()`: the URL's slug wins when present, else the
@@ -211,10 +214,14 @@ Gating happens in three places:
 - **Component guards** — finer-grained access is enforced in components.
   `RequireProjectAccess` (backed by the resolved `project_access` permission set) wraps
   exactly twelve route bodies — `roadmap`, `timeline`, `work-items`, `resources`,
-  `chat/$chatRef`, `time`, `deliverables`, `deliverables/$deliverableId`,
-  `change-requests`, `risks`, `decisions`, and `decisions/$decisionId` — keyed on the
-  corresponding `access.*` flag. `timeline` reuses `access.roadmap`, and the last six all
-  reuse `access.delivery`. `logs` gates **inline** on
+  `chat/$chatRef`, `deliverables`, `deliverables/$deliverableId`, `change-requests`,
+  `change-requests/$changeRequestId`, `risks`, `decisions`, and `decisions/$decisionId` —
+  keyed on the corresponding `access.*` flag. `timeline` reuses `access.roadmap`, and the
+  last seven all reuse `access.delivery`. `time` is **not** wrapped: Project › Time opens on
+  a composite (`canOpenProjectTime` in `lib/projectPermissions.ts`) — `time.log`, or
+  `time.view_team_logs`, or a `time_client_hours_level` other than `none`, all from
+  `GET /api/projects/:id/my-permissions` — and the nav item uses the same rule (the
+  `time.page` gate in `projectNavItems.ts`). `logs` gates **inline** on
   `permissions.logs.view` because the component's `access` prop is typed to the `access.*`
   section, which has no `logs` key. `overview`, `team/*`, and `settings/*` are **not
   wrapped** and rely on backend 403s surfacing as toasts. `ProtectedRoute` handles
@@ -226,6 +233,64 @@ Gating happens in three places:
 > The **`projectId === "n"`** sentinel is the guest / roadmap-only path — its
 > `beforeLoad` skips the auth check so guests can build a roadmap before signing up.
 > See [Feature Domains → guests](../11-domains/guests/README.md).
+
+## Time
+
+> **Built with the time rebuild** (the web PR on `feat/time-web`, which merges right after backend PR-1;
+> see [Rollout Status](../13-proposals/time-management/migrations-and-rollout.md#rollout-status)).
+> Domain rules: [Teams & Time](../11-domains/teams-and-time/README.md).
+
+Time left the team pages. Everything a person logs, submits and approves lives on one bare
+`/time` page, whatever the time is for; a team keeps only a **Report** with **Rates** and
+**Payouts** beside it. The team's old *My Logs* and *Team Logs* tabs are redirect stubs now.
+
+| Path | Route file | Who gets the page | Search |
+| --- | --- | --- | --- |
+| `/time` | `_execution/time/index.tsx` | Any signed-in user. The sidebar item shows only when `GET /api/time/me/overview` says `can_log`, has `approvals_waiting > 0`, or lists a `workspace_time_admin` entry | `for` (`team:<id>`, `workspace:<id>`, `assignment:<id>` or `personal`), `project`, `week` (`YYYY-MM-DD`), `view` (`list` or `month`; Month's own navigation writes it, and a `?week=` link without it opens List), `entry` (opens that entry, or its 404 card); `#waiting` scrolls to Waiting for you |
+| `/time/timesheets/<id>` | `_execution/time/timesheets/$timesheetId.tsx` | The member, the sheet's deciders, and a team manager who can view it; anyone else gets "This timesheet doesn't exist or you can't open it." | `entry` |
+| `/w/<slug>/settings/time` | `w/$workspaceSlug/settings/time.tsx` | Owners and admins edit the policy; members read it | `tab=report`, plus the report filters on that tab |
+| `/w/<slug>/teams/<t>/time` | `w/$workspaceSlug/teams/$teamId/time/{route,index}.tsx` | Team managers (the team owner, or an owner/admin member). A member is redirected to `/time?for=team:<t>` in `beforeLoad`; anyone else gets the refusal card | `person`, `project`, `for` (a context kind), `status`, `from`, `to`, `group` (`project` is parsed but not applied yet: the report API has no project filter) |
+| `…/time/manage-rates[/<user>]`, `…/time/payouts` | same folder | Team managers, while the team's rates or payouts are on | — |
+| `/project/<p>/time` | `_execution/project/$projectId/time.tsx` | The composite gate above. *Everyone* needs `time.view_team_logs`, *Client hours* a client level other than `none`; a viewer or commenter gets "Time on this project isn't open to you." | `view=everyone\|client`, plus the report filters |
+| `/engagements/finance/team/<t>/time-logs` | (tab label **Time**) | Team managers | the report filters |
+
+Search params are parsed by the validators in [`lib/timeSearch.ts`](../../web/src/lib/timeSearch.ts),
+never by helpers under `routes/`. A malformed `for` or `project` drops out, so a mangled link
+still lands on the page; an `entry` that is not a uuid is kept and opens the entry's
+"doesn't exist or you can't open it" card.
+
+**Old links keep working.** Notification rows, pushes and emails written before the rebuild
+point at the team tabs, so their routes stay as redirect stubs:
+
+| Old | Goes to |
+| --- | --- |
+| `/w/<s>/teams/<t>/time` | Manager: the Report in place. Member: `/time?for=team:<t>`. Anyone else: the refusal card |
+| `…/time/my-logs` | `/time?for=team:<t>` (the old `member`, `preset`, `from`, `to` and cut-off params are dropped) |
+| `…/time/my-logs?log=X` | `/time?for=team:<t>&entry=X` |
+| `…/time/team-logs?log=X` | `/time/timesheets/<sheet holding X>?entry=X` when the caller can open that sheet, else `/time?entry=X` |
+| `…/time/team-logs?member=U` | `/w/<s>/teams/<t>/time?person=U` (the Report) |
+| `…/time/team-logs` (no params: the stored approval links) | `/time#waiting` when `GET /api/time/approvals/count` is above 0, else `/time` |
+| `…/time/log/<id>` | `/time?entry=<id>` |
+| Bare `/teams/<t>/time/**`, `/teams/<t>/settings/time` | Unchanged empty shells: `_execution/teams/$teamId.tsx` forwards them to the slugged path, then the rows above apply |
+| `/project/<p>/time?view=team` | `?view=everyone` |
+| `/project/<p>/time?view=mine`, or no view for a caller who only logs there | `/time?project=<p>` |
+| `/engagements/finance/team/<t>/time-logs?member=U` / `?log=X` | `?person=U` / the entry opens read-only in place |
+
+Every lookup failure in a stub falls through to `/time`, never an error page, and
+`legacyRoutePaths.ts` needs no entries: the stubs are the mechanism. New notifications link
+straight to the new pages (`/time/timesheets/<id>`, `/time?entry=<id>`, `/time`,
+`/time#waiting`; D79). Every refusal on these pages is a `TimeReasonCard`
+(`components/time/shared/`) that says why, so a refusal never reads as an empty page.
+
+**Chrome.** The Time item sits after Meetings in `executionNavigation.ts` (gate `time`,
+segment-matched so it never lights on `/timeline`) and carries the `approvals_waiting` badge;
+global search offers it behind the same gate. `Header.tsx` `validPaths` lists `/time`. The
+floating timer (`components/time/timer/FloatingActiveTimer.tsx`) shows only on the
+`TIMER_VISIBLE_PATH_PREFIXES` allowlist — `/dashboard`, `/inbox`, `/command-center`,
+`/meetings`, `/task-board`, `/notifications`, `/teams`, `/project`, `/projects`, matched by
+whole segment — and never on `/time`, which has its own timer bar; its link reads "Open in
+Time" (`/time?entry=<id>`). Team managers get a team **Time** sub-item in the sidebar while the
+team's time is on; members do not.
 
 ## Plan limits
 
@@ -245,8 +310,12 @@ refusals:
 
 Early warnings come from `useEntitlements(workspaceId)`, which reads the usage payload and
 answers "allowed" while it is loading or unavailable, since the server re-checks each write. The
-members panel, the create-team modal, the teams list, `project/new` and a team's time-tracking
-settings show an inline `PlanLimitNotice`, and the invite dialog shows its own cap note. A refusal that reaches the axios interceptor raises a
+members panel, the create-team modal, the teams list and `project/new` show an inline
+`PlanLimitNotice`, and the invite dialog shows its own cap note. The time surfaces do the same
+for the time plan keys (`time_tracking`, `time_team_rules`, `time_payouts`,
+`time_reports_export`, …; the copy names tiers only and comes from `lib/timeErrors.ts`): the Time page's policy and limit cards, workspace
+settings › Time, team settings › Time (team rules, money), the team Rates and Payouts panels,
+report export, and the finance Add-ons time switch. A refusal that reaches the axios interceptor raises a
 single upgrade toast (`PlanLimitBridge`) that links to the Usage page.
 
 ## What the installed app carries
@@ -269,8 +338,14 @@ no mocks.
 | `commerce` | `/pricing`, `settings/billing`, `settings/usage` (both bare and under `/w/<slug>/`) | `/not-available?surface=commerce` |
 | `marketplace` | all of `/marketplace`, plus `/start-selling`, `/engagements`, `/brief`, `/freelancer`, `/contract/sign`, and `/docs/clients-and-marketplace` — that rule sits *above* `/docs` in the longest-prefix-first list, so those articles inherit the treatment without the docs code knowing about it | `/not-available?surface=marketplace` |
 | `staff` | all of `/admin` — mostly commerce (Plans, Workspaces) or marketplace (Applications, Consultants, Match), and a desktop console besides | `/not-available?surface=unavailable` |
-| `silent` | `/` and `/home` — the marketing landing the in-app brand mark used to point at — plus `/product`, which is marketing too | `/dashboard`, no explanation |
-| `app` | everything else, including `/docs` and `/contact` — help and support are useful on a phone | shown |
+| `silent` | `/` and `/home` — the marketing landing the in-app brand mark used to point at — plus `/product`, which is marketing too, and a team's money pages `/teams/*/time/payouts` and `/teams/*/time/manage-rates` (listed before `/teams`, so the team Report stays) | `/dashboard`, no explanation |
+| `app` | everything else that has a rule, including `/docs` and `/contact` — help and support are useful on a phone — and `/time`, which covers the review screen | shown |
+
+Rules are matched against the workspace-stripped path, longest first, by **whole segment**:
+`/brief` never eats `/briefly`, and `/time` never eats `/timeline`. A `*` segment matches
+exactly one non-empty segment — a team id at runtime or `$teamId` in a route template — never
+zero and never two, which is how the two team money rules reach every team without a rule
+per id. A path no rule matches is hidden (default-deny).
 
 **One gate, on the root route.** `__root.tsx`'s `beforeLoad` runs for every match on every
 navigation — first paint, client navigation, `history.replace` and a full page load — so it
@@ -283,8 +358,8 @@ hidden page never mounts and no price is painted.
 Nothing is deleted: every old URL still resolves, because notification rows and FCM payloads
 already in device trays point at them. They land on `/not-available`, never a 404.
 
-Nav filtering (the header nav, global search, the workspace settings tabs, the admin nav) is
-cosmetic — it stops dead entries rendering. **The route gate is the boundary.**
+Nav filtering (the header nav, global search, the workspace settings tabs, the team Time
+sub-nav, the admin nav) is cosmetic — it stops dead entries rendering. **The route gate is the boundary.**
 
 Plan limits still apply in full on mobile; only the destination disappears. `usageCopy.ts`
 takes a `CopySurface` and, in the app, drops the upgrade sentence and the toast button —
@@ -299,9 +374,10 @@ pages the app does carry, so the route gate cannot reach them; a component-level
 - `routes/profile/$profileId.tsx` — the owner's *Verification Documents* card,
   `PayoutMethodsSection` and `IdentityDocumentModal` do not mount; a one-line note says both
   are managed on the web.
-- `components/team-time/PayMemberModal.tsx` (team payouts, team logs, project time) — the
-  member's payout methods are never fetched and the *Pay to* block is replaced by a note.
-  The payout still records, with `payout_method_id` unset.
+- `components/team-time/PayMemberModal.tsx` (team payouts) — it still reads
+  `canHandleSensitiveData()` for its *Pay to* block, but since payouts became a `silent`
+  money page the app never gets that far: on native the modal renders a pointer to the web
+  before the form, or any payout-method fetch, mounts.
 
 This keeps the app out of the Data safety / App Privacy financial and government-ID
 categories. The backend is unchanged: the web still reads and writes both.
@@ -319,6 +395,7 @@ gate stops navigation, but marketplace *content* on an app page needs its own ch
 | New project (`routes/_execution/project/new.tsx`) | No client/consultant picker, never posts `status: "bidding"` — a verified consultant leads (draft, owner), everyone else gets a plain draft |
 | Project status (`ProjectsGrid` config, overview picker, settings) | `bidding` reads *Not started*, and pickers only offer it when the project is already in it (`pickableProjectStatuses`) |
 | Project settings → Time | No `RateBudgetCalculator` (contract economics) |
+| Time (`/time`, the review screen, Project › Time, workspace and team settings › Time) | No amount on an agreement context (the review screen's cost lines included), no *Billed* badge, no "View terms", no `/engagements` link, and none of the words contract, rate, payout or invoice (agreement sheets read "your agreement with …"). Report export is hidden, and the team sub-nav keeps only **Report** (`filterNavByPlatform`). Each time component folder with copy of its own (all of `components/time/*` but `shared/`, plus `components/workspace/settings/time`, `components/project/time` and `components/team/settings/time`) has a `native` test that mocks `isNativeApp` and asserts these rules |
 | Team settings → General | No *Billing identity* (the contract/invoice provider block) |
 | Help articles (`DocsMarkdown`) | A link to a non-`app` path renders as plain text |
 | Welcome slide 2, `/get-started`, dashboard tour, roadmaps grid | SaaS wording — no consultant hiring, bids or invoices |

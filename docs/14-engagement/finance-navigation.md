@@ -1,6 +1,6 @@
 # Finance Navigation
 
-> **Last updated:** 2026-09-30 · **Status:** draft
+> **Last updated:** 2026-10-06 · **Status:** draft
 
 The Engagements shell used to have five overlapping places for money: Home,
 Personal, a team page, a team *book* page, and project book pages. The team page
@@ -30,8 +30,10 @@ Rules:
 
 - **Contracts are listed only in Engagements → Contracts.** Finance pages link to a
   contract (the project overview's "View in Engagements →" chip), never list them.
-- **Nothing leaves the shell.** Rates, time logs, and payouts render the same panels
-  as Teams → Time (`web/src/components/team-time/Team*Panel.tsx`).
+- **Nothing leaves the shell.** Rates and payouts render the same panels as Team › Time
+  (`web/src/components/team-time/TeamRatesPanel.tsx`, `TeamPayoutsPanel.tsx`), and the
+  **Time** tab (id `time-logs`) renders the shared team time report
+  (`web/src/components/time/report/`).
 - **"My teams" means teams you run.** You own or administer the team, or hold a finance
   role on its book. Plain memberships appear only in My finance, as your share.
 - **Team members and finance access are different lists** on the Members tab. Finance

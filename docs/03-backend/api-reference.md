@@ -234,8 +234,8 @@ the team's time policy, `contract_enforcement` is accepted and has no effect, an
 ## time · `time` and `team-time`
 
 The time module ([Teams & Time](../11-domains/teams-and-time/README.md)): time entries,
-timesheets, approvals, policies, reports, and the `/api/team-time` alias the current web
-and older app bundles still call. Every route carries `SupabaseAuthGuard` +
+timesheets, approvals, policies, reports, and the `/api/team-time` alias older app bundles
+still call (the web calls `/api/time` only). Every route carries `SupabaseAuthGuard` +
 `TimeGuestGuard`: a guest session gets **404** everywhere except `GET /time/me/overview`
 (the empty shape) and `GET /time/me/running` / alias `GET /team-time/logs/me/running`
 (`null`). Misses are 404, never 403, and a non-uuid id is a 404.
@@ -245,10 +245,12 @@ and older app bundles still call. Every route carries `SupabaseAuthGuard` +
 | GET·PUT | /api/time/projects/:projectId/logging-for | Supabase | The "For" options for the caller on a project (30 s cache) / remember a choice |
 | GET | /api/time/projects/:projectId/policy?for=<kind>:<id> | Supabase | The resolved time policy for one of the caller's options |
 | GET | /api/time/projects/:projectId/work-items | Supabase | Tasks plus presets (meeting, review, admin, other); needs `access.roadmap` |
+| GET | /api/time/projects/:projectId/loggers | Supabase | "Who can log time here": everyone with `time.log` and the option their time goes to by default; project admins and owners only (404 otherwise); placed talent masked or left out for non-parties |
 | GET | /api/time/me/running | Supabase | The caller's running entry or `null` |
 | GET | /api/time/me/entries · /me/summary · /me/timesheets | Supabase | Own entries (paged, ≤ 200) / totals by day, context, project and sheet status / own timesheets (200 newest) |
 | GET | /api/time/me/overview?tz= | Supabase | `can_log`, `approver_mode`, contexts with the current sheet, approvals waiting, workspaces the caller administers |
 | GET·PUT | /api/time/me/preferences | Supabase | Display timezone and week start |
+| GET | /api/time/me/projects | Supabase | The projects the caller can log on (`time.log` and at least one option), most recently logged first, at most 200, with the remembered default kind (30 s cache) |
 | POST | /api/time/entries/start · /api/time/entries | Supabase | Start a timer / add time manually (201). A second running timer is 409 `TIMER_ALREADY_RUNNING` |
 | POST | /api/time/entries/:id/{stop,pause,resume} | Supabase | Timer controls (200) |
 | GET·PATCH·DELETE | /api/time/entries/:id | Supabase | Read / edit (`expected_updated_at` required) / delete |
@@ -257,9 +259,10 @@ and older app bundles still call. Every route carries `SupabaseAuthGuard` +
 | GET | /api/time/timesheets/:id | Supabase | Sheet detail: entries, events, rules, routing, freeze preview for deciders, allowed actions |
 | POST | /api/time/timesheets/:id/{submit,withdraw,approve,return,reopen,request-reopen} | Supabase | Transitions (`expected_revision`; `note` required for return and a decider reopen) |
 | GET | /api/time/approvals · /approvals/count | Supabase | Approval queue across workspaces (`status=submitted\|decided`, `since`, `scope_kind`) / badge count |
-| GET | /api/time/reports/{entries,summary} | Supabase | Ledger by `scope=team:\|project:\|workspace:\|engagement:<id>` |
+| GET | /api/time/reports/{entries,summary} | Supabase | Ledger by `scope=team:\|project:\|workspace:\|engagement:<id>`; `group_by` day, week, member, project, task or context |
 | GET | /api/time/reports/export · /audit-export | Supabase | CSV/XLSX file download (`time_reports_export`; audit `time_audit_export`) |
-| GET·PUT | /api/time/policies/workspaces/:workspaceId | Supabase | Workspace time policy (managers; `?tz=` materialises on GET) |
+| GET·PUT | /api/time/policies/workspaces/:workspaceId | Supabase | Workspace time policy. Managers edit, and a manager's GET with `?tz=` materialises a missing row; any workspace member reads it with `can_edit: false` and never creates it |
+| GET | /api/time/policies/workspaces/:workspaceId/history | Supabase | The policy's audit rows and those of the workspace's team overrides, newest first (managers; not plan-gated) |
 | GET·PUT·DELETE | /api/time/policies/teams/:teamId | Supabase | Team override (managers read; owner-only fields; DELETE owner, 200) |
 | POST | /api/time/cron/run | Public +CronSecret | Hourly sweep once its Cloud Scheduler job exists ([rollout step 9](../13-proposals/time-management/migrations-and-rollout.md#apply-and-deploy-sequence)): 24 h auto-stop, 10 h notice, auto-submit, finish auto/self sheets, reminders (200) |
 

@@ -1,14 +1,182 @@
 # UX
 
-> **⚠️ Proposed — not built.**
+> **⚠️ Built, held unmerged.** The web PR implements this page on the local branch `feat/time-web` (2026-10-06), based on backend PR-1 (`feat/time-pr1`); it merges after PR-1, at [rollout step 7](./migrations-and-rollout.md#apply-and-deploy-sequence). [As Built in the Web PR](#as-built-in-the-web-pr) lists every place the build differs from, or settles a question left open by, the sections below, the copy the build added, the decisions D79–D86 and the backlog. When the web PR merges, the shipped behaviour is described in [Teams and Time › On the web](../../11-domains/teams-and-time/README.md#on-the-web) and [Web › Routing › Time](../../04-web/routing-and-access.md#time).
 
 > **Last updated:** 2026-10-06 · **Status:** draft
 
-> Backend PR-1 is built and held unmerged; this page is the web PR's spec. Two rows below were aligned with the built backend on 2026-10-06: the weekly-limit indicator (D65) and the account-deletion copy (D70).
+> This page is the web PR's spec. Rows aligned with the built backend on 2026-10-06: the weekly-limit indicator (D65) and the account-deletion copy (D70). Statements the web build proved wrong are corrected inline and tagged "(as built)".
 
 Time leaves the team pages for one personal **Time** page at a bare `/time` (L27, CHANGE-10), where everyone logs, submits and approves, whatever the time is for. A card is one person's **sheet scope** for one period (L26, CHANGE-2); each entry's **For** tag says who approves it (L57); there are four statuses (L56); approvers who don't log get approver mode, not an empty week (L36); client hours are one identity-free surface (L22, CHANGE-7). Team pages keep Report, Rates, Payouts and pay cut-offs (L14), and every old link redirects. Component paths are under `web/src/`, and `file:n` is a line in that file; L-n, CHANGE-n, D# and E# ids are explained in the [pressure-test log](./pressure-test-log.md).
 
 Part of the [time management proposal](./README.md).
+
+## As Built in the Web PR
+
+The web PR is the local branch `feat/time-web` (worktree `prdigy-web`), branched from `feat/time-pr1`, one commit per work package, `web/**` only, not pushed. It is **built and held**: it merges at rollout step 7, right after PR-1. D79–D86 are the web build plan's binding decisions; rows without a number record a package's documented deviation. Where a row here disagrees with the spec sections below, this row wins.
+
+### Decisions D79–D86
+
+| # | Decision |
+|---|---|
+| D79 | Every time notification, email and push links to the Time pages (PR-1 A13): timesheet types `/time/timesheets/<id>`, comment and timer notices `/time?entry=<id>`, payments `/time`, approval digests `/time#waiting`. PR-1 and the web PR merge in one cutover, so the D29 team-page gap links are gone; links already stored keep resolving through the redirect stubs |
+| D80 | `invoice_id`, `invoice_number` and `invoice_status` on `TIMESHEET_HAS_SETTLED_ENTRIES` go only to callers who can see cost. A member reopening their own `auto`/`self` sheet gets the reason, `paid_outside` and `payout_id` only, so a worker never learns client invoice numbers. With no invoice reference the web says "This time is already being billed, so it can't be reopened." and links nothing |
+| D81 | A "confirmed" policy-history row reads "Confirmed (no changes)". Week-grouped exports get no Week column (`group_by` shapes the summary only). The `POLICY_WEEKLY_LIMIT` warning never says hours are cut; as built it reads "<label> has a 40h weekly limit. You've logged 41h this week." |
+| D82 | Comment and timer links are `/time?entry=<id>` for everyone, deciders included; the Time page's entry modal opens any entry the viewer can see. Up to 30 s of staleness in `me/projects` (A9) is accepted |
+| D83 | In the decision dialogs, **Return to <First>** and a decider's **Reopen** stay disabled until the note has non-blank text, with the helper "Add a note so <First> knows what to change." ("the person" without a name) |
+| D84 | Project › Time › Everyone rows are read-only. Opening someone else's entry from a project report needs a backend `assertViewEntry` branch for `time.view_team_logs` with L21/L22 redaction ([backlog](#backlog)) |
+| D85 | The overview's contexts carry their resolved policy (`timezone`, `week_start`, `period_kind`, `period_anchor`, `reminder_days`; null for `personal`), and `TimesheetSummary` carries `reminder_days` (as built: a submitted or approved sheet's `policy_snapshot`; an open or returned sheet's live scope policy, which the auto-submit and reminder checks read, since an open sheet's snapshot is empty), so the web stops inferring a context's zone from its sheets and "sends itself <date>" is exact. The web reads them when present and keeps its fallbacks when a server lacks them (PR-1 follow-up A-5, TypeScript only) |
+| D86 | `/time` gains `?view=list\|month`. Month's own navigation writes `?view=month`, so a reload stays in Month; a `?week=` link without `view` opens List (the "Submit last week" nudge needs its card); bare `/time` opens the person's remembered view (`timeView:me`) |
+
+### Data layer, errors and chrome
+
+| # | Topic | As built |
+|---|---|---|
+| — | Keys | The person's own keys and the approval queue carry the user id (`["time","me",<resource>,userId,…]`): sign-out does not clear the query cache, so a second account in the same tab would otherwise see the first one's timer |
+| — | Freshness | Every time query refetches on mount (the app default does not) and retries only a network error or a 5xx; a 4xx is an answer. The `entry` event also refreshes `me/projects`, whose order and remembered default a write moves |
+| — | axios | All five time 403s that have inline copy (`NO_LOGGING_CONTEXT`, `MANUAL_ENTRIES_DISABLED`, `TIME_ENTRY_NO_PROJECT_ACCESS`, `TIME_ENTRY_NOT_ON_PROJECT_TEAM`, `TIME_ENTRY_NOT_WORKSPACE_MEMBER`) skip the permission toast and the console error, not only `NO_LOGGING_CONTEXT`. The three flow 409s are not logged. Plan limits still prompt |
+| — | Writes and exports | Write bodies are whitelisted per DTO, so spreading a view into a PUT never trips `forbidNonWhitelisted`. Exports decode a Blob error body themselves; the filename comes from `Content-Disposition` (PR-1's CORS exposes it), else `proyekto-time-<scope>-<from>-to-<to>.<csv\|xlsx>` |
+| — | Notification labels | One table, `lib/notificationLabels.ts`, for the bell and `/notifications`. The five historical `time_log_*` types read "(older) <label>" in a muted tone; the shared fallback body is "You have a new update." |
+| — | Sidebar and search | The Time item and the search entry stay hidden while the overview loads, so they never flash in |
+| — | Floating timer | The allowlist is matched by whole segment. Rows never poll the running timer themselves (the page and the floating timer drive the poll). Its second line shows the project and the entry's read-only For chip. Pause/Resume replace the old "Break" wording; the toasts keep the old copy ("On break — the work timer is paused.", "Back to work — 6m of break logged.", "Timer stopped.") |
+| — | Global search `/` shortcut | Uses the Time page's `overlayOpen` check, which ignores the always-mounted, inert mobile nav drawer |
+
+### Timer and For
+
+| # | Topic | As built |
+|---|---|---|
+| — | Remember | `remember: true` rides on the start or add itself, not a separate `PUT logging-for` (same server path, one request fewer) |
+| — | One option | Never sent: the start or add posts no `logging_for`, so the server re-resolves fresh and a second option that appeared within the 30 s cache opens the picker instead of being skipped (L38) |
+| — | Switch | The For is resolved **before** "Stop *X* and start this?", so cancelling the picker or hitting a 0-option project never leaves the person with no timer. Switch stops only the timer the prompt named; if another device replaced it, the prompt reopens on the new one |
+| — | Chip note | "Only option on this project" for a single option; "Same approver and rate either way" only where the resolver collapsed several |
+| — | Unavailable team rows | Named from the backend's `workspace_name` ("Prodigitality's plan doesn't include timesheets.", "Prodigitality has time tracking off for this team."); without it, "This team's workspace plan doesn't include timesheets." / "Time tracking is off for this team." |
+| — | `workspace_tag` | The governing workspace's name, as the resolver sends it (backend D-row), not the project's workspace |
+| — | Long timers | The old > 16 h stop confirm is dropped: at 10 h an entry joins Needs review and the cron stops it at 24 h |
+| — | Task timer button | Hidden while the project's options load and on a failed read, not only at 0 options |
+
+### Entries, forms, edits and Month
+
+| # | Topic | As built |
+|---|---|---|
+| — | Order and grouping | Newest day and newest entry first (`order="oldest"` exists). Needs review rows are pulled out of their day, so a day header can read lower than the day strip |
+| — | Columns | No Status column (the accent bar, an sr-only status word, a Running / On break pill and the 🔒 chip carry it) and no Amount column by default |
+| — | Row actions | Locked rows: View details and Comment only. A running row: Stop, View details, Comment, Change task, Delete, Open task; Edit is disabled with "Stop the timer to edit its times." The row menu is named "Entry actions" |
+| — | Entry detail | No per-entry review. Adds the sheet line and link, the lock and Needs-review sentences, an "Approved time" row, "Estimated cost … (final at approval)" or "Amount at approval", and a web-only Rate row for cost viewers. The Billed badge comes from `locked_reason === 'billed'`, so a paid and billed entry shows Paid only |
+| — | Presets | "General Time / No Task" became the presets: a task or a preset is required, so nothing is logged as `other` silently |
+| — | Quick add | "Task or preset ▾" opens the task picker in select mode (the button shows the project muted); the day menu offers Today, Yesterday and five more days, greys days before the retroactive floor and ends with the reason; older dates go through More options. Desktop only (≥ 640 px) |
+| — | Times | Typed times are the context's wall clock, with a hint when its zone differs from the device's. 24-hour times throughout |
+| — | Locked period on Add time | Also gets the inline Withdraw, with the timer's copy |
+| — | Archived projects | Listed last and tagged "Archived", not hidden (the resolver still allows logging) |
+| — | Month view | Month only; the old Week hour grid is dropped. Storage key `timeView:me` (`list \| month`) |
+| — | Change For | Checks each row's day with `GET logging-for?at=` for a target agreement (at most 50 checks); the refusal reads "Logged before this agreement started." with no date, because the option carries no assignment start. A stale row is retried once; a cross-project selection offers only the options every project shares; exactly one option is preselected |
+| — | Edit and delete | A running timer's end may stay empty; setting it stops the timer. A delete that 404s counts as done |
+
+### Timesheets, approvals and the review screen
+
+| # | Topic | As built |
+|---|---|---|
+| — | Label length | Cards cut at 32 characters, chips and approval rows at 22 ("Prodigitality Services Inc. Team" fits a card in full) |
+| — | Weekly checks | The Submit sheet's limit warnings and the review screen's weekly-limit line run only on weekly sheets, the one period where the sheet total is the week total; longer periods still get the exact over-the-limit panel from the freeze preview |
+| — | Bulk approve | Rows with `flags_partial` can't be selected ("Not checked against the limit yet. Open it to review."). Withdraw has no confirm (it is reversible). `TIMESHEET_TRANSITION_INVALID` with reason `state` or `freeze_*` shows the stale banner |
+| — | E27 tags | Set on the web: the approval queue never receives the current workspace, so a row is tagged when its policy workspace differs from the one the viewer is in |
+| — | Review header | The agreement rules line and the A1 "Goes to …" line show together. A non-member reads "Rules from this agreement"; approver words are "team owners & admins approve", "workspace owners & admins approve", "the hirer approves", "approves itself", "no approval needed" |
+| — | Review flags | "Added later" is not counted on `legacy_migration` sheets (every imported row was created at migration time) |
+| — | Member's view | Read-only (`readonly` mode) with "Open in Time →"; Submit/Resubmit is offered on their own open or returned sheet |
+| — | Over-the-limit panel | Its head uses the freeze preview's rounded total and `over_cap_seconds`, so it always agrees with its checkbox |
+| — | Settled refusal links | "Open the invoice →" goes to the project's Invoices tab (`/engagements/finance/invoices?projectId=<p>`); there is no read-only invoice route. "Open the payout →" goes to the team's Payouts page (`/teams/<t>/time/payouts`). Native drops both |
+
+### The Time page
+
+| # | Topic | As built |
+|---|---|---|
+| — | Toolbar | The page renders its own row ("[▶ Start timer] [+ Add time] For: [All ▾] [List \| Month]") under the running bar; the timer bar draws only the running state |
+| — | Phones | Start timer and Add time move to a FAB ("Track time"); the approver-mode pill stays in the header |
+| — | Month | Replaces the cards too (cards belong to a view week) |
+| — | Fix | Filters to the whole sheet, so a monthly or two-week sheet can be fixed outside the view week; the filter ends when the sheet is resubmitted |
+| — | Navigation | Week steps and `?entry=` use `replace`, so Back leaves the page. "This week" is a disabled button on the current week. Day buttons show the date under the weekday. `j`/`k`/`t` work with the header mounted; each step shows a brief skeleton (no placeholder data) |
+| — | Zone | A context's zone comes from D85's overview fields, else from its sheets (62 days), else the person's saved timezone |
+| — | Pills | The approver-mode pill is hidden when `can_log` is false. The Waiting pill scrolls to and focuses the section without writing `#waiting` |
+| — | Limit banner | Shown only for one governed context without a project filter; under "All" there is nothing exact to read |
+| — | Confirm card | Not shown for workspaces without `time_tracking` (there is no policy to confirm). With tracking off, "Looks right" sends only `{confirm, tracking_enabled: false}` |
+| — | P1 plan notice | Uses the Plan copy table sentence ("Timesheets and approvals are part of Pro. …"), dismissed per workspace and kind under `time-plan-notice-dismissed:<kind>:<workspaceId>` |
+| — | ⚙ menu | Native `<select>`s (UTC always offered), named "Your time settings" |
+
+### Settings, team, project, dashboard, plans
+
+| # | Topic | As built |
+|---|---|---|
+| — | Workspace policy | Adds a **Weekly limit** row ("Leave empty for no limit. People see a warning past it; it never blocks or cuts time."). A manager's GET with `?tz=` materialises the row (A4: a member's never does); "Detected from your browser" and a confirming save still show until a person saves. The form enforces a reminder of 1–14 days (the DTO accepts 0). History uses the radio words ("twice a month") |
+| — | Team rules | Every inherited row reads "Use <workspace>'s policy (…)". No override rows for weekly limit or reminder. The owner's last reset is a DELETE; an admin's is a PUT of nulls. Team rules and Money show only while team time is on, and only to managers (admins see Money read-only). Billing and pay cut-offs always sit in Money, beside default currency. Approvers save on selection. No workspace-policy read (P9 managers have no seat) |
+| — | Team money | Unapproved time no longer locks Pay: the row reads "2h not yet approved" with a Review link to the Report. Payouts reads a window from the first of the month two months back, with "Some approved time from before Aug 1, 2026 isn't paid yet. [Show older time]". Without `time_payouts`, history and void stay. The rate dialog says a rate prices approved time |
+| — | Team › Time | Report entry rows open read-only in place. Pay cut-offs are range presets when payouts are on. A member who opens Rates or Payouts by URL gets the refusal card with "Open in Time". With team time off, managers get the off card on every sub-page, the Report included. Header "Time · <team>" with a "Time settings" link |
+| — | Redirects | `team-logs?log=X` keeps the entry: `/time/timesheets/<sheet>?entry=X`. "Decider" means `GET /time/approvals/count` above 0 (with nothing waiting, `#waiting` would do nothing). Finance › team › Time maps an old `?member=` to `person` and opens an old `?log=` read-only in place |
+| — | Project › Time | Team money links ("<Team> · Payouts · Rates") sit above the report, for teams the caller manages; the project page never opens `PayMemberModal`. A caller who only logs is redirected to `/time?project=` with no view, and gets the link card only when they ask for a view they can't open. A viewer or commenter, or a client at `none`, gets "Time on this project isn't open to you." `time.view_team_logs` is labelled "View everyone's time". A masked `PersonRow` also drops its role, team and origin chips |
+| — | Who can log | Attaching or detaching a team, removing a member and saving project permissions all run `invalidateTime(…, "policy")`, so Who can log and the For options refresh |
+| — | Dashboard | Rows come from `GET /time/approvals?status=submitted&limit=2`, whose total is N. "Submit last week" names its dates for any period that isn't last week ("Submit Sep 1–30 (120h)"), reading 35 days back. A decider whose dashboard is the empty state gets no card (badge and notifications only) |
+| — | Plans and account | /pricing gains a "Time tracking" group and a static "Personal time tracking" row ("A timer and time entries just for you."); the Usage page groups its features and the admin "Team" group is "Teams and time"; `PlanLimitNotice` prefers the ux time copy on the web. The delete-account open-timesheets sentence shows unconditionally (the preflight carries no count) |
+| — | Engagement page | Full worker names ("Ask a project admin to add Leo Cruz."); the L37 warning always shows (the hirer can't see the timer); optional Role, Starts, Ends and Reason fields; no team picker (the seat's signed team); the "What happens next" card is gone |
+| — | Native | The team sub-nav keeps Report only; report export and pay cut-offs are hidden; the Pay dialog points to the web |
+
+### Copy the build added
+
+All of it is in the ux voice, routed through `lib/timeErrors.ts` / `lib/timeFormat.ts` or a package `*_COPY` table, and passes the native sweep (no contract, rate, payout or invoice on native, no amounts on agreement contexts, no `/engagements` links).
+
+| Surface | Strings |
+|---|---|
+| Time page | "Timesheets in this week" · "Waiting for you · N" · "Track time" · "Show the whole week" · "Showing the <label> timesheet for <period>. Change what the note asks for, then Resubmit." · For filter "For: All", fallbacks "This team" / "This workspace" / "Your agreement" · "Your time settings" · "No time entries match this view." |
+| Entries | "Over 10 hours. Check the end time." · "N entries ran over 10h" · "Over 8 hours this day" · "Estimated. Final at approval." · "Stop the timer to edit its times." · locks: "This time has been paid, so it can't change." (native "This time has already been paid, so it can't change."; older time "This time was paid outside Proyekto, so it can't change."), "This time is on an invoice, so it can't change." (native "This time is already being billed, so it can't change."), "This time was approved, so it can't change." |
+| Forms | "Use 1:30, 90m or 1.5h." · "Pick a project, then a task, or what you're doing if it isn't on a task." · "No projects you can log time on yet." · "Times are in <tz>." · "Added 1h 30m." |
+| Edit, Change For | "Edit time entry" · "Delete time entry?" · "This can't be undone." · "Time entry updated." · "Time entry deleted." · "Logged before this agreement started." · "These entries are on projects with no choice in common. Change them one project at a time." |
+| Timer and For | "Choose who this time is for" · "You already have a timer running." · "Approval is off here, so this approves itself." · warnings "Your agreement with Acme allows 40h a week. You've logged 43h 30m.", "<label> has a 40h weekly limit. You've logged 41h this week.", "This time overlaps another entry." |
+| Sheets and approvals | Submit sheet: "Check before you send", "1 entry ran 10h or longer.", "Wed Sep 30 is over 8h (11h).", "1 entry was added after its day." · bulk "Approve 3 timesheets" / "All of them are approved together, or none are if one has changed." · "Not checked against the limit yet. Open it to review." · toast "Asked to reopen. The approvers have your note." · locked chip "Approved Oct 6. Ask to reopen to change." |
+| Review screen | "Rules from this agreement" · "Open in Time →" · "No time on this timesheet yet." · "Nothing has happened to this timesheet yet." · "Not on a project" |
+| Workspace settings | "Only workspace owners and admins can change the time policy." · "Nobody has confirmed these settings yet. Save to keep them, or change them first." · "Time policy saved" · "Confirmed (no changes)" |
+| Team settings and money | "Team rules saved" · "Only the team owner can change approvers, approval, the retroactive window and rounding." · "Member rates" / "A rate prices a member's approved time on a project." / "View time" · "2h not yet approved" · "Recorded payments stay readable here, and can still be voided." |
+| Project | "Time on this project isn't open to you." / "Ask a project admin if you need to see it." · "Approved hours from the delivery team, at the detail your agreement allows." · "Nobody can log time here yet. Editors and above can." · "View everyone's time" |
+| Errors | `NETWORK_ERROR` "Proyekto couldn't reach the server. Check your connection and try again." · native `TEAM_RATES_REQUIRE_APPROVAL` "Approval has to stay on for this team." · an approved period: "This week's Acme timesheet is approved, so its time can't change." · non-weekly sheets say "This period's …" instead of "This week's …" · settled payouts without a number read "in a payout" |
+
+### API the web PR relies on (PR-1 additions)
+
+Added to PR-1 as TypeScript-only commits for the web; every field is optional on the wire.
+
+| Item | Shape |
+|---|---|
+| A1, A2 | `routing_preview {approver_scope, cost_money, deciders ≤ 5}` on the member's own open/returned sheet, `deciders ≤ 5` on their submitted sheet, in the detail and on `me/timesheets` |
+| A3 | `ApprovalRow.flags {needs_review, over_cap_seconds, running}` plus `flags_partial` when the 5 s budget ran out |
+| A4 | Any workspace member reads `GET time/policies/workspaces/:id` with `can_edit: false`; a member's read never materialises the row |
+| A5 | `group_by=week` on report entries, summary and export, in the scope's policy timezone and week start |
+| A6 | Warning `POLICY_WEEKLY_LIMIT {limit_minutes, logged_minutes, label}` on team and workspace writes (indicator only, D65) |
+| A7 | `GET time/policies/workspaces/:id/history` (managers): the policy's and its team overrides' audit rows |
+| A8 | `engagement_id` on agreement options and the resolved policy, for "View terms →" |
+| A9 | `GET time/me/projects`: loggable projects, most recently logged first, ≤ 200, with `default_kind` |
+| A10, A12 | `STALE_REVISION` on bulk approve carries `timesheet_id`; `TIMESHEET_HAS_SETTLED_ENTRIES` carries `payout_id`, `paid_outside` or (cost viewers only, D80) the invoice reference |
+| A11 | `GET time/projects/:id/loggers`: Who can log time here (project managers; masked per L22) |
+| A13 | The D79 links |
+| A-4 | CORS exposes `Content-Disposition`; team `unavailable[]` rows carry `workspace_name`; a failed contract-week read never blocks a write; report pages past the end return an empty page with the real total |
+| A-5 (D85) | `OverviewContext` gains `timezone`, `week_start`, `period_kind`, `period_anchor`, `reminder_days` (null for `personal`); `TimesheetSummary` (`me/timesheets`, approval rows, the detail's `sheet`) gains `reminder_days`: `policy_snapshot` once submitted or approved, the scope's live policy while open or returned. The web's `sheetStatusView` reads it, so the /time cards and the review screen agree on "sends itself <date>" |
+
+### Backlog
+
+Decided, and not in this PR:
+
+| Item | Needs |
+|---|---|
+| P11 accountant access to time reports | The backend `teamScope` admits team managers only, and Finance › team › Time shows to team admins only; either widen it to finance-book `view_costs` holders or amend P11 |
+| "Client sees" for a project manager who isn't on the client agreement | A backend field listing every client agreement's level on the project |
+| Per-week limit lines on longer periods | The per-week logged maxima in the sheet detail, so the review screen and Submit sheet can show one line per week |
+| D84 | An `assertViewEntry` branch for `time.view_team_logs` holders with L21/L22 redaction, so Project › Time rows can open |
+| An invoice deep link | A read-only invoice route; today the settled refusal lands on the project's Invoices tab |
+
+Smaller follow-ups recorded by the packages, none blocking:
+
+- A `me/limits?for=` read, so the limit banner can show under "All" and with a project filter.
+- The plan-downgrade line sees only the view week's sheets.
+- Actor names in the review screen's history (events carry ids only).
+- The report has no project filter (`ReportQueryDto` has no `project_id`), and the grouped Billable tile needs a backend `billable_seconds`.
+- Team override rows for the weekly limit and the reminder; whether the team Report stays readable while team time is off.
+- Free plus a stored biweekly anchor can refuse a week-start change (`TIME_POLICY_INVALID`): add `period_anchor` to the plan-free fields, or move the anchor server-side.
+- Change For's "…started on Sep 15." needs the assignment's start on `LoggingOption`.
+- A per-section action slot on `ReportSections`, so `PayMemberModal` can open per team section on Project › Time.
+- The read-only "Who approves this time" popovers can't take focus from inside a dialog (the shared `AnchoredPopover`/`AppDialog` trap).
 
 ## Personas
 
@@ -16,7 +184,7 @@ The **Time** item sits in the primary sidebar (`components/layout/sidebar/execut
 
 | # | Persona | Lands on | Can do | Empty state and notes |
 |---|---|---|---|---|
-| P1 | Solo Free owner | `/time`, timer bar and list, no cards ("Just me" has no sheets) | Timer, Add time, edit, delete, presets | "Track time on your tasks. Start a timer from any task, or add time you've already worked." One dismissible owner-only `PlanLimitNotice`: "Timesheets and approvals come with Pro." |
+| P1 | Solo Free owner | `/time`, timer bar and list, no cards ("Just me" has no sheets) | Timer, Add time, edit, delete, presets | "Track time on your tasks. Start a timer from any task, or add time you've already worked." One dismissible owner-only `PlanLimitNotice`: "Timesheets and approvals come with Pro." (as built: the [Plan copy](#copy) sentence, "Timesheets and approvals are part of Pro. Upgrade Acme to send time for approval.") |
 | P1b | Free member, editor on the owner's project (L31) | `/time`, "Just me" | As P1 | **Why?**: "Your workspace's plan doesn't include timesheets; this time is just for you." |
 | P2 | Small Pro owner who logs | `/time`, a workspace card ("Acme") | P1 + submit, Waiting for you, workspace policy | Confirm card on first visit (L28). Sole approver: "You're the only one who can approve time here. Your timesheets send and approve themselves 1 day after each week ends, until someone else can approve." Allowed because a workspace sheet carries no cost money (CHANGE-9). |
 | P3 | Team member who only logs | `/time`. Pro: the workspace card, entries tagged with the team in **For**. Business team override (Prodigitality's seed): the team card ("Prodigitality Services I…"). | Log, submit, withdraw, fix Returned, ask to reopen, comment | "You log time for Prodigitality Services Inc. Team. Start a timer from a task, or add time." Today's uncurated fallback loggers keep the team option: M1 back-fills their `project_team_members` rows (D16). |
@@ -32,13 +200,14 @@ The **Time** item sits in the primary sidebar (`components/layout/sidebar/execut
 
 ## The Time Page
 
-**Route files (CHANGE-10):** `routes/_execution/time/index.tsx` (plus an optional `time/route.tsx` layout with `<Outlet/>`) and `routes/_execution/time/timesheets/$timesheetId.tsx`, following `_execution/engagements/{route,index}.tsx`. A sibling `time.tsx` would become the parent layout of the review route. Both render in the same `_execution` shell as `/meetings` and `/command-center`. Accounts with no workspace (12 of 43 prod profiles) still reach the page.
+**Route files (CHANGE-10):** `routes/_execution/time/index.tsx` (plus a `time/route.tsx` layout with `<Outlet/>`; as built it holds the auth `beforeLoad` and `DashboardShell`) and `routes/_execution/time/timesheets/$timesheetId.tsx`, following `_execution/engagements/{route,index}.tsx`. A sibling `time.tsx` would become the parent layout of the review route. Both render in the same `_execution` shell as `/meetings` and `/command-center`. Accounts with no workspace (12 of 43 prod profiles) still reach the page.
 
 | Search param | Effect |
 |---|---|
 | `?for=<kind>:<id>` | Filters to one context (`assignment:<id>`, `team:<id>`, `workspace:<id>`, `personal`) and sets the day strip's timezone and week start |
 | `?project=<id>` | Filters to one project. Target of "Your time on this project →". |
 | `?week=YYYY-MM-DD` | The view week, so the view can be linked |
+| `?view=list\|month` | (as built, D86) The view the link opens. Month's navigation writes `month`; a `?week=` link without `view` opens List |
 | `?entry=<id>` | Opens `TimeEntryDetailModal`. A miss shows "This time entry doesn't exist or you can't open it." (404, CHANGE-17) |
 | `#waiting` | Scrolls to Waiting for you |
 
@@ -112,7 +281,7 @@ The **Time** item sits in the primary sidebar (`components/layout/sidebar/execut
 | `scope_kind` | Web label | Native label |
 |---|---|---|
 | `workspace` | Workspace name ("Acme") | Same |
-| `team` (only with an active Business override) | Team name, cut to 22 characters + "…", with a full-name tooltip | Same |
+| `team` (only with an active Business override) | Team name, cut to 32 characters + "…" (as built; chips cut at 22), with a full-name tooltip | Same |
 | `engagement` | Counterparty + " · agreement" ("Acme Corp · agreement") | Counterparty only ("Acme Corp") |
 
 Card states are under [Submit, Return, Reopen](#submit-return-reopen). A card routed `auto` or `self` shows "Open · sends itself <date>", where the date is period end + `max(reminder_days,1)` days (L33).
@@ -142,7 +311,7 @@ Card states are under [Submit, Return, Reopen](#submit-return-reopen). A card ro
 **Quick add:** `[ Task or preset ▾ ] [ 1:30 ] [ Yesterday ▾ ] [For: Prodigitality S… ▾] [Add]   More options →`
 
 - The duration accepts `1:30`, `90m` or `1.5h`. The start defaults to the end of that day's last entry, or 09:00 in the context's timezone.
-- **More options** opens `ManualLogModal` for exact in and out times and breaks.
+- **More options** opens `ManualLogModal` (as built: `ManualEntryModal`) for exact in and out times and breaks.
 - A disabled control gives its reason inline: "Manual time is off in your agreement with Acme." (`MANUAL_ENTRIES_DISABLED`) or "Prodigitality accepts time up to 7 days back." (`RETROACTIVE_WINDOW`).
 
 ### For Chip
@@ -176,10 +345,10 @@ Card states are under [Submit, Return, Reopen](#submit-return-reopen). A card ro
 | Item | Rule |
 |---|---|
 | Icons | Team: `Users` + team name. Workspace: `Building` + workspace name. Agreement: `Briefcase` + counterparty, with no "contract" wording on native (`contractBannerText.ts`). Just me: `User` + "Just me". |
-| Workspace tag (L57) | A grey tag with the project's workspace name, shown only when the project's workspace differs from the context's `policy_workspace_id` (as with cross-workspace teams). This rule is for the chip only. Approval rows and dashboard rows instead tag the sheet's policy workspace when it differs from the viewer's current workspace (E27). |
+| Workspace tag (L57) | A grey tag with the project's workspace name (as built: the governing workspace's name, as the resolver sends `workspace_tag`), shown only when the project's workspace differs from the context's `policy_workspace_id` (as with cross-workspace teams). This rule is for the chip only. Approval rows and dashboard rows instead tag the sheet's policy workspace when it differs from the viewer's current workspace (E27). |
 | Label length | Cut from real data: chips at 22 characters, cards at 32, each + "…" with a full-label tooltip |
 | Locked chip | 🔒 "Submitted Oct 6. Withdraw to change." |
-| Bulk "Change For…" | Works on selected rows whose current and target sheets are both Open or Returned (L2). A change *into* an agreement skips entries logged before it, with the rows disabled: "Logged before this agreement started on Sep 15." (L58). The dialog says "Rates are re-estimated for the new choice." |
+| Bulk "Change For…" | Works on selected rows whose current and target sheets are both Open or Returned (L2). A change *into* an agreement skips entries logged before it, with the rows disabled: "Logged before this agreement started on Sep 15." (L58; as built without the date, which `LoggingOption` does not carry). The dialog says "Rates are re-estimated for the new choice." |
 
 **"Who approves this time" popover**, opened from any chip:
 
@@ -295,10 +464,10 @@ History: Imported from per-entry review Sep 29 · Returned Sep 30 "Split Thu" ·
 | Grid redaction (L21, CHANGE-8) | A reader without `access.time` on a project sees its hours merged into "Projects you can't open". Their entries list shows only interval, duration and work-item kind; task title and note read "A project you can't open". Under Axis 7 a decider never sees another person's email. |
 | Cell click | Filters entries to that project and day; merged cells filter to the merged rows |
 | Amounts (L64) | "Estimated cost" per currency before approval, "Amount at approval" after. Only when `costVisible`. Never on native for agreement sheets. Never to client-side admins. |
-| Weekly limit line (D65) | The "⏱ Weekly limit 40h (Prodigitality) · 38:15 logged" line on a workspace or team sheet is an **indicator only**, read from `rules.weekly_limit_minutes` and the logged total. The policy limit never cuts payable hours there, so the line never says or implies that hours will be cut, and it never adds the over-the-limit panel. |
+| Weekly limit line (D65) | The "⏱ Weekly limit 40h (Prodigitality) · 38:15 logged" line on a workspace or team sheet (as built: weekly sheets only) is an **indicator only**, read from `rules.weekly_limit_minutes` and the logged total. The policy limit never cuts payable hours there, so the line never says or implies that hours will be cut, and it never adds the over-the-limit panel. |
 | Over the limit (L12) | Adds the panel below only when a cap that cuts payable time is exceeded: the agreement's own weekly limit on an agreement sheet, or a team member's weekly or monthly cap (team member rates). Rounding happens per entry first, then the cap. Ticking sends `approve_overtime: true` and sets "Overtime approved". |
 | Approve… | Dialog with an optional note (and the overtime box when it applies). Toast: "Approved · 38:15 frozen". |
-| Return… | Note required. Placeholder "What should Maria change?"; button **Return to Maria**. |
+| Return… | Note required. Placeholder "What should Maria change?"; button **Return to Maria**, disabled until the note has text (D83). |
 | Submitter's view | Withdraw (while Submitted), Reopen (own `auto`/`self` sheet) or Ask to reopen, in place of the decision buttons |
 | Stale revision | "Maria changed this timesheet while you were looking. [Review the latest]" (`STALE_REVISION`, using `expected_revision`) |
 | Entry comments | Reuse the `TimeLogDetailModal` thread. Comments never unlock anything. |
@@ -419,7 +588,7 @@ One `TimeReport` component, built from `TeamLogsPanel` parts (filters, `TeamLogs
 
 | Aspect | Rule |
 |---|---|
-| Filters | Range (in the scope's policy timezone), person, project, For, status |
+| Filters | Range (in the scope's policy timezone), person, project, For, status (as built: no project filter; the report API has no `project_id`) |
 | Group by | Person, project, task, day, week |
 | Totals (L11, CHANGE-5) | **Approved** sums `payable_seconds`. **Not yet approved** sums the duration of entries with no `payable_seconds`, shown separately and never added to Approved or money. **Billable** is approved hours of billable work types. **Cost** sums `amount_snapshot`, for cost viewers only. |
 | Export | `/time/reports/export` (Business, `time_reports_export`) uses the screen's authority query and column gating (L45): `rate_snapshot` and `amount_snapshot` only when `costVisible`; note, project and task titles per L21; assignment identity per L22. |
@@ -447,7 +616,7 @@ DELIVERY TEAM · agreement with Acme Corp            Approved 38:00   (hours onl
 |---|---|
 | "Mine" replaced (L55) | By the link "Your time on this project →" to `/time?project=<id>` |
 | `primaryTeamId` removed (`time.tsx:160-163`, `:943-960`) | The raw `href="/teams/${primaryTeamId}/time/payouts"` (`:627`) becomes a `toWorkspacePath` link inside each team section; `PayMemberModal` opens per team section |
-| Nav and route gate (L22) | `components/project/projectNavItems.ts:212-219` is relabelled "Time" and shown when `time.log` OR `time.view_team_logs` OR `time_client_hours_level ≠ none`, all read from `GET /api/projects/:id/my-permissions`. The route uses the same composite, replacing `RequireProjectAccess access="time"`. A user with only `time.log` lands on a link card: "Your time on this project lives in Time. [Open →]" |
+| Nav and route gate (L22) | `components/project/projectNavItems.ts:212-219` is relabelled "Time" and shown when `time.log` OR `time.view_team_logs` OR `time_client_hours_level ≠ none`, all read from `GET /api/projects/:id/my-permissions`. The route uses the same composite, replacing `RequireProjectAccess access="time"`. A user with only `time.log` lands on a link card: "Your time on this project lives in Time. [Open →]" (as built: they are redirected to `/time?project=<p>`, and get the card only when they ask for a view they can't open) |
 | Empty state (replaces "No team is attached…" at `:638-642`) | "No time on this project yet. Editors and above can track time here.", linking to Settings › Time "Who can log time here" |
 | Contract-enforcement banner (`:143-151`, `:971-990`) | Removed with C12 |
 | Client hours view | **summary:** hours by week per agreement. **detailed:** date, task and hours per entry. Never notes, identity, cost or rate. |
@@ -472,9 +641,9 @@ New route files (CHANGE-10):
 | `/w/:s/teams/:t/time` (index) | Neither | The no-access reason card (today's `route.tsx:131-157`) |
 | `…/time/my-logs` | Anyone | `/time?for=team:<t>`; `?member=`, `?preset/from/to` dropped |
 | `…/time/my-logs?log=X` | Anyone | `/time?for=team:<t>&entry=X` |
-| `…/time/team-logs?log=X` | Anyone | `/time/timesheets/<sheet holding X>` when `can_view_timesheet`, else `/time?entry=X` (a 404 card if not their own) |
+| `…/time/team-logs?log=X` | Anyone | `/time/timesheets/<sheet holding X>` (as built: `?entry=X` kept, so the entry opens) when `can_view_timesheet`, else `/time?entry=X` (a 404 card if not their own) |
 | `…/time/team-logs?member=U` | Team manager | `/w/:s/teams/:t/time?person=U` (the Report) |
-| `…/time/team-logs` (no params; the stored approval links, `teamTimePath(…,'team-logs')` at `team-time.service.ts:1973`) | Decider | `/time#waiting` |
+| `…/time/team-logs` (no params; the stored approval links, `teamTimePath(…,'team-logs')` at `team-time.service.ts:1973`) | Decider (as built: `GET /time/approvals/count` above 0) | `/time#waiting` |
 | `…/time/team-logs` (no params) | Others | `/time` |
 | `…/time/log/:id` | Anyone | `/time?entry=:id` |
 | `…/time/manage-rates[/:u]` | Team manager | Unchanged, under the Rates sub-nav |
@@ -483,7 +652,7 @@ New route files (CHANGE-10):
 | Bare `/teams/:t/settings/time` | Anyone | Kept; forwards to `/w/:s/teams/:t/settings/time` |
 | `/project/:p/time?view=team` | Anyone | `?view=everyone` |
 | `/project/:p/time?view=mine` (or no view, for a user with only `time.log`) | Anyone | `/time?project=<p>` |
-| `/engagements/finance/team/:t/time-logs` | Finance-book roles | Same path; the body becomes `TimeReport` |
+| `/engagements/finance/team/:t/time-logs` | Finance-book roles (as built: team managers; P11 is [backlog](#backlog)) | Same path; the body becomes `TimeReport`. As built, an old `?member=U` becomes `?person=U` and an old `?log=X` opens the entry read-only in place |
 
 There are no new forwarding shells. `/time` is **not** added to `toWorkspacePath` (`lib/workspacePaths.ts:51-78`), which keeps `/teams/me`-style personal pages bare. `legacyRoutePaths.ts` needs no entries, because the route shells are the mechanism.
 
@@ -493,7 +662,7 @@ There are no new forwarding shells. `/time` is **not** added to `toWorkspacePath
 |---|---|---|
 | `components/layout/sidebar/executionNavigation.ts` | Add `{key:"time", to:"/time", label:"Time", icon:Clock, match:"prefix"}` after `meetings`. `SidebarContent` drops it unless the overview allows it and badges it with `approvals_waiting`. | Navigation test |
 | `components/layout/Header.tsx` `validPaths` (`:17-44`) | Add `"/time"` | — |
-| `components/team-time/FloatingActiveTimer.tsx` | It is an allowlist (`TIMER_VISIBLE_PATH_PREFIXES`, `:16-23`, matched after `stripWorkspacePrefix`, `:68-69`). Add `/meetings`, `/task-board` and `/notifications`. **Do not add** `/work-items` (it only redirects) or `/time` (that page has its own bar); no exclusion is needed, and Timeline pages keep the timer through `/project` (E80). The "My Logs" link (`:234-241`, team-only today) becomes **"Open in Time"** → `/time?entry=<id>` for every context. | New unit test for `shouldShowOnPath` |
+| `components/team-time/FloatingActiveTimer.tsx` (as built: moved to `components/time/timer/`) | It is an allowlist (`TIMER_VISIBLE_PATH_PREFIXES`, `:16-23`, matched after `stripWorkspacePrefix`, `:68-69`). Add `/meetings`, `/task-board` and `/notifications`. **Do not add** `/work-items` (it only redirects) or `/time` (that page has its own bar); no exclusion is needed, and Timeline pages keep the timer through `/project` (E80). The "My Logs" link (`:234-241`, team-only today) becomes **"Open in Time"** → `/time?entry=<id>` for every context. | New unit test for `shouldShowOnPath` |
 | `components/layout/sidebar/TeamSidebarGroup.tsx:57-67` | "Time" for team managers when team time is on, linking to the Report. Members see no team Time item. | — |
 | `components/team/overview/TeamPropertiesPanel.tsx:121-124` | Managers → the Report (`toWorkspacePath`); members → `/time?for=team:<id>` | — |
 | `components/workspace/settings/workspaceSettingsNavigation.ts` | Add a Time item | `workspaceSettingsNavigation.test.ts` |

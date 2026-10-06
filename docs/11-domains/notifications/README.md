@@ -372,11 +372,15 @@ never turn a committed approval into an error, and Cloud Run never freezes a det
 
 The historical `time_log_approval_requested`, `time_log_approved` / `_rejected` /
 `_pending` and `time_log_day_rejected` keep push titles but are no longer emitted; the
-phantom `time_log_marked_paid` / `_marked_rejected` titles are gone. Timesheet notices link to
-`/time/timesheets/<id>`, a page the web rebuild adds (on the current web that link 404s, which
-only the account-deletion path can trigger before the time cron is scheduled). Until the web
-rebuild ships, comment and timer notices for entries logged for a team link to the team page (`/w/<slug>/teams/<id>/time/my-logs?log=<entry>` for the member,
-`team-logs` for others) and payment notices to the member's team page. The reminder and the
+phantom `time_log_marked_paid` / `_marked_rejected` titles are gone. Every time notice links to
+the bare Time pages (`timePath` in `execution/workspaces/workspace-paths.ts`, D79): timesheet
+types to `/time/timesheets/<id>`, comment and timer notices to `/time?entry=<entry>` for every
+context, payment notices to `/time`, and the `timesheets_imported` digest to `/time#waiting`.
+Rows written before the rebuild still carry the team-page links
+(`/w/<slug>/teams/<id>/time/my-logs?log=<entry>`, `…/team-logs`); the web keeps those routes
+as redirect stubs to the same pages ([Web → Time](../../04-web/routing-and-access.md#time)).
+The bell and `/notifications` read one label table, `web/src/lib/notificationLabels.ts`; the
+five historical `time_log_*` types show "(older)" before their label. The reminder and the
 10-hour notice also set a Redis marker (40 days), so deleting the bell row does not cause an
 hourly resend.
 

@@ -1,6 +1,6 @@
 # Edge Cases and Tests
 
-> **⚠️ Built, held unmerged.** Backend PR-1 implements these cases (2026-10-06); M2/M3 and the integration suites have not run against an applied database yet, and the web and Playwright rows wait for the web PR. Cases PR-1 settled differently are corrected inline and listed in [As Built in PR-1](#as-built-in-pr-1).
+> **⚠️ Built, held unmerged.** Backend PR-1 implements these cases (2026-10-06); M2/M3 are applied to dev and the integration suites passed there (prod waits for the go/no-go). The web rows are built in the web PR (`feat/time-web`, held unmerged; [UX › As Built in the Web PR](./ux.md#as-built-in-the-web-pr)); the Playwright persona rows wait for the dev persona runs. Cases PR-1 settled differently are corrected inline and listed in [As Built in PR-1](#as-built-in-pr-1).
 
 > **Last updated:** 2026-10-06 · **Status:** draft
 
@@ -150,7 +150,7 @@ Part of the [time management proposal](./README.md).
 | E80 | `/time` prefixes `/timeline` (`04-web/routing-and-access.md:178`) | `platformSurfaces.ts` matches segments (`isUnder`, `:134-135`). `FloatingActiveTimer` is an allowlist (`TIMER_VISIBLE_PATH_PREFIXES`, `:16-23`, after `stripWorkspacePrefix`, `:68-69`): `/time` is simply not added, no exclusion needed, and Timeline (`/project/…`) keeps the timer. `/work-items` dropped (redirect only). | U16 · L27 |
 | E81 | Payouts and rates in the mobile shell | `/teams` is `app` (`platformSurfaces.ts:121`); a single-segment wildcard adds `["/teams/*/time/payouts","silent"]`, `["/teams/*/time/manage-rates","silent"]` ahead of it. | U12 · L54 |
 | E82 | Old client logs on a project whose only team is off or plan-less (gap until the web PR) | The resolver offers only "Just me", so an old-client timer or manual add saves a **personal** entry where the old backend answered 403, and the team My Logs page then hides it (B11). Prod: 0 (Prodigitality is on and Business-comped). The rewritten QA script asserts the new behaviour | Critic CC14 · B12 |
-| E83 | Timesheet notice opened on the current web | `/time/timesheets/<id>` 404s until the web PR; in the gap only the account-deletion path emits sheet notices (the cron job is created at step 9). Comment and timer notices keep team-page links for team-context entries (D29) | CC14 · B13 |
+| E83 | Time notice opened on the web deployed before the web PR | `/time/…` links (D79) 404 until the web PR deploys; in the gap only the account-deletion path emits sheet notices (the cron job is created at step 9). The web PR's `/time` pages and redirect stubs close it | CC14 · B13 |
 | E84 | Old team-logs member filter with a masked worker | The alias lists a masked placed-talent worker as `masked:<assignment>` / "Delivery team member"; filtering by that id is a 400 from the old DTO. Accepted: prod has no placed talent | P15 |
 
 ## Test Plan
@@ -270,7 +270,7 @@ Run the **Verification SQL** in [migrations and rollout](./migrations-and-rollou
 
 ### Developer docs (`docs/`)
 
-**Done with PR-1 (backend side, a separate docs-only commit on the same branch, shipping with the merge):** `03-backend/api-reference.md`, `03-backend/modules.md`, `03-backend/authorization-axes.md` (Axes 5–6 rewritten, Axis 7 added), `07-data-and-db/schema-overview.md`, `11-domains/teams-and-time/README.md`, `11-domains/notifications/README.md`, `11-domains/finance/README.md`, `11-domains/finance/finance-books.md`. Everything else below, every `04-web/*` page and the in-app help wait for the web PR or their own step.
+**Done with PR-1 (backend side, a separate docs-only commit on the same branch, shipping with the merge):** `03-backend/api-reference.md`, `03-backend/modules.md`, `03-backend/authorization-axes.md` (Axes 5–6 rewritten, Axis 7 added), `07-data-and-db/schema-overview.md`, `11-domains/teams-and-time/README.md`, `11-domains/notifications/README.md`, `11-domains/finance/README.md`, `11-domains/finance/finance-books.md`. **Done for the web PR (docs-only, 2026-10-06):** `04-web/README.md`, `04-web/routing-and-access.md` (the Time routes, redirect map, wildcard matcher and `silent` money pages), `04-web/state-and-services.md` (the time data layer), `11-domains/teams-and-time/README.md` (On the web), `11-domains/notifications/README.md` (D79 links), `09-mobile/store-readiness.md`, `14-engagement/finance-navigation.md`, and `03-backend/api-reference.md` (the A4, A5, A7, A9 and A11 routes). The in-app help ships inside the web PR. Everything else below waits for its own step.
 
 | Page | Change | Ledger |
 |---|---|---|

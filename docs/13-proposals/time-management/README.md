@@ -1,6 +1,6 @@
 # Time Management Rebuild
 
-> **⚠️ Partly built (2026-10-06).** M0 and M1 are applied on dev and prod and PR-0 is deployed. Backend PR-1 (`TimeModule`, the `/api/team-time` alias) is built and **held unmerged**; M2 and M3 are **applied to dev only** (2026-10-06, fully verified); prod waits for the go/no-go. The web PR is not started. Live state per step: [Rollout Status](./migrations-and-rollout.md#rollout-status). Where PR-1 settled a question differently from this page, the page is corrected and the decision is tagged (D-numbers from the PR-1 build plan; the full list is in [backend › As Built in PR-1](./backend.md#as-built-in-pr-1)).
+> **⚠️ Partly built (2026-10-06).** M0 and M1 are applied on dev and prod and PR-0 is deployed. Backend PR-1 (`TimeModule`, the `/api/team-time` alias) is built and **held unmerged**; M2 and M3 are **applied to dev only** (2026-10-06, fully verified); prod waits for the go/no-go. The web PR is built and **held unmerged** on `feat/time-web` (based on `feat/time-pr1`); it merges right after PR-1. Live state per step: [Rollout Status](./migrations-and-rollout.md#rollout-status). Where PR-1 settled a question differently from this page, the page is corrected and the decision is tagged (D-numbers from the PR-1 build plan; the full list is in [backend › As Built in PR-1](./backend.md#as-built-in-pr-1)). The web build's deviations, its decisions D79–D86 and the backlog are in [UX › As Built in the Web PR](./ux.md#as-built-in-the-web-pr).
 
 > **Last updated:** 2026-10-06 · **Status:** draft
 
@@ -236,7 +236,7 @@ Group `team`, sort 120–126, seeded by **M0** `20261003090000_time_plan_keys.sq
 | SQL style | keys `ON CONFLICT (key) DO UPDATE SET label, description, …` (not `kind`); limits `ON CONFLICT (plan, limit_key) DO NOTHING` |
 | Old backend | Steps 1–7: the 6 new keys show as `unknown_to_code` drift (`enforced:false`, `entitlements.logic.ts:151-175`), old pages show the relabelled key. Cosmetic |
 | **PR-1** (backend-only) | `shared/entitlements/entitlement-keys.ts` (the six keys registered with M0 on `feat/time-rebuild`); PR-1 marks `time_billable_invoices`, `time_team_rules`, `time_payouts`, `time_reports_export` and `time_audit_export` `enforced: true`, `time_approval_chains` stays `false` (D40). Display effect only: the Usage page and plans matrix report them as enforced |
-| **Web PR** | `planLimits.ts`, `pricing.ts` (`:152,436`), `WorkspaceUsagePage.tsx`, `/admin/plans`, their Vitest files (`entitlements`, `planLimits`, `pricing`, `PlanLimitNotice`, `WorkspaceUsagePage`), help docs (tier names only; no prices, "per user", "/month" or pricing links). One commit across both would break L5 |
+| **Web PR** | `planLimits.ts`, `pricing.ts` (`:152,436`), `WorkspaceUsagePage.tsx`, `/admin/plans`, their Vitest files (`entitlements`, `planLimits`, `pricing`, `PlanLimitNotice`, `WorkspaceUsagePage`), help docs (tier names only; no prices, "per user", "/month" or pricing links). One commit across both would break L5. **Built** on `feat/time-web`: `LIMIT_KEYS` has 28 entries, `time_approval_chains` is `enforced: false` and the other five new keys `true`, seed cells match M0 cell for cell |
 
 **Prod impact:** Prodigitality keeps team approvers via the seed, payouts moot (rates and payouts off), workspace `tracking_enabled=false` keeps the team context. Invoices: 0 (retainers, no `engagement_id`, `none` detail). Curated viewers lose logging; fallback loggers are back-filled (D16). `payouts` was never plan-checked before.
 
@@ -285,7 +285,7 @@ Every design decision below was put to the user on 2026-10-02, and each recommen
 | [data-model.md](./data-model.md) | Tables, constraints, triggers, RLS and grants, SQL functions, renames |
 | [migrations-and-rollout.md](./migrations-and-rollout.md) | Principles, apply/deploy sequence, M0–M5, legacy grouping, compatibility windows, rollback, gates, the only verification SQL |
 | [backend.md](./backend.md) | Modules, resolver, policy, authz, redaction, endpoints and alias, DTOs, plan gating, state machine, notifications, invoices, payouts, finance, assignments |
-| [ux.md](./ux.md) | Personas, Time page, For chip, submit/return/reopen, approvals, dashboard, settings, reports, routes, chrome, mobile, copy |
+| [ux.md](./ux.md) | Personas, Time page, For chip, submit/return/reopen, approvals, dashboard, settings, reports, routes, chrome, mobile, copy; As Built in the Web PR (deviations, new copy, D79–D86, backlog) |
 | [edge-cases-and-tests.md](./edge-cases-and-tests.md) | Edge cases E#, per-unit test plan, docs to update |
 | [pressure-test-log.md](./pressure-test-log.md) | Every review finding (L-n, CHANGE-n) and its resolution |
 

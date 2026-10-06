@@ -1,6 +1,6 @@
 # Store readiness — Google Play & App Store
 
-> **Last updated:** 2026-09-30 · **Status:** partly built — items 1-3 are done, 4-7 are open
+> **Last updated:** 2026-10-06 · **Status:** partly built — items 1-3 are done, 4-7 are open
 
 What the two stores will want before Proyekto can ship, checked against the repo on
 2026-09-28. Four things are now **done**: the commerce/marketplace gate (see
@@ -45,6 +45,14 @@ neither:
 - `WorkspaceBillingPage.go()` — the one call that would send a WebView to hosted checkout —
   refuses on native as a second, independent lock.
 - The blocked-surface screen states an absence and offers no outbound link.
+
+Time keeps the same line (built with the time rebuild, on `feat/time-web`): a team's Rates
+and Payouts pages (`/teams/*/time/manage-rates`, `/teams/*/time/payouts`, matched by a
+one-segment `*` wildcard in `web/src/lib/platformSurfaces.ts`) are `silent` money pages, and
+the pages that stay in the app — `/time` and the timesheet review screen, agreement sheets
+included — show no amount on an agreement context, no *Billed* badge, no `/engagements`
+link and never the words contract, rate, payout or invoice. See
+[Web → What the installed app carries](../04-web/routing-and-access.md#what-the-installed-app-carries).
 
 ## Open items
 

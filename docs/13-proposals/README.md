@@ -1,6 +1,6 @@
 # Proposals
 
-> **Last updated:** 2026-09-01 · **Status:** draft
+> **Last updated:** 2026-10-06 · **Status:** draft
 
 Designs that have been reviewed but **not built**. Sections `00`–`12` describe shipped
 behaviour and are verified against source. This section holds general proposals;
@@ -46,7 +46,7 @@ expansion additive.
 | [two-way-contract-authoring.md](./two-way-contract-authoring.md) | Clients and talent create, edit and amend contracts on equal terms with consultants; revision-pinned signatures, frozen signed PDFs, version history and an AI change summary **Built on `feat/contract-authoring-intake`, not merged.** |
 | [document-intake.md](./document-intake.md) | One Engagements section where AI detects, classifies and extracts paper contracts, invoices and receipts and replicates them as projects and recorded agreements; an acquisition path while the marketplace is not ready **Built on `feat/contract-authoring-intake`, not merged.** |
 | [off-platform-engagement-adoption.md](./off-platform-engagement-adoption.md) | Record an agreement signed outside Proyekto, attested by both parties, through the unchanged signing RPC. **A1-A3 built on `feat/contract-authoring-intake`, not merged.** |
-| [time-management/](./time-management/README.md) | Time management rebuild: each entry is logged **For** one context (agreement, team, workspace or Just me); timesheets per person, scope and period replace per-entry review; a bare `/time` page; workspace time policy with team overrides and contract terms; `task_time_logs` → `time_entries` and `/api/time`; plan keys from Free to Enterprise; expand → cutover → contract migrations M0–M5 |
+| [time-management/](./time-management/README.md) | Time management rebuild: each entry is logged **For** one context (agreement, team, workspace or Just me); timesheets per person, scope and period replace per-entry review; a bare `/time` page; workspace time policy with team overrides and contract terms; `task_time_logs` → `time_entries` and `/api/time`; plan keys from Free to Enterprise; expand → cutover → contract migrations M0–M5. **M0/M1 live; backend PR-1 (`feat/time-pr1`) and the web PR (`feat/time-web`) built, not merged.** |
 
 ## Why these five
 
