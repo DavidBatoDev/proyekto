@@ -4,6 +4,7 @@ import { DashboardWidgets } from "./DashboardWidgets";
 import { ProjectsGrid } from "./ProjectsGrid";
 import { RoadmapsGrid } from "./RoadmapsGrid";
 import { TeamsGrid } from "./TeamsGrid";
+import { TimeApprovalsCard } from "./TimeApprovalsCard";
 
 /**
  * The dashboard body: teams, then projects, then the roadmaps inside them.
@@ -18,6 +19,10 @@ import { TeamsGrid } from "./TeamsGrid";
  * card. While the lists are still loading the normal layout renders, so the
  * grids show their own skeletons instead of the page flickering through the
  * onboarding card on every refresh.
+ *
+ * Timesheets waiting on the viewer lead the page, above the welcome card
+ * (ux.md › Approvals › Dashboard card). The card renders nothing while
+ * nothing waits, so most people never see the slot.
  */
 export function PrimaryFlow() {
 	const { isEmpty } = useDashboardContent();
@@ -25,7 +30,7 @@ export function PrimaryFlow() {
 	if (isEmpty) return <DashboardEmptyState />;
 
 	return (
-		<DashboardWidgets>
+		<DashboardWidgets leadContent={<TimeApprovalsCard />}>
 			<TeamsGrid />
 
 			<ProjectsGrid />

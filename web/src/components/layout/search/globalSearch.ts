@@ -5,7 +5,10 @@ import {
 	FINANCE_NAV_ITEMS,
 	FINANCE_TAB_PAGES,
 } from "@/components/layout/sidebar/engagementsNavigation";
-import { EXECUTION_PRIMARY_NAV_ITEMS } from "@/components/layout/sidebar/executionNavigation";
+import {
+	type ExecutionNavGates,
+	visibleExecutionNavItems,
+} from "@/components/layout/sidebar/executionNavigation";
 import { MARKETPLACE_NAV_ITEMS } from "@/components/layout/sidebar/marketplaceNavigation";
 import { filterNavByPlatform } from "@/lib/platformSurfaces";
 import type { Project } from "@/services/project.service";
@@ -59,10 +62,17 @@ const WORK_ITEM_RESULT_CAP = 8;
  * The filter runs on the MERGED output, so a fourth nav source added later is
  * covered without touching this line. It is a required argument on purpose —
  * an optional one lets a new call site keep the old behaviour silently.
+ *
+ * `gates` opens the sidebar's gated items, the same gates SidebarContent
+ * passes: `{ time: isTimeNavVisible(overview) }` offers Time only to someone
+ * the sidebar shows it to. Unlike `isNative` it may be left out, because the
+ * default fails closed: a call site that forgets it hides gated pages rather
+ * than offering a page the person cannot use.
  */
 export function buildSearchablePages(
 	consultant: boolean,
 	isNative: boolean,
+	gates: ExecutionNavGates = {},
 ): SearchablePage[] {
 	const byPath = new Map<string, SearchablePage>();
 
@@ -73,7 +83,7 @@ export function buildSearchablePages(
 		}
 	};
 
-	for (const item of EXECUTION_PRIMARY_NAV_ITEMS) {
+	for (const item of visibleExecutionNavItems(gates)) {
 		add({ key: item.key, label: item.label, to: item.to, icon: item.icon });
 	}
 

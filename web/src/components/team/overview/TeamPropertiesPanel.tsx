@@ -10,7 +10,10 @@ import type { ReactNode } from "react";
 import { AppSurfaceCard } from "@/components/common/AppPrimitives";
 import { Avatar, displayNameOf } from "@/components/common/Avatar";
 import { normalizeTeamStatus } from "@/components/team/teamStatus";
+import { useCurrentWorkspace } from "@/hooks/useWorkspaceQueries";
+import { toWorkspacePath } from "@/lib/workspacePaths";
 import type { Team, TeamMember } from "@/services/teams.service";
+import { useUser } from "@/stores/authStore";
 import { TeamStatusSelector } from "./TeamStatusSelector";
 
 /**
@@ -54,7 +57,21 @@ export function TeamPropertiesPanel({
 	projectCount: number;
 	canEdit: boolean;
 }) {
+	const userId = useUser()?.id ?? null;
+	const { workspace } = useCurrentWorkspace();
 	const owner = members.find((member) => member.user_id === team.owner_id);
+	const myRole = userId
+		? (members.find((member) => member.user_id === userId)?.role ?? null)
+		: null;
+	// Owners and admins read the team's time Report; everyone else logs from
+	// the Time page, filtered to this team (ux.md › Chrome).
+	const managesTime =
+		Boolean(userId) &&
+		(team.owner_id === userId ||
+			myRole === "owner" ||
+			myRole === "admin" ||
+			team.viewer_role === "owner" ||
+			team.viewer_role === "admin");
 	const visibleMembers = members.slice(0, 5);
 	const overflow = Math.max(0, members.length - visibleMembers.length);
 
@@ -120,13 +137,25 @@ export function TeamPropertiesPanel({
 
 				<PropertyRow icon={Clock} label="Time">
 					{team.time_tracking_enabled ? (
-						<Link
-							to="/teams/$teamId/time"
-							params={{ teamId: team.id }}
-							className="hover:underline"
-						>
-							Tracking on
-						</Link>
+						managesTime ? (
+							<Link
+								to={toWorkspacePath(
+									`/teams/${team.id}/time`,
+									workspace?.slug ?? null,
+								)}
+								className="hover:underline"
+							>
+								Tracking on
+							</Link>
+						) : (
+							<Link
+								to="/time"
+								search={{ for: `team:${team.id}` }}
+								className="hover:underline"
+							>
+								Tracking on
+							</Link>
+						)
 					) : (
 						<span className="text-muted-foreground">Off</span>
 					)}

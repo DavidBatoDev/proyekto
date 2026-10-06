@@ -11,6 +11,7 @@ import { belongsToWorkspace, filterByWorkspace } from "@/lib/workspaceScope";
 import { type Meeting, meetingsService } from "@/services/meetings.service";
 import { type Project, projectService } from "@/services/project.service";
 import { useAuthStore, useUser } from "@/stores/authStore";
+import { timesheetsWaitingText, useDashboardTime } from "./dashboardTimeLine";
 
 type ActivityItem = {
 	id: string;
@@ -216,6 +217,11 @@ export function DashboardWidgets({
 		});
 	}, [roadmaps, user?.id, projectTitleById]);
 
+	// Time joins the welcome line (ux.md › Approvals): deciders get the count
+	// of timesheets waiting on them, loggers a nudge for an overdue period.
+	// Shared with the approvals card in `leadContent`: one set of queries.
+	const time = useDashboardTime();
+
 	const assignedToMeCount = activityItems.filter(
 		(item) => item.isAssignedToCurrentUser,
 	).length;
@@ -277,6 +283,30 @@ export function DashboardWidgets({
 							{" · "}
 							Next: {nextMeeting.title} at{" "}
 							{formatMeetingTime(nextMeeting.scheduled_at)}
+						</>
+					) : null}
+					{time.waitingCount > 0 ? (
+						<>
+							{" · "}
+							<Link
+								to="/time"
+								hash="waiting"
+								className="font-semibold text-foreground hover:underline"
+							>
+								{timesheetsWaitingText(time.waitingCount)}
+							</Link>
+						</>
+					) : null}
+					{time.nudge ? (
+						<>
+							{" · "}
+							<Link
+								to="/time"
+								search={{ week: time.nudge.weekStart }}
+								className="font-semibold text-foreground hover:underline"
+							>
+								{time.nudge.text}
+							</Link>
 						</>
 					) : null}
 				</p>

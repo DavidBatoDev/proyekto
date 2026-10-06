@@ -3,7 +3,25 @@ import { Clock, FolderKanban, House, Settings, Users } from "lucide-react";
 import { TeamAvatar } from "@/components/team/TeamAvatar";
 import { toWorkspacePath } from "@/lib/workspacePaths";
 import type { Team } from "@/services/teams.service";
+import { useUser } from "@/stores/authStore";
 import { CollapsibleNavGroup, SidebarSubLink } from "./SidebarPrimitives";
+
+/**
+ * The team's owners and admins: who reads the team's time Report (ux.md ›
+ * Reports, Team › Time). `viewer_role` comes from `listMyTeams`; the owner
+ * check covers a cache entry written before that field shipped.
+ */
+export function isTeamTimeManager(
+	team: Pick<Team, "owner_id" | "viewer_role">,
+	userId: string | null | undefined,
+): boolean {
+	if (!userId) return false;
+	return (
+		team.owner_id === userId ||
+		team.viewer_role === "owner" ||
+		team.viewer_role === "admin"
+	);
+}
 
 export function TeamSidebarGroup({
 	team,
@@ -26,6 +44,7 @@ export function TeamSidebarGroup({
 			return typeof tab === "string" ? tab : undefined;
 		},
 	});
+	const userId = useUser()?.id ?? null;
 	const teamActive =
 		currentPath.startsWith(`/teams/${team.id}`) ||
 		currentPath.startsWith(`/team-onboarding/${team.id}`);
@@ -54,10 +73,12 @@ export function TeamSidebarGroup({
 			search: { tab: "members" },
 			active: currentPath === `/teams/${team.id}` && selectedTab === "members",
 		},
-		// Time + rates only show once an owner or admin has enabled time
-		// tracking under settings. Settings stays visible so they can flip
-		// the flag in the first place.
-		...(team.time_tracking_enabled
+		// Time is the team's Report (with Rates and Payouts beside it), so it
+		// shows only to the team's owners and admins, and only once time
+		// tracking is on (ux.md › Chrome). Members log and submit from the
+		// primary Time item instead. Settings stays visible so an owner can
+		// flip the switch in the first place.
+		...(team.time_tracking_enabled && isTeamTimeManager(team, userId)
 			? [
 					{
 						label: "Time",

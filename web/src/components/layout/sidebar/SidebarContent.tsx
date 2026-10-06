@@ -2,12 +2,14 @@ import { useMutation, useQuery } from "@tanstack/react-query";
 import { Link, useRouterState } from "@tanstack/react-router";
 import { Plus, UserPlus, Users } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { timesheetsWaitingText } from "@/components/home/dashboardTimeLine";
 import { WorkspaceInviteDialog } from "@/components/workspace/WorkspaceInviteDialog";
 import { WorkspaceSwitcher } from "@/components/workspace/WorkspaceSwitcher";
 import { useDashboardProjectsQuery } from "@/hooks/useDashboardProjectsQuery";
 import { useCurrentWorkspace } from "@/hooks/useWorkspaceQueries";
 import { stripWorkspacePrefix, toWorkspacePath } from "@/lib/workspacePaths";
 import { groupByWorkspace } from "@/lib/workspaceScope";
+import { useTimeOverview } from "@/queries/time";
 import type { Project } from "@/services/project.service";
 import {
 	listMyTeams,
@@ -16,8 +18,9 @@ import {
 } from "@/services/teams.service";
 import { useProfile, useUser } from "@/stores/authStore";
 import {
-	EXECUTION_PRIMARY_NAV_ITEMS,
 	isExecutionNavItemActive,
+	isTimeNavVisible,
+	visibleExecutionNavItems,
 } from "./executionNavigation";
 import { ProjectSidebarLink } from "./ProjectSidebarLink";
 import {
@@ -69,6 +72,16 @@ export function SidebarContent() {
 	const profile = useProfile();
 	const routerState = useRouterState();
 	const currentPath = stripWorkspacePrefix(routerState.location.pathname);
+
+	// Time shows only when the overview allows it (can log, has timesheets
+	// waiting, or runs a workspace's time policy) and carries the waiting
+	// count. Hidden while the overview loads, so it never flashes in and out.
+	const timeOverview = useTimeOverview().data;
+	const navItems = useMemo(
+		() => visibleExecutionNavItems({ time: isTimeNavVisible(timeOverview) }),
+		[timeOverview],
+	);
+	const approvalsWaiting = timeOverview?.approvals_waiting ?? 0;
 
 	const projectsQuery = useDashboardProjectsQuery();
 	const projects = (projectsQuery.data as Project[] | undefined) ?? [];
@@ -215,13 +228,19 @@ export function SidebarContent() {
 				className="hide-scrollbar flex-1 overflow-y-auto px-3 py-4"
 			>
 				<div className="space-y-0.5">
-					{EXECUTION_PRIMARY_NAV_ITEMS.map((item) => (
+					{navItems.map((item) => (
 						<SidebarNavLink
 							key={item.key}
 							to={toWorkspacePath(item.to, workspaceSlug)}
 							icon={item.icon}
 							label={item.label}
 							active={isExecutionNavItemActive(item, currentPath)}
+							badge={item.key === "time" ? approvalsWaiting : undefined}
+							badgeLabel={
+								item.key === "time"
+									? timesheetsWaitingText(approvalsWaiting)
+									: undefined
+							}
 						/>
 					))}
 				</div>

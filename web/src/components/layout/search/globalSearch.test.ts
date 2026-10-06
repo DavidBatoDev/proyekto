@@ -77,6 +77,58 @@ describe("buildSearchablePages", () => {
 		expect(paths).toContain("/inbox");
 	});
 
+	it("offers Time only behind its gate, the same one the sidebar uses", () => {
+		// No gates: fails closed, so a caller that forgets them never offers a
+		// page the person cannot use.
+		expect(
+			buildSearchablePages(false, false).some((p) => p.to === "/time"),
+		).toBe(false);
+		expect(
+			buildSearchablePages(false, false, { time: false }).some(
+				(p) => p.to === "/time",
+			),
+		).toBe(false);
+
+		const time = buildSearchablePages(false, false, { time: true }).find(
+			(p) => p.to === "/time",
+		);
+		expect(time).toMatchObject({ key: "time", label: "Time" });
+		expect(time?.icon).toBeDefined();
+		// Ungated items do not depend on the gate.
+		const ungated = buildSearchablePages(false, false).map((p) => p.to);
+		expect(ungated).toContain("/meetings");
+		expect(ungated).toContain("/dashboard");
+	});
+
+	it("keeps Time on the installed app when its gate is open", () => {
+		// /time is an `app` surface (the mobile shell carries it).
+		const paths = buildSearchablePages(false, true, { time: true }).map(
+			(p) => p.to,
+		);
+		expect(paths).toContain("/time");
+		for (const path of paths) {
+			expect(classifySurface(path), path).toBe("app");
+		}
+	});
+
+	it("finds Time by name once it is visible", () => {
+		const results = buildGlobalSearchCandidates({
+			query: "time",
+			pages: buildSearchablePages(false, false, { time: true }),
+			projects: [],
+			roadmaps: [],
+		});
+		expect(results[0]).toMatchObject({ kind: "page", to: "/time" });
+		expect(
+			buildGlobalSearchCandidates({
+				query: "time",
+				pages: buildSearchablePages(false, false),
+				projects: [],
+				roadmaps: [],
+			}).some((r) => r.kind === "page" && r.to === "/time"),
+		).toBe(false);
+	});
+
 	it("dedupes paths that appear in several nav sources", () => {
 		const pages = buildSearchablePages(true, false);
 

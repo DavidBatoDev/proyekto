@@ -20,6 +20,23 @@ describe("resolvePushLink", () => {
 		expect(resolvePushLink("/dashboard")).toBe("/dashboard");
 	});
 
+	/**
+	 * Time notifications link to the personal Time pages (D79): the review
+	 * screen, an entry on /time, Waiting for you, and bare /time for a
+	 * recorded payment. They are app routes, so they pass through untouched.
+	 */
+	it("passes the Time pages through unchanged", () => {
+		expect(resolvePushLink("/time/timesheets/x")).toBe("/time/timesheets/x");
+		expect(resolvePushLink("/time?entry=x")).toBe("/time?entry=x");
+		expect(resolvePushLink("/time#waiting")).toBe("/time#waiting");
+		expect(resolvePushLink("/time")).toBe("/time");
+		expect(
+			resolvePushLink(
+				"https://www.proyekto.tech/time/timesheets/0b6a3f1e-2c4d-4e8f-9a1b-3c5d7e9f1a2b",
+			),
+		).toBe("/time/timesheets/0b6a3f1e-2c4d-4e8f-9a1b-3c5d7e9f1a2b");
+	});
+
 	it("applies the same legacy map the notification bell uses", () => {
 		expect(resolvePushLink("/finance/c1?section=signatures")).toBe(
 			"/marketplace/finance/c1?section=signatures",
