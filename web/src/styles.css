@@ -1245,3 +1245,30 @@ html.dark select {
 }
 
 
+
+/* ------------------------------------------------------------------ */
+/* Time-log table (My Logs).                                          */
+/* Rows fade up in a short cascade; --row-i is the row's index in the  */
+/* table, capped by the caller so a 200-row period never waterfalls.   */
+@keyframes time-row-in {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.time-row-in {
+  animation: time-row-in var(--app-duration-medium) var(--app-ease-standard)
+    both;
+  animation-delay: calc(var(--row-i, 0) * 20ms);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .time-row-in {
+    animation: none;
+  }
+}

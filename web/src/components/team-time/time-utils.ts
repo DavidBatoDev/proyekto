@@ -112,9 +112,12 @@ export function memberLabel(log: TaskTimeLog): string {
 export function initialsFromName(name?: string | null) {
 	const base = (name || "?").trim();
 	if (!base) return "?";
-	return base
-		.split(" ")
-		.map((part) => part[0])
+	// Words with no letter or digit are skipped, and each initial is the first
+	// such character in its word — otherwise a project called "PRD - Proyekto"
+	// initials to "P-".
+	const words = base.split(/\s+/).filter((part) => /[\p{L}\p{N}]/u.test(part));
+	return (words.length > 0 ? words : [base])
+		.map((part) => part.match(/[\p{L}\p{N}]/u)?.[0] ?? "")
 		.join("")
 		.slice(0, 2)
 		.toUpperCase();
@@ -161,12 +164,6 @@ export function formatLogEnd(started: Date, ended: Date): string {
 	return started.toDateString() === ended.toDateString()
 		? TIME_ONLY_FORMATTER.format(ended)
 		: SHORT_DATE_TIME_FORMATTER.format(ended);
-}
-
-/** Break total in whole minutes, rounded down. Empty string when there's no break. */
-export function formatBreakMinutes(seconds: number): string {
-	const minutes = Math.floor(seconds / 60);
-	return minutes > 0 ? `${minutes}m break` : "";
 }
 
 /**
