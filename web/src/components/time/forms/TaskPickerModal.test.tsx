@@ -457,6 +457,25 @@ describe("TaskPickerModal (start)", () => {
 		});
 	});
 
+	it("2+: once the work is picked, the For list is scrolled into view", async () => {
+		vi.spyOn(timeService, "getLoggingFor").mockResolvedValue(
+			forResult({ options: [team, agreement] }),
+		);
+		const scrolled: Element[] = [];
+		const original = Element.prototype.scrollIntoView;
+		Element.prototype.scrollIntoView = function (this: Element) {
+			scrolled.push(this);
+		};
+		try {
+			renderWithClient(<TaskPickerModal open onClose={vi.fn()} />);
+			await pickFixLoginBug();
+			const forSection = await screen.findByRole("region", { name: "For" });
+			await waitFor(() => expect(scrolled).toContain(forSection));
+		} finally {
+			Element.prototype.scrollIntoView = original;
+		}
+	});
+
 	it("2+ with a remembered default: the list shows it chosen, in the dialog", async () => {
 		vi.spyOn(timeService, "getLoggingFor").mockResolvedValue(
 			forResult({ options: [team, agreement], prefill: agreement }),

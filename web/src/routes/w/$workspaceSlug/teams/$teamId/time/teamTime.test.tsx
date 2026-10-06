@@ -330,6 +330,19 @@ describe("Team › Time layout", () => {
 		expect(screen.queryByTestId("outlet")).toBeNull();
 	});
 
+	it("answers a payouts URL with the rates card while member rates are off", () => {
+		mocks.access = access({ hasRates: false, canPay: false });
+		mocks.pathname = `/w/acme/teams/${TEAM}/time/payouts`;
+		renderRoute(LayoutRoute);
+		expect(
+			screen.getByText("Member rates are turned off for this team."),
+		).toBeTruthy();
+		expect(
+			screen.queryByText("Payouts are turned off for this team."),
+		).toBeNull();
+		expect(screen.queryByTestId("outlet")).toBeNull();
+	});
+
 	it("says time tracking is off, with the way to turn it on", () => {
 		mocks.access = access({ timeTrackingEnabled: false });
 		renderRoute(LayoutRoute);

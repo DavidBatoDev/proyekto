@@ -31,6 +31,12 @@ import {
  *
  * `variant="client"` is the client's "Client hours" table: date, work and
  * approved hours, never a person, a note, a cost or a status.
+ *
+ * Columns follow the table's own width (container queries), not the
+ * window's, so a report inside settings or a phone keeps Duration and
+ * Approved in view instead of behind a sideways scroll:
+ * - under 36rem the date and person fold into the work cell;
+ * - Timesheet from 42rem, the clock range from 48rem, For from 64rem.
  */
 export interface ReportEntriesTableProps {
 	entries: readonly TimeEntryView[];
@@ -66,6 +72,8 @@ function entryAmount(entry: TimeEntryView, native: boolean): string | null {
 const TH =
 	"px-3 py-2 text-left text-[11px] font-semibold uppercase tracking-wide text-muted-foreground";
 const TD = "px-3 py-2 align-top";
+/** Hidden while the date and person are folded into the work cell. */
+const WIDE = "hidden @xl:table-cell";
 
 export function ReportEntriesTable({
 	entries,
@@ -116,15 +124,15 @@ export function ReportEntriesTable({
 
 	return (
 		<div className={cn("space-y-2", className)}>
-			<div className="overflow-x-auto rounded-xl border border-border bg-card">
+			<div className="@container overflow-x-auto rounded-xl border border-border bg-card">
 				<table className="w-full min-w-[20rem] text-sm">
 					<thead>
 						<tr className="border-b border-border">
-							<th scope="col" className={TH}>
+							<th scope="col" className={cn(TH, client ? undefined : WIDE)}>
 								Date
 							</th>
 							{person ? (
-								<th scope="col" className={TH}>
+								<th scope="col" className={cn(TH, WIDE)}>
 									Person
 								</th>
 							) : null}
@@ -132,12 +140,12 @@ export function ReportEntriesTable({
 								Work
 							</th>
 							{forColumn ? (
-								<th scope="col" className={cn(TH, "hidden md:table-cell")}>
+								<th scope="col" className={cn(TH, "hidden @5xl:table-cell")}>
 									For
 								</th>
 							) : null}
 							{client ? null : (
-								<th scope="col" className={cn(TH, "hidden sm:table-cell")}>
+								<th scope="col" className={cn(TH, "hidden @3xl:table-cell")}>
 									Time
 								</th>
 							)}
@@ -155,7 +163,7 @@ export function ReportEntriesTable({
 								</th>
 							) : null}
 							{status ? (
-								<th scope="col" className={cn(TH, "hidden sm:table-cell")}>
+								<th scope="col" className={cn(TH, "hidden @2xl:table-cell")}>
 									{REPORT_COPY.timesheet}
 								</th>
 							) : null}
@@ -170,21 +178,36 @@ export function ReportEntriesTable({
 							const workText = client
 								? `${work.project} · ${work.work}`
 								: work.work;
+							const day = formatInstantDay(entry.started_at, timezone, {
+								...dateOptions,
+								weekday: true,
+							});
+							// The narrow layout's second line: what the folded
+							// Date and Person columns held.
+							const folded = client
+								? null
+								: [day, person ? entryPersonLabel(entry) : null]
+										.filter(Boolean)
+										.join(" · ");
 							return (
 								<tr
 									key={entry.id}
 									className="border-b border-border last:border-b-0"
 								>
-									<td className={cn(TD, "whitespace-nowrap text-foreground")}>
-										{formatInstantDay(entry.started_at, timezone, {
-											...dateOptions,
-											weekday: true,
-										})}
+									<td
+										className={cn(
+											TD,
+											"whitespace-nowrap text-foreground",
+											client ? undefined : WIDE,
+										)}
+									>
+										{day}
 									</td>
 									{person ? (
 										<td
 											className={cn(
 												TD,
+												WIDE,
 												"max-w-[10rem] truncate",
 												entry.identity === "masked"
 													? "text-muted-foreground"
@@ -194,7 +217,15 @@ export function ReportEntriesTable({
 											{entryPersonLabel(entry)}
 										</td>
 									) : null}
-									<td className={cn(TD, "min-w-0 max-w-[18rem]")}>
+									{/* `w-full max-w-0`: the auto table layout ignores a
+									    cell's max-width, so the Work cell takes the
+									    leftover width instead and its lines ellipsize,
+									    keeping Duration, Approved and Cost on a phone
+									    screen. */}
+									<td
+										className={cn(TD, "w-full max-w-0")}
+										data-testid="report-entry-work"
+									>
 										{onOpenEntry ? (
 											<button
 												type="button"
@@ -212,6 +243,14 @@ export function ReportEntriesTable({
 												{workText}
 											</span>
 										)}
+										{folded ? (
+											<span
+												className="block truncate text-xs text-foreground @xl:hidden"
+												data-testid="report-entry-folded"
+											>
+												{folded}
+											</span>
+										) : null}
 										{client ? null : (
 											<span
 												className={cn(
@@ -230,7 +269,7 @@ export function ReportEntriesTable({
 										<td
 											className={cn(
 												TD,
-												"hidden max-w-[12rem] truncate text-muted-foreground md:table-cell",
+												"hidden max-w-[12rem] truncate text-muted-foreground @5xl:table-cell",
 											)}
 											title={forLabel.title}
 										>
@@ -241,7 +280,7 @@ export function ReportEntriesTable({
 										<td
 											className={cn(
 												TD,
-												"hidden whitespace-nowrap tabular-nums text-muted-foreground sm:table-cell",
+												"hidden whitespace-nowrap tabular-nums text-muted-foreground @3xl:table-cell",
 											)}
 										>
 											{formatInstantTime(entry.started_at, timezone)}–
@@ -293,7 +332,7 @@ export function ReportEntriesTable({
 										<td
 											className={cn(
 												TD,
-												"hidden whitespace-nowrap text-muted-foreground sm:table-cell",
+												"hidden whitespace-nowrap text-muted-foreground @2xl:table-cell",
 											)}
 										>
 											{entry.timesheet

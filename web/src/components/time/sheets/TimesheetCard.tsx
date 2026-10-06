@@ -90,10 +90,11 @@ const SCOPE_ICON: Record<SheetScopeKind, typeof Users> = {
 	engagement: Briefcase,
 };
 
+// 40 px tall on phones (`max-sm:`), the compact buttons from sm up.
 const PRIMARY =
-	"inline-flex items-center gap-1.5 rounded-lg bg-primary px-3 py-1.5 text-xs font-semibold text-primary-foreground transition-colors hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-50";
+	"inline-flex items-center gap-1.5 rounded-lg bg-primary px-3 py-1.5 text-xs font-semibold text-primary-foreground transition-colors hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-50 max-sm:min-h-10 max-sm:px-4";
 const SECONDARY =
-	"inline-flex items-center gap-1.5 rounded-lg border border-border px-3 py-1.5 text-xs font-semibold text-foreground transition-colors hover:bg-muted disabled:cursor-not-allowed disabled:opacity-50";
+	"inline-flex items-center gap-1.5 rounded-lg border border-border px-3 py-1.5 text-xs font-semibold text-foreground transition-colors hover:bg-muted disabled:cursor-not-allowed disabled:opacity-50 max-sm:min-h-10 max-sm:px-4";
 
 /** The card's label and its tooltip (set only when the name was cut). */
 export function timesheetCardLabel(

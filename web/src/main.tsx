@@ -7,6 +7,7 @@ import { AuthInitializer } from "./components/auth/AuthInitializer";
 import { ThemeRuntime } from "./components/theme/ThemeRuntime";
 import { WorkspaceSelectionSync } from "./components/workspace/WorkspaceSelectionSync";
 import * as TanStackQueryProvider from "./integrations/tanstack-query/root-provider.tsx";
+import { clearTimeOnUserChange } from "./queries/time";
 
 // Tell the OTA updater the web bundle booted OK, so it commits the new bundle
 // instead of rolling back after appReadyTimeout. Fire as early as possible.
@@ -68,6 +69,8 @@ import reportWebVitals from "./reportWebVitals.ts";
 // Create a new router instance
 
 const TanStackQueryProviderContext = TanStackQueryProvider.getContext();
+// Another account in the same tab must never see the last one's time.
+clearTimeOnUserChange(TanStackQueryProviderContext.queryClient);
 const router = createRouter({
 	routeTree,
 	context: {

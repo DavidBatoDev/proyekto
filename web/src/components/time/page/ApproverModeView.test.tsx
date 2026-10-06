@@ -140,6 +140,13 @@ describe("caughtUpText and summaryAdmins", () => {
 		);
 	});
 
+	it("keeps the hint when the only admin item is the confirm card's", () => {
+		const unconfirmed = { ...ADMIN, policy_unconfirmed: true };
+		expect(
+			caughtUpText(overview({ workspace_time_admin: [unconfirmed] })),
+		).toBe("You're all caught up. Timesheets sent to you will show up here.");
+	});
+
 	it("leaves the confirm card's workspaces out of the policy cards", () => {
 		const unconfirmed = {
 			...ADMIN,

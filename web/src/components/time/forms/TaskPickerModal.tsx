@@ -935,6 +935,15 @@ function TaskPicker({
 
 	const hasWork = Boolean(taskId || workItem);
 	const busy = flow.isPending;
+
+	// Once the work is picked, the For list is the next step. It sits under the
+	// four columns (below the fold at 1280×800, or on a phone), so bring it
+	// into view instead of leaving a second option and the Remember box unseen.
+	const forIsNext = inlineFor && hasWork;
+	useEffect(() => {
+		if (!forIsNext) return;
+		forSectionRef.current?.scrollIntoView?.({ block: "nearest" });
+	}, [forIsNext]);
 	const canConfirm =
 		Boolean(projectId) &&
 		hasWork &&

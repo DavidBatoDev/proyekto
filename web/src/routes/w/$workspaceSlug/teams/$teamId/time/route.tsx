@@ -249,8 +249,11 @@ function TeamTimeLayout() {
 			(item.id === "payouts" && access.canPay),
 	);
 	const items = filterNavByPlatform(shown, native);
+	// Payouts sit under member rates: with rates off there is nothing to pay,
+	// so a payouts URL gets the rates reason (the payouts one would say the
+	// team "prices its time", which it doesn't).
 	const blocked =
-		section === "rates" && !access.hasRates
+		(section === "rates" || section === "payouts") && !access.hasRates
 			? "rates"
 			: section === "payouts" && !access.canPay
 				? "payouts"

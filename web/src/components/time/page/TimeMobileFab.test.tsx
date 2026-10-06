@@ -1,10 +1,17 @@
 /* @vitest-environment jsdom */
 
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import {
+	act,
+	cleanup,
+	fireEvent,
+	render,
+	screen,
+} from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("@/lib/platform", () => ({ isNativeApp: () => false }));
 
+import { backStackDepth, handleBackPress } from "@/lib/backStack";
 import { TIME_FAB_COPY, TimeMobileFab } from "./TimeMobileFab";
 
 function renderFab() {
@@ -55,6 +62,20 @@ describe("TimeMobileFab", () => {
 		fireEvent.keyDown(menu, { key: "Escape" });
 		expect(screen.queryByRole("menu")).toBeNull();
 		expect(document.activeElement).toBe(trigger);
+	});
+
+	it("closes on the Android back button before back leaves the page", () => {
+		const { trigger } = renderFab();
+		expect(backStackDepth()).toBe(0);
+		fireEvent.click(trigger);
+		expect(backStackDepth()).toBe(1);
+		let handled = false;
+		act(() => {
+			handled = handleBackPress();
+		});
+		expect(handled).toBe(true);
+		expect(screen.queryByRole("menu")).toBeNull();
+		expect(backStackDepth()).toBe(0);
 	});
 
 	it("closes on a click outside", () => {

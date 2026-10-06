@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { DOC_ARTICLES } from "@/content/docs.manifest";
 import {
 	classifySurface,
 	filterNavByPlatform,
@@ -65,6 +66,28 @@ describe("classifySurface", () => {
 		// marketplace treatment without the docs code knowing about it.
 		expect(classifySurface("/docs/clients-and-marketplace/selling")).toBe(
 			"marketplace",
+		);
+	});
+
+	it("keeps every web-only docs article out of the app", () => {
+		// `surface: "web"` hides an article from the sidebar, home and search;
+		// the gate must agree, or a body link, a Related card or a deep link
+		// still opens it in the app.
+		const webOnly = DOC_ARTICLES.filter((a) => a.surface === "web");
+		expect(webOnly.length).toBeGreaterThan(0);
+		for (const article of webOnly) {
+			const path = `/docs/${article.section}/${article.slug}`;
+			expect(isVisibleInApp(path, true), path).toBe(false);
+		}
+		expect(classifySurface("/docs/teams-time-and-rates/payouts")).toBe(
+			"silent",
+		);
+		expect(
+			classifySurface("/docs/teams-time-and-rates/rates-and-currency"),
+		).toBe("silent");
+		// Its siblings stay.
+		expect(classifySurface("/docs/teams-time-and-rates/timesheets")).toBe(
+			"app",
 		);
 	});
 

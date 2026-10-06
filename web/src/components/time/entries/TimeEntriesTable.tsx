@@ -528,7 +528,7 @@ function SelectAllBox({
 			checked={checked}
 			disabled={disabled}
 			onChange={(event) => onChange(event.target.checked)}
-			className="h-3.5 w-3.5 cursor-pointer accent-primary disabled:cursor-not-allowed"
+			className="h-3.5 w-3.5 cursor-pointer accent-primary disabled:cursor-not-allowed max-sm:h-5 max-sm:w-5"
 		/>
 	);
 }
@@ -562,7 +562,8 @@ const GroupHeaderRow = memo(function GroupHeaderRow({
 				isFirst ? "" : "border-t",
 			)}
 		>
-			<td colSpan={leadingSpan} className="px-2 py-1.5 sm:px-3">
+			{/* The whole band toggles; on phones it is ~40 px tall so it's an easy tap. */}
+			<td colSpan={leadingSpan} className="px-2 py-1.5 max-sm:py-3 sm:px-3">
 				{/* `w-0 min-w-full` keeps a long label from widening the columns it spans. */}
 				<div className="w-0 min-w-full">
 					{/* The row handles the click so the whole band is a target; the
@@ -901,8 +902,19 @@ const EntryRow = memo(function EntryRow({
 		>
 			{selectionRule ? (
 				<td
-					className="w-px py-1.5 pl-2 pr-0 sm:pl-3"
-					onClick={(event) => event.stopPropagation()}
+					className="w-px py-1.5 pl-2 pr-0 max-sm:px-3 sm:pl-3"
+					onClick={(event) => {
+						event.stopPropagation();
+						// The cell is the tap target (the whole row height on a
+						// phone), not only the small box inside it.
+						if (
+							event.target === event.currentTarget &&
+							selectionRule.selectable &&
+							!pending
+						) {
+							onSelect(entry.id, !selected);
+						}
+					}}
 				>
 					<input
 						type="checkbox"
@@ -911,7 +923,7 @@ const EntryRow = memo(function EntryRow({
 						disabled={!selectionRule.selectable || pending}
 						title={selectionRule.reason ?? undefined}
 						onChange={(event) => onSelect(entry.id, event.target.checked)}
-						className="h-3.5 w-3.5 cursor-pointer accent-primary disabled:cursor-not-allowed disabled:opacity-40"
+						className="h-3.5 w-3.5 cursor-pointer accent-primary disabled:cursor-not-allowed disabled:opacity-40 max-sm:h-5 max-sm:w-5"
 					/>
 				</td>
 			) : null}
@@ -1079,7 +1091,7 @@ const EntryRow = memo(function EntryRow({
 							type="button"
 							onClick={() => onStop(entry)}
 							disabled={stopRule.disabled}
-							className="mr-1 inline-flex items-center gap-1 rounded-md bg-primary px-2 py-1 text-[11px] font-semibold text-primary-foreground transition-all duration-150 hover:bg-primary/90 active:scale-95 disabled:opacity-50"
+							className="mr-1 inline-flex items-center gap-1 rounded-md bg-primary px-2 py-1 text-[11px] font-semibold text-primary-foreground transition-all duration-150 hover:bg-primary/90 active:scale-95 disabled:opacity-50 max-sm:min-h-10 max-sm:min-w-10 max-sm:justify-center"
 						>
 							<Square className="h-3 w-3" aria-hidden="true" />
 							<span className="hidden sm:inline">{ENTRY_COPY.stop}</span>
@@ -1128,7 +1140,9 @@ function sameLocalDay(a: string, b: string, timeZone: string): boolean {
 
 function RunningPill({ onBreak }: { onBreak: boolean }) {
 	return (
-		<span className="inline-flex shrink-0 items-center gap-1 rounded-md bg-primary/10 px-1.5 py-px text-[10px] font-semibold text-primary">
+		// Foreground text: `text-primary` on `bg-primary/10` reads under 4:1 at
+		// this size; the pulsing dot carries the colour.
+		<span className="inline-flex shrink-0 items-center gap-1 rounded-md bg-primary/10 px-1.5 py-px text-[10px] font-semibold text-foreground">
 			<span className="relative flex h-1.5 w-1.5" aria-hidden="true">
 				{!onBreak && (
 					<span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-primary opacity-60" />

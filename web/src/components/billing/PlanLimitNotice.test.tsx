@@ -75,8 +75,10 @@ describe("PlanLimitNotice", () => {
 			render(<PlanLimitNotice info={info} workspace={workspace("owner")} />);
 
 			expect(screen.queryByRole("link")).toBeNull();
-			expect(document.body.textContent).toContain(
-				"Plan changes aren't available",
+			// Says the plan can't change here: the app-only line, or (time
+			// keys) a sentence that already sends the owner to the web.
+			expect(document.body.textContent).toMatch(
+				/Plan changes aren't available|change this on the web/,
 			);
 			expect(document.body.textContent).not.toMatch(/upgrade to/i);
 		});
@@ -301,6 +303,26 @@ describe("PlanLimitNotice: time plan copy in the installed app", () => {
 			"Timesheets and approvals aren't on Acme's current plan. A workspace owner can change this on the web.",
 		);
 		expect(screen.queryByRole("link")).toBeNull();
+		// The sentence already says where the plan changes: no second line.
+		expect(document.body.textContent).not.toContain(
+			"Plan changes aren't available",
+		);
+	});
+
+	it("keeps the app-only line under a time sentence that doesn't say where", () => {
+		mocks.native = true;
+		render(
+			<PlanLimitNotice
+				info={timeInfo("time_team_rules")}
+				workspace={acme("owner")}
+			/>,
+		);
+		expect(document.body.textContent).toContain(
+			"Team time rules aren't on Acme's current plan.",
+		);
+		expect(document.body.textContent).toContain(
+			"Plan changes aren't available",
+		);
 	});
 
 	it.each([

@@ -166,12 +166,19 @@ export interface WaitingForYouListProps {
 	className?: string;
 }
 
+// Phones get 40 px targets (`max-sm:`); the desktop sizes are unchanged.
 const PRIMARY =
-	"inline-flex items-center gap-1.5 rounded-lg bg-primary px-3 py-1.5 text-xs font-semibold text-primary-foreground transition-colors hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-50";
+	"inline-flex items-center gap-1.5 rounded-lg bg-primary px-3 py-1.5 text-xs font-semibold text-primary-foreground transition-colors hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-50 max-sm:min-h-10 max-sm:px-4";
 const SECONDARY =
-	"inline-flex items-center gap-1.5 rounded-lg border border-border px-2.5 py-1 text-xs font-semibold text-foreground transition-colors hover:bg-muted disabled:cursor-not-allowed disabled:opacity-50";
+	"inline-flex items-center gap-1.5 rounded-lg border border-border px-2.5 py-1 text-xs font-semibold text-foreground transition-colors hover:bg-muted disabled:cursor-not-allowed disabled:opacity-50 max-sm:min-h-10 max-sm:px-3";
 const CHECKBOX =
 	"h-4 w-4 shrink-0 rounded border-input accent-primary disabled:cursor-not-allowed disabled:opacity-40";
+/**
+ * A 40 px tap area around a 16 px checkbox on phones. The negative margin
+ * cancels the padding, so the row's layout doesn't move.
+ */
+const CHECK_HIT =
+	"-m-3 inline-flex shrink-0 cursor-pointer p-3 has-[:disabled]:cursor-not-allowed sm:m-0 sm:p-0";
 
 export function WaitingForYouList({
 	currentWorkspaceId,
@@ -370,16 +377,18 @@ export function WaitingForYouList({
 				data-testid="waiting-row"
 				data-sheet-id={row.id}
 			>
-				<input
-					type="checkbox"
-					className={CHECKBOX}
-					aria-label={`Select ${name}'s timesheet, ${period}`}
-					aria-describedby={block ? reasonId : undefined}
-					title={block?.reason}
-					checked={!block && selected.has(row.id)}
-					disabled={Boolean(block) || bulkBusy}
-					onChange={(e) => setMany([row.id], e.currentTarget.checked)}
-				/>
+				<label className={CHECK_HIT}>
+					<input
+						type="checkbox"
+						className={CHECKBOX}
+						aria-label={`Select ${name}'s timesheet, ${period}`}
+						aria-describedby={block ? reasonId : undefined}
+						title={block?.reason}
+						checked={!block && selected.has(row.id)}
+						disabled={Boolean(block) || bulkBusy}
+						onChange={(e) => setMany([row.id], e.currentTarget.checked)}
+					/>
+				</label>
 				{block ? (
 					<span id={reasonId} className="sr-only">
 						{block.reason}
@@ -408,8 +417,11 @@ export function WaitingForYouList({
 							{name}
 						</span>
 					)}
-					<span className="flex min-w-0 items-center gap-1.5 text-xs text-muted-foreground sm:text-sm">
-						<span className="truncate" title={label.title}>
+					{/* Wraps instead of overlapping: on a phone the period and the
+					    workspace tag drop to the next line rather than run under
+					    the hours. */}
+					<span className="flex min-w-0 flex-wrap items-center gap-x-1.5 gap-y-0.5 text-xs text-muted-foreground sm:text-sm">
+						<span className="min-w-0 max-w-full truncate" title={label.title}>
 							{label.text}
 						</span>
 						<span aria-hidden="true">·</span>
@@ -418,6 +430,18 @@ export function WaitingForYouList({
 							<ForWorkspaceTag name={row.policy_workspace?.name} />
 						) : null}
 					</span>
+					{/* Touch has no hover, so the checkbox's tooltip never shows:
+					    phones read the reason under the row (screen readers get it
+					    through the checkbox's description above). */}
+					{block ? (
+						<span
+							aria-hidden="true"
+							className="text-[11px] text-muted-foreground sm:hidden"
+							data-testid="waiting-block-reason"
+						>
+							{block.reason}
+						</span>
+					) : null}
 				</Link>
 				<span className="shrink-0 text-sm font-semibold tabular-nums text-foreground">
 					{formatClock(rowSeconds(row))}
@@ -425,7 +449,9 @@ export function WaitingForYouList({
 				<span className="hidden w-20 shrink-0 text-right text-xs text-muted-foreground sm:inline">
 					{submittedAgo(row.submitted_at, { now, timezone: tz })}
 				</span>
-				<span className="flex w-16 shrink-0 items-center justify-end gap-1.5 text-xs font-semibold">
+				{/* The flags column keeps its width from sm up so hours line up; on a
+				    phone a row without flags gives the room back to the label. */}
+				<span className="flex shrink-0 items-center justify-end gap-1.5 text-xs font-semibold max-sm:empty:hidden sm:w-16">
 					{review > 0 ? (
 						<span
 							className="inline-flex items-center gap-0.5 text-warning"
@@ -468,17 +494,19 @@ export function WaitingForYouList({
 		>
 			{title ? (
 				<div className="flex flex-wrap items-center gap-2">
-					<input
-						type="checkbox"
-						className={CHECKBOX}
-						aria-label="Select every timesheet that can be approved"
-						checked={allEligibleSelected}
-						ref={(el) => {
-							if (el) el.indeterminate = someEligibleSelected;
-						}}
-						disabled={eligibleIds.length === 0 || bulkBusy}
-						onChange={(e) => setMany(eligibleIds, e.currentTarget.checked)}
-					/>
+					<label className={CHECK_HIT}>
+						<input
+							type="checkbox"
+							className={CHECKBOX}
+							aria-label="Select every timesheet that can be approved"
+							checked={allEligibleSelected}
+							ref={(el) => {
+								if (el) el.indeterminate = someEligibleSelected;
+							}}
+							disabled={eligibleIds.length === 0 || bulkBusy}
+							onChange={(e) => setMany(eligibleIds, e.currentTarget.checked)}
+						/>
+					</label>
 					<ListTitle id={headingId} title={title} count={total} />
 					<button
 						type="button"
@@ -635,17 +663,19 @@ function GroupHeader({
 	const seconds = group.rows.reduce((sum, row) => sum + rowSeconds(row), 0);
 	return (
 		<div className="flex items-center gap-3 bg-surface-muted px-3 py-2">
-			<input
-				type="checkbox"
-				className={CHECKBOX}
-				aria-label={`Select ${group.name}'s timesheets`}
-				checked={all}
-				ref={(el) => {
-					if (el) el.indeterminate = some;
-				}}
-				disabled={eligible.length === 0 || busy}
-				onChange={(e) => onToggle(eligible, e.currentTarget.checked)}
-			/>
+			<label className={CHECK_HIT}>
+				<input
+					type="checkbox"
+					className={CHECKBOX}
+					aria-label={`Select ${group.name}'s timesheets`}
+					checked={all}
+					ref={(el) => {
+						if (el) el.indeterminate = some;
+					}}
+					disabled={eligible.length === 0 || busy}
+					onChange={(e) => onToggle(eligible, e.currentTarget.checked)}
+				/>
+			</label>
 			<Avatar user={profileOf(group)} size="sm" />
 			<span className="min-w-0 flex-1 truncate text-sm font-semibold text-foreground">
 				{group.name}
@@ -657,7 +687,7 @@ function GroupHeader({
 				{formatClock(seconds)}
 			</span>
 			<span className="hidden w-20 shrink-0 sm:inline" />
-			<span className="w-16 shrink-0" />
+			<span className="hidden w-16 shrink-0 sm:inline" />
 		</div>
 	);
 }

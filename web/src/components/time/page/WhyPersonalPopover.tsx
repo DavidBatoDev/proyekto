@@ -112,7 +112,7 @@ export function WhyPersonalPopover({
 				aria-haspopup="dialog"
 				onClick={() => setOpen((value) => !value)}
 				className={cn(
-					"inline-flex items-center gap-1 rounded-sm text-xs font-medium text-primary hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30",
+					"inline-flex items-center gap-1 rounded-sm text-xs font-medium text-primary hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30 max-sm:min-h-10 max-sm:px-1",
 					className,
 				)}
 			>

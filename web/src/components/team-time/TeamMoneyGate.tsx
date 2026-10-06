@@ -112,7 +112,8 @@ export function TeamMoneyGate({
 		? "time"
 		: !access.isApprover
 			? "access"
-			: need === "rates" && !access.hasRates
+			: // Payouts sit under member rates (see time/route.tsx).
+				(need === "rates" || need === "payouts") && !access.hasRates
 				? "rates"
 				: need === "payouts" && !access.canPay
 					? "payouts"

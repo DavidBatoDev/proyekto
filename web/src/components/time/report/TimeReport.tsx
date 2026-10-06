@@ -331,6 +331,13 @@ export function TimeReport({
 		? allEntries.isPending
 		: entriesPage.isPending || entriesPage.isPlaceholderData;
 	const tableError = sections ? allEntries.error : entriesPage.error;
+	// Nothing at all in range: the summary's own "No time in this range." says
+	// it once, so the Entries section (which would say it again) stays out.
+	const summaryEmpty = sections
+		? !allEntries.isPending && (sectionList ?? []).length === 0
+		: !summary.isPending && (grouped?.rows ?? []).length === 0;
+	const nothingInRange =
+		summaryEmpty && !tableLoading && !tableError && tableTotal === 0;
 
 	const filtersRow = (
 		<ReportFilters
@@ -429,32 +436,34 @@ export function TimeReport({
 					/>
 				)}
 				<UnderAgreementsSection seconds={underAgreements} />
-				<section aria-label={REPORT_COPY.entries} className="space-y-2">
-					<h3 className="px-1 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-						{REPORT_COPY.entries}
-					</h3>
-					{tableError ? (
-						<ErrorCard
-							error={tableError}
-							planWorkspace={plan}
-							onRetry={() =>
-								void (sections ? allEntries.refetch() : entriesPage.refetch())
-							}
-						/>
-					) : (
-						<ReportEntriesTable
-							entries={tableEntries}
-							total={tableTotal}
-							page={page}
-							onPageChange={setPage}
-							loading={tableLoading}
-							timezone={reportTimezone}
-							showFor={scope.kind !== "team"}
-							onOpenEntry={onOpenEntry}
-							dateOptions={dateOptions}
-						/>
-					)}
-				</section>
+				{nothingInRange ? null : (
+					<section aria-label={REPORT_COPY.entries} className="space-y-2">
+						<h3 className="px-1 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+							{REPORT_COPY.entries}
+						</h3>
+						{tableError ? (
+							<ErrorCard
+								error={tableError}
+								planWorkspace={plan}
+								onRetry={() =>
+									void (sections ? allEntries.refetch() : entriesPage.refetch())
+								}
+							/>
+						) : (
+							<ReportEntriesTable
+								entries={tableEntries}
+								total={tableTotal}
+								page={page}
+								onPageChange={setPage}
+								loading={tableLoading}
+								timezone={reportTimezone}
+								showFor={scope.kind !== "team"}
+								onOpenEntry={onOpenEntry}
+								dateOptions={dateOptions}
+							/>
+						)}
+					</section>
+				)}
 			</>
 		);
 	}

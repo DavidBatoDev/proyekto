@@ -16,6 +16,7 @@ export function SettingSwitch({
 	onChange: (next: boolean) => void;
 	label: string;
 }) {
+	// `focus-visible:` draws the ring for keyboard focus only, not on a click.
 	return (
 		<button
 			type="button"
@@ -24,7 +25,7 @@ export function SettingSwitch({
 			aria-label={label}
 			disabled={disabled}
 			onClick={() => onChange(!checked)}
-			className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors focus:outline-none disabled:cursor-not-allowed disabled:opacity-50 ${
+			className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background disabled:cursor-not-allowed disabled:opacity-50 ${
 				checked ? "bg-primary" : "bg-muted-foreground/30"
 			}`}
 		>

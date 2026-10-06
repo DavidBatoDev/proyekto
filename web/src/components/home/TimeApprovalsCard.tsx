@@ -73,10 +73,12 @@ export function TimeApprovalsCard({
 			data-testid="time-approvals-card"
 			className={cn("app-surface-card app-motion-safe p-4 sm:p-5", className)}
 		>
-			<div className="flex items-center justify-between gap-3">
+			{/* Wraps on a narrow phone: "Review all" drops under the title rather
+			    than cutting it to "Waiting for your appro…". */}
+			<div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1">
 				<h2
 					id={headingId}
-					className="flex min-w-0 items-center gap-2 text-sm font-semibold text-foreground sm:text-base"
+					className="flex min-w-0 max-w-full items-center gap-2 text-sm font-semibold text-foreground sm:text-base"
 				>
 					<Clock className="h-4 w-4 shrink-0 text-primary" aria-hidden="true" />
 					<span className="truncate">{TIME_APPROVALS_TITLE}</span>
@@ -187,8 +189,8 @@ function ApprovalCardRow({
 				<span className="truncate text-sm font-semibold text-foreground group-hover:text-primary sm:w-40 sm:shrink-0">
 					{name}
 				</span>
-				<span className="flex min-w-0 items-center gap-1.5 text-xs text-muted-foreground sm:text-sm">
-					<span className="truncate" title={label.title}>
+				<span className="flex min-w-0 flex-wrap items-center gap-x-1.5 gap-y-0.5 text-xs text-muted-foreground sm:text-sm">
+					<span className="min-w-0 max-w-full truncate" title={label.title}>
 						{label.text}
 					</span>
 					<span aria-hidden="true">·</span>

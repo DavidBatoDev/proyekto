@@ -43,12 +43,22 @@ export interface ApproverModeViewProps {
 	className?: string;
 }
 
-/** The caught-up sentence for this person (P5 gets the hint line, P7 does not). */
+/**
+ * The caught-up sentence for this person: the hint line ("Timesheets sent to
+ * you will show up here.") unless policy cards sit under it (P7). Only the
+ * admin items that become cards count: one still waiting for "Looks right"
+ * is the confirm card's, so a P5 consultant who also runs an unconfirmed
+ * workspace keeps the hint.
+ */
 export function caughtUpText(
 	overview: ApproverModeViewProps["overview"],
 ): string {
 	const { title, detail } = timeEmptyText(
-		pickTimeEmptyState({ ...overview, approver_mode: true }),
+		pickTimeEmptyState({
+			...overview,
+			approver_mode: true,
+			workspace_time_admin: summaryAdmins(overview.workspace_time_admin),
+		}),
 	);
 	return detail ? `${title} ${detail}` : title;
 }

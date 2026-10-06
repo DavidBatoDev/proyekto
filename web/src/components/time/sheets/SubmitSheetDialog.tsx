@@ -24,11 +24,12 @@
 // other sheet action.
 
 import { useQuery } from "@tanstack/react-query";
-import { AlertTriangle, Ban, Info, Loader2, Send } from "lucide-react";
+import { AlertTriangle, Ban, Info, Loader2, Send, Square } from "lucide-react";
 import { useEffect, useId, useMemo, useState } from "react";
 import { AppDialog } from "@/components/common/AppDialog";
 import {
 	DAY_WARNING_SECONDS,
+	ENTRY_COPY,
 	NEEDS_REVIEW_SECONDS,
 } from "@/components/time/entries/entryRules";
 import {
@@ -67,6 +68,7 @@ import type {
 	TimesheetRow,
 	TimesheetSummary,
 } from "@/services/time.types";
+import { useActiveTimer } from "../timer/useActiveTimer";
 import { StaleRevisionBanner } from "./StaleRevisionBanner";
 import { useTimesheetActions } from "./useTimesheetActions";
 
@@ -353,6 +355,49 @@ const PRIMARY =
 const SECONDARY =
 	"rounded-lg border border-border px-3 py-1.5 text-sm font-semibold text-foreground transition-colors hover:bg-muted disabled:opacity-50";
 
+/** "A timer is still running on this timesheet. Stop it first." */
+const RUNNING_BLOCKER = transitionReasonCopy("running_entry");
+
+/**
+ * The running-timer blocker's own Stop, so the member can clear it where it
+ * was raised (the review screen has no timer bar). It shows only when the
+ * person's running timer is the one on this sheet, so it never stops a timer
+ * the blocker didn't mean. A separate component: the timer's one-second tick
+ * re-renders only this.
+ */
+function StopTimerOnSheet({
+	sheetId,
+	entries,
+}: {
+	sheetId: string;
+	entries: readonly TimeEntryView[];
+}) {
+	const timer = useActiveTimer();
+	const running = timer.entry;
+	const here = Boolean(
+		running &&
+			(running.timesheet_id === sheetId ||
+				entries.some((entry) => entry.id === running.id)),
+	);
+	if (!here) return null;
+	return (
+		<button
+			type="button"
+			onClick={timer.stop}
+			disabled={timer.isBusy}
+			className="inline-flex shrink-0 items-center gap-1 rounded-lg border border-border bg-card px-2.5 py-1 text-xs font-semibold text-foreground transition-colors hover:bg-muted disabled:opacity-50"
+			data-testid="submit-stop-timer"
+		>
+			{timer.isStopping ? (
+				<Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden="true" />
+			) : (
+				<Square className="h-3.5 w-3.5 fill-current" aria-hidden="true" />
+			)}
+			{ENTRY_COPY.stopTimer}
+		</button>
+	);
+}
+
 /** The sheet as the detail knows it (fresh revision), with the A1/A2 fields of either. */
 function mergedSheet(
 	summary: TimesheetSummary,
@@ -629,7 +674,10 @@ export function SubmitSheetDialog({
 									className="mt-0.5 h-4 w-4 shrink-0 text-destructive"
 									aria-hidden="true"
 								/>
-								<span>{nativeSafe(text)}</span>
+								<span className="min-w-0 flex-1">{nativeSafe(text)}</span>
+								{text === RUNNING_BLOCKER ? (
+									<StopTimerOnSheet sheetId={sheet.id} entries={entries} />
+								) : null}
 							</li>
 						))}
 					</ul>

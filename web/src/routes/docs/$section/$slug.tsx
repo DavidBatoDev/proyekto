@@ -12,6 +12,7 @@ import {
 } from "@/content/docs.manifest";
 import { loadArticleBody } from "@/content/docsContent";
 import { useDocumentTitle } from "@/hooks/useDocumentTitle";
+import { isNativeApp } from "@/lib/platform";
 
 /**
  * One documentation article.
@@ -75,10 +76,15 @@ function DocsArticlePage() {
 	useDocumentTitle(article.title);
 
 	const section = DOC_SECTIONS.find((s) => s.id === article.section);
-	const siblings = sectionArticles(article.section);
+	// Web-only articles never get a card in the app (the sidebar, home and
+	// search drop them the same way).
+	const native = isNativeApp();
+	const shown = (a: DocArticle) => !(native && a.surface === "web");
+	const siblings = sectionArticles(article.section).filter(shown);
 	const related = (article.related ?? [])
 		.map((slug) => DOC_ARTICLES.find((a) => a.slug === slug))
-		.filter((a): a is (typeof DOC_ARTICLES)[number] => Boolean(a));
+		.filter((a): a is (typeof DOC_ARTICLES)[number] => Boolean(a))
+		.filter(shown);
 
 	return (
 		<article className="mx-auto w-full max-w-[912px] px-5 py-10 md:px-10 lg:px-14">

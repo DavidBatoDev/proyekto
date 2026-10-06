@@ -75,7 +75,10 @@ export function TimeViewToggle({
 	return (
 		<div
 			role="group"
-			className={cn("inline-flex shrink-0 rounded-lg bg-muted p-1", className)}
+			className={cn(
+				"inline-flex shrink-0 rounded-lg bg-muted p-1 max-sm:p-0.5",
+				className,
+			)}
 			aria-label="View"
 		>
 			{MODES.map(({ mode, icon: Icon }) => {
@@ -90,7 +93,8 @@ export function TimeViewToggle({
 							if (!active) onChange(mode);
 						}}
 						className={cn(
-							"inline-flex items-center gap-1.5 rounded-md px-3 py-1 text-xs transition-colors disabled:opacity-50",
+							// 40 px tall on phones, the compact segment from sm up.
+							"inline-flex items-center gap-1.5 rounded-md px-3 py-1 text-xs transition-colors disabled:opacity-50 max-sm:min-h-10",
 							active
 								? "bg-card font-semibold text-foreground shadow-sm"
 								: "font-medium text-muted-foreground hover:text-foreground",

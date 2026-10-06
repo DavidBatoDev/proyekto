@@ -7,19 +7,24 @@
 // money pages (team Payouts and Rates) are never linked.
 
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { cleanup, render, screen, waitFor } from "@testing-library/react";
+import {
+	cleanup,
+	fireEvent,
+	render,
+	screen,
+	waitFor,
+} from "@testing-library/react";
 import type { ReactElement, ReactNode } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("@/lib/platform", () => ({ isNativeApp: () => true }));
-vi.mock("@/hooks/useToast", () => ({
-	useToast: () => ({
-		success: vi.fn(),
-		error: vi.fn(),
-		warning: vi.fn(),
-		info: vi.fn(),
-	}),
+const toast = vi.hoisted(() => ({
+	success: vi.fn(),
+	error: vi.fn(),
+	warning: vi.fn(),
+	info: vi.fn(),
 }));
+vi.mock("@/hooks/useToast", () => ({ useToast: () => toast }));
 vi.mock("@tanstack/react-router", async (importOriginal) => {
 	const actual =
 		await importOriginal<typeof import("@tanstack/react-router")>();
@@ -65,6 +70,7 @@ vi.mock("@/components/team-time/RateBudgetCalculator", () => ({
 }));
 const state = vi.hoisted(() => ({
 	perms: {} as Record<string, unknown>,
+	rates: [] as Record<string, unknown>[],
 }));
 vi.mock("@/hooks/useProjectQueries", () => ({
 	useProjectMyPermissionsQuery: () => ({
@@ -116,7 +122,7 @@ vi.mock("@/services/teams.service", async (importOriginal) => ({
 	listCuratedMembers: () => Promise.resolve([{ user_id: "u1" }]),
 	getTeam: (id: string) =>
 		Promise.resolve({ id, name: "Design", member_rates_enabled: true }),
-	listMemberRates: () => Promise.resolve([]),
+	listMemberRates: () => Promise.resolve(state.rates),
 	updateMemberRate: vi.fn(),
 }));
 vi.mock("@/services/engagement.service", () => ({
@@ -147,6 +153,7 @@ import {
 	PROJECT_ID,
 	summary,
 } from "@/components/time/report/__fixtures__/reportFixtures";
+import { updateMemberRate } from "@/services/teams.service";
 import { timeService } from "@/services/time.service";
 import type { ReportQuery, TimeEntryView } from "@/services/time.types";
 import { ProjectTimePage } from "./ProjectTimePage";
@@ -210,6 +217,7 @@ function page(view?: "everyone" | "client") {
 beforeEach(() => {
 	vi.useFakeTimers({ toFake: ["Date"] });
 	vi.setSystemTime(NOW);
+	state.rates = [];
 	state.perms = {
 		access: { time: true },
 		time: { log: true, view_team_logs: true },
@@ -247,6 +255,7 @@ afterEach(() => {
 	cleanup();
 	vi.useRealTimers();
 	vi.restoreAllMocks();
+	for (const fn of Object.values(toast)) fn.mockReset();
 });
 
 describe("Project › Time on native", () => {
@@ -306,5 +315,33 @@ describe("Project settings › Time on native", () => {
 		).toBeTruthy();
 		expect(screen.queryByTestId("rate-calculator")).toBeNull();
 		assertNativeSafe({ amounts: false });
+	});
+
+	it("toasts an hour-limit save failure without naming rates", async () => {
+		// The team service rejects with "Failed to update rate" (or the 403
+		// "Member rates are disabled…"); the app says something else.
+		state.rates = [
+			{
+				id: "r1",
+				end_date: null,
+				weekly_limit_hours: null,
+				monthly_limit_hours: null,
+				overtime_requires_approval: false,
+			},
+		];
+		vi.mocked(updateMemberRate).mockRejectedValue(
+			new Error("Failed to update rate"),
+		);
+		withClient(<ProjectTimeSettings projectId={PROJECT_ID} />);
+		fireEvent.change(await screen.findByLabelText("Weekly hours: Leo"), {
+			target: { value: "20" },
+		});
+		fireEvent.click(screen.getByRole("button", { name: "Save: Leo" }));
+		await waitFor(() =>
+			expect(toast.error).toHaveBeenCalledWith(
+				"Proyekto couldn't save these hour limits. Try again.",
+			),
+		);
+		expect(toast.error.mock.calls.flat().join(" ")).not.toMatch(BANNED);
 	});
 });

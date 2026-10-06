@@ -170,6 +170,32 @@ describe("TimesheetReview: misses", () => {
 		).toBeTruthy();
 	});
 
+	it("a 404 on a refetch replaces the cached copy; another failure keeps it", async () => {
+		// Access revoked, or another account in this tab: the copy on screen
+		// must not outlive the server's 404.
+		const get = serve(deciderDetail());
+		renderWith(review());
+		expect(await screen.findByText("Maria Santos")).toBeTruthy();
+
+		get.mockRejectedValue(
+			new TimeApiError({ status: 400, code: "HTTP_400", message: "" }),
+		);
+		await act(() => client.refetchQueries({ queryKey: ["time", "timesheet"] }));
+		expect(screen.getByText("Maria Santos")).toBeTruthy();
+
+		get.mockRejectedValue(
+			new TimeApiError({ status: 404, code: "HTTP_404", message: "" }),
+		);
+		await act(() => client.refetchQueries({ queryKey: ["time", "timesheet"] }));
+		expect(
+			await screen.findByText(
+				"This timesheet doesn't exist or you can't open it.",
+			),
+		).toBeTruthy();
+		expect(screen.queryByText("Maria Santos")).toBeNull();
+		expect(screen.queryByRole("button", { name: /Approve/ })).toBeNull();
+	});
+
 	it("any other failure offers Try again", async () => {
 		const get = vi
 			.spyOn(timeService, "getTimesheet")

@@ -6,10 +6,12 @@
 //
 // Keyboard: Enter/Space or ArrowUp/ArrowDown open the menu and focus an item;
 // arrows move, Home/End jump, Escape closes and returns focus to the button,
-// Tab closes. A click outside closes it too.
+// Tab closes. A click outside closes it too, and so does the Android back
+// button (lib/backStack.ts), before it would leave the page.
 
 import { Play, Plus, X } from "lucide-react";
 import { useEffect, useId, useRef, useState } from "react";
+import { useBackHandler } from "@/lib/backStack";
 import { cn } from "@/lib/utils";
 
 export const TIME_FAB_COPY = {
@@ -65,6 +67,7 @@ export function TimeMobileFab({
 		setOpen(false);
 		if (returnFocus) triggerRef.current?.focus();
 	};
+	useBackHandler(open, () => close(false));
 	const openAt = (index: number) => {
 		setFocusIndex(index);
 		setOpen(true);

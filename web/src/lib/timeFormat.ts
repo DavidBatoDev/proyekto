@@ -949,7 +949,14 @@ export function sheetStatusView(
 
 	switch (status) {
 		case "open": {
-			const reopened = latestEvent(ctx.events, ["reopened"], "open");
+			// Only when the reopen is what made it open: a later withdraw
+			// (reopened → submitted → withdrawn) is open for another reason.
+			const lastOpen = latestEvent(
+				ctx.events,
+				["reopened", "withdrawn", "legacy_import"],
+				"open",
+			);
+			const reopened = lastOpen?.event === "reopened" ? lastOpen : null;
 			if (reopened) {
 				const who = actorName(reopened.actor_user_id, ctx);
 				sublabels.push(who ? `Reopened by ${who}` : "Reopened");
@@ -1011,7 +1018,13 @@ export function sheetStatusView(
 			const verb = event?.event === "reopened" ? "Reopened" : "Returned";
 			const who = actorName(event?.actor_user_id ?? sheet.decided_by, ctx);
 			const note = quoted(event ? event.note : sheet.decision_note);
-			const head = who ? `${verb} by ${who}` : null;
+			// Without a name, "Reopened" still says what happened (the status
+			// word already says "Returned", so that one adds nothing alone).
+			const head = who
+				? `${verb} by ${who}`
+				: verb === "Reopened"
+					? verb
+					: null;
 			const line = [head, note].filter(Boolean).join(" · ");
 			if (line) sublabels.push(line);
 			submitAvailable = true;

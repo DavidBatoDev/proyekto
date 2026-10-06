@@ -145,6 +145,43 @@ describe("TimesheetCardsSection", () => {
 		expect(onWithdraw).toHaveBeenCalledWith(submitted);
 	});
 
+	it("a returned card reads 'Reopened by' from its sheet's events", () => {
+		const reopened = sheet({
+			id: "s9",
+			status: "returned",
+			decision_note: "Thursday needs a task name",
+			decided_by: "lito",
+		});
+		render(
+			<TimesheetCardsSection
+				sheets={[reopened]}
+				names={{ lito: "Lito Garcia" }}
+				events={{
+					s9: [
+						{
+							id: 7,
+							timesheet_id: "s9",
+							actor_user_id: "lito",
+							event: "reopened",
+							from_status: "approved",
+							to_status: "returned",
+							note: "Thursday needs a task name",
+							total_seconds: 3600,
+							payable_seconds: null,
+							revision: 4,
+							created_at: "2026-10-06T01:00:00.000Z",
+						},
+					],
+				}}
+				now={NOW}
+				userTimezone={TZ}
+			/>,
+		);
+		const card = screen.getByTestId("timesheet-card");
+		expect(card.textContent).toContain("Reopened by Lito");
+		expect(card.textContent).not.toContain("Returned by");
+	});
+
 	it("marks the card being fixed and the busy one", () => {
 		render(
 			<TimesheetCardsSection

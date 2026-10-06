@@ -74,6 +74,13 @@ export function ReportGroupTable({
 		(row) => row.amounts !== null && (amountsFor ? amountsFor(row) : false),
 	);
 	const header = REPORT_GROUP_HEADER[groupBy];
+	// A floor only where columns could crush each other. Two columns (the
+	// client's week and Approved) always fit a phone, so they get none: a
+	// floor wider than the card hid Approved, the client's only number,
+	// behind a sideways scroll.
+	const columns = 2 + (showNotApproved ? 1 : 0) + (showCost ? 1 : 0);
+	const minWidth =
+		columns >= 4 ? "min-w-[22rem]" : columns === 3 ? "min-w-[18rem]" : null;
 
 	if (!loading && rows.length === 0) {
 		return (
@@ -95,22 +102,22 @@ export function ReportGroupTable({
 				className,
 			)}
 		>
-			<table className="w-full min-w-[22rem] text-sm">
+			<table className={cn("w-full text-sm", minWidth)}>
 				<thead>
 					<tr className="border-b border-border text-left text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
-						<th scope="col" className="px-4 py-2">
+						<th scope="col" className="px-3 py-2 sm:px-4">
 							{header}
 						</th>
-						<th scope="col" className="px-4 py-2 text-right">
+						<th scope="col" className="px-3 py-2 sm:px-4 text-right">
 							{REPORT_COPY.approved}
 						</th>
 						{showNotApproved ? (
-							<th scope="col" className="px-4 py-2 text-right">
+							<th scope="col" className="px-3 py-2 sm:px-4 text-right">
 								{REPORT_COPY.notApproved}
 							</th>
 						) : null}
 						{showCost ? (
-							<th scope="col" className="px-4 py-2 text-right">
+							<th scope="col" className="px-3 py-2 sm:px-4 text-right">
 								{REPORT_COPY.cost}
 							</th>
 						) : null}
@@ -120,7 +127,7 @@ export function ReportGroupTable({
 					{loading
 						? [0, 1, 2].map((i) => (
 								<tr key={`skeleton-${i}`} className="border-b border-border">
-									<td className="px-4 py-2.5" colSpan={4}>
+									<td className="px-3 py-2.5 sm:px-4" colSpan={4}>
 										<span
 											aria-hidden="true"
 											className="block h-3 w-1/2 animate-pulse rounded bg-muted"
@@ -143,7 +150,7 @@ export function ReportGroupTable({
 									>
 										<th
 											scope="row"
-											className="max-w-[16rem] truncate px-4 py-2 text-left font-medium text-foreground"
+											className="max-w-[16rem] truncate px-3 py-2 sm:px-4 text-left font-medium text-foreground"
 											title={label}
 										>
 											{selectable ? (
@@ -158,11 +165,11 @@ export function ReportGroupTable({
 												label
 											)}
 										</th>
-										<td className="px-4 py-2 text-right tabular-nums text-foreground">
+										<td className="px-3 py-2 sm:px-4 text-right tabular-nums text-foreground">
 											<Seconds value={row.approvedSeconds} />
 										</td>
 										{showNotApproved ? (
-											<td className="px-4 py-2 text-right tabular-nums text-muted-foreground">
+											<td className="px-3 py-2 sm:px-4 text-right tabular-nums text-muted-foreground">
 												<Seconds
 													value={row.notApprovedSeconds}
 													pending={notApprovedPending}
@@ -170,7 +177,7 @@ export function ReportGroupTable({
 											</td>
 										) : null}
 										{showCost ? (
-											<td className="px-4 py-2 text-right tabular-nums text-foreground">
+											<td className="px-3 py-2 sm:px-4 text-right tabular-nums text-foreground">
 												{lines.length > 0
 													? lines.map((line) => <div key={line}>{line}</div>)
 													: "—"}

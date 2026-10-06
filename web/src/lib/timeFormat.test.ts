@@ -789,6 +789,31 @@ describe("sheetStatusView", () => {
 		expect(view.sublabels).toEqual(["Reopened by you", "sends itself Oct 6"]);
 	});
 
+	it("drops the reopen note once a later withdraw is what made it open", () => {
+		const reopened = event({
+			id: 4,
+			event: "reopened",
+			from_status: "approved",
+			to_status: "open",
+			actor_user_id: "u-maria",
+			created_at: "2026-10-06T01:00:00Z",
+		});
+		const withdrawn = event({
+			id: 6,
+			event: "withdrawn",
+			from_status: "submitted",
+			to_status: "open",
+			actor_user_id: "u-maria",
+			created_at: "2026-10-06T03:00:00Z",
+		});
+		const view = sheetStatusView(sheet({ approver_scope: "self" }), {
+			now: NOW,
+			viewerId: "u-maria",
+			events: [reopened, withdrawn],
+		});
+		expect(view.sublabels).toEqual(["sends itself Oct 6"]);
+	});
+
 	it("names who a submitted sheet waits on", () => {
 		const hirer = sheetStatusView(
 			sheet({
@@ -956,6 +981,30 @@ describe("sheetStatusView", () => {
 			},
 		);
 		expect(reopened.sublabel).toBe("Reopened by Ana · 'Fix Tue'");
+
+		// The reopener's name unknown: "Reopened" still tells it from a return.
+		const unnamed = sheetStatusView(
+			sheet({
+				status: "returned",
+				decided_by: "u-lito",
+				decision_note: "Fix Tue",
+			}),
+			{
+				now: NOW,
+				events: [
+					event({
+						id: 5,
+						event: "reopened",
+						from_status: "approved",
+						to_status: "returned",
+						actor_user_id: "u-lito",
+						note: "Fix Tue",
+						created_at: "2026-10-02T02:00:00Z",
+					}),
+				],
+			},
+		);
+		expect(unnamed.sublabel).toBe("Reopened · 'Fix Tue'");
 	});
 
 	it("falls back to the sheet's decision fields without events", () => {

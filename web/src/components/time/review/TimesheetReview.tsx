@@ -112,7 +112,7 @@ function BackLink() {
 	return (
 		<Link
 			to="/time"
-			className="inline-flex items-center gap-1 rounded-md text-sm font-semibold text-muted-foreground transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+			className="inline-flex items-center gap-1 rounded-md text-sm font-semibold text-muted-foreground transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring max-sm:min-h-10"
 		>
 			<span aria-hidden="true">←</span> Time
 		</Link>
@@ -174,7 +174,14 @@ export function TimesheetReview({
 		refetchOnWindowFocus: true,
 	});
 
-	if (!valid) return <NotFoundCard />;
+	// A 404 wins over a cached copy: TanStack keeps the last data when a
+	// refetch fails, and this sheet may be someone's the viewer can no longer
+	// open (access revoked, or another account in this tab).
+	const missing =
+		query.isError &&
+		timeErrorCopy(query.error, { subject: "timesheet", operation: "read" })
+			.notFound;
+	if (!valid || missing) return <NotFoundCard />;
 	if (query.data) {
 		return (
 			<ReviewBody
@@ -519,7 +526,7 @@ function ReviewBody({
 							aria-expanded={entriesOpen}
 							aria-controls={entriesId}
 							onClick={() => setEntriesOpen((open) => !open)}
-							className="inline-flex items-center gap-1 rounded-md text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+							className="inline-flex items-center gap-1 rounded-md text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring max-sm:min-h-10"
 						>
 							{REVIEW_COPY.entries}
 							<span className="font-normal text-muted-foreground tabular-nums">

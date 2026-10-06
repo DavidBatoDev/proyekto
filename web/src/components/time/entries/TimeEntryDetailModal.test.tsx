@@ -2,6 +2,7 @@
 
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import {
+	act,
 	cleanup,
 	fireEvent,
 	render,
@@ -393,6 +394,40 @@ describe("TimeEntryDetailModal", () => {
 				"This time entry doesn't exist or you can't open it.",
 			),
 		).toBeTruthy();
+	});
+
+	it("a 404 on a refetch replaces the cached copy and its actions", async () => {
+		// Access revoked, or another account in this tab: TanStack keeps the
+		// last data when a refetch fails; the 404 still wins.
+		const getEntry = vi.spyOn(timeService, "getEntry");
+		const client = new QueryClient({
+			defaultOptions: { queries: { retry: false } },
+		});
+		render(
+			<QueryClientProvider client={client}>
+				<TimeEntryDetailModal
+					entryId={ID}
+					onClose={vi.fn()}
+					onEdit={vi.fn()}
+					timeZone={TZ}
+				/>
+			</QueryClientProvider>,
+		);
+		await screen.findByText("3:30");
+		expect(screen.getByRole("button", { name: "Edit" })).toBeTruthy();
+
+		getEntry.mockRejectedValue(
+			new TimeApiError({ status: 404, code: "TIME_NOT_FOUND", message: "" }),
+		);
+		await act(() => client.refetchQueries({ queryKey: ["time", "entry"] }));
+		expect(
+			await screen.findByText(
+				"This time entry doesn't exist or you can't open it.",
+			),
+		).toBeTruthy();
+		expect(screen.queryByText("3:30")).toBeNull();
+		expect(screen.queryByRole("button", { name: "Edit" })).toBeNull();
+		client.clear();
 	});
 
 	it("a malformed id is a miss without a request", () => {

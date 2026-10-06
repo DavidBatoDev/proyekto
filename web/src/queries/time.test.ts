@@ -8,6 +8,7 @@ import { TimeApiError, timeService } from "@/services/time.service";
 import { EMPTY_TIME_OVERVIEW } from "@/services/time.types";
 import { useAuthStore } from "@/stores/authStore";
 import {
+	clearTimeOnUserChange,
 	invalidateTime,
 	retryTimeQuery,
 	TIME_INVALIDATION,
@@ -301,6 +302,50 @@ describe("invalidateTime", () => {
 
 		await invalidateTime(client, "policy");
 		expect(client.getQueryState(policyKey)?.isInvalidated).toBe(true);
+	});
+});
+
+describe("clearTimeOnUserChange", () => {
+	function seed(client: QueryClient) {
+		client.setQueryData(timeKeys.timesheet("s1"), { id: "s1" });
+		client.setQueryData(timeKeys.entry("e1"), { id: "e1" });
+		client.setQueryData(timeKeys.running(USER), null);
+		client.setQueryData(["payouts", TEAM], []);
+		client.setQueryData(["projects", "list"], []);
+	}
+	function timeKeysLeft(client: QueryClient) {
+		return client
+			.getQueryCache()
+			.getAll()
+			.map((query) => query.queryKey[0]);
+	}
+
+	it("drops the time tree and the payout pages when another account signs in", () => {
+		const client = makeClient();
+		const stop = clearTimeOnUserChange(client);
+		seed(client);
+		useAuthStore.setState({ user: { id: "user-2" } as never });
+		expect(timeKeysLeft(client)).toEqual(["projects"]);
+		stop();
+	});
+
+	it("drops them on sign-out, and not on the first sign-in or a token refresh", () => {
+		const client = makeClient();
+		useAuthStore.setState({ user: null });
+		const stop = clearTimeOnUserChange(client);
+		seed(client);
+		// No one → someone: nothing of anyone else's to drop.
+		useAuthStore.setState({ user: { id: USER } as never });
+		// The same user again (a refreshed session).
+		useAuthStore.setState({ user: { id: USER, email: "x" } as never });
+		expect(timeKeysLeft(client)).toHaveLength(5);
+		useAuthStore.setState({ user: null });
+		expect(timeKeysLeft(client)).toEqual(["projects"]);
+		stop();
+		// Unsubscribed: nothing happens any more.
+		seed(client);
+		useAuthStore.setState({ user: { id: "user-3" } as never });
+		expect(timeKeysLeft(client)).toHaveLength(5);
 	});
 });
 

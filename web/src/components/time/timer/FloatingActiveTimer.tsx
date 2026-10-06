@@ -343,7 +343,8 @@ function FloatingTimerCard() {
 						disabled={isBusy}
 						className={cn(
 							BUTTON,
-							"bg-destructive text-destructive-foreground hover:bg-destructive/90",
+							// White on dark mode's lighter `destructive` reads under 3:1.
+							"bg-destructive text-destructive-foreground hover:bg-destructive/90 dark:text-background",
 						)}
 					>
 						{isStopping ? (

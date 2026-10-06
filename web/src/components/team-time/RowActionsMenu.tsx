@@ -101,7 +101,7 @@ export function RowActionsMenu({
 				disabled={disabled}
 				title={ariaLabel}
 				aria-label={ariaLabel}
-				className="inline-flex items-center justify-center h-7 w-8 rounded-md border border-border bg-card text-foreground hover:bg-muted disabled:opacity-50 disabled:cursor-not-allowed"
+				className="inline-flex items-center justify-center h-7 w-8 rounded-md border border-border bg-card text-foreground hover:bg-muted disabled:opacity-50 disabled:cursor-not-allowed max-sm:h-10 max-sm:w-10"
 			>
 				{loading ? (
 					<Loader2 className="h-3.5 w-3.5 animate-spin" />

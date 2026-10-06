@@ -161,6 +161,10 @@ export function PlanLimitNotice({
 	// A time key speaks ux.md's sentence even over the server's message: the
 	// two say the same thing, and only ours names the workspace.
 	const body = message ?? timeCopy ?? defaultMessage(full, role, surface);
+	// The app's time sentence already says where the plan changes ("A
+	// workspace owner can change this on the web."), so "Plan changes aren't
+	// available in the app." under it would say it twice.
+	const saysWhereToChange = native && /\bon the web\b/i.test(body);
 	const cta = upgradeCta({
 		role,
 		isComplimentary,
@@ -199,7 +203,8 @@ export function PlanLimitNotice({
 				<p>{body}</p>
 				{detail ? <p>{detail}</p> : null}
 				{(cta.kind === "ask_owner" || cta.kind === "unavailable") &&
-				!body.includes(cta.label) ? (
+				!body.includes(cta.label) &&
+				!saysWhereToChange ? (
 					<p className="font-medium text-foreground">{cta.label}</p>
 				) : null}
 			</div>

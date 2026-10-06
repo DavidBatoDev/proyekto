@@ -182,6 +182,30 @@ describe("TimeReport (team scope)", () => {
 		).toBeNull();
 	});
 
+	it("an empty range says 'No time in this range.' once, not twice", async () => {
+		vi.spyOn(timeService, "getReportSummary").mockResolvedValue(
+			summary({ total_seconds: 0, payable_seconds: 0, groups: [] }),
+		);
+		vi.spyOn(timeService, "getReportEntries").mockResolvedValue({
+			items: [],
+			total: 0,
+			page: 1,
+			limit: 50,
+		});
+		renderWithClient(
+			<TimeReport
+				scope={teamScope}
+				search={{}}
+				onSearchChange={vi.fn()}
+				now={NOW}
+			/>,
+		);
+		await waitFor(() =>
+			expect(screen.getAllByText("No time in this range.")).toHaveLength(1),
+		);
+		expect(screen.queryByRole("region", { name: "Entries" })).toBeNull();
+	});
+
 	it("sends filter changes to the host's URL", async () => {
 		mockSummaries();
 		mockEntries();

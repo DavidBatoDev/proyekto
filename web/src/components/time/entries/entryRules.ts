@@ -676,9 +676,14 @@ export function entryAmount(
 	const currency = (entry.currency_snapshot || "USD").toUpperCase();
 	if (entry.payable_seconds !== null && entry.payable_seconds !== undefined) {
 		const amount = entry.amount_snapshot;
-		return typeof amount === "number" && Number.isFinite(amount)
-			? { amount, currency, final: true }
-			: null;
+		if (typeof amount !== "number" || !Number.isFinite(amount)) return null;
+		// Unpriced time (no rate, e.g. a team with member rates off) freezes at
+		// 0: that is no amount, not "USD 0.00".
+		const rate = Number(entry.rate_snapshot ?? 0);
+		if (amount === 0 && !(rate > 0) && entry.rate_type_snapshot !== "fixed") {
+			return null;
+		}
+		return { amount, currency, final: true };
 	}
 	if (entry.rate_type_snapshot === "fixed") return null;
 	const rate = Number(entry.rate_snapshot ?? 0);

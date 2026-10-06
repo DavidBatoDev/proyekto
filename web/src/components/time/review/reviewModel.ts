@@ -425,10 +425,17 @@ export function reviewPersonName(
 
 /** Display names by user id, for the status sublabels ("Returned by Ana"). */
 export function reviewNames(
-	detail: Pick<TimesheetDetail, "sheet" | "entries" | "deciders">,
+	detail: Pick<TimesheetDetail, "sheet" | "entries" | "deciders"> &
+		Partial<Pick<TimesheetDetail, "routing_preview">>,
 ): Record<string, string | null> {
 	const names: Record<string, string | null> = {};
-	for (const decider of detail.deciders ?? detail.sheet.deciders ?? []) {
+	// A1's deciders name whoever returned or reopened the member's own sheet.
+	for (const decider of [
+		...(detail.routing_preview?.deciders ??
+			detail.sheet.routing_preview?.deciders ??
+			[]),
+		...(detail.deciders ?? detail.sheet.deciders ?? []),
+	]) {
 		names[decider.id] = decider.display_name;
 	}
 	const member = detail.sheet.member_user_id;
@@ -676,6 +683,11 @@ export interface SheetCost {
  * the decider may read every entry's money), otherwise the entries' own
  * amounts when every entry's cost is visible. Null otherwise. Native and
  * agreement rules are applied where it renders (`AmountLines`).
+ *
+ * A sheet with no money says nothing rather than "Amount at approval: USD
+ * 0.00": an entry frozen at 0 with no rate (a team with member rates off)
+ * has no amount (`entryAmount`). `routing.cost_money` is not the test: a
+ * client-agreement sheet has no cost money yet may carry billed amounts.
  */
 export function sheetCost(
 	detail: Pick<TimesheetDetail, "sheet" | "entries" | "freeze_preview">,

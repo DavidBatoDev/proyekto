@@ -79,6 +79,11 @@ const SURFACE_RULES: ReadonlyArray<
 	// existing hide-with-explanation behaviour and the docs code needs no
 	// special case of its own.
 	["/docs/clients-and-marketplace", "marketplace"],
+	// The help for the team Rates and Payouts pages, which the app leaves out
+	// (`silent`, below): web-only articles (`surface: "web"`), so a body link,
+	// a Related card or a deep link to them never reaches the app either.
+	["/docs/teams-time-and-rates/payouts", "silent"],
+	["/docs/teams-time-and-rates/rates-and-currency", "silent"],
 
 	// ── staff ───────────────────────────────────────────────────────────
 	// The whole console, not page by page. Most of it is commerce (Plans,

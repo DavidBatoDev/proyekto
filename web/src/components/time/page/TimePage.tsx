@@ -27,9 +27,10 @@
 //
 // The page is router-agnostic: the route passes the parsed search, a setter
 // and the hash. Every write in the kits invalidates through `invalidateTime`,
-// so nothing here refetches by hand.
+// so nothing here refetches by hand, except when the polled running timer
+// changes under the page (another device or tab): then the lists refresh.
 
-import { useQuery } from "@tanstack/react-query";
+import { useQueries, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Play, Plus } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useIsMobile } from "@/hooks/useIsMobile";
@@ -39,8 +40,12 @@ import { formatLocalDay, formatPeriodRange } from "@/lib/timeFormat";
 import { shiftWeek } from "@/lib/timePeriods";
 import type { TimeForParam, TimePageSearch } from "@/lib/timeSearch";
 import { cn } from "@/lib/utils";
-import { timeQueries } from "@/queries/time";
-import type { TimeEntryView, TimesheetSummary } from "@/services/time.types";
+import { invalidateTime, TIME_PREFIX, timeQueries } from "@/queries/time";
+import type {
+	TimeEntryView,
+	TimesheetEventRow,
+	TimesheetSummary,
+} from "@/services/time.types";
 import { TimeMonthView } from "../calendar/TimeMonthView";
 import { TimeViewToggle, useTimeViewMode } from "../calendar/TimeViewToggle";
 import { ChangeForDialog } from "../edit/ChangeForDialog";
@@ -71,6 +76,7 @@ import { LegacyGroupingBanner } from "./LegacyGroupingBanner";
 import {
 	LimitBanner,
 	limitReadingsFromPolicy,
+	logsInWorkspace,
 	planDowngradeApplies,
 	TimePlanBanner,
 } from "./LimitBanner";
@@ -119,6 +125,8 @@ export interface TimePageProps {
 }
 
 const PAGE = "mx-auto w-full max-w-6xl space-y-4 px-4 py-4 sm:px-6 sm:py-6";
+/** Returned and reopened cards whose detail (events) the page reads for their sublabel. */
+const EVENT_DETAIL_MAX = 5;
 
 const PRIMARY =
 	"inline-flex items-center gap-1.5 rounded-lg bg-primary px-3 py-1.5 text-xs font-semibold text-primary-foreground transition-colors hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-50";
@@ -156,7 +164,41 @@ export function TimePage({
 		forRequest,
 	} = data;
 	const isPhone = useIsMobile(639);
-	const running = useRunningEntry({ enabled: false }).entry;
+	const queryClient = useQueryClient();
+	const runningRead = useRunningEntry({ enabled: false });
+	const running = runningRead.entry;
+	// The timer changed under the page (stopped, paused or switched on another
+	// device or tab): the timer bar's poll sees it, the lists and cards don't,
+	// so refresh them. A local write refreshes them itself: an optimistic stop
+	// or pause still in flight is skipped, and a refetch a finished write
+	// already started is joined rather than restarted (`cancelRefetch:
+	// false`), so local timer actions cost no extra requests. Nothing runs
+	// until the first answer arrives.
+	const runningSig =
+		runningRead.query.data === undefined
+			? null
+			: running
+				? `${running.id}:${running.paused_at ?? ""}`
+				: "none";
+	const lastRunningSig = useRef<string | null>(null);
+	useEffect(() => {
+		if (runningSig === null) return;
+		const previous = lastRunningSig.current;
+		lastRunningSig.current = runningSig;
+		if (previous === null || previous === runningSig) return;
+		if (queryClient.isMutating() > 0) return;
+		for (const queryKey of [
+			TIME_PREFIX.myEntries,
+			TIME_PREFIX.mySummary,
+			TIME_PREFIX.myTimesheets,
+			TIME_PREFIX.overview,
+		]) {
+			void queryClient.invalidateQueries(
+				{ queryKey },
+				{ cancelRefetch: false },
+			);
+		}
+	}, [runningSig, queryClient]);
 	const [storedView, setStoredView] = useTimeViewMode();
 	// The view (D86): `?view=` wins, so a Month URL reloads as Month. A linked
 	// week without a view (`?week=`, as the dashboard's "Submit last week"
@@ -292,6 +334,45 @@ export function TimePage({
 		myProjects.data?.projects.find((project) => project.id === search.project)
 			?.title ??
 		null;
+	// P1's plan notice is for an owner who tracks time on this workspace's
+	// projects; read only when it could apply (same cached A9 list).
+	const planNoticeCandidate =
+		approverMode === false && canLog === true && workspace?.my_role === "owner";
+	const planProjects = useQuery({
+		...timeQueries.myProjects(data.userId),
+		enabled: planNoticeCandidate,
+	});
+	const logsHere =
+		planNoticeCandidate &&
+		logsInWorkspace(planProjects.data?.projects, workspace?.id);
+
+	// A returned card tells a decider's reopen from a return ("Reopened by
+	// Lito"), and an open card shows "Reopened by you", only from the sheet's
+	// events, which `me/timesheets` doesn't carry: read the detail of each
+	// returned card and of each open card that has been through a transition
+	// (revision > 0: withdrawn, reopened or imported), returned first (the
+	// query Fix and the review screen share, so Fix then opens from cache).
+	// Such sheets are few; at most 5.
+	const eventSheetIds = useMemo(
+		() =>
+			[
+				...data.sheets.filter((sheet) => sheet.status === "returned"),
+				...data.sheets.filter(
+					(sheet) => sheet.status === "open" && sheet.revision > 0,
+				),
+			]
+				.slice(0, EVENT_DETAIL_MAX)
+				.map((sheet) => sheet.id),
+		[data.sheets],
+	);
+	const eventDetails = useQueries({
+		queries: eventSheetIds.map((id) => timeQueries.timesheet(id)),
+	});
+	const sheetEvents: Record<string, readonly TimesheetEventRow[]> = {};
+	eventDetails.forEach((query, index) => {
+		const events = query.data?.events;
+		if (events) sheetEvents[eventSheetIds[index]] = events;
+	});
 
 	// ── Navigation ──
 	const goWeek = useCallback(
@@ -405,6 +486,7 @@ export function TimePage({
 					<TimePlanBanner
 						workspace={workspace}
 						downgraded={planDowngradeApplies(data.weekSheets, workspace?.id)}
+						logsHere={logsHere}
 					/>
 				</>
 			) : null}
@@ -705,6 +787,7 @@ export function TimePage({
 						onWithdraw={(sheet) => void sheetActions.withdraw(sheet)}
 						isBusy={(id) => sheetActions.isPending(undefined, id)}
 						names={data.sheetNames}
+						events={sheetEvents}
 						workspaceNames={workspaceNames}
 						fixingId={fixSheet?.id ?? null}
 						reminderDays={data.sheetReminders}
@@ -751,7 +834,13 @@ export function TimePage({
 						onOpenEntry={(entry, options) =>
 							openDetail(entry, { focus: options?.focus })
 						}
-						onStop={() => stopRef.current?.()}
+						// Stop only the row's own timer. A row still showing a timer
+						// that stopped or switched elsewhere is stale: refresh it,
+						// never stop a timer the person didn't click.
+						onStop={(entry) => {
+							if (running?.id === entry.id) stopRef.current?.();
+							else void invalidateTime(queryClient, "entry");
+						}}
 						onEdit={setEditing}
 						onChangeTask={setChangingTask}
 						onChangeFor={setChangingFor}

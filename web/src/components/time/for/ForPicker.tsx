@@ -70,8 +70,10 @@ export function ForPicker({
 	const unavailable = sortUnavailable(result.unavailable);
 
 	return (
+		// `min-w-0`: a fieldset's default `min-inline-size: min-content` would
+		// let a long option row (label, workspace tag) push it past its panel.
 		<fieldset
-			className={cn("space-y-1.5", className)}
+			className={cn("min-w-0 space-y-1.5", className)}
 			disabled={disabled}
 			aria-label={PICKER_TITLE}
 		>
@@ -98,10 +100,14 @@ export function ForPicker({
 							className="mt-0.5 accent-primary"
 						/>
 						<span className="min-w-0 flex-1">
-							<span className="flex min-w-0 items-center gap-1.5 text-sm font-medium text-foreground">
-								<ForIcon kind={option.kind} />
-								<span className="truncate" title={full}>
-									{text}
+							{/* The workspace tag wraps under a long name instead of
+							    pushing the card past the panel. */}
+							<span className="flex min-w-0 flex-wrap items-center gap-x-1.5 gap-y-0.5 text-sm font-medium text-foreground">
+								<span className="flex min-w-0 max-w-full items-center gap-1.5">
+									<ForIcon kind={option.kind} />
+									<span className="truncate" title={full}>
+										{text}
+									</span>
 								</span>
 								<ForWorkspaceTag name={option.workspace_tag} />
 							</span>

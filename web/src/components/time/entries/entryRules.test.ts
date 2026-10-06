@@ -606,6 +606,22 @@ describe("entryAmount", () => {
 				NOW_MS,
 			),
 		).toBeNull();
+		// Unpriced time (member rates off) freezes at 0: no "USD 0.00".
+		expect(
+			entryAmount(
+				entry({
+					payable_seconds: 12600,
+					amount_snapshot: 0,
+					rate_snapshot: 0,
+					currency_snapshot: "USD",
+				}),
+				NOW_MS,
+			),
+		).toBeNull();
+		// A priced entry approved at 0 hours still reads as an amount.
+		expect(
+			entryAmount(entry({ payable_seconds: 0, amount_snapshot: 0 }), NOW_MS),
+		).toEqual({ amount: 0, currency: "PHP", final: true });
 	});
 
 	it("shows nothing it can't price or may not show", () => {

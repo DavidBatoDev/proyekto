@@ -84,7 +84,7 @@ export function ForFilter({
 					const next = event.currentTarget.value;
 					onChange(next === ALL ? undefined : (next as TimeForParam));
 				}}
-				className="h-8 max-w-[14rem] truncate rounded-lg border border-input bg-card px-2 text-xs font-semibold text-foreground focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20"
+				className="h-8 max-w-[14rem] truncate rounded-lg border border-input bg-card px-2 text-xs font-semibold text-foreground focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20 max-sm:h-10"
 				data-testid="for-filter"
 			>
 				<option value={ALL}>{FOR_FILTER_COPY.all}</option>

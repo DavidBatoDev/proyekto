@@ -3,8 +3,10 @@
 // Edit one of your own time entries: start, end, break and note (ux.md ›
 // The Time Page; ported from TeamTimeModals' EditLogModal).
 //
-// - Times are shown and typed in `timeZone` (the view's timezone, which is the
-//   context's or the person's own), never the device's by accident.
+// - Times are shown and typed in the entry's context zone, as Add time does
+//   (ux.md › Entries › Times): a governed entry's policy timezone, else
+//   `timeZone` (the caller's view zone, the person's own for personal time);
+//   never the device's by accident.
 // - Only the fields that changed are sent, always with `expected_updated_at`
 //   (D42). A 409 STALE_REVISION reads "This entry changed. Reload to see the
 //   latest version." with a Reload that re-reads the entry and resets the form.
@@ -40,7 +42,11 @@ import {
 	timeErrorCopy,
 } from "@/lib/timeErrors";
 import { deviceTimeZone, formatDurationText } from "@/lib/timeFormat";
-import { retroactiveFloor, safeTimezone } from "@/lib/timePeriods";
+import {
+	isValidTimezone,
+	retroactiveFloor,
+	safeTimezone,
+} from "@/lib/timePeriods";
 import { invalidateTime, timeKeys, timeQueries } from "@/queries/time";
 import { isTimeApiError, timeService } from "@/services/time.service";
 import type {
@@ -135,6 +141,23 @@ export function draftFromEntry(
 		),
 		note: entry.note ?? "",
 	};
+}
+
+/**
+ * The draft's start and end, typed in `from`, as the same instants in `to`.
+ * Anything unreadable (a half-typed time, an empty end) is kept as typed.
+ */
+export function shiftDraftZone(
+	draft: EditEntryDraft,
+	from: string,
+	to: string,
+): EditEntryDraft {
+	if (from === to) return draft;
+	const move = (wall: string) => {
+		const iso = fromWallClock(wall, from);
+		return iso ? toWallClock(iso, to) : wall;
+	};
+	return { ...draft, start: move(draft.start), end: move(draft.end) };
 }
 
 export interface DraftCheck {
@@ -268,7 +291,11 @@ export interface EditEntryModalProps {
 	/** The entry as the list shows it; its `updated_at` is the revision sent back. */
 	entry: TimeEntryView | null;
 	onClose: () => void;
-	/** The timezone times are shown and typed in (the view's). Defaults to the device's. */
+	/**
+	 * The view's timezone: times are typed in it for personal entries, and for
+	 * governed ones until (or unless) their policy's zone is readable.
+	 * Defaults to the device's.
+	 */
 	timeZone?: string;
 	/** After a successful save, with the server's copy (and any warnings). */
 	onSaved?: (entry: UpdatedEntry) => void;
@@ -292,39 +319,16 @@ export function EditEntryModal({
 	onChangeFor,
 	zIndex = 1200,
 }: EditEntryModalProps) {
-	const tz = useMemo(
-		() => safeTimezone(timeZone ?? deviceTimeZone()),
-		[timeZone],
-	);
 	const queryClient = useQueryClient();
 	const toast = useToast();
 	const native = isNativeApp();
 
 	// The copy being edited: the caller's, or a fresh read after a stale save.
 	const [base, setBase] = useState<TimeEntryView | null>(entry);
-	const [draft, setDraft] = useState<EditEntryDraft | null>(() =>
-		entry ? draftFromEntry(entry, tz) : null,
-	);
-	const [saving, setSaving] = useState(false);
-	const [reloading, setReloading] = useState(false);
-	const [error, setError] = useState<{
-		message: string;
-		stale: boolean;
-	} | null>(null);
+	const governed = Boolean(base && base.context_kind !== "personal");
 
-	// Reset when the dialog opens or another entry is put in it. A refreshed
-	// copy of the same entry (a poll) never wipes what is being typed: the save
-	// is checked against the revision that was opened (D42).
-	const entryId = entry?.id ?? "";
-	useEffect(() => {
-		if (!open) return;
-		setBase(entry);
-		setDraft(entry ? draftFromEntry(entry, tz) : null);
-		setError(null);
-		setSaving(false);
-		setReloading(false);
-	}, [open, entryId, tz]);
-
+	// The entry's own policy: its timezone (governed entries) and the
+	// retroactive window (unlocked entries).
 	const policyQuery = useQuery({
 		...timeQueries.projectPolicy(
 			base?.project_id,
@@ -335,9 +339,59 @@ export function EditEntryModal({
 					}
 				: null,
 		),
-		enabled: Boolean(open && base?.project_id && !base?.locked_reason),
+		enabled: Boolean(
+			open && base?.project_id && (governed || !base?.locked_reason),
+		),
 		retry: false,
 	});
+
+	// Times are the entry's context wall clock (ux.md › Entries › Times), the
+	// zone Add time types in: a governed entry's policy timezone, else the
+	// caller's (the person's own for personal time).
+	const contextZone = governed ? (policyQuery.data?.timezone ?? null) : null;
+	const tz = useMemo(
+		() =>
+			safeTimezone(
+				contextZone && isValidTimezone(contextZone)
+					? contextZone
+					: (timeZone ?? deviceTimeZone()),
+			),
+		[contextZone, timeZone],
+	);
+
+	// The draft as typed, with the zone it was typed in. It is read in the
+	// current zone, so the policy's zone arriving after the dialog opened moves
+	// the shown times without losing what was typed (the instants stay).
+	const [typed, setTyped] = useState<{
+		draft: EditEntryDraft;
+		zone: string;
+	} | null>(() =>
+		entry ? { draft: draftFromEntry(entry, tz), zone: tz } : null,
+	);
+	const draft = useMemo(
+		() => (typed ? shiftDraftZone(typed.draft, typed.zone, tz) : null),
+		[typed, tz],
+	);
+	const [saving, setSaving] = useState(false);
+	const [reloading, setReloading] = useState(false);
+	const [error, setError] = useState<{
+		message: string;
+		stale: boolean;
+	} | null>(null);
+
+	// Reset when the dialog opens or another entry is put in it. A refreshed
+	// copy of the same entry (a poll) never wipes what is being typed: the save
+	// is checked against the revision that was opened (D42). A zone change
+	// doesn't reset either (the draft keeps its own zone, above).
+	const entryId = entry?.id ?? "";
+	useEffect(() => {
+		if (!open) return;
+		setBase(entry);
+		setTyped(entry ? { draft: draftFromEntry(entry, tz), zone: tz } : null);
+		setError(null);
+		setSaving(false);
+		setReloading(false);
+	}, [open, entryId]);
 
 	const lockText = base ? entryLockCopy(base, { timeZone: tz, native }) : null;
 	const locked = Boolean(lockText);
@@ -399,7 +453,7 @@ export function EditEntryModal({
 				staleTime: 0,
 			});
 			setBase(fresh);
-			setDraft(draftFromEntry(fresh, tz));
+			setTyped({ draft: draftFromEntry(fresh, tz), zone: tz });
 			setError(null);
 			void invalidateTime(queryClient, "entry");
 		} catch (err) {
@@ -452,7 +506,17 @@ export function EditEntryModal({
 	};
 
 	const set = (patchDraft: Partial<EditEntryDraft>) =>
-		setDraft((current) => (current ? { ...current, ...patchDraft } : current));
+		setTyped((current) =>
+			current
+				? {
+						draft: {
+							...shiftDraftZone(current.draft, current.zone, tz),
+							...patchDraft,
+						},
+						zone: tz,
+					}
+				: current,
+		);
 
 	const hint = timeZoneHint(tz);
 	const option = base ? forChipOptionFromEntry(base) : null;

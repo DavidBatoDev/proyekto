@@ -265,6 +265,13 @@ describe("WaitingForYouList", () => {
 		expect(
 			screen.getAllByText("Has flags. Open it to review.").length,
 		).toBeGreaterThan(0);
+		// Touch has no hover: phones read the reason under the row.
+		expect(
+			within(rowOf("s1")).getByTestId("waiting-block-reason").textContent,
+		).toBe("Has flags. Open it to review.");
+		expect(
+			within(rowOf("s5")).queryByTestId("waiting-block-reason"),
+		).toBeNull();
 	});
 
 	it("tags rows of another policy workspace than the current one (E27)", async () => {

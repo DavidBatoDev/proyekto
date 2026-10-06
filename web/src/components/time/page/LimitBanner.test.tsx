@@ -49,6 +49,7 @@ import {
 	limitReadingsFromPolicy,
 	limitReadingsFromWarnings,
 	limitTone,
+	logsInWorkspace,
 	planDowngradeApplies,
 	TIME_PLAN_NOTICE_STORAGE_PREFIX,
 	TimePlanBanner,
@@ -292,6 +293,17 @@ describe("planDowngradeApplies", () => {
 	});
 });
 
+describe("logsInWorkspace", () => {
+	it("is true only for a loggable project in that workspace", () => {
+		const projects = [{ workspace_id: "w2" }, { workspace_id: null }];
+		expect(logsInWorkspace(projects, "w2")).toBe(true);
+		expect(logsInWorkspace(projects, "w1")).toBe(false);
+		expect(logsInWorkspace([], "w1")).toBe(false);
+		expect(logsInWorkspace(undefined, "w1")).toBe(false);
+		expect(logsInWorkspace(projects, null)).toBe(false);
+	});
+});
+
 describe("TimePlanBanner", () => {
 	const UPGRADE =
 		"Timesheets and approvals are part of Pro. Upgrade Acme to send time for approval.";
@@ -299,7 +311,7 @@ describe("TimePlanBanner", () => {
 		"Acme's plan no longer includes timesheets. Your existing time is safe, and open timesheets can still be decided.";
 
 	it("an owner without timesheets sees the Pro notice with the upgrade link", () => {
-		render(<TimePlanBanner workspace={workspace} />);
+		render(<TimePlanBanner workspace={workspace} logsHere />);
 		const banner = screen.getByTestId("time-plan-banner");
 		expect(banner.textContent).toContain(UPGRADE);
 		expect(
@@ -309,15 +321,29 @@ describe("TimePlanBanner", () => {
 
 	it("is owner-only", () => {
 		const { container } = render(
-			<TimePlanBanner workspace={{ ...workspace, my_role: "admin" }} />,
+			<TimePlanBanner
+				workspace={{ ...workspace, my_role: "admin" }}
+				logsHere
+			/>,
 		);
 		expect(container.innerHTML).toBe("");
+	});
+
+	it("needs the owner to track time on the workspace's projects (P6, P10)", () => {
+		// Talent whose time goes to a hirer, or a viewer who can't log, owns a
+		// Free home workspace too: nothing there concerns their time.
+		const { container } = render(<TimePlanBanner workspace={workspace} />);
+		expect(container.innerHTML).toBe("");
+		expect(
+			render(<TimePlanBanner workspace={workspace} logsHere={false} />)
+				.container.innerHTML,
+		).toBe("");
 	});
 
 	it("shows nothing when the plan has timesheets or is unknown", () => {
 		entitlements.current = freeEntitlements(true);
 		const { container, rerender } = render(
-			<TimePlanBanner workspace={workspace} />,
+			<TimePlanBanner workspace={workspace} logsHere />,
 		);
 		expect(container.innerHTML).toBe("");
 		entitlements.current = {
@@ -325,7 +351,7 @@ describe("TimePlanBanner", () => {
 			usage: null,
 			plan: null,
 		};
-		rerender(<TimePlanBanner workspace={workspace} />);
+		rerender(<TimePlanBanner workspace={workspace} logsHere />);
 		expect(container.innerHTML).toBe("");
 	});
 
@@ -343,7 +369,7 @@ describe("TimePlanBanner", () => {
 
 	it("dismissing is remembered per workspace", () => {
 		const { container, unmount } = render(
-			<TimePlanBanner workspace={workspace} />,
+			<TimePlanBanner workspace={workspace} logsHere />,
 		);
 		fireEvent.click(screen.getByRole("button", { name: "Dismiss" }));
 		expect(container.innerHTML).toBe("");
@@ -353,10 +379,13 @@ describe("TimePlanBanner", () => {
 			),
 		).toBe("1");
 		unmount();
-		const again = render(<TimePlanBanner workspace={workspace} />);
+		const again = render(<TimePlanBanner workspace={workspace} logsHere />);
 		expect(again.container.innerHTML).toBe("");
 		const other = render(
-			<TimePlanBanner workspace={{ ...workspace, id: "w2", slug: "w2" }} />,
+			<TimePlanBanner
+				workspace={{ ...workspace, id: "w2", slug: "w2" }}
+				logsHere
+			/>,
 		);
 		expect(other.getByTestId("time-plan-banner")).toBeTruthy();
 	});
@@ -369,12 +398,12 @@ describe("TimePlanBanner", () => {
 			throw new Error("blocked");
 		});
 		const { container, unmount } = render(
-			<TimePlanBanner workspace={workspace} />,
+			<TimePlanBanner workspace={workspace} logsHere />,
 		);
 		fireEvent.click(screen.getByRole("button", { name: "Dismiss" }));
 		expect(container.innerHTML).toBe("");
 		unmount();
-		render(<TimePlanBanner workspace={workspace} />);
+		render(<TimePlanBanner workspace={workspace} logsHere />);
 		expect(screen.getByTestId("time-plan-banner")).toBeTruthy();
 	});
 });

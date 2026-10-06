@@ -10,6 +10,7 @@ import {
 	within,
 } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { timeKeys } from "@/queries/time";
 import { TimeApiError, timeService } from "@/services/time.service";
 import type {
 	ResolvedTimePolicy,
@@ -227,6 +228,7 @@ beforeEach(() => {
 	entrySeq = 0;
 	useAuthStore.setState({ user: { id: MEMBER } as never });
 	vi.spyOn(timeService, "getProjectPolicy").mockResolvedValue(policy());
+	vi.spyOn(timeService, "getRunning").mockResolvedValue(null);
 });
 
 afterEach(() => {
@@ -347,6 +349,47 @@ describe("SubmitSheetDialog", () => {
 			),
 		).toBeTruthy();
 		expect(submitButton().disabled).toBe(true);
+	});
+
+	it("the running-timer blocker stops the timer on this sheet, and only that one", async () => {
+		const summary = sheet();
+		const running = entry("2026-10-04T09:00", 1, {
+			ended_at: null,
+			duration_seconds: null,
+		});
+		vi.spyOn(timeService, "getRunning").mockResolvedValue(running);
+		const stop = vi
+			.spyOn(timeService, "stopEntry")
+			.mockResolvedValue({ ...running, ended_at: NOW.toISOString() });
+		renderDialog(summary, detail(summary, [running], {}, []));
+		const blockers = await screen.findByTestId("submit-blockers");
+		fireEvent.click(
+			await within(blockers).findByRole("button", { name: "Stop timer" }),
+		);
+		await waitFor(() => expect(stop).toHaveBeenCalledWith(running.id));
+	});
+
+	it("offers no Stop when the running timer is on another sheet", async () => {
+		const summary = sheet();
+		const running = entry("2026-10-04T09:00", 1, {
+			ended_at: null,
+			duration_seconds: null,
+		});
+		const elsewhere = entry("2026-10-05T09:00", 1, {
+			id: "e-other",
+			timesheet_id: "s9",
+			ended_at: null,
+			duration_seconds: null,
+		});
+		vi.spyOn(timeService, "getRunning").mockResolvedValue(elsewhere);
+		renderDialog(summary, detail(summary, [running], {}, []));
+		await screen.findByText(
+			"A timer is still running on this timesheet. Stop it first.",
+		);
+		await waitFor(() =>
+			expect(client.getQueryData(timeKeys.running(MEMBER))).toEqual(elsewhere),
+		);
+		expect(screen.queryByRole("button", { name: "Stop timer" })).toBeNull();
 	});
 
 	it("warnings must be ticked before Submit works", async () => {

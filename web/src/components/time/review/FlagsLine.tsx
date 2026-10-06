@@ -49,7 +49,7 @@ export function FlagsLine({
 				<button
 					type="button"
 					onClick={onToggleFlagged}
-					className="inline-flex shrink-0 items-center rounded-lg border border-border bg-card px-2.5 py-1 text-xs font-semibold text-foreground transition-colors hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+					className="inline-flex shrink-0 items-center rounded-lg border border-border bg-card px-2.5 py-1 text-xs font-semibold text-foreground transition-colors hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring max-sm:min-h-10 max-sm:px-3.5"
 				>
 					{flaggedOnly ? REVIEW_COPY.showAll : REVIEW_COPY.showFlagged}
 				</button>

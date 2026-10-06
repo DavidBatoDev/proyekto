@@ -62,14 +62,17 @@ export function ForIcon({
 	);
 }
 
-/** The grey workspace tag (L57). */
+/**
+ * The grey workspace tag (L57). It keeps its width while there is room and is
+ * cut with "…" (never clipped) when its row is narrower than the tag.
+ */
 export function ForWorkspaceTag({ name }: { name: string | null | undefined }) {
 	const tag = name?.trim();
 	if (!tag) return null;
 	const { text, full } = truncatedLabel(tag, CHIP_LABEL_MAX);
 	return (
 		<span
-			className="inline-flex shrink-0 items-center rounded bg-muted px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground"
+			className="inline-block max-w-full shrink-0 truncate rounded bg-muted px-1.5 py-0.5 align-middle text-[10px] font-medium text-muted-foreground"
 			title={full}
 			data-testid="for-workspace-tag"
 		>

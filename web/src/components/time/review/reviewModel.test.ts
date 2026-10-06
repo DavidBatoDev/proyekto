@@ -264,6 +264,19 @@ describe("header", () => {
 		expect(reviewNames(memberDetail())).toMatchObject({
 			"22222222-2222-4222-8222-222222222222": "Ana Reyes",
 		});
+		// A returned sheet carries no A2 deciders; A1's name who returned it.
+		expect(
+			reviewNames(
+				memberDetail({
+					deciders: undefined,
+					routing_preview: {
+						approver_scope: "team",
+						cost_money: false,
+						deciders: [{ id: "u-lito", display_name: "Lito Garcia" }],
+					},
+				}),
+			),
+		).toMatchObject({ "u-lito": "Lito Garcia" });
 	});
 });
 
@@ -479,6 +492,41 @@ describe("limits, overtime and cost", () => {
 				}),
 			),
 		).toEqual({ kind: "final", amounts: { PHP: 1800 } });
+	});
+
+	it("says nothing for a sheet with no money (no 'USD 0.00')", () => {
+		const unpriced = entry({
+			cost: "visible",
+			rate_snapshot: 0,
+			rate_type_snapshot: "hourly",
+			currency_snapshot: "USD",
+			payable_seconds: 4 * 3600,
+			amount_snapshot: 0,
+		});
+		const approvedSheet = (over = {}) =>
+			memberDetail({
+				sheet: sheet({ status: "approved" }),
+				entries: [unpriced, { ...unpriced, id: "b" }],
+				...over,
+			});
+		// Every entry is unpriced (member rates off): no line.
+		expect(sheetCost(approvedSheet())).toBeNull();
+		// A priced entry approved at 0 hours still reads as an amount.
+		expect(
+			sheetCost(
+				approvedSheet({
+					entries: [
+						entry({
+							cost: "visible",
+							rate_snapshot: 450,
+							currency_snapshot: "PHP",
+							payable_seconds: 0,
+							amount_snapshot: 0,
+						}),
+					],
+				}),
+			),
+		).toEqual({ kind: "final", amounts: { PHP: 0 } });
 	});
 });
 

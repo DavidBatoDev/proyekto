@@ -264,6 +264,7 @@ describe("Time page pieces on native", () => {
 			<>
 				<TimePlanBanner
 					workspace={{ id: "w1", name: "Acme", slug: "acme", my_role: "owner" }}
+					logsHere
 				/>
 				<TimePlanBanner
 					workspace={{
@@ -284,6 +285,10 @@ describe("Time page pieces on native", () => {
 			"Orbit's plan no longer includes timesheets.",
 		);
 		expect(screen.queryByRole("link", { name: /Upgrade/ })).toBeNull();
+		// The native sentence says where the plan changes; no second line.
+		expect(banners[0].textContent).not.toContain(
+			"Plan changes aren't available",
+		);
 		assertNativeSafe();
 	});
 

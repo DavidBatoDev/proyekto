@@ -2,6 +2,7 @@
 
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import {
+	act,
 	cleanup,
 	fireEvent,
 	render,
@@ -36,6 +37,7 @@ import {
 	EDIT_ENTRY_COPY,
 	EditEntryModal,
 	fromWallClock,
+	shiftDraftZone,
 	timeZoneHint,
 	toWallClock,
 } from "./EditEntryModal";
@@ -529,5 +531,97 @@ describe("EditEntryModal", () => {
 			kind: "team",
 			id: "t1",
 		});
+	});
+
+	it("types a governed entry's times in its policy's zone, as Add time does", async () => {
+		vi.spyOn(timeService, "getProjectPolicy").mockResolvedValue(
+			policy({ timezone: "America/New_York" }),
+		);
+		const update = vi
+			.spyOn(timeService, "updateEntry")
+			.mockResolvedValue({ ...entry(), warnings: [] });
+		// The view is Manila (For: All); the team's policy is New York.
+		const { onClose } = renderModal();
+		await waitFor(() =>
+			expect(
+				(screen.getByLabelText("Start time") as HTMLInputElement).value,
+			).toBe("9:00 PM"),
+		);
+		expect((screen.getByLabelText("End time") as HTMLInputElement).value).toBe(
+			"12:30 AM",
+		);
+		expect(screen.getByText("Times are in America/New_York.")).toBeTruthy();
+		commitTime("End time", "1:00 AM");
+		fireEvent.click(screen.getByRole("button", { name: /Save changes/ }));
+		await waitFor(() => expect(onClose).toHaveBeenCalled());
+		expect(update).toHaveBeenCalledWith("e1", {
+			ended_at: "2026-10-05T05:00:00.000Z",
+			expected_updated_at: "2026-10-05T04:30:01.123456+00:00",
+		});
+	});
+
+	it("keeps personal time in the view's zone", async () => {
+		vi.spyOn(timeService, "getProjectPolicy").mockResolvedValue(
+			policy({ timezone: "America/New_York" }),
+		);
+		renderModal({
+			entry: entry({
+				context_kind: "personal",
+				context_ref: null,
+				team_id: null,
+			}),
+		});
+		await waitFor(() =>
+			expect(timeService.getProjectPolicy).toHaveBeenCalled(),
+		);
+		expect(
+			(screen.getByLabelText("Start time") as HTMLInputElement).value,
+		).toBe("9:00 AM");
+	});
+
+	it("keeps what was typed when the policy's zone arrives after it", async () => {
+		let answer: (value: ResolvedTimePolicy) => void = () => {};
+		vi.spyOn(timeService, "getProjectPolicy").mockReturnValue(
+			new Promise((resolve) => {
+				answer = resolve;
+			}),
+		);
+		const update = vi
+			.spyOn(timeService, "updateEntry")
+			.mockResolvedValue({ ...entry(), warnings: [] });
+		const { onClose } = renderModal();
+		// Typed in Manila before the zone is known: 13:00 Manila is 05:00Z.
+		commitTime("End time", "1:00 PM");
+		await act(async () => {
+			answer(policy({ timezone: "America/New_York" }));
+		});
+		// The same instant, now read in New York.
+		await waitFor(() =>
+			expect(
+				(screen.getByLabelText("End time") as HTMLInputElement).value,
+			).toBe("1:00 AM"),
+		);
+		fireEvent.click(screen.getByRole("button", { name: /Save changes/ }));
+		await waitFor(() => expect(onClose).toHaveBeenCalled());
+		expect(update).toHaveBeenCalledWith("e1", {
+			ended_at: "2026-10-05T05:00:00.000Z",
+			expected_updated_at: "2026-10-05T04:30:01.123456+00:00",
+		});
+	});
+});
+
+describe("shiftDraftZone", () => {
+	it("moves typed times to the same instants in another zone", () => {
+		const draft = {
+			start: "2026-10-05T09:00",
+			end: "",
+			breakMinutes: "0",
+			note: "x",
+		};
+		expect(shiftDraftZone(draft, TZ, "America/New_York")).toEqual({
+			...draft,
+			start: "2026-10-04T21:00",
+		});
+		expect(shiftDraftZone(draft, TZ, TZ)).toBe(draft);
 	});
 });

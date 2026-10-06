@@ -16,7 +16,8 @@
 //
 // `TimePlanBanner`: the one dismissible, owner-only plan notice (ux.md ›
 // Personas P1, Plan copy): "Timesheets and approvals are part of Pro. Upgrade
-// Acme to send time for approval." After a downgrade, everyone with open
+// Acme to send time for approval.", for an owner who tracks time on that
+// workspace's projects. After a downgrade, everyone with open
 // timesheets there reads "Acme's plan no longer includes timesheets. Your
 // existing time is safe, and open timesheets can still be decided."
 
@@ -37,6 +38,7 @@ import { formatClock, formatMinutesText } from "@/lib/timeFormat";
 import { cn } from "@/lib/utils";
 import type {
 	EntryWarning,
+	MyTimeProject,
 	ResolvedTimePolicy,
 	TimesheetSummary,
 } from "@/services/time.types";
@@ -293,6 +295,23 @@ export function planDowngradeApplies(
 	);
 }
 
+/**
+ * True when the person tracks time on one of this workspace's projects (A9's
+ * `me/projects`), so that workspace's missing timesheets touch their own time
+ * (P1). An owner whose time goes elsewhere (talent logging for a hirer, a team
+ * member whose own workspace has no projects) or who can't log at all (a
+ * viewer) has nothing to upgrade there for.
+ */
+export function logsInWorkspace(
+	projects: readonly Pick<MyTimeProject, "workspace_id">[] | null | undefined,
+	workspaceId: string | null | undefined,
+): boolean {
+	if (!workspaceId) return false;
+	return (projects ?? []).some(
+		(project) => project.workspace_id === workspaceId,
+	);
+}
+
 export interface TimePlanBannerProps {
 	/** The workspace whose plan is checked (`useCurrentWorkspace().workspace`). */
 	workspace:
@@ -305,12 +324,20 @@ export interface TimePlanBannerProps {
 	 * Otherwise only the owner sees the upgrade line.
 	 */
 	downgraded?: boolean;
+	/**
+	 * The upgrade line also needs the owner to track time on this workspace's
+	 * projects (`logsInWorkspace`); unknown or false shows nothing (P6 talent
+	 * is never plan-gated, a P10 viewer can't log). The downgrade line doesn't
+	 * need it: it is about sheets the person already has there.
+	 */
+	logsHere?: boolean;
 	className?: string;
 }
 
 export function TimePlanBanner({
 	workspace,
 	downgraded = false,
+	logsHere = false,
 	className,
 }: TimePlanBannerProps) {
 	const entitlements = useEntitlements(workspace?.id ?? null);
@@ -322,7 +349,7 @@ export function TimePlanBanner({
 	// Fails open: no notice while the plan is unknown or has timesheets.
 	const info = featureLimitInfo(entitlements, "time_tracking");
 	if (!info) return null;
-	if (!downgraded && workspace.my_role !== "owner") return null;
+	if (!downgraded && (workspace.my_role !== "owner" || !logsHere)) return null;
 	if (dismissedKey === key || readDismissed(key)) return null;
 
 	const message = downgraded
@@ -354,7 +381,7 @@ export function TimePlanBanner({
 					writeDismissed(key);
 					setDismissedKey(key);
 				}}
-				className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30"
+				className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30 max-sm:-m-1.5 max-sm:h-10 max-sm:w-10"
 			>
 				<X className="h-4 w-4" aria-hidden="true" />
 			</button>

@@ -4,6 +4,9 @@
 //
 //   ‹  Sep 29 – Oct 5, 2026  ›   This week         Your time (Asia/Manila) ⓘ ⚙
 //
+// Below 640 px it takes two rows: "‹  Sep 29 – Oct 5, 2026  ›" and
+// "This week … ⚙".
+//
 // - ‹ › step a week and "This week" jumps back; `j`/`k` move between weeks
 //   and `t` goes to today (Google Calendar's keys: j next, k previous).
 // - The zone label shows only when the caller passes one (see
@@ -42,8 +45,9 @@ export interface WeekNavigatorProps {
 	className?: string;
 }
 
+// 40 px targets on phones (`max-sm:`); desktop keeps the compact 32 px.
 const ICON_BUTTON =
-	"inline-flex h-8 w-8 items-center justify-center rounded-lg border border-border text-foreground transition-colors hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30";
+	"inline-flex h-8 w-8 items-center justify-center rounded-lg border border-border text-foreground transition-colors hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30 max-sm:h-10 max-sm:w-10";
 
 /** The zone label with its ⓘ (also used under the day strip on phones). */
 export function ZoneLabel({
@@ -94,7 +98,9 @@ export function WeekNavigator({
 			aria-label={WEEK_NAV_COPY.region}
 			className={cn("flex flex-wrap items-center gap-x-3 gap-y-2", className)}
 		>
-			<div className="flex items-center gap-1.5">
+			{/* Phones: ‹ range › fill the first row, and This week and ⚙ share the
+			    second, so neither row is a band with one button in it. */}
+			<div className="flex items-center gap-1.5 max-sm:basis-full max-sm:justify-between">
 				<button
 					type="button"
 					className={ICON_BUTTON}
@@ -127,7 +133,7 @@ export function WeekNavigator({
 				disabled={isCurrentWeek}
 				title={`${WEEK_NAV_COPY.thisWeek} (t)`}
 				className={cn(
-					"rounded-lg px-2.5 py-1 text-xs font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30",
+					"rounded-lg px-2.5 py-1 text-xs font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30 max-sm:min-h-10 max-sm:px-3.5",
 					isCurrentWeek
 						? "cursor-default bg-muted text-muted-foreground"
 						: "border border-border text-foreground hover:bg-muted",

@@ -112,5 +112,12 @@ describe("ReportGroupTable", () => {
 		expect(
 			screen.queryByRole("columnheader", { name: "Not yet approved" }),
 		).toBeNull();
+		// Two columns fit a phone: no width floor that would hide Approved
+		// behind a sideways scroll.
+		expect(screen.getByRole("table").className).not.toMatch(/min-w-/);
+		rerender(
+			<ReportGroupTable groupBy="week" rows={[row({ key: "2026-09-21" })]} />,
+		);
+		expect(screen.getByRole("table").className).toMatch(/min-w-/);
 	});
 });

@@ -230,7 +230,7 @@ function RunningCluster({
 				disabled={isBusy}
 				className={cn(
 					BUTTON,
-					"px-2 py-1 bg-destructive text-destructive-foreground hover:bg-destructive/90",
+					"px-2 py-1 bg-destructive text-destructive-foreground hover:bg-destructive/90 dark:text-background",
 				)}
 			>
 				{isStopping ? (

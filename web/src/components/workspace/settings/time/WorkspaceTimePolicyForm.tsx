@@ -788,13 +788,14 @@ function PolicyEditor({
 							<div
 								role="radiogroup"
 								aria-labelledby={idOf("period-label")}
-								className="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:gap-x-5"
+								className="flex flex-col gap-2 max-sm:gap-0 sm:flex-row sm:flex-wrap sm:gap-x-5"
 							>
 								{PERIOD_KINDS.map((kind) => (
 									<label
 										key={kind}
 										className={cn(
-											"inline-flex items-center gap-2 text-sm",
+											// The whole label is the tap target: 40 px tall on phones.
+											"inline-flex items-center gap-2 text-sm max-sm:min-h-10",
 											gated ? "text-muted-foreground" : "text-foreground",
 										)}
 									>

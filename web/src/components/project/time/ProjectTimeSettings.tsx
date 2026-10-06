@@ -21,7 +21,7 @@ import { TimeReasonCard } from "@/components/time/shared/TimeReasonCard";
 import { useProjectMyPermissionsQuery } from "@/hooks/useProjectQueries";
 import { useToast } from "@/hooks/useToast";
 import { isNativeApp } from "@/lib/platform";
-import { timeErrorMessage } from "@/lib/timeErrors";
+import { nativeSafe, timeErrorMessage } from "@/lib/timeErrors";
 import { sheetScopeLabel } from "@/lib/timeFormat";
 import { cn } from "@/lib/utils";
 import { invalidateTime, timeQueries } from "@/queries/time";
@@ -508,7 +508,17 @@ function LimitRow({
 							// (the Submit sheet's over-the-limit checks).
 							void invalidateTime(qc, "policy");
 						}}
-						onError={(message) => toast.error(message)}
+						// The team service's errors name rates ("Failed to update
+						// rate", "Rate not found", "Member rates are disabled…"),
+						// which the app never says.
+						onError={(message) =>
+							toast.error(
+								nativeSafe(message, {
+									native,
+									fallback: COPY.limitsSaveFailed,
+								}),
+							)
+						}
 					/>
 				) : (
 					<span className="text-xs italic text-muted-foreground">

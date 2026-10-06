@@ -2,6 +2,7 @@
 
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import {
+	act,
 	cleanup,
 	fireEvent,
 	render,
@@ -347,6 +348,10 @@ function stubViewport(width: number) {
 	});
 }
 
+/** Lets in-flight reads land (real timers; only Date is faked). */
+const settle = () =>
+	act(() => new Promise((resolve) => setTimeout(resolve, 300)));
+
 const rows = (container: HTMLElement) =>
 	Array.from(container.querySelectorAll("[data-entry-id]")).map((el) =>
 		el.getAttribute("data-entry-id"),
@@ -385,6 +390,105 @@ afterEach(() => {
 });
 
 describe("TimePage › normal mode", () => {
+	it("a stale running row never stops the timer that runs now; the lists refresh", async () => {
+		// A ran here, then another device stopped it and started B: the poll
+		// sees B, the cached list still shows A running.
+		const rowA = entry({
+			id: "e-a",
+			started_at: "2026-10-06T01:00:00.000Z",
+			ended_at: null,
+			duration_seconds: null,
+		});
+		const timerB = entry({
+			id: "e-b",
+			started_at: "2026-10-06T02:30:00.000Z",
+			ended_at: null,
+			duration_seconds: null,
+			task: {
+				id: "task-2",
+				title: "Landing page copy",
+				work_type: null,
+				status: null,
+			},
+			task_id: "task-2",
+		});
+		vi.spyOn(timeService, "getRunning").mockResolvedValue(timerB);
+		const stop = vi.spyOn(timeService, "stopEntry");
+		const { container, spies } = setup({ entries: [rowA, MONDAY] });
+		await waitFor(() => expect(rows(container)).toContain("e-a"));
+		const row = container.querySelector('[data-entry-id="e-a"]') as HTMLElement;
+		const before = spies.entries.mock.calls.length;
+		fireEvent.click(
+			within(row).getByText("Stop").closest("button") as HTMLElement,
+		);
+		await waitFor(() =>
+			expect(spies.entries.mock.calls.length).toBeGreaterThan(before),
+		);
+		expect(stop).not.toHaveBeenCalled();
+	});
+
+	it("a local stop refreshes the lists once, not again for the timer change", async () => {
+		const runningEntry = entry({
+			id: "e-x",
+			started_at: "2026-10-06T02:00:00.000Z",
+			ended_at: null,
+			duration_seconds: null,
+		});
+		const running = vi
+			.spyOn(timeService, "getRunning")
+			.mockResolvedValue(runningEntry);
+		const stop = vi
+			.spyOn(timeService, "stopEntry")
+			// The server takes a moment, as it does: the optimistic stop lands
+			// on screen while the request is still out.
+			.mockImplementation(
+				() =>
+					new Promise((resolve) =>
+						setTimeout(
+							() => resolve({ ...runningEntry, ended_at: NOW.toISOString() }),
+							100,
+						),
+					),
+			);
+		const { container, spies } = setup({ entries: [runningEntry, MONDAY] });
+		const bar = await screen.findByRole("region", { name: "Timer running" });
+		await waitFor(() => expect(rows(container)).toContain("e-x"));
+		await settle();
+		// One refetch per list on screen (the week, and Quick add's default start).
+		const lists = client
+			.getQueryCache()
+			.findAll({ queryKey: ["time", "me", "entries"] })
+			.filter((query) => query.getObserversCount() > 0).length;
+		expect(lists).toBeGreaterThan(0);
+		const before = spies.entries.mock.calls.length;
+		running.mockResolvedValue(null);
+		fireEvent.click(within(bar).getByRole("button", { name: /^Stop\b/ }));
+		await waitFor(() => expect(stop).toHaveBeenCalledWith("e-x"));
+		await waitFor(() =>
+			expect(toast.success).toHaveBeenCalledWith("Timer stopped."),
+		);
+		await settle();
+		expect(spies.entries.mock.calls.length - before).toBe(lists);
+	});
+
+	it("refreshes the week when the running timer changes under the page", async () => {
+		const running = vi.spyOn(timeService, "getRunning").mockResolvedValue(null);
+		const { container, spies } = setup();
+		await waitFor(() => expect(rows(container)).toEqual(["e2", "e1"]));
+		await waitFor(() => expect(running).toHaveBeenCalled());
+		const before = spies.entries.mock.calls.length;
+		// Another device starts a timer; the next poll sees it.
+		running.mockResolvedValue(
+			entry({ id: "e-x", ended_at: null, duration_seconds: null }),
+		);
+		await act(() =>
+			client.refetchQueries({ queryKey: ["time", "me", "running"] }),
+		);
+		await waitFor(() =>
+			expect(spies.entries.mock.calls.length).toBeGreaterThan(before),
+		);
+	});
+
 	it("shows the week, its cards and its entries", async () => {
 		const { container, spies } = setup();
 		expect(

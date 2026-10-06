@@ -194,7 +194,7 @@ export function TimePrefsMenu({ zIndex, className }: TimePrefsMenuProps) {
 					setOpen((value) => !value);
 				}}
 				className={cn(
-					"inline-flex h-9 w-9 items-center justify-center rounded-lg border border-border bg-background text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30",
+					"inline-flex h-9 w-9 items-center justify-center rounded-lg border border-border bg-background text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30 max-sm:h-10 max-sm:w-10",
 					className,
 				)}
 			>

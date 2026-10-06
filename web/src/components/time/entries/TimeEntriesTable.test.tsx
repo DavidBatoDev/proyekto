@@ -536,6 +536,26 @@ describe("TimeEntriesTable", () => {
 		expect(onChange).toHaveBeenLastCalledWith(new Set());
 	});
 
+	it("selection mode: the whole checkbox cell is the tap target", () => {
+		const onChange = vi.fn();
+		const { container } = renderTable(
+			<TimeEntriesTable
+				entries={[open, locked]}
+				timeZone={TZ}
+				onChangeFor={vi.fn()}
+				selection={{ selectedIds: new Set(), onChange }}
+			/>,
+		);
+		const cellOf = (id: string) =>
+			within(row(container, id)).getByRole("checkbox").closest("td");
+		fireEvent.click(cellOf("a") as HTMLElement);
+		expect(onChange).toHaveBeenLastCalledWith(new Set(["a"]));
+		// A locked row's cell does nothing, like its disabled box.
+		onChange.mockClear();
+		fireEvent.click(cellOf("b") as HTMLElement);
+		expect(onChange).not.toHaveBeenCalled();
+	});
+
 	it("no selection boxes outside `mine`", () => {
 		const { container } = renderTable(
 			<TimeEntriesTable

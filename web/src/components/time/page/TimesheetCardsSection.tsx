@@ -10,7 +10,10 @@
 
 import { timeErrorMessage } from "@/lib/timeErrors";
 import { cn } from "@/lib/utils";
-import type { TimesheetSummary } from "@/services/time.types";
+import type {
+	TimesheetEventRow,
+	TimesheetSummary,
+} from "@/services/time.types";
 import { TimeReasonCard } from "../shared/TimeReasonCard";
 import { TimesheetCard } from "../sheets/TimesheetCard";
 
@@ -31,6 +34,8 @@ export interface TimesheetCardsSectionProps {
 	isBusy?: (sheetId: string) => boolean;
 	/** Display names by user id ("Returned by Ana"). */
 	names?: Readonly<Record<string, string>>;
+	/** Events by sheet id, so a returned card can say "Reopened by Ana". */
+	events?: Readonly<Record<string, readonly TimesheetEventRow[]>>;
 	/** Workspace names by id ("Waiting on Acme's owners and admins"). */
 	workspaceNames?: Readonly<Record<string, string>>;
 	/** The sheet being fixed (its card is marked). */
@@ -56,6 +61,7 @@ export function TimesheetCardsSection({
 	onWithdraw,
 	isBusy,
 	names,
+	events,
 	workspaceNames,
 	fixingId,
 	reminderDays,
@@ -123,6 +129,7 @@ export function TimesheetCardsSection({
 							onWithdraw={onWithdraw}
 							busy={isBusy?.(sheet.id) ?? false}
 							names={names}
+							events={events?.[sheet.id]}
 							workspaceName={
 								sheet.policy_workspace_id
 									? (workspaceNames?.[sheet.policy_workspace_id] ?? null)

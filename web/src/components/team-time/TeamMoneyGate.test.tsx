@@ -79,6 +79,15 @@ describe("TeamMoneyGate", () => {
 		expect(screen.getByText(TEAM_MONEY_GATE_COPY.rates.title)).toBeTruthy();
 	});
 
+	it("gives a payouts page the rates reason while member rates are off", () => {
+		// Payouts sit under member rates; the payouts card would say the team
+		// "prices its time", which it doesn't.
+		mocks.access = access({ hasRates: false, canPay: false });
+		renderGate("payouts");
+		expect(screen.getByText(TEAM_MONEY_GATE_COPY.rates.title)).toBeTruthy();
+		expect(screen.queryByText(TEAM_MONEY_GATE_COPY.payouts.title)).toBeNull();
+	});
+
 	it("tells a non-manager they have no access, with no settings link", () => {
 		mocks.access = access({ isApprover: false });
 		renderGate("rates");

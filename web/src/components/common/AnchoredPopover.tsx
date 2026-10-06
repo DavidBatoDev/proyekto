@@ -2,12 +2,14 @@
  * A headless popover anchored to a trigger element and portaled to <body>, so
  * it escapes `overflow`/`backdrop-filter` containing blocks (e.g. a scrolling
  * modal). Positioning is clamped to the viewport and re-placed on scroll/resize;
- * it closes on outside-pointer or Escape. The positioning logic is lifted from
- * the roadmap DueDatePicker, generalized for reuse by the meeting date/time and
- * timezone pickers.
+ * it closes on outside-pointer, Escape, or the Android back button (which
+ * closes what is open on top first; lib/backStack.ts). The positioning logic
+ * is lifted from the roadmap DueDatePicker, generalized for reuse by the
+ * meeting date/time and timezone pickers.
  */
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
+import { useBackHandler } from "@/lib/backStack";
 
 const VIEWPORT_MARGIN = 8;
 
@@ -46,6 +48,7 @@ export function AnchoredPopover({
 	className,
 }: AnchoredPopoverProps) {
 	const popoverRef = useRef<HTMLDivElement>(null);
+	useBackHandler(open, onClose);
 	const [coords, setCoords] = useState<{
 		top: number;
 		left: number;

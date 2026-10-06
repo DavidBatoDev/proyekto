@@ -77,6 +77,8 @@ export const PROJECT_TIME_SETTINGS_COPY = {
 	save: "Save",
 	saving: "Saving…",
 	saved: "Hour limits saved",
+	/** The app's save failure (the server's text can name rates). */
+	limitsSaveFailed: "Proyekto couldn't save these hour limits. Try again.",
 	noLimitRecordWeb:
 		"No rate on this project yet. Add one in the team's Rates first.",
 	noLimitRecordNative: "Set up hour limits for this person on the web.",

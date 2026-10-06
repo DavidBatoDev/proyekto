@@ -61,7 +61,7 @@ function ConnectedTimerBar(props: TimerBarProps) {
 }
 
 const BUTTON =
-	"inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-semibold transition-colors disabled:cursor-not-allowed disabled:opacity-50";
+	"inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-semibold transition-colors disabled:cursor-not-allowed disabled:opacity-50 max-sm:min-h-10";
 
 function TimerBarView({
 	variant = "full",
@@ -99,7 +99,14 @@ function TimerBarView({
 	) : null;
 
 	const controls = entry ? (
-		<div className="flex shrink-0 items-center gap-2">
+		<div
+			className={cn(
+				"flex shrink-0 items-center gap-2",
+				// Phones: Pause and Stop sit on the clock's row, so the task and
+				// project get a row of their own.
+				variant === "full" && "max-sm:order-1 max-sm:ml-auto",
+			)}
+		>
 			<button
 				type="button"
 				onClick={toggleBreak}
@@ -126,7 +133,9 @@ function TimerBarView({
 				disabled={isBusy}
 				className={cn(
 					BUTTON,
-					"bg-destructive text-destructive-foreground hover:bg-destructive/90",
+					// Dark themes lighten `destructive`; white on it reads under
+					// 3:1, so the label takes the page's dark background colour.
+					"bg-destructive text-destructive-foreground hover:bg-destructive/90 dark:text-background",
 				)}
 			>
 				{isStopping ? (
@@ -226,7 +235,7 @@ function TimerBarView({
 					{clock}
 					{breakBadge}
 				</div>
-				<p className="min-w-0 flex-1 truncate text-sm text-foreground">
+				<p className="min-w-0 flex-1 truncate text-sm text-foreground max-sm:order-2 max-sm:basis-full">
 					<span className="font-semibold">
 						{!entry.task_id ? "◦ " : ""}
 						{work}
@@ -242,7 +251,7 @@ function TimerBarView({
 					option={forChipOptionFromEntry(entry)}
 					projectId={entry.project_id}
 					projectWorkspaceName={projectWorkspaceName}
-					className="max-sm:order-last max-sm:basis-full"
+					className="max-sm:order-3 max-sm:basis-full"
 				/>
 				{controls}
 			</div>

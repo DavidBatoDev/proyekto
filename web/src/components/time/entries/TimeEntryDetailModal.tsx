@@ -185,7 +185,18 @@ export function TimeEntryDetailModal({
 		...timeQueries.entry(id),
 		placeholderData: entry && entry.id === id ? entry : undefined,
 	});
-	const view = entryQuery.data;
+	const entryErrorCopy = entryQuery.isError
+		? timeErrorCopy(entryQuery.error, {
+				subject: "entry",
+				operation: "read",
+				native,
+			})
+		: null;
+	// A 404 wins over a cached copy: TanStack keeps the last data when a
+	// refetch fails, and the entry may be one the viewer can no longer open.
+	// Any other failure keeps the last good copy on screen.
+	const missing = Boolean(entryErrorCopy?.notFound);
+	const view = missing ? undefined : entryQuery.data;
 	const isTimer = view?.source === "timer";
 	const segmentsQuery = useQuery({
 		...timeQueries.entrySegments(id),
@@ -329,12 +340,8 @@ export function TimeEntryDetailModal({
 				}
 			/>
 		);
-	} else if (entryQuery.isError) {
-		const copy = timeErrorCopy(entryQuery.error, {
-			subject: "entry",
-			operation: "read",
-			native,
-		});
+	} else if (entryErrorCopy) {
+		const copy = entryErrorCopy;
 		body = copy.notFound ? (
 			<TimeReasonCard tone="not-found" variant="inline" title={copy.message} />
 		) : (

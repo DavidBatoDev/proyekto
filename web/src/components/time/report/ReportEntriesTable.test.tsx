@@ -159,6 +159,30 @@ describe("ReportEntriesTable", () => {
 		expect(document.body.textContent).not.toContain("USD");
 	});
 
+	it("folds the date and person into the work cell for a narrow table", () => {
+		render(<ReportEntriesTable {...base} entries={[entry()]} />);
+		// Shown only below the 36rem container width (CSS); the text is there.
+		expect(screen.getByTestId("report-entry-folded").textContent).toBe(
+			"Mon Oct 5 · Maria Santos",
+		);
+		cleanup();
+		render(
+			<ReportEntriesTable {...base} variant="client" entries={[entry()]} />,
+		);
+		// The client's table keeps its Date column and never names a person.
+		expect(screen.queryByTestId("report-entry-folded")).toBeNull();
+	});
+
+	it("lets the work cell take the leftover width so its lines ellipsize", () => {
+		// The auto table layout ignores a cell's max-width: a capped Work cell
+		// grew to its longest line and pushed Approved off a phone screen.
+		render(<ReportEntriesTable {...base} entries={[entry()]} />);
+		const cell = screen.getByTestId("report-entry-work");
+		expect(cell.className).toContain("w-full");
+		expect(cell.className).toContain("max-w-0");
+		expect(cell.className).not.toContain("max-w-[18rem]");
+	});
+
 	it("says so when empty", () => {
 		render(<ReportEntriesTable {...base} total={0} entries={[]} />);
 		expect(document.body.textContent).toBe("No time in this range.");

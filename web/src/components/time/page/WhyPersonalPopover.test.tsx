@@ -1,6 +1,7 @@
 /* @vitest-environment jsdom */
 
 import {
+	act,
 	cleanup,
 	fireEvent,
 	render,
@@ -11,6 +12,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("@/lib/platform", () => ({ isNativeApp: () => false }));
 
+import { handleBackPress } from "@/lib/backStack";
 import type { UnavailableOption } from "@/services/time.types";
 import { WhyPersonalPopover, whyPersonalLines } from "./WhyPersonalPopover";
 
@@ -100,6 +102,20 @@ describe("WhyPersonalPopover", () => {
 		expect(trigger.getAttribute("aria-expanded")).toBe("true");
 		fireEvent.keyDown(document, { key: "Escape" });
 		await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+	});
+
+	it("closes on the Android back button (every anchored popover does)", async () => {
+		render(<WhyPersonalPopover reason="plan" />);
+		fireEvent.click(screen.getByRole("button", { name: "Why?" }));
+		await screen.findByRole("dialog", { name: "Why Just me" });
+		let handled = false;
+		act(() => {
+			handled = handleBackPress();
+		});
+		expect(handled).toBe(true);
+		await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+		// Nothing open any more: back belongs to the page again.
+		expect(handleBackPress()).toBe(false);
 	});
 
 	it("takes a custom trigger label", () => {

@@ -4,8 +4,10 @@
 // under `["time", …]`; the second segment names the resource so one prefix
 // reaches every variant of it (see TIME_INVALIDATION). Keys under
 // `["time", "me", <resource>, <userId>, …]` and the approval queue carry the
-// signed-in user, so a sign-out and sign-in in the same tab never shows the
-// previous person's time.
+// signed-in user. The other keys (an entry, a sheet, a report, a policy's
+// `can_edit`) don't, though each answer depends on who asked, so
+// `clearTimeOnUserChange` drops the whole tree when the user changes: a
+// sign-out and sign-in in the same tab never shows the previous person's time.
 //
 // The app's QueryClient defaults to `refetchOnMount: false` and
 // `refetchOnWindowFocus: false`. Time data goes stale under people's feet
@@ -510,6 +512,28 @@ export async function invalidateTime(
 	await Promise.all(
 		keys.map((queryKey) => queryClient.invalidateQueries({ queryKey })),
 	);
+}
+
+/**
+ * Drops every time query (and the team payout pages) once the signed-in user
+ * changes: a sign-out, or another account in the same tab. Only the `me/*`
+ * keys and the approval queue carry the user; an entry, a sheet, a report or
+ * a policy read for one person must never render for the next, and TanStack
+ * keeps a cached copy on screen even after the refetch answers 404. The first
+ * sign-in of a visit (no one → someone) has nothing to drop. Returns the
+ * unsubscribe function.
+ */
+export function clearTimeOnUserChange(queryClient: QueryClient): () => void {
+	let current = useAuthStore.getState().user?.id ?? null;
+	return useAuthStore.subscribe((state) => {
+		const next = state.user?.id ?? null;
+		if (next === current) return;
+		const previous = current;
+		current = next;
+		if (previous === null) return;
+		queryClient.removeQueries({ queryKey: timeKeys.all });
+		queryClient.removeQueries({ queryKey: TIME_PREFIX.payouts });
+	});
 }
 
 // ── Hooks ───────────────────────────────────────────────────────────────────
