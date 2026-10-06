@@ -210,6 +210,12 @@ export const NO_CONTEXT_POLICY: Readonly<OverviewContextPolicy> = {
   reminder_days: null,
 };
 
+/** V10: the project fields of every context but an assignment's, and of an assignment whose lookup failed. */
+const NO_CONTEXT_PROJECT: Readonly<Required<OverviewContextProject>> = {
+  project_id: null,
+  project_title: null,
+};
+
 // ── row shapes ──────────────────────────────────────────────────────────────────────────────────────────
 
 interface DetailSheetRow extends TimesheetRow {
@@ -277,6 +283,21 @@ interface OverviewEntryRow {
   started_at: string;
   duration_seconds: number | null;
 }
+
+/** V10: an assignment context's project, as the overview reads it (one embed, no second round trip). */
+interface AssignmentProjectRow {
+  id: string;
+  project_id: string | null;
+  project_title_snapshot: string | null;
+  /** The live project (many-to-one embed); null once the project is deleted (`ON DELETE SET NULL`). */
+  project: { title: string | null } | null;
+}
+
+/** V10: the project fields of an overview context. */
+type OverviewContextProject = Pick<
+  OverviewContext,
+  'project_id' | 'project_title'
+>;
 
 /** What the freeze reads from the policy layers: only the rounding. The policy `weekly_limit_minutes` never cuts
  *  payable time (D65); it stays in `policy_snapshot` as the review screen's indicator. */
@@ -2378,7 +2399,8 @@ export class TimesheetsService {
    * contexts[] (backend.md me/overview): every logging context with an own entry in the last 30 days or an
    * entry on an `open`/`returned` sheet, newest activity first. Each carries the scope of its latest entry's
    * sheet and that scope's current sheet (the one holding today, else the newest open/returned one), and its
-   * period rules from its resolved policy (D85, contextPolicyReader; null for personal).
+   * period rules from its resolved policy (D85, contextPolicyReader; null for personal). An assignment context
+   * also carries its assignment's project (V10, assignmentProjectsSoft; null for every other kind).
    */
   private async overviewContexts(
     userId: string,
@@ -2416,6 +2438,16 @@ export class TimesheetsService {
     void mapLimit([...early.values()], DECORATE_CONCURRENCY, (e) =>
       policyOf(e.context_kind, contextIdOf(e)),
     );
+    // V10: the recent assignment contexts' projects, in one batched read alongside the sheet reads (never
+    // rejects); the assignments known only from an open sheet are read in a second batch at the end.
+    const earlyAssignmentIds = new Set(
+      distinct(
+        [...early.values()]
+          .filter((e) => e.context_kind === 'assignment')
+          .map((e) => e.context_ref),
+      ),
+    );
+    const earlyProjects = this.assignmentProjectsSoft([...earlyAssignmentIds]);
 
     const [liveRes, currentRes] = await Promise.all([
       this.sb
@@ -2493,6 +2525,7 @@ export class TimesheetsService {
             ? PERSONAL_LABEL
             : (e.context_label_snapshot ?? sheet?.scope_label_snapshot ?? ''),
         sheet_scope: e.context_kind === 'personal' ? null : scope,
+        ...NO_CONTEXT_PROJECT,
         current_sheet: null,
         ...NO_CONTEXT_POLICY,
       });
@@ -2523,11 +2556,66 @@ export class TimesheetsService {
       }
     }
     const list = [...contexts.values()];
+    const lateAssignmentIds = distinct(
+      list
+        .filter((c) => c.kind === 'assignment')
+        .map((c) => c.id)
+        .filter((id) => id !== null && !earlyAssignmentIds.has(id)),
+    );
     // The early reads are shared through the reader's memo; this awaits them and starts the rest.
-    await mapLimit(list, DECORATE_CONCURRENCY, async (ctx) => {
-      Object.assign(ctx, await policyOf(ctx.kind, ctx.id));
-    });
+    const [projectsEarly, projectsLate] = await Promise.all([
+      earlyProjects,
+      this.assignmentProjectsSoft(lateAssignmentIds),
+      mapLimit(list, DECORATE_CONCURRENCY, async (ctx) => {
+        Object.assign(ctx, await policyOf(ctx.kind, ctx.id));
+      }),
+    ]);
+    for (const ctx of list) {
+      if (ctx.kind !== 'assignment' || !ctx.id) continue;
+      const found = projectsEarly.get(ctx.id) ?? projectsLate.get(ctx.id);
+      if (found) Object.assign(ctx, found);
+    }
     return { contexts: list, hasRecentEntries: recent.length > 0 };
+  }
+
+  /** V10: assignment id → its project: `project_id` and the live title, else `project_title_snapshot` (a deleted
+   *  project). One read per IN chunk, the project embedded. Best effort, like the D85 policy reads: it never
+   *  rejects, and a failed chunk only warns (its contexts keep the null project fields). No read for no ids. */
+  private async assignmentProjectsSoft(
+    ids: string[],
+  ): Promise<Map<string, OverviewContextProject>> {
+    const out = new Map<string, OverviewContextProject>();
+    for (const part of chunks(distinct(ids))) {
+      try {
+        const { data, error } = await this.sb
+          .from('engagement_assignments')
+          .select(
+            'id, project_id, project_title_snapshot, project:projects(title)',
+          )
+          .in('id', part);
+        if (error) {
+          this.logger.warn(
+            `time_overview_assignment_projects_failed code=${error.code ?? 'none'}`,
+          );
+          continue;
+        }
+        for (const row of (data ?? []) as unknown as AssignmentProjectRow[]) {
+          const live = row.project?.title;
+          out.set(row.id, {
+            project_id: row.project_id ?? null,
+            project_title:
+              typeof live === 'string' && live !== ''
+                ? live
+                : (row.project_title_snapshot ?? null),
+          });
+        }
+      } catch (error) {
+        this.logger.warn(
+          `time_overview_assignment_projects_failed: ${error instanceof Error ? error.message : String(error)}`,
+        );
+      }
+    }
+    return out;
   }
 
   /** workspace_time_admin[]: workspaces the caller owns or administers (can_manage_workspace's rule). */

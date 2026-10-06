@@ -2179,6 +2179,9 @@ describe('TimesheetsService.overview', () => {
         id: WS,
         label: 'Acme',
         sheet_scope: { kind: 'workspace', ref: WS },
+        // V10: only an assignment context names a project.
+        project_id: null,
+        project_title: null,
         current_sheet: {
           id: S1,
           status: 'open',
@@ -2198,6 +2201,8 @@ describe('TimesheetsService.overview', () => {
         id: null,
         label: 'Just me',
         sheet_scope: null,
+        project_id: null,
+        project_title: null,
         current_sheet: null,
         timezone: null,
         week_start: null,
@@ -2334,6 +2339,252 @@ describe('TimesheetsService.overview', () => {
     expect(codeOf(err)).toBe('TIME_INTERNAL');
     expect(JSON.stringify((err as HttpException).getResponse())).not.toContain(
       'exploded',
+    );
+  });
+});
+
+// ── V10: an assignment context names its project ────────────────────────────
+describe('V10 overview: assignment contexts carry their project', () => {
+  const ASSIGN_2 = uid(32);
+  const ASSIGN_GONE = uid(33);
+  const ASSIGN_MISSING = uid(34);
+  const PROJECT_2 = uid(41);
+  const AGREEMENT = 'Cora Villanueva · agreement';
+  const recentIso = (daysAgo: number) =>
+    new Date(Date.now() - daysAgo * 86_400_000).toISOString();
+  const today = () => new Date().toISOString().slice(0, 10);
+
+  function assignmentEntry(id: string, assignment: string, over: Row = {}) {
+    return entry({
+      id,
+      context_kind: 'assignment',
+      context_ref: assignment,
+      engagement_assignment_id: assignment,
+      workspace_id: null,
+      context_label_snapshot: AGREEMENT,
+      timesheet_id: S1,
+      ...over,
+    });
+  }
+
+  /** One talent engagement sheet: both assignments route to it (the audit's two identical For options). */
+  function engagementSheet(over: Row = {}): Row {
+    return sheet({
+      id: S1,
+      status: 'open',
+      scope_kind: 'engagement',
+      scope_ref: ENG,
+      engagement_id: ENG,
+      scope_label_snapshot: AGREEMENT,
+      period_start: today(),
+      period_end: today(),
+      approver_scope: 'hirer',
+      ...over,
+    });
+  }
+
+  function assignment(
+    id: string,
+    projectId: string | null,
+    snapshot: string,
+    liveTitle: string | null,
+  ): Row {
+    return {
+      id,
+      project_id: projectId,
+      project_title_snapshot: snapshot,
+      // The `project:projects(title)` embed; null once the project is deleted.
+      project: liveTitle === null ? null : { title: liveTitle },
+    };
+  }
+
+  const assignmentReads = (db: { from: jest.Mock }) =>
+    db.from.mock.calls.filter((c) => c[0] === 'engagement_assignments');
+
+  it('two assignments under one agreement differ by project; a deleted project reads its snapshot; other kinds are null', async () => {
+    const { service, db } = await setup(
+      {
+        time_entries: [
+          assignmentEntry(E1, ASSIGN, { started_at: recentIso(1) }),
+          assignmentEntry(E2, ASSIGN_2, {
+            project_id: PROJECT_2,
+            started_at: recentIso(2),
+          }),
+          assignmentEntry(E3, ASSIGN_GONE, {
+            project_id: null,
+            timesheet_id: null,
+            started_at: recentIso(3),
+          }),
+          entry({
+            id: E4,
+            context_kind: 'workspace',
+            context_ref: WS,
+            timesheet_id: null,
+            started_at: recentIso(4),
+          }),
+          entry({
+            id: uid(204),
+            context_kind: 'personal',
+            context_ref: null,
+            workspace_id: null,
+            timesheet_id: null,
+            started_at: recentIso(5),
+          }),
+        ],
+        timesheets: [engagementSheet()],
+        engagement_assignments: [
+          assignment(ASSIGN, PROJECT, 'Rebrand', 'Rebrand'),
+          // The live title wins over the snapshot taken at assignment time.
+          assignment(ASSIGN_2, PROJECT_2, 'Mobile', 'Acme Corp Mobile App'),
+          assignment(ASSIGN_GONE, null, 'Old Site', null),
+        ],
+      },
+      { time_approval_queue_ids: () => ({ data: [] }) },
+    );
+    const o = await service.overview({ id: MEMBER });
+    const byKey = new Map(o.contexts.map((c) => [`${c.kind}:${c.id}`, c]));
+
+    const rebrand = byKey.get(`assignment:${ASSIGN}`);
+    const mobile = byKey.get(`assignment:${ASSIGN_2}`);
+    // What the For filter showed twice: the same label and the same sheet scope...
+    expect(rebrand?.label).toBe(AGREEMENT);
+    expect(mobile?.label).toBe(AGREEMENT);
+    expect(rebrand?.sheet_scope).toEqual({ kind: 'engagement', ref: ENG });
+    expect(mobile?.sheet_scope).toEqual(rebrand?.sheet_scope);
+    // ...now told apart by their projects.
+    expect(rebrand).toMatchObject({
+      project_id: PROJECT,
+      project_title: 'Rebrand',
+    });
+    expect(mobile).toMatchObject({
+      project_id: PROJECT_2,
+      project_title: 'Acme Corp Mobile App',
+    });
+    expect(byKey.get(`assignment:${ASSIGN_GONE}`)).toMatchObject({
+      project_id: null,
+      project_title: 'Old Site',
+    });
+    expect(byKey.get(`workspace:${WS}`)).toMatchObject({
+      project_id: null,
+      project_title: null,
+    });
+    expect(byKey.get('personal:null')).toMatchObject({
+      project_id: null,
+      project_title: null,
+    });
+    // One batched read for the three assignments (all named by recent entries).
+    expect(assignmentReads(db)).toHaveLength(1);
+  });
+
+  it('no assignment context: no assignment read', async () => {
+    const { service, db } = await setup(
+      {
+        time_entries: [
+          entry({ id: E1, timesheet_id: null, started_at: recentIso(1) }),
+        ],
+      },
+      { time_approval_queue_ids: () => ({ data: [] }) },
+    );
+    const o = await service.overview({ id: MEMBER });
+    expect(o.contexts).toHaveLength(1);
+    expect(o.contexts[0]).toMatchObject({
+      project_id: null,
+      project_title: null,
+    });
+    expect(assignmentReads(db)).toHaveLength(0);
+  });
+
+  it('the recent assignments read alongside the sheet reads; one known only from an open sheet reads in a second batch', async () => {
+    const { service, db } = await setup(
+      {
+        time_entries: [
+          assignmentEntry(E1, ASSIGN, {
+            timesheet_id: null,
+            started_at: recentIso(1),
+          }),
+          // No recent entry: an older entry on an open sheet only.
+          assignmentEntry(E2, ASSIGN_2, {
+            project_id: PROJECT_2,
+            started_at: recentIso(40),
+          }),
+        ],
+        timesheets: [engagementSheet({ period_start: '2026-08-24' })],
+        engagement_assignments: [
+          assignment(ASSIGN, PROJECT, 'Rebrand', 'Rebrand'),
+          assignment(ASSIGN_2, PROJECT_2, 'Mobile App', 'Mobile App'),
+        ],
+      },
+      { time_approval_queue_ids: () => ({ data: [] }) },
+    );
+    const o = await service.overview({ id: MEMBER });
+    const byKey = new Map(o.contexts.map((c) => [`${c.kind}:${c.id}`, c]));
+    expect(byKey.get(`assignment:${ASSIGN}`)).toMatchObject({
+      project_id: PROJECT,
+      project_title: 'Rebrand',
+    });
+    expect(byKey.get(`assignment:${ASSIGN_2}`)).toMatchObject({
+      project_id: PROJECT_2,
+      project_title: 'Mobile App',
+    });
+
+    const order = (table: string) =>
+      db.from.mock.calls.flatMap((call, i) =>
+        call[0] === table ? [db.from.mock.invocationCallOrder[i]] : [],
+      );
+    const [firstSheetRead] = order('timesheets');
+    const reads = order('engagement_assignments');
+    expect(reads).toHaveLength(2);
+    // The recent assignment's read does not wait for the sheet reads; the sheet-only one follows them.
+    expect(reads[0]).toBeLessThan(firstSheetRead);
+    expect(reads[1]).toBeGreaterThan(firstSheetRead);
+  });
+
+  it('a missing or failed lookup leaves the project null; the overview still answers', async () => {
+    const tables = (): Record<string, Row[]> => ({
+      time_entries: [
+        assignmentEntry(E1, ASSIGN, { started_at: recentIso(1) }),
+        assignmentEntry(E2, ASSIGN_MISSING, { started_at: recentIso(2) }),
+      ],
+      timesheets: [engagementSheet()],
+      engagement_assignments: [
+        assignment(ASSIGN, PROJECT, 'Rebrand', 'Rebrand'),
+      ],
+    });
+    // An assignment row that no longer exists: null project fields.
+    const ok = await setup(tables(), {
+      time_approval_queue_ids: () => ({ data: [] }),
+    });
+    const fine = await ok.service.overview({ id: MEMBER });
+    expect(fine.contexts.find((c) => c.id === ASSIGN)).toMatchObject({
+      project_title: 'Rebrand',
+    });
+    expect(fine.contexts.find((c) => c.id === ASSIGN_MISSING)).toMatchObject({
+      project_id: null,
+      project_title: null,
+      label: AGREEMENT,
+    });
+
+    // The read fails: a warning, null project fields, everything else as before.
+    const warn = jest.spyOn(Logger.prototype, 'warn');
+    const down = await setup(tables(), {
+      time_approval_queue_ids: () => ({ data: [] }),
+    });
+    down.db.failures.engagement_assignments = {
+      code: 'XX000',
+      message: 'relation exploded',
+    };
+    const o = await down.service.overview({ id: MEMBER });
+    expect(o.contexts.map((c) => c.id)).toEqual([ASSIGN, ASSIGN_MISSING]);
+    for (const c of o.contexts) {
+      expect(c).toMatchObject({
+        project_id: null,
+        project_title: null,
+        label: AGREEMENT,
+        sheet_scope: { kind: 'engagement', ref: ENG },
+      });
+    }
+    expect(warn).toHaveBeenCalledWith(
+      'time_overview_assignment_projects_failed code=XX000',
     );
   });
 });

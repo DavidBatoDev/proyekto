@@ -685,6 +685,14 @@ export interface OverviewContext extends OverviewContextPolicy {
   id: string | null;
   label: string;
   sheet_scope: SheetScopeRef | null;
+  /** V10, assignment contexts: the assignment's project (`engagement_assignments.project_id`), so two
+   *  assignments under one agreement (same label, same sheet scope) can be told apart. Null once the project is
+   *  deleted, for every other kind, and when the lookup failed (best effort; the overview still answers). The
+   *  server always sends it; optional for older answers. */
+  project_id?: string | null;
+  /** V10, assignment contexts: that project's live title, else the assignment's `project_title_snapshot` (a
+   *  deleted project). Null for every other kind and when the lookup failed. */
+  project_title?: string | null;
   current_sheet: {
     id: string;
     status: TimesheetStatus;
