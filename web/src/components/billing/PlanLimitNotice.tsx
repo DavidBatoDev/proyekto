@@ -1,5 +1,5 @@
 import { Link } from "@tanstack/react-router";
-import { AlertTriangle, ArrowUpRight } from "lucide-react";
+import { AlertTriangle, ArrowUpRight, X } from "lucide-react";
 import { SettingsNotice } from "@/components/workspace/settings/SettingsPrimitives";
 import { computeMeter, type WorkspaceEntitlements } from "@/lib/entitlements";
 import type { PlanLimitInfo } from "@/lib/planLimitErrors";
@@ -12,6 +12,11 @@ import {
 	nextPlanWith,
 } from "@/lib/planLimits";
 import { isNativeApp } from "@/lib/platform";
+import {
+	isTimePlanKey,
+	type TimePlanCopyOptions,
+	timePlanCopy,
+} from "@/lib/timeErrors";
 import {
 	type CopySurface,
 	meterCaption,
@@ -31,7 +36,11 @@ import type { Workspace } from "@/services/workspaces.service";
  * before anyone clicks it. Only owners can change the plan, so an owner gets
  * the upgrade link and everyone else is told who to ask.
  *
- * The wording comes from usageCopy.ts; this component only lays it out.
+ * The wording comes from usageCopy.ts; this component only lays it out. The
+ * time keys are the exception: their sentences are ux.md's plan copy
+ * (`timePlanCopy` in lib/timeErrors.ts), which name the tier and, given the
+ * workspace's name, the workspace. A time key whose surface the app hides
+ * (billing hours, payouts, audit export) renders nothing at all in the app.
  */
 
 export type PlanLimitNoticeInfo = Pick<
@@ -42,10 +51,18 @@ export type PlanLimitNoticeInfo = Pick<
 		Pick<PlanLimitInfo, "message" | "context" | "workspaceId" | "workspaceSlug">
 	>;
 
+/**
+ * The workspace the limit belongs to. `slug` and `my_role` decide the call to
+ * action; `name`, when given, is the workspace a time sentence names ("Upgrade
+ * Acme to send time for approval.").
+ */
+export type PlanLimitNoticeWorkspace = Pick<Workspace, "slug" | "my_role"> &
+	Partial<Pick<Workspace, "name">>;
+
 interface PlanLimitNoticeProps {
 	info: PlanLimitNoticeInfo;
 	/** The workspace the limit belongs to; its role decides the call to action. */
-	workspace: Pick<Workspace, "slug" | "my_role"> | null | undefined;
+	workspace: PlanLimitNoticeWorkspace | null | undefined;
 	/** Replaces the default body copy. */
 	message?: string | null;
 	/** One more sentence after the body, e.g. "Existing logs stay readable." */
@@ -54,6 +71,20 @@ interface PlanLimitNoticeProps {
 	isComplimentary?: boolean;
 	/** "inline" sets the notice in the smaller type of a dialog or form. */
 	variant?: "card" | "inline";
+	/**
+	 * Where a `time_billable_invoices` / `time_payouts` notice sits: `contract`
+	 * (create or sign, the default) or `cutoffs` (the billing and pay cut-off
+	 * editor), which reads "Billing and pay cut-offs are part of Pro (billing)
+	 * or Business (payouts)."
+	 */
+	planCopyContext?: TimePlanCopyOptions["context"];
+	/**
+	 * Adds a dismiss button (top right). The caller owns the remembering: the
+	 * notice only reports the click.
+	 */
+	onDismiss?: () => void;
+	/** The dismiss button's accessible name; "Dismiss" by default. */
+	dismissLabel?: string;
 	className?: string;
 }
 
@@ -88,6 +119,20 @@ function defaultMessage(
 	return planLimitToastCopy(info, role ?? null, surface).message;
 }
 
+/**
+ * ux.md's plan copy for a time key: `undefined` for any other key, `null` for
+ * a time key whose surface is hidden in the app.
+ */
+function timeCopyFor(
+	info: PlanLimitInfo,
+	options: TimePlanCopyOptions,
+): string | null | undefined {
+	if (info.kind !== "feature" || !isTimePlanKey(info.limitKey)) {
+		return undefined;
+	}
+	return timePlanCopy(info.limitKey, options);
+}
+
 export function PlanLimitNotice({
 	info,
 	workspace,
@@ -95,13 +140,27 @@ export function PlanLimitNotice({
 	detail,
 	isComplimentary = false,
 	variant = "card",
+	planCopyContext,
+	onDismiss,
+	dismissLabel = "Dismiss",
 	className,
 }: PlanLimitNoticeProps) {
 	const full = toFullInfo(info);
-	const surface: CopySurface = isNativeApp() ? "app" : "web";
+	const native = isNativeApp();
+	const surface: CopySurface = native ? "app" : "web";
 	const role = workspace?.my_role ?? null;
 	const slug = workspace?.slug ?? full.workspaceSlug;
-	const body = message ?? defaultMessage(full, role, surface);
+	const timeCopy = timeCopyFor(full, {
+		workspaceName: workspace?.name ?? null,
+		native,
+		context: planCopyContext,
+	});
+	// Hidden in the app (ux.md › Plan copy): the surface that would raise it
+	// is web-only, so the notice has nothing honest to say there.
+	if (native && timeCopy === null) return null;
+	// A time key speaks ux.md's sentence even over the server's message: the
+	// two say the same thing, and only ours names the workspace.
+	const body = message ?? timeCopy ?? defaultMessage(full, role, surface);
 	const cta = upgradeCta({
 		role,
 		isComplimentary,
@@ -112,7 +171,7 @@ export function PlanLimitNotice({
 		surface,
 	});
 
-	return (
+	const notice = (
 		<SettingsNotice
 			role="status"
 			tone="warning"
@@ -121,7 +180,7 @@ export function PlanLimitNotice({
 			className={cn(
 				"text-left",
 				variant === "inline" ? "text-xs" : undefined,
-				className,
+				onDismiss ? "pr-8" : className,
 			)}
 			action={
 				cta.kind === "upgrade" && slug ? (
@@ -145,6 +204,23 @@ export function PlanLimitNotice({
 				) : null}
 			</div>
 		</SettingsNotice>
+	);
+
+	if (!onDismiss) return notice;
+	// The caller's className goes on the wrapper, so spacing it was given
+	// still lands on the outermost box.
+	return (
+		<div className={cn("relative", className)}>
+			{notice}
+			<button
+				type="button"
+				onClick={onDismiss}
+				aria-label={dismissLabel}
+				className="absolute right-0 top-0 rounded-md p-1 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30"
+			>
+				<X className="h-3.5 w-3.5" aria-hidden="true" />
+			</button>
+		</div>
 	);
 }
 

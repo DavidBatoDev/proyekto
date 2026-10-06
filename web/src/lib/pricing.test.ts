@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
 	DEFAULT_PLAN_LIMITS,
+	isEnabled,
 	type LimitCell,
 	type LimitKey,
 	type PlanId,
@@ -68,10 +69,12 @@ describe("pricing data invariants", () => {
 
 // ── Today's published copy, pinned literally ────────────────────────────────
 //
-// Copied from pricing.ts as it stood before the limits moved to the database.
-// The default matrix equals the seed, so resolving it must reproduce exactly
-// what /pricing has always said. A diff here means the page changed its words
-// without anyone editing a limit.
+// Copied from pricing.ts as it stood before the limits moved to the database,
+// then amended once on purpose for the time ladder (M0, 20261003090000): the
+// "Time tracking" group, the relabelled "Timesheets and approvals" and the
+// time lines on each card. The default matrix equals the seed, so resolving it
+// must reproduce exactly what /pricing says. A diff here means the page
+// changed its words without anyone editing a limit.
 
 const PUBLISHED_HIGHLIGHTS: Record<PlanId, string[]> = {
 	free: [
@@ -81,6 +84,7 @@ const PUBLISHED_HIGHLIGHTS: Record<PlanId, string[]> = {
 		"50 AI messages a month",
 		"Project knowledge base",
 		"Tasks, chat and meetings",
+		"Personal time tracking",
 	],
 	pro: [
 		"All Free features +",
@@ -89,7 +93,8 @@ const PUBLISHED_HIGHLIGHTS: Record<PlanId, string[]> = {
 		"Unlimited roadmap nodes",
 		"500 AI messages per seat",
 		"Deliverables, change requests, risks and decisions",
-		"Time tracking and timesheets",
+		"Timesheets and approvals",
+		"Billable hours on invoices",
 		"MCP server for Claude and other AI clients",
 	],
 	business: [
@@ -98,6 +103,7 @@ const PUBLISHED_HIGHLIGHTS: Record<PlanId, string[]> = {
 		"2,000 AI messages per seat",
 		"High reasoning effort",
 		"Private teams and guests",
+		"Team time rules, payouts and workspace time reports",
 		"Unlimited activity history",
 	],
 	enterprise: [
@@ -105,6 +111,7 @@ const PUBLISHED_HIGHLIGHTS: Record<PlanId, string[]> = {
 		"SAML and SCIM",
 		"Granular admin controls",
 		"Activity export",
+		"Custom approval chains and time audit export",
 		"Priority AI capacity",
 		"Migration and onboarding support",
 		"Account management",
@@ -233,12 +240,47 @@ const PUBLISHED_FEATURE_GROUPS = [
 		],
 	},
 	{
-		title: "Team management",
+		title: "Time tracking",
+		note: "Time logged under a client or talent agreement is never limited by plan.",
 		rows: [
 			{
-				label: "Time tracking and timesheets",
+				label: "Personal time tracking",
+				note: "A timer and time entries just for you.",
+				values: all(true),
+			},
+			{
+				label: "Timesheets and approvals",
 				values: { free: false, pro: true, business: true, enterprise: true },
 			},
+			{
+				label: "Billable hours on invoices",
+				values: { free: false, pro: true, business: true, enterprise: true },
+			},
+			{
+				label: "Team approvers and time rules",
+				values: { free: false, pro: false, business: true, enterprise: true },
+			},
+			{
+				label: "Payouts",
+				values: { free: false, pro: false, business: true, enterprise: true },
+			},
+			{
+				label: "Workspace time reports and export",
+				values: { free: false, pro: false, business: true, enterprise: true },
+			},
+			{
+				label: "Custom approval chains",
+				values: { free: false, pro: false, business: false, enterprise: true },
+			},
+			{
+				label: "Time audit export",
+				values: { free: false, pro: false, business: false, enterprise: true },
+			},
+		],
+	},
+	{
+		title: "Team management",
+		rows: [
 			{
 				label: "Private teams and guests",
 				values: { free: false, pro: false, business: true, enterprise: true },
@@ -432,10 +474,10 @@ describe("pricing copy resolved from the limit matrix", () => {
 	it("drops a feature's highlight and cell when it is switched off", () => {
 		const limits = edited({ pro: { time_tracking: off, mcp_server: off } });
 		const lines = resolveHighlights(plan("pro"), limits.pro);
-		expect(lines).not.toContain("Time tracking and timesheets");
+		expect(lines).not.toContain("Timesheets and approvals");
 		expect(lines).not.toContain("MCP server for Claude and other AI clients");
 		const groups = resolveFeatureGroups(limits);
-		expect(cellsOf(groups, "Time tracking and timesheets").pro).toBe(false);
+		expect(cellsOf(groups, "Timesheets and approvals").pro).toBe(false);
 		expect(cellsOf(groups, "MCP server").pro).toBe(false);
 	});
 
@@ -571,5 +613,121 @@ describe("pricing copy resolved from the limit matrix", () => {
 		expect(cellsOf(groups, "Priority AI capacity").enterprise).toBe(true);
 		expect(cellsOf(groups, "Account manager").enterprise).toBe(true);
 		expect(cellsOf(groups, "Reasoning effort").enterprise).toBe("High");
+	});
+});
+
+// ── The time ladder (README › Pricing and Plan Keys) ────────────────────────
+
+const TIME_ROWS: [label: string, key: LimitKey | null][] = [
+	["Personal time tracking", null],
+	["Timesheets and approvals", "time_tracking"],
+	["Billable hours on invoices", "time_billable_invoices"],
+	["Team approvers and time rules", "time_team_rules"],
+	["Payouts", "time_payouts"],
+	["Workspace time reports and export", "time_reports_export"],
+	["Custom approval chains", "time_approval_chains"],
+	["Time audit export", "time_audit_export"],
+];
+
+describe("pricing: the time ladder", () => {
+	const timeGroup = () => {
+		const group = resolveFeatureGroups().find(
+			(g) => g.title === "Time tracking",
+		);
+		if (!group) throw new Error("No Time tracking group");
+		return group;
+	};
+
+	it("lists every time key once, in seed order, after delivery governance", () => {
+		const titles = resolveFeatureGroups().map((g) => g.title);
+		expect(titles.indexOf("Time tracking")).toBe(
+			titles.indexOf("Delivery governance") + 1,
+		);
+		expect(timeGroup().rows.map((r) => r.label)).toEqual(
+			TIME_ROWS.map(([label]) => label),
+		);
+		// The relabelled key left Team management rather than appearing twice.
+		const all = resolveFeatureGroups().flatMap((g) => g.rows);
+		expect(all.filter((r) => /timesheets/i.test(r.label))).toHaveLength(1);
+	});
+
+	it("reads each tier's cell from the seed: Free personal, Pro, Business, Enterprise", () => {
+		for (const [label, key] of TIME_ROWS) {
+			const cells = cellsOf(resolveFeatureGroups(), label);
+			for (const id of ["free", "pro", "business", "enterprise"] as const) {
+				const expected =
+					key === null ? true : isEnabled(DEFAULT_PLAN_LIMITS[id][key]);
+				expect([label, id, cells[id]]).toEqual([label, id, expected]);
+			}
+		}
+		// Spot-check the ladder itself, so a seed edit has to be deliberate.
+		expect(cellsOf(resolveFeatureGroups(), "Payouts")).toEqual({
+			free: false,
+			pro: false,
+			business: true,
+			enterprise: true,
+		});
+		expect(cellsOf(resolveFeatureGroups(), "Time audit export")).toEqual({
+			free: false,
+			pro: false,
+			business: false,
+			enterprise: true,
+		});
+	});
+
+	it("says agreement time is never plan-gated, in the group's note", () => {
+		expect(timeGroup().note).toBe(
+			"Time logged under a client or talent agreement is never limited by plan.",
+		);
+		// Groups without a note carry none.
+		expect(
+			resolveFeatureGroups().find((g) => g.title === "Usage")?.note,
+		).toBeUndefined();
+	});
+
+	it("follows an edited time key into its row and the card line", () => {
+		const limits = edited({ business: { time_payouts: off } });
+		expect(cellsOf(resolveFeatureGroups(limits), "Payouts").business).toBe(
+			false,
+		);
+		expect(resolveHighlights(plan("business"), limits.business)).toContain(
+			"Team time rules and workspace time reports",
+		);
+		const none = edited({
+			enterprise: { time_approval_chains: off, time_audit_export: off },
+		});
+		expect(
+			resolveHighlights(plan("enterprise"), none.enterprise).some((line) =>
+				/approval chains|audit export/i.test(line),
+			),
+		).toBe(false);
+	});
+
+	it("keeps the personal timer on every card and row whatever the matrix says", () => {
+		const everythingOff = edited({
+			free: { time_tracking: off },
+			pro: { time_tracking: off },
+		});
+		expect(
+			cellsOf(resolveFeatureGroups(everythingOff), "Personal time tracking"),
+		).toEqual(all(true));
+		expect(resolveHighlights(plan("free"), everythingOff.free)).toContain(
+			"Personal time tracking",
+		);
+	});
+
+	it("names tiers only: no price, per-user or interval wording in the time copy", () => {
+		const group = timeGroup();
+		const strings = [
+			group.title,
+			group.note ?? "",
+			...group.rows.flatMap((r) => [r.label, r.note ?? ""]),
+			...PLANS.flatMap((p) => resolveHighlights(p)).filter((line) =>
+				/time|timesheet|payout|approval/i.test(line),
+			),
+		];
+		for (const text of strings) {
+			expect(text).not.toMatch(/\$|\d|per user|\/\s*month|pricing/i);
+		}
 	});
 });

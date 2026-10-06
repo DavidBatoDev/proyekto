@@ -23,6 +23,7 @@ import type { PlanLimitInfo } from "./planLimitErrors";
 import {
 	formatCount,
 	type LimitCellMap,
+	type LimitGroup,
 	type LimitKey,
 	limitDefinition,
 	type PlanId,
@@ -165,6 +166,15 @@ export const PLAN_CHANGES_UNAVAILABLE =
 	"Plan changes aren't available in the app.";
 
 /**
+ * Words the installed app never shows (ux.md › Mobile): contract, rate,
+ * payout, invoice. The same list as `NATIVE_FORBIDDEN_WORDS` in
+ * lib/timeErrors.ts, kept here because that module pulls in the API client
+ * and this one is imported by the axios interceptor's error path.
+ */
+const APP_UNSAFE_LABEL =
+	/\b(?:contracts?|contractual|rates?|payouts?|invoices?|invoic(?:ed|ing))\b/i;
+
+/**
  * The call to action beside a limit. Only owners can change the plan
  * (checkout is owner-only), so everyone else is pointed at one. A
  * complimentary workspace, or one already on the top plan, gets nothing.
@@ -194,6 +204,41 @@ export function upgradeCta(input: {
 		};
 	}
 	return { kind: "ask_owner", label: "Ask a workspace owner to upgrade." };
+}
+
+/**
+ * The heading a limit's group reads under, on the Usage page's feature list
+ * and the admin plan editor. The time keys live in `team` (M0 seeds them
+ * there), hence "Teams and time". An unknown group falls back to "Other"
+ * rather than printing a raw key.
+ */
+export const LIMIT_GROUP_LABELS: Readonly<Record<LimitGroup, string>> = {
+	usage: "Usage",
+	ai: "AI",
+	governance: "Delivery governance",
+	team: "Teams and time",
+	platform: "Platform",
+};
+
+export function limitGroupLabel(group: string): string {
+	return (LIMIT_GROUP_LABELS as Record<string, string>)[group] ?? "Other";
+}
+
+/**
+ * One more line under a feature the plan lacks, where its absence would read
+ * as more than it is. Without `time_tracking` a workspace loses timesheets and
+ * approvals, never the timer: personal time is on every plan (ux.md › Workspace
+ * Time Policy, the Free row). `null` when there is nothing to add.
+ */
+export function featureNoteCopy(
+	key: LimitKey | string,
+	enabled: boolean,
+): string | null {
+	if (enabled) return null;
+	if (key === "time_tracking") {
+		return "Everyone can still track time just for themselves.";
+	}
+	return null;
 }
 
 /** "Included" / "Available on Pro" / "Contact sales" for a feature row. */
@@ -255,8 +300,13 @@ export function planLimitToastCopy(
 	const sentences: string[] = [];
 
 	if (info.kind === "feature") {
+		// In the app a label that names money or agreements ("Payouts",
+		// "Billable hours on invoices") is not repeated: the feature is
+		// described by its plan alone.
 		sentences.push(
-			`The ${plan} plan doesn't include ${inSentence(info.label)}.`,
+			surface === "app" && APP_UNSAFE_LABEL.test(info.label)
+				? `This isn't on the ${plan} plan.`
+				: `The ${plan} plan doesn't include ${inSentence(info.label)}.`,
 		);
 		if (upgrade) sentences.push(`It's available on ${upgrade} and above.`);
 	} else {

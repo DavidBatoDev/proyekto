@@ -15,7 +15,14 @@ import {
 	type WorkspaceUsage,
 	type WorkspaceUsageFeature,
 } from "@/lib/entitlements";
-import { DEFAULT_PLAN_LIMITS } from "@/lib/planLimits";
+import {
+	DEFAULT_PLAN_LIMITS,
+	isEnabled,
+	LIMIT_DEFINITIONS,
+	limitDefinition,
+	nextPlanWith,
+	type PlanId,
+} from "@/lib/planLimits";
 import type { Workspace } from "@/services/workspaces.service";
 import { WorkspaceUsagePage } from "./WorkspaceUsagePage";
 
@@ -94,6 +101,7 @@ vi.mock("@tanstack/react-router", async (importOriginal) => {
 	};
 });
 
+/** A usage feature; its group is the catalogue's, as the server sends it. */
 const feature = (
 	key: string,
 	label: string,
@@ -103,11 +111,54 @@ const feature = (
 ): WorkspaceUsageFeature => ({
 	key,
 	label,
-	group: "governance",
+	group: limitDefinition(key)?.group ?? "governance",
 	enabled,
 	enforced,
 	available_on,
 });
+
+/**
+ * Every feature key of the catalogue as the usage endpoint lists it for
+ * `plan`: in catalogue order, enabled per the seed, `available_on` the first
+ * tier above that has it. The backend builds the same list from the DB.
+ */
+function catalogueFeatures(plan: PlanId): WorkspaceUsageFeature[] {
+	return LIMIT_DEFINITIONS.filter((d) => d.kind === "feature").map((d) =>
+		feature(
+			d.key,
+			d.label,
+			isEnabled(DEFAULT_PLAN_LIMITS[plan][d.key]),
+			d.enforced,
+			isEnabled(DEFAULT_PLAN_LIMITS[plan][d.key])
+				? null
+				: nextPlanWith(d.key, plan, DEFAULT_PLAN_LIMITS),
+		),
+	);
+}
+
+function planUsage(plan: PlanId): WorkspaceUsage {
+	return freeUsage({
+		plan: { effective: plan, source: "subscription", complimentary: null },
+		limits: { ...DEFAULT_PLAN_LIMITS[plan] },
+		features: catalogueFeatures(plan),
+		upgrade_plan: plan === "enterprise" ? null : "business",
+	});
+}
+
+/** The Features section, and one of its items by label. */
+function featuresSection(): HTMLElement {
+	return screen
+		.getByRole("heading", { name: "Features" })
+		.closest("section") as HTMLElement;
+}
+
+function featureItem(label: string): HTMLElement {
+	return within(featuresSection())
+		.getByText(label)
+		.closest("li") as HTMLElement;
+}
+
+const PERSONAL_TIME_NOTE = "Everyone can still track time just for themselves.";
 
 function freeUsage(overrides: Partial<WorkspaceUsage> = {}): WorkspaceUsage {
 	return {
@@ -152,13 +203,7 @@ function freeUsage(overrides: Partial<WorkspaceUsage> = {}): WorkspaceUsage {
 		features: [
 			feature("deliverables", "Deliverables", false, true, "pro"),
 			feature("change_requests", "Change requests", false, true, "pro"),
-			feature(
-				"time_tracking",
-				"Time tracking and timesheets",
-				false,
-				true,
-				"pro",
-			),
+			feature("time_tracking", "Timesheets and approvals", false, true, "pro"),
 			feature("saml_scim", "SAML and SCIM", false, false, "enterprise"),
 		],
 		retention_days: 7,
@@ -183,13 +228,7 @@ function proComped(): WorkspaceUsage {
 		roadmaps: { largest: null, near_limit: [] },
 		features: [
 			feature("deliverables", "Deliverables", true, true, null),
-			feature(
-				"time_tracking",
-				"Time tracking and timesheets",
-				true,
-				true,
-				null,
-			),
+			feature("time_tracking", "Timesheets and approvals", true, true, null),
 		],
 		retention_days: 90,
 		upgrade_plan: "business",
@@ -385,5 +424,118 @@ describe("WorkspaceUsagePage", () => {
 		expect(screen.getByText(/Usage is unavailable right now\./)).toBeTruthy();
 		fireEvent.click(screen.getByRole("button", { name: "Try again" }));
 		expect(state.refetch).toHaveBeenCalledTimes(1);
+	});
+});
+
+describe("WorkspaceUsagePage: the time ladder", () => {
+	const TIME_LADDER: [label: string, arrivesOn: string][] = [
+		["Timesheets and approvals", "Available on Pro"],
+		["Billable hours on invoices", "Available on Pro"],
+		["Team approvers and time rules", "Available on Business"],
+		["Payouts", "Available on Business"],
+		["Workspace time reports and export", "Available on Business"],
+		["Time audit export", "Available on Enterprise"],
+	];
+
+	it("lists each enforced time key on Free with the tier that brings it", () => {
+		state.usage = planUsage("free");
+		render(<WorkspaceUsagePage />);
+		for (const [label, arrivesOn] of TIME_LADDER) {
+			expect([label, within(featureItem(label)).getByText(arrivesOn)]).toEqual([
+				label,
+				expect.anything(),
+			]);
+		}
+		// Reserved (enforced: false), so it describes no gate and is not listed.
+		expect(
+			within(featuresSection()).queryByText("Custom approval chains"),
+		).toBeNull();
+	});
+
+	it("says the personal timer stays when timesheets are not on the plan", () => {
+		state.usage = planUsage("free");
+		render(<WorkspaceUsagePage />);
+		expect(
+			within(featureItem("Timesheets and approvals")).getByText(
+				PERSONAL_TIME_NOTE,
+			),
+		).toBeTruthy();
+		// Only under that one key.
+		expect(screen.getAllByText(PERSONAL_TIME_NOTE)).toHaveLength(1);
+	});
+
+	it("marks Pro's time keys included and points at Business for the rest", () => {
+		state.usage = planUsage("pro");
+		render(<WorkspaceUsagePage />);
+		for (const label of [
+			"Timesheets and approvals",
+			"Billable hours on invoices",
+		]) {
+			expect(within(featureItem(label)).getByText("Included")).toBeTruthy();
+		}
+		expect(
+			within(featureItem("Payouts")).getByText("Available on Business"),
+		).toBeTruthy();
+		expect(screen.queryByText(PERSONAL_TIME_NOTE)).toBeNull();
+	});
+
+	it("includes every time key on Enterprise", () => {
+		state.usage = planUsage("enterprise");
+		render(<WorkspaceUsagePage />);
+		for (const [label] of TIME_LADDER) {
+			expect(within(featureItem(label)).getByText("Included")).toBeTruthy();
+		}
+	});
+
+	it("groups the features under headings, in catalogue order", () => {
+		state.usage = planUsage("free");
+		render(<WorkspaceUsagePage />);
+		const headings = within(featuresSection())
+			.getAllByRole("heading", { level: 3 })
+			.map((heading) => heading.textContent);
+		expect(headings).toEqual([
+			"Delivery governance",
+			"Teams and time",
+			"Platform",
+		]);
+		const time = within(featuresSection()).getByRole("list", {
+			name: "Teams and time",
+		});
+		expect(
+			within(time)
+				.getAllByRole("listitem")
+				.map((item) => item.querySelector("p")?.textContent),
+		).toEqual(TIME_LADDER.map(([label]) => label));
+	});
+
+	it("draws no group heading when only one group is listed", () => {
+		state.usage = freeUsage({
+			features: [
+				feature("deliverables", "Deliverables", false, true, "pro"),
+				feature("risks", "Risks and issues register", false, true, "pro"),
+			],
+		});
+		render(<WorkspaceUsagePage />);
+		expect(
+			within(featuresSection()).queryAllByRole("heading", { level: 3 }),
+		).toHaveLength(0);
+	});
+
+	it("builds the ladder from the catalogue when an older payload has no list", () => {
+		state.usage = freeUsage({ features: [] });
+		render(<WorkspaceUsagePage />);
+		expect(
+			within(featuresSection()).getByRole("list", { name: "Teams and time" }),
+		).toBeTruthy();
+		expect(
+			within(featureItem("Team approvers and time rules")).getByText(
+				"Available on Business",
+			),
+		).toBeTruthy();
+		expect(
+			within(featureItem("Time audit export")).getByText(
+				"Available on Enterprise",
+			),
+		).toBeTruthy();
 	});
 });

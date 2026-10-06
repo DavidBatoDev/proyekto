@@ -43,6 +43,8 @@ function Value({ value, label }: { value: Cell; label: string }) {
  *
  * Every limit and plan-gated check is written from `limits` (the live matrix,
  * or the seed while it loads), so an admin edit shows here without a deploy.
+ * A group may carry one note under its title (the time ladder says there that
+ * agreement time is never plan-gated, which no single row can).
  */
 export function PricingComparison({ limits }: { limits: PlanLimitMatrix }) {
 	const groups = useMemo(() => resolveFeatureGroups(limits), [limits]);
@@ -81,6 +83,13 @@ export function PricingComparison({ limits }: { limits: PlanLimitMatrix }) {
 								className="sticky left-0 border-t border-border pb-3 pt-10 text-left text-sm font-semibold uppercase tracking-wide text-muted-foreground"
 							>
 								{group.title}
+								{/* Part of the group header, so a screen reader hears it
+								    with the title rather than as a stray row. */}
+								{group.note ? (
+									<span className="mt-1 block text-xs font-normal normal-case tracking-normal text-muted-foreground">
+										{group.note}
+									</span>
+								) : null}
 							</th>
 						</tr>
 						{group.rows.map((r) => (

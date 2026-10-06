@@ -34,6 +34,7 @@ import {
 	validateCell,
 	withDraftCell,
 } from "@/lib/planLimitsAdmin";
+import { LIMIT_GROUP_LABELS } from "@/lib/usageCopy";
 
 /**
  * /admin/plans — what each plan includes, edited in place.
@@ -44,14 +45,11 @@ import {
  * it). Any admin can read; only a super admin gets live controls.
  */
 
-const GROUP_ORDER = ["usage", "ai", "governance", "team", "platform"];
-const GROUP_LABELS: Record<string, string> = {
-	usage: "Usage",
-	ai: "AI",
-	governance: "Delivery governance",
-	team: "Team",
-	platform: "Platform",
-};
+/**
+ * Group order and headings are the catalogue's, shared with the Usage page.
+ * The time ladder sits in `team` (M0 seeds it there), hence "Teams and time".
+ */
+const GROUP_ORDER = Object.keys(LIMIT_GROUP_LABELS);
 
 const PUBLIC_PRICING_NOTE = "Public pricing updates within about 5 minutes.";
 const GRANDFATHER_NOTE =
@@ -110,7 +108,8 @@ function buildGroups(keys: readonly AdminLimitKeyMeta[]): LimitGroupRows[] {
 		.sort(([a], [b]) => rank(a) - rank(b))
 		.map(([group, rows]) => ({
 			group,
-			label: GROUP_LABELS[group] ?? group,
+			// An admin sees a group the web does not know by its raw key.
+			label: (LIMIT_GROUP_LABELS as Record<string, string>)[group] ?? group,
 			rows,
 		}));
 }

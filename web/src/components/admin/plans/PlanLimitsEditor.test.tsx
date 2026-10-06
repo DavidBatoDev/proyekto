@@ -276,6 +276,117 @@ describe("PlanLimitsEditor", () => {
 		expect(screen.queryByLabelText("Edit pricing labels")).toBeNull();
 	});
 
+	it("lists the time ladder under Teams and time, with the seed's cells", async () => {
+		renderEditor("super_admin");
+		await findField("Free Projects");
+		// Plain DOM queries: accessible-name lookups over a 28-row table of
+		// switches take seconds in jsdom.
+		const groupHeaders = Array.from(
+			document.querySelectorAll('th[scope="colgroup"]'),
+		).map((th) => th.textContent);
+		expect(groupHeaders).toContain("Teams and time");
+		expect(groupHeaders).not.toContain("Team");
+
+		const on = (name: string) => {
+			const control = document.querySelector(
+				`[role="switch"][aria-label="${name}"]`,
+			);
+			if (!control) throw new Error(`No switch ${name}`);
+			return control.getAttribute("aria-checked");
+		};
+		const ladder: [string, string[]][] = [
+			["Timesheets and approvals", ["false", "true", "true", "true"]],
+			["Billable hours on invoices", ["false", "true", "true", "true"]],
+			["Team approvers and time rules", ["false", "false", "true", "true"]],
+			["Payouts", ["false", "false", "true", "true"]],
+			["Workspace time reports and export", ["false", "false", "true", "true"]],
+			["Custom approval chains", ["false", "false", "false", "true"]],
+			["Time audit export", ["false", "false", "false", "true"]],
+		];
+		for (const [label, expected] of ladder) {
+			expect([
+				label,
+				PLAN_ORDER.map((plan) =>
+					on(`${plan[0].toUpperCase()}${plan.slice(1)} ${label}`),
+				),
+			]).toEqual([label, expected]);
+		}
+	});
+
+	it("marks the reserved approval chains pricing only and the other time keys enforced", async () => {
+		renderEditor("super_admin");
+		const chains = (await screen.findByText("Custom approval chains")).closest(
+			"tr",
+		) as HTMLElement;
+		expect(within(chains).getByText("Pricing only")).toBeTruthy();
+		for (const label of [
+			"Timesheets and approvals",
+			"Billable hours on invoices",
+			"Team approvers and time rules",
+			"Payouts",
+			"Workspace time reports and export",
+			"Time audit export",
+		]) {
+			const row = screen.getByText(label).closest("tr") as HTMLElement;
+			expect([label, within(row).queryByText("Enforced")]).toEqual([
+				label,
+				expect.anything(),
+			]);
+		}
+	});
+
+	it("saves a time key toggle as an enabled change and warns about a tier inversion", async () => {
+		renderEditor("super_admin");
+		await findField("Free Projects");
+		// Payouts off on Business: an enforced feature tightened.
+		fireEvent.click(screen.getByRole("switch", { name: "Business Payouts" }));
+		// Team rules on for Free while Pro stays off: Free above Pro.
+		fireEvent.click(
+			screen.getByRole("switch", {
+				name: "Free Team approvers and time rules",
+			}),
+		);
+
+		const dialog = await openReview();
+		expect(
+			within(dialog).getByText(
+				"Free · Team approvers and time rules: Off → On",
+			),
+		).toBeTruthy();
+		expect(
+			within(dialog).getByText("Business · Payouts: On → Off"),
+		).toBeTruthy();
+		expect(
+			within(dialog).getByText(
+				"Free is more generous than Pro for Team approvers and time rules.",
+			),
+		).toBeTruthy();
+		expect(
+			within(dialog).getByText(/Tightens an enforced limit/).textContent,
+		).toContain("Business · Payouts");
+		fireEvent.click(
+			within(dialog).getByRole("button", { name: "Save changes" }),
+		);
+
+		await waitFor(() =>
+			expect(mocks.updatePlanLimits).toHaveBeenCalledTimes(1),
+		);
+		expect(mocks.updatePlanLimits.mock.calls[0][0].changes).toEqual([
+			{
+				plan: "free",
+				key: "time_team_rules",
+				enabled: true,
+				display_label: null,
+			},
+			{
+				plan: "business",
+				key: "time_payouts",
+				enabled: false,
+				display_label: null,
+			},
+		]);
+	});
+
 	it("marks enforced and pricing-only rows", async () => {
 		renderEditor("super_admin");
 		const samlRow = (await screen.findByText("SAML and SCIM")).closest("tr");

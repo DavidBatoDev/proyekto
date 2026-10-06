@@ -125,6 +125,8 @@ export const PLANS: readonly Plan[] = [
 			{ limit: "ai_messages" },
 			"Project knowledge base",
 			"Tasks, chat and meetings",
+			// No key: the personal timer is on every plan (README › Pricing).
+			"Personal time tracking",
 		],
 		cta: { label: "Get started", kind: "signup" },
 		intervals: [],
@@ -149,7 +151,8 @@ export const PLANS: readonly Plan[] = [
 					{ key: "decisions", text: "decisions" },
 				],
 			},
-			{ feature: "time_tracking", text: "Time tracking and timesheets" },
+			{ feature: "time_tracking", text: "Timesheets and approvals" },
+			{ feature: "time_billable_invoices", text: "Billable hours on invoices" },
 			{
 				feature: "mcp_server",
 				text: "MCP server for Claude and other AI clients",
@@ -170,6 +173,13 @@ export const PLANS: readonly Plan[] = [
 			{ limit: "ai_messages" },
 			"High reasoning effort",
 			{ feature: "private_teams_guests", text: "Private teams and guests" },
+			{
+				features: [
+					{ key: "time_team_rules", text: "team time rules" },
+					{ key: "time_payouts", text: "payouts" },
+					{ key: "time_reports_export", text: "workspace time reports" },
+				],
+			},
 			{ limit: "activity_history" },
 		],
 		cta: { label: "Get started", kind: "subscribe" },
@@ -187,6 +197,12 @@ export const PLANS: readonly Plan[] = [
 			{ feature: "saml_scim", text: "SAML and SCIM" },
 			{ feature: "roles_permissions", text: "Granular admin controls" },
 			{ feature: "activity_export", text: "Activity export" },
+			{
+				features: [
+					{ key: "time_approval_chains", text: "custom approval chains" },
+					{ key: "time_audit_export", text: "time audit export" },
+				],
+			},
 			"Priority AI capacity",
 			"Migration and onboarding support",
 			"Account management",
@@ -327,6 +343,8 @@ export interface FeatureRow {
 
 export interface FeatureGroup {
 	title: string;
+	/** One line under the group's title, for what no single row can say. */
+	note?: string;
 	rows: FeatureRow[];
 }
 
@@ -349,6 +367,7 @@ export type FeatureRowDef =
 
 export interface FeatureGroupDef {
 	title: string;
+	note?: string;
 	rows: readonly FeatureRowDef[];
 }
 
@@ -431,9 +450,36 @@ export const FEATURE_GROUP_DEFS: readonly FeatureGroupDef[] = [
 		],
 	},
 	{
+		// The time ladder (README › Pricing and Plan Keys): Free keeps the
+		// personal timer, which has no key; each tier above adds its keys. Time
+		// under an agreement has no subject and is never plan-gated, which the
+		// note says because no row can.
+		title: "Time tracking",
+		note: "Time logged under a client or talent agreement is never limited by plan.",
+		rows: [
+			row(
+				"Personal time tracking",
+				true,
+				true,
+				true,
+				true,
+				"A timer and time entries just for you.",
+			),
+			limitRow("Timesheets and approvals", feature("time_tracking")),
+			limitRow("Billable hours on invoices", feature("time_billable_invoices")),
+			limitRow("Team approvers and time rules", feature("time_team_rules")),
+			limitRow("Payouts", feature("time_payouts")),
+			limitRow(
+				"Workspace time reports and export",
+				feature("time_reports_export"),
+			),
+			limitRow("Custom approval chains", feature("time_approval_chains")),
+			limitRow("Time audit export", feature("time_audit_export")),
+		],
+	},
+	{
 		title: "Team management",
 		rows: [
-			limitRow("Time tracking and timesheets", feature("time_tracking")),
 			limitRow("Private teams and guests", feature("private_teams_guests")),
 			limitRow("Roles and permissions", feature("roles_permissions")),
 			limitRow("Activity log retention", {
@@ -498,6 +544,7 @@ export function resolveFeatureGroups(
 ): FeatureGroup[] {
 	return FEATURE_GROUP_DEFS.map((group) => ({
 		title: group.title,
+		note: group.note,
 		rows: group.rows.map((def): FeatureRow => {
 			if ("values" in def) {
 				return { label: def.label, note: def.note, values: { ...def.values } };

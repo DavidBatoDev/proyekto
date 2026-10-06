@@ -6,7 +6,11 @@ import {
 	usedFor,
 	type WorkspaceUsage,
 } from "./entitlements";
-import { DEFAULT_PLAN_LIMITS, normalizeLimits } from "./planLimits";
+import {
+	DEFAULT_PLAN_LIMITS,
+	normalizeLimits,
+	type PlanId,
+} from "./planLimits";
 
 function usage(overrides: Partial<WorkspaceUsage> = {}): WorkspaceUsage {
 	return {
@@ -199,7 +203,134 @@ describe("buildEntitlements", () => {
 	});
 });
 
+describe("buildEntitlements: the time ladder (M0, 20261003090000)", () => {
+	const TIME_KEYS = [
+		"time_tracking",
+		"time_billable_invoices",
+		"time_team_rules",
+		"time_payouts",
+		"time_reports_export",
+		"time_approval_chains",
+		"time_audit_export",
+	] as const;
+
+	const forPlan = (plan: PlanId) =>
+		buildEntitlements(
+			usage({
+				plan: { effective: plan, source: "subscription", complimentary: null },
+				limits: normalizeLimits(null, DEFAULT_PLAN_LIMITS[plan]),
+			}),
+			"ready",
+		);
+
+	it("grants each tier exactly its keys", () => {
+		const granted = (plan: PlanId) =>
+			TIME_KEYS.filter((key) => forPlan(plan).hasFeature(key));
+		// Free keeps only the personal timer, which has no key.
+		expect(granted("free")).toEqual([]);
+		expect(granted("pro")).toEqual(["time_tracking", "time_billable_invoices"]);
+		expect(granted("business")).toEqual([
+			"time_tracking",
+			"time_billable_invoices",
+			"time_team_rules",
+			"time_payouts",
+			"time_reports_export",
+		]);
+		expect(granted("enterprise")).toEqual([...TIME_KEYS]);
+	});
+
+	it("fails open on every time key while usage is unknown", () => {
+		for (const status of ["loading", "unavailable"] as const) {
+			const entitlements = buildEntitlements(null, status);
+			for (const key of TIME_KEYS) {
+				expect([key, entitlements.hasFeature(key)]).toEqual([key, true]);
+			}
+		}
+	});
+
+	it("follows a comped or edited cell, not the plan's name", () => {
+		const edited = buildEntitlements(
+			usage({
+				plan: { effective: "pro", source: "subscription", complimentary: null },
+				limits: normalizeLimits(
+					{ time_payouts: { kind: "feature", enabled: true } },
+					DEFAULT_PLAN_LIMITS.pro,
+				),
+			}),
+			"ready",
+		);
+		expect(edited.hasFeature("time_payouts")).toBe(true);
+		expect(edited.hasFeature("time_team_rules")).toBe(false);
+	});
+});
+
 describe("normalizeWorkspaceUsage", () => {
+	it("fills the time keys from the seed when an older backend leaves them out", () => {
+		// Before PR-1 the running backend knew only `time_tracking`.
+		const result = normalizeWorkspaceUsage(
+			{
+				plan: { effective: "business", source: "subscription" },
+				usage: { members: 1, pending_invites: 0, projects: 0, teams: 0 },
+				limits: { time_tracking: { kind: "feature", enabled: true } },
+				features: [
+					{ key: "time_tracking", enabled: true, enforced: true },
+					{ key: "time_payouts", enabled: true },
+				],
+			},
+			"ws-1",
+		);
+		expect(result.limits.time_payouts).toEqual(
+			DEFAULT_PLAN_LIMITS.business.time_payouts,
+		);
+		expect(result.limits.time_audit_export).toEqual(
+			DEFAULT_PLAN_LIMITS.business.time_audit_export,
+		);
+		// Labels and groups fall back to the catalogue: the relabelled key reads
+		// "Timesheets and approvals", and the ladder sits in `team`.
+		expect(result.features).toEqual([
+			{
+				key: "time_tracking",
+				label: "Timesheets and approvals",
+				group: "team",
+				enabled: true,
+				enforced: true,
+				available_on: null,
+			},
+			{
+				key: "time_payouts",
+				label: "Payouts",
+				group: "team",
+				enabled: true,
+				enforced: true,
+				available_on: null,
+			},
+		]);
+	});
+
+	it("keeps the server's own answer for a time key over the catalogue's", () => {
+		const result = normalizeWorkspaceUsage(
+			{
+				plan: { effective: "free", source: "default" },
+				usage: { members: 1, pending_invites: 0, projects: 0, teams: 0 },
+				features: [
+					{
+						key: "time_approval_chains",
+						label: "Custom approval chains",
+						group: "team",
+						enabled: false,
+						enforced: false,
+						available_on: "enterprise",
+					},
+				],
+			},
+			"ws-1",
+		);
+		expect(result.features[0]).toMatchObject({
+			enforced: false,
+			available_on: "enterprise",
+		});
+	});
+
 	it("rejects a body with no usage counts", () => {
 		expect(() => normalizeWorkspaceUsage(null, "ws-1")).toThrow();
 		expect(() => normalizeWorkspaceUsage({ plan: {} }, "ws-1")).toThrow();

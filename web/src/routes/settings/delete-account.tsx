@@ -1,6 +1,12 @@
 import { useQueryClient } from "@tanstack/react-query";
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { AlertTriangle, ArrowLeft, Loader2, ShieldAlert } from "lucide-react";
+import {
+	AlertTriangle,
+	ArrowLeft,
+	Clock,
+	Loader2,
+	ShieldAlert,
+} from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
 	leaveForGoodbye,
@@ -20,9 +26,11 @@ import {
 	matchesConfirmationPhrase,
 } from "@/lib/accountDeletionCopy";
 import { isNativeApp } from "@/lib/platform";
+import { TIME_ACCOUNT_DELETION_COPY } from "@/lib/timeErrors";
 import { cn } from "@/lib/utils";
 import {
 	type ContainerResolution,
+	type DeletionDecision,
 	type DeletionFailure,
 	type DeletionPreflight,
 	deleteAccount,
@@ -31,6 +39,78 @@ import {
 	toDeletionFailure,
 } from "@/services/accountDeletion.service";
 import { useUser } from "@/stores/authStore";
+
+// ── Open time (time rebuild M3, ux.md › Project Surfaces) ───────────────────
+//
+// `delete_account` sends the person's own open and returned timesheets for
+// approval, and refuses while a workspace or team it would destroy still has
+// time waiting for approval or payment (D70). The preflight reports the
+// second as `blockers` (containers with no choice to make) and as
+// `has_open_time` on a decision. The service types predate both fields, so
+// they are read defensively here.
+
+type OpenTimeCode = "TEAM_HAS_OPEN_TIME" | "WORKSPACE_HAS_OPEN_TIME";
+
+interface OpenTimeBlocker {
+	kind: "workspace" | "team";
+	id: string;
+	name: string;
+	code: OpenTimeCode;
+}
+
+/** The refusal codes as the deletion endpoint returns them (lower-cased). */
+const OPEN_TIME_FAILURES = new Set([
+	"team_has_open_time",
+	"workspace_has_open_time",
+]);
+
+const openTimeCode = (kind: "workspace" | "team"): OpenTimeCode =>
+	kind === "team" ? "TEAM_HAS_OPEN_TIME" : "WORKSPACE_HAS_OPEN_TIME";
+
+function openTimeBlockers(preflight: DeletionPreflight): OpenTimeBlocker[] {
+	const raw = (preflight as { blockers?: unknown }).blockers;
+	if (!Array.isArray(raw)) return [];
+	const out: OpenTimeBlocker[] = [];
+	for (const item of raw) {
+		if (typeof item !== "object" || item === null) continue;
+		const { kind, id, name, code } = item as Record<string, unknown>;
+		if (kind !== "workspace" && kind !== "team") continue;
+		if (typeof id !== "string" || !id) continue;
+		out.push({
+			kind,
+			id,
+			name: typeof name === "string" ? name.trim() : "",
+			code:
+				code === "TEAM_HAS_OPEN_TIME" || code === "WORKSPACE_HAS_OPEN_TIME"
+					? code
+					: openTimeCode(kind),
+		});
+	}
+	return out;
+}
+
+/** One workspace or team whose open time stands in the way, by name. */
+function OpenTimeNotice({
+	name,
+	code,
+	tone,
+}: {
+	name: string;
+	code: OpenTimeCode;
+	tone: "danger" | "warning";
+}) {
+	return (
+		<SettingsNotice tone={tone} icon={Clock} title={name || undefined}>
+			{TIME_ACCOUNT_DELETION_COPY[code]}
+		</SettingsNotice>
+	);
+}
+
+function hasOpenTime(decision: DeletionDecision): boolean {
+	return (decision as { has_open_time?: unknown }).has_open_time === true;
+}
+
+const OPEN_TIME_NOTES_ID = "delete-account-open-time";
 
 /**
  * In-app account deletion.
@@ -126,6 +206,11 @@ function DeleteAccountPage() {
 		() => decisions.find((decision) => decision.is_paid),
 		[decisions],
 	);
+	const blockers = useMemo(
+		() => (preflight ? openTimeBlockers(preflight) : []),
+		[preflight],
+	);
+	const openTimeDecisions = decisions.filter(hasOpenTime);
 
 	async function submit() {
 		setStep("running");
@@ -174,6 +259,15 @@ function DeleteAccountPage() {
 					);
 				}
 				setStep(fresh && fresh.decisions.length > 0 ? "decide" : "review");
+				return;
+			}
+
+			// Time came open on a container since the preflight (a timesheet
+			// was submitted, say). Re-read so the summary names it, and go back
+			// to it: there is nothing to retry until that time is settled.
+			if (next.code && OPEN_TIME_FAILURES.has(next.code)) {
+				await load();
+				setStep("review");
 				return;
 			}
 
@@ -358,6 +452,7 @@ function DeleteAccountPage() {
 					preflight={preflight}
 					surface={surface}
 					paidWorkspaceName={paidWorkspace?.name ?? null}
+					blockers={blockers}
 					onContinue={() =>
 						setStep(decisions.length > 0 ? "decide" : "confirm")
 					}
@@ -366,6 +461,20 @@ function DeleteAccountPage() {
 
 			{step === "decide" ? (
 				<section className="mt-6">
+					{openTimeDecisions.length > 0 ? (
+						// These can still be handed on, just not deleted; the row
+						// below disables Delete, and this says why.
+						<div className="mb-5 space-y-3">
+							{openTimeDecisions.map((decision) => (
+								<OpenTimeNotice
+									key={key(decision)}
+									name={decision.name}
+									code={openTimeCode(decision.kind)}
+									tone="warning"
+								/>
+							))}
+						</div>
+					) : null}
 					<SettingsSection
 						tone="danger"
 						title={deletionCopy.decisionsHeading}
@@ -567,13 +676,16 @@ function ReviewStep({
 	preflight,
 	surface,
 	paidWorkspaceName,
+	blockers,
 	onContinue,
 }: {
 	preflight: DeletionPreflight;
 	surface: "web" | "app";
 	paidWorkspaceName: string | null;
+	blockers: OpenTimeBlocker[];
 	onContinue: () => void;
 }) {
+	const blocked = blockers.length > 0;
 	const deleted = deletionCopy.deletedBullets({
 		workspaces: preflight.will_be_deleted.workspaces.length,
 		teams: preflight.will_be_deleted.teams.length,
@@ -602,6 +714,22 @@ function ReviewStep({
 
 	return (
 		<div className="mt-6 space-y-5">
+			{blocked ? (
+				// Deleting would destroy these with no choice to make, and the
+				// server refuses while their time is open: say so before the
+				// summary, not after a failed attempt.
+				<div id={OPEN_TIME_NOTES_ID} className="space-y-3">
+					{blockers.map((blocker) => (
+						<OpenTimeNotice
+							key={`${blocker.kind}:${blocker.id}`}
+							name={blocker.name}
+							code={blocker.code}
+							tone="danger"
+						/>
+					))}
+				</div>
+			) : null}
+
 			<SettingsSection tone="danger" title={deletionCopy.deletedHeading}>
 				<ul className="mt-1 list-disc space-y-1.5 pl-5 text-sm text-muted-foreground">
 					{deleted.map((line) => (
@@ -615,6 +743,13 @@ function ReviewStep({
 					{deletionCopy.transferBody(preflight.will_transfer.projects.length)}
 				</p>
 			</SettingsSection>
+
+			{/* delete_account stops a running timer and submits the person's own
+			    open and returned timesheets (submission "on deletion"); ux.md
+			    gives this one sentence for it, on web and in the app alike. */}
+			<SettingsNotice tone="info" icon={Clock}>
+				{TIME_ACCOUNT_DELETION_COPY.openTimesheets}
+			</SettingsNotice>
 
 			<SettingsSection title={deletionCopy.keptHeading}>
 				<p className="mt-1 text-sm text-muted-foreground">
@@ -647,6 +782,8 @@ function ReviewStep({
 			<button
 				type="button"
 				className={settingsButton.primary}
+				disabled={blocked}
+				aria-describedby={blocked ? OPEN_TIME_NOTES_ID : undefined}
 				onClick={onContinue}
 			>
 				Continue

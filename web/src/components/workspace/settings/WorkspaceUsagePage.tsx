@@ -60,6 +60,9 @@ import {
 	COMPLIMENTARY_BADGE,
 	countNoun,
 	featureAvailabilityCopy,
+	featureNoteCopy,
+	LIMIT_GROUP_LABELS,
+	limitGroupLabel,
 	meterCaption,
 	pendingInvitesNote,
 	planSummaryCopy,
@@ -551,9 +554,19 @@ function RetentionValue({ days }: { days: number | null }) {
 interface FeatureLine {
 	key: string;
 	label: string;
+	group: string;
 	enabled: boolean;
 	availableOn: PlanId | string | null;
 }
+
+interface FeatureGroupLines {
+	group: string;
+	label: string;
+	lines: FeatureLine[];
+}
+
+/** The catalogue's group order: usage, ai, governance, team, platform. */
+const GROUP_RANK = Object.keys(LIMIT_GROUP_LABELS);
 
 /**
  * Only the features the backend actually enforces. The pricing-only ones
@@ -574,6 +587,7 @@ function enforcedFeatures(
 		.map((item) => ({
 			key: item.key,
 			label: item.label,
+			group: item.group,
 			enabled: item.enabled,
 			availableOn: item.available_on as PlanId | null,
 		}));
@@ -586,6 +600,7 @@ function enforcedFeatures(
 				).map((definition) => ({
 					key: definition.key,
 					label: definition.label,
+					group: definition.group as string,
 					enabled: isEnabled(usage.limits, definition.key),
 					availableOn: null as PlanId | null,
 				}));
@@ -597,6 +612,36 @@ function enforcedFeatures(
 	}));
 }
 
+/**
+ * The lines bucketed by catalogue group: groups in catalogue order, lines in
+ * the server's order within each. A key from a group the web does not know
+ * yet still shows, last, under "Other".
+ */
+function groupFeatureLines(lines: FeatureLine[]): FeatureGroupLines[] {
+	const byGroup = new Map<string, FeatureLine[]>();
+	for (const line of lines) {
+		const bucket = byGroup.get(line.group) ?? [];
+		bucket.push(line);
+		byGroup.set(line.group, bucket);
+	}
+	const rank = (group: string) => {
+		const index = GROUP_RANK.indexOf(group);
+		return index === -1 ? GROUP_RANK.length : index;
+	};
+	return [...byGroup.entries()]
+		.sort(([a], [b]) => rank(a) - rank(b))
+		.map(([group, groupLines]) => ({
+			group,
+			label: limitGroupLabel(group),
+			lines: groupLines,
+		}));
+}
+
+/**
+ * The enforced features, under a heading per group once there is more than
+ * one: the time ladder alone is six keys, and mixed into the delivery
+ * registers it would read as one long undifferentiated list.
+ */
 function FeaturesSection({
 	usage,
 	allLimits,
@@ -606,59 +651,87 @@ function FeaturesSection({
 }) {
 	const features = enforcedFeatures(usage, allLimits);
 	if (features.length === 0) return null;
+	const groups = groupFeatureLines(features);
+	const labelled = groups.length > 1;
 	return (
 		<SettingsSection
 			id="usage-features"
 			title="Features"
 			description="What this plan turns on, and which plan brings the rest."
 		>
-			<ul className="grid gap-x-8 gap-y-3.5 sm:grid-cols-2">
-				{features.map((feature) => {
-					const availability = featureAvailabilityCopy(
-						feature.enabled,
-						feature.availableOn,
-					);
+			<div className="space-y-6">
+				{groups.map((group) => {
+					const headingId = `usage-features-${group.group}`;
 					return (
-						<li key={feature.key} className="flex min-w-0 items-start gap-3">
-							{feature.enabled ? (
-								<Check
-									aria-hidden="true"
-									className="mt-0.5 h-4 w-4 shrink-0 text-success"
-								/>
-							) : (
-								<Lock
-									aria-hidden="true"
-									className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground"
-								/>
-							)}
-							<div className="min-w-0">
-								<p
-									className={cn(
-										"text-sm leading-5",
-										feature.enabled
-											? "text-foreground"
-											: "text-muted-foreground",
-									)}
+						<div key={group.group}>
+							{labelled ? (
+								<h3
+									id={headingId}
+									className="mb-3 text-xs font-medium text-muted-foreground"
 								>
-									{feature.label}
-								</p>
-								{/* The check already says "included" to the eye; only a
-								    missing feature needs a visible line saying where it is. */}
-								<p
-									className={
-										feature.enabled
-											? "sr-only"
-											: "mt-0.5 text-xs text-muted-foreground"
-									}
-								>
-									{availability}
-								</p>
-							</div>
-						</li>
+									{group.label}
+								</h3>
+							) : null}
+							<ul
+								aria-labelledby={labelled ? headingId : undefined}
+								className="grid gap-x-8 gap-y-3.5 sm:grid-cols-2"
+							>
+								{group.lines.map((feature) => (
+									<FeatureItem key={feature.key} feature={feature} />
+								))}
+							</ul>
+						</div>
 					);
 				})}
-			</ul>
+			</div>
 		</SettingsSection>
+	);
+}
+
+function FeatureItem({ feature }: { feature: FeatureLine }) {
+	const availability = featureAvailabilityCopy(
+		feature.enabled,
+		feature.availableOn,
+	);
+	// "Timesheets and approvals" locked must not read as "no time tracking":
+	// the personal timer is on every plan.
+	const note = featureNoteCopy(feature.key, feature.enabled);
+	return (
+		<li className="flex min-w-0 items-start gap-3">
+			{feature.enabled ? (
+				<Check
+					aria-hidden="true"
+					className="mt-0.5 h-4 w-4 shrink-0 text-success"
+				/>
+			) : (
+				<Lock
+					aria-hidden="true"
+					className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground"
+				/>
+			)}
+			<div className="min-w-0">
+				<p
+					className={cn(
+						"text-sm leading-5",
+						feature.enabled ? "text-foreground" : "text-muted-foreground",
+					)}
+				>
+					{feature.label}
+				</p>
+				{/* The check already says "included" to the eye; only a
+				    missing feature needs a visible line saying where it is. */}
+				<p
+					className={
+						feature.enabled ? "sr-only" : "mt-0.5 text-xs text-muted-foreground"
+					}
+				>
+					{availability}
+				</p>
+				{note ? (
+					<p className="mt-0.5 text-xs text-muted-foreground">{note}</p>
+				) : null}
+			</div>
+		</li>
 	);
 }
 
