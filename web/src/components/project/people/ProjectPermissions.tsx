@@ -2,7 +2,7 @@
  * The per-member permission-matrix editor, mounted by
  * `/project/:id/team/permissions` whenever `?memberId=` is set.
  */
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useNavigate } from "@tanstack/react-router";
 import { AnimatePresence, motion } from "framer-motion";
 import { ArrowLeft, ChevronRight, HelpCircle, Search } from "lucide-react";
@@ -21,6 +21,8 @@ import {
 	type RolePresetKey,
 } from "@/components/project/permissions/roleTemplates";
 import { useToast } from "@/hooks/useToast";
+import { projectKeys } from "@/queries/project";
+import { invalidateTime } from "@/queries/time";
 import {
 	PermissionDependencyError,
 	type ProjectMember,
@@ -147,10 +149,15 @@ const DEPENDENCIES: Array<[SectionKey, string, SectionKey, string]> = [
 	["resources", "upload", "resources", "view"],
 	["resources", "delete", "resources", "view"],
 	["logs", "view_sensitive", "logs", "view"],
+	// Backend PERMISSION_DEPENDENCIES: both time grants need Access Time.
+	["time", "log", "access", "time"],
 	["time", "view_team_logs", "access", "time"],
 ];
 
-function enforceDeps(permissions: ProjectPermissions): ProjectPermissions {
+/** Cascade-down: a child whose parent is off is turned off (exported for tests). */
+export function enforceDeps(
+	permissions: ProjectPermissions,
+): ProjectPermissions {
 	const result = structuredClone(permissions) as unknown as Record<
 		string,
 		Record<string, boolean>
@@ -220,6 +227,7 @@ export function ProjectPermissionsEditor({
 }) {
 	const navigate = useNavigate();
 	const toast = useToast();
+	const qc = useQueryClient();
 
 	const [permissions, setPermissions] = useState<ProjectPermissions | null>(
 		null,
@@ -347,6 +355,16 @@ export function ProjectPermissionsEditor({
 		if (initialPermissions) setPermissions(structuredClone(initialPermissions));
 	};
 
+	// A saved matrix can change `time.log` (who can log here, A11), so the
+	// time views that list loggers or For options go stale, and when admins
+	// edit themselves, so does their own nav composite.
+	const refreshAfterSave = () => {
+		void invalidateTime(qc, "policy");
+		void qc.invalidateQueries({
+			queryKey: projectKeys.myPermissions(projectId),
+		});
+	};
+
 	const handleSave = async () => {
 		if (!permissions) return;
 		setSaving(true);
@@ -385,6 +403,7 @@ export function ProjectPermissionsEditor({
 							memberId,
 							patched,
 						);
+						refreshAfterSave();
 						toast.success(
 							"Member permissions updated (prerequisites auto-granted).",
 						);
@@ -396,6 +415,7 @@ export function ProjectPermissionsEditor({
 					}
 					throw saveErr;
 				}
+				refreshAfterSave();
 				toast.success("Member permissions updated.");
 			}
 			await navigate({

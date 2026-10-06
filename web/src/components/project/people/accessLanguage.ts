@@ -39,7 +39,8 @@ const WRITE_LABELS: Array<{ path: string; label: string }> = [
 	{ path: "resources.delete", label: "Delete resources" },
 	{ path: "chat.create_channels", label: "Create chat channels" },
 	{ path: "chat.send_messages", label: "Post in chat" },
-	{ path: "time.view_team_logs", label: "See the whole team's time" },
+	{ path: "time.log", label: "Log time" },
+	{ path: "time.view_team_logs", label: "See everyone's time" },
 ];
 
 export interface AccessSentences {

@@ -42,7 +42,8 @@ function buildViewer(): ProjectPermissions {
 		"access.chat": true,
 		"access.resources": true,
 		"access.project_settings": false,
-		// Time is open to every member, but only for their own logs.
+		// Time is open to every member, but only for their own past entries;
+		// logging starts at editor (`time.log`).
 		"access.time": true,
 		"roadmap.view": true,
 		"roadmap.export": true,
@@ -73,6 +74,8 @@ function buildEditor(): ProjectPermissions {
 		"roadmap.share": true,
 		"chat.share_files": true,
 		"resources.upload": true,
+		// Logging time is doing work on the project (backend ROLE_DEFAULTS).
+		"time.log": true,
 	});
 }
 

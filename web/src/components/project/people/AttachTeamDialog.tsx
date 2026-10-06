@@ -7,7 +7,10 @@ import { MemberDisplay } from "@/components/common/MemberDisplay";
 import { TeamAvatar } from "@/components/team/TeamAvatar";
 import { useProjectMembersQuery } from "@/hooks/useProjectQueries";
 import { useToast } from "@/hooks/useToast";
+import { useMyWorkspacesQuery } from "@/hooks/useWorkspaceQueries";
+import { isNativeApp } from "@/lib/platform";
 import { projectKeys } from "@/queries/project";
+import { invalidateTime } from "@/queries/time";
 import {
 	attachTeam,
 	listMyTeams,
@@ -32,6 +35,28 @@ import {
  *    another team, with no hint that it drives contract billing and pay periods.
  */
 
+/**
+ * The attach dialog's own sentences. The two primary-team lines name contracts
+ * and invoicing on the web; the app never says either word (ux.md › Mobile),
+ * so it gets the same idea in agreement and billing words.
+ */
+export const ATTACH_TEAM_COPY = {
+	/** ux.md › Project Surfaces (L21): what attaching means for the team's time. */
+	timeConsent: (workspaceName: string | null | undefined) =>
+		`Time this team logs here is approved in ${
+			workspaceName?.trim() || "the team's workspace"
+		}. Approvers who can't open this project see hours only.`,
+	primaryHint: (native: boolean) =>
+		native
+			? "The primary team's details fill in agreements, and its cut-offs drive billing."
+			: "The primary team's billing identity fills in contracts and its pay periods drive invoicing.",
+	firstTeam: (native: boolean) =>
+		native
+			? "This is the project's first team, so it becomes the primary one: its details fill in agreements, and its cut-offs drive billing."
+			: "This is the project's first team, so it becomes the primary one — its billing identity fills in contracts and its pay periods drive invoicing.",
+	primarySteal: " Whichever team is primary now will stop being so.",
+} as const;
+
 // `commenter` is a valid ProjectTeamDefaultRole that the old picker omitted.
 const ROLE_OPTIONS: Array<{
 	value: ProjectTeamDefaultRole;
@@ -54,6 +79,8 @@ export function AttachTeamDialog({
 }) {
 	const qc = useQueryClient();
 	const toast = useToast();
+	const native = isNativeApp();
+	const workspacesQuery = useMyWorkspacesQuery();
 
 	const myTeamsQuery = useQuery({
 		queryKey: ["teams", "mine", currentUserId],
@@ -148,6 +175,10 @@ export function AttachTeamDialog({
 		onSuccess: () => {
 			void qc.invalidateQueries({ queryKey: ["project", projectId, "teams"] });
 			void qc.invalidateQueries({ queryKey: projectKeys.members(projectId) });
+			// New people may log here, and the team is a new context: refresh
+			// Settings › Time "Who can log time here" (A11), the For options and
+			// the loggable projects.
+			void invalidateTime(qc, "policy");
 			toast.success("Team attached");
 			onClose();
 		},
@@ -156,6 +187,12 @@ export function AttachTeamDialog({
 
 	const selectedTeam = candidateTeams.find((t) => t.id === selectedTeamId);
 	const currentPrimary = (attachedQuery.data ?? []).find((t) => t.is_primary);
+	// The team's own workspace approves its time (L21), whatever workspace the
+	// project lives in. A workspace the caller can't see reads generically.
+	const teamWorkspaceName = selectedTeam?.workspace_id
+		? (workspacesQuery.data?.find((ws) => ws.id === selectedTeam.workspace_id)
+				?.name ?? null)
+		: null;
 
 	return (
 		<AppDialog
@@ -269,6 +306,13 @@ export function AttachTeamDialog({
 							)}
 						</div>
 
+						<p
+							className="rounded-lg border border-border bg-muted/30 px-3 py-2.5 text-[11px] text-muted-foreground"
+							data-testid="attach-team-time-consent"
+						>
+							{ATTACH_TEAM_COPY.timeConsent(teamWorkspaceName)}
+						</p>
+
 						{hasAttachedTeams ? (
 							<label className="flex cursor-pointer items-start gap-2 rounded-lg border border-border bg-muted/30 px-3 py-2.5">
 								<input
@@ -284,19 +328,14 @@ export function AttachTeamDialog({
 									</span>{" "}
 									the primary team
 									<span className="mt-0.5 block text-[11px] text-muted-foreground">
-										The primary team's billing identity fills in contracts and
-										its pay periods drive invoicing.
-										{currentPrimary
-											? " Whichever team is primary now will stop being so."
-											: ""}
+										{ATTACH_TEAM_COPY.primaryHint(native)}
+										{currentPrimary ? ATTACH_TEAM_COPY.primarySteal : ""}
 									</span>
 								</span>
 							</label>
 						) : (
 							<p className="rounded-lg border border-border bg-muted/30 px-3 py-2.5 text-[11px] text-muted-foreground">
-								This is the project's first team, so it becomes the primary one
-								— its billing identity fills in contracts and its pay periods
-								drive invoicing.
+								{ATTACH_TEAM_COPY.firstTeam(native)}
 							</p>
 						)}
 					</>

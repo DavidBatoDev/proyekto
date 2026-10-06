@@ -25,6 +25,20 @@ import type { PersonAccess } from "./useProjectPeople";
  * The whole row is the click target: it opens the access drawer. That is the
  * single most common thing anyone wants from a roster.
  */
+/**
+ * The name a masked roster row wears (L22, E35). The server replaces placed
+ * talent the viewer may not name — the worker of an assignment on this
+ * project, under an agreement where the viewer is not on the provider side —
+ * with `user_id: "masked:<row>"` and this label. The mask is keyed on the
+ * assignment, never on `project_access.origin`.
+ */
+export const DELIVERY_TEAM_MEMBER_LABEL = "Delivery team member";
+
+/** A `masked:` roster id (the server's L22 mask), never a real user id. */
+export function isMaskedMemberId(id: string | null | undefined): boolean {
+	return typeof id === "string" && id.startsWith("masked:");
+}
+
 /** Where a person's access comes from, as the row shows it. */
 export interface PersonOrigin {
 	label: string;
@@ -45,6 +59,12 @@ export function PersonRow({
 	origin?: PersonOrigin;
 	onOpen: (person: PersonAccess) => void;
 }) {
+	// A masked row names nobody and offers nothing: no access drawer, no
+	// role or team chips that could narrow down who it is.
+	if (isMaskedMemberId(person.userId) || isMaskedMemberId(person.user?.id)) {
+		return <MaskedPersonRow maskId={person.userId ?? person.key} />;
+	}
+
 	const badge: AvatarBadge | null = person.isExternal
 		? { kind: "external", title: "Not on one of your teams" }
 		: badgeTeam
@@ -118,6 +138,29 @@ export function PersonRow({
 			</span>
 			<ChevronRight className="h-4 w-4 shrink-0 text-muted-foreground" />
 		</button>
+	);
+}
+
+function MaskedPersonRow({ maskId }: { maskId: string }) {
+	return (
+		<div
+			className="flex w-full items-center gap-3 px-4 py-3 text-left"
+			data-masked-person=""
+		>
+			<div className="min-w-0 flex-1">
+				<MemberDisplay
+					user={{
+						id: maskId,
+						display_name: DELIVERY_TEAM_MEMBER_LABEL,
+						avatar_url: null,
+						email: null,
+						first_name: null,
+						last_name: null,
+					}}
+					fallbackId={maskId}
+				/>
+			</div>
+		</div>
 	);
 }
 

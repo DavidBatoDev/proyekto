@@ -209,14 +209,16 @@ export function createProjectNavItems({
 			gate: "logs.view",
 		},
 		// Time and Settings live behind the gear, not in the main nav.
+		// The composite gate (L22): `time.log`, `time.view_team_logs`, or a
+		// client-hours level other than `none` — the same rule the route uses.
 		time: {
 			key: "time",
-			label: "Time logs",
+			label: "Time",
 			icon: Clock,
 			to: `${base}/time`,
 			matches: ownsSegment(projectId, "time"),
 			requiresProject: true,
-			gate: "access.time",
+			gate: "time.page",
 		},
 		settings: {
 			key: "settings",

@@ -1,4 +1,7 @@
 import { describe, expect, it } from "vitest";
+import { hasNavGate } from "@/lib/projectPermissions";
+import type { ProjectPermissions } from "@/services/project.service";
+import type { ClientHoursLevel } from "@/services/time.types";
 import {
 	buildProjectBottomNav,
 	buildProjectNavSections,
@@ -12,6 +15,27 @@ const PROJECT_ID = "p1";
 const ROADMAP_ID = "r1";
 
 const items = () => createProjectNavItems({ projectId: PROJECT_ID });
+
+/** A viewer-shaped permission set with the given time grants. */
+function perms(
+	time: ProjectPermissions["time"],
+	clientLevel?: ClientHoursLevel,
+): ProjectPermissions {
+	return {
+		access: {
+			roadmap: true,
+			work_items: true,
+			team: true,
+			chat: true,
+			resources: true,
+			project_settings: false,
+			time: true,
+			delivery: true,
+		},
+		time,
+		...(clientLevel ? { time_client_hours_level: clientLevel } : {}),
+	} as unknown as ProjectPermissions;
+}
 
 /** Every nav key whose `matches` returns true for `path`. */
 const activeKeys = (path: string): ProjectNavKey[] =>
@@ -89,6 +113,48 @@ describe("createProjectNavItems", () => {
 		expect(items().activity.label).toBe("Activity");
 		expect(items().activity.to).toBe(`/project/${PROJECT_ID}/logs`);
 		expect(items().activity.gate).toBe("logs.view");
+	});
+
+	it("labels the time page Time and gates it on the time composite (L22)", () => {
+		expect(items().time.label).toBe("Time");
+		expect(items().time.to).toBe(`/project/${PROJECT_ID}/time`);
+		expect(items().time.gate).toBe("time.page");
+	});
+});
+
+describe("the Time item's composite gate (ux.md › Reports, L22)", () => {
+	const gate = () => items().time.gate;
+
+	it("shows for someone who can log here, and nobody else by default", () => {
+		expect(
+			hasNavGate(perms({ log: true, view_team_logs: false }), gate()),
+		).toBe(true);
+		expect(
+			hasNavGate(perms({ log: false, view_team_logs: false }), gate()),
+		).toBe(false);
+	});
+
+	it("shows for someone who can see everyone's time", () => {
+		expect(
+			hasNavGate(perms({ log: false, view_team_logs: true }), gate()),
+		).toBe(true);
+	});
+
+	it("shows for a client party with a client-hours level, never at none", () => {
+		const base = { log: false, view_team_logs: false };
+		expect(hasNavGate(perms(base, "summary"), gate())).toBe(true);
+		expect(hasNavGate(perms(base, "detailed"), gate())).toBe(true);
+		expect(hasNavGate(perms(base, "none"), gate())).toBe(false);
+	});
+
+	it("ignores access.time alone: a viewer's own past entries live in Time", () => {
+		const viewer = perms({ log: false, view_team_logs: false });
+		expect(viewer.access.time).toBe(true);
+		expect(hasNavGate(viewer, gate())).toBe(false);
+	});
+
+	it("fails open while permissions load, like every other gate", () => {
+		expect(hasNavGate(undefined, gate())).toBe(true);
 	});
 });
 
@@ -174,6 +240,12 @@ describe("resolveProjectPageLabel", () => {
 				PROJECT_ID,
 			),
 		).toBe("Timeline");
+	});
+
+	it("reads Time on the time route", () => {
+		expect(
+			resolveProjectPageLabel(`/project/${PROJECT_ID}/time`, PROJECT_ID),
+		).toBe("Time");
 	});
 
 	it("falls back to Overview on the bare layout route", () => {

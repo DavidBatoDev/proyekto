@@ -982,9 +982,13 @@ class ProjectService {
 		);
 
 		if (!response.ok) {
-			const err = await response.json();
-			throw new Error(
+			// Keep the status: a refusal (403 not on the project, 404) must read
+			// as "not open to you", not as a load failure with Try again.
+			const err = await response.json().catch(() => ({}));
+			throw new ApiError(
 				err.message || err.error?.message || "Failed to fetch your permissions",
+				response.status,
+				err,
 			);
 		}
 

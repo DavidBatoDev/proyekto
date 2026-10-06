@@ -77,12 +77,7 @@ export const PERMISSION_SECTIONS: PermissionSectionMeta[] = [
 				"Open Project Settings",
 				"Open the per-project settings pages.",
 			),
-			p(
-				"access",
-				"time",
-				"Open Time",
-				"See time logs tracked on this project.",
-			),
+			p("access", "time", "Open Time", "See time on this project."),
 			p(
 				"access",
 				"delivery",
@@ -346,13 +341,24 @@ export const PERMISSION_SECTIONS: PermissionSectionMeta[] = [
 	{
 		key: "time",
 		label: "Time",
-		description: "Whose tracked time this member can see.",
+		description:
+			"Tracking time on this project, and whose time this member can see.",
 		permissions: [
+			// Editor and above by default. Every way of logging here (a team, the
+			// workspace, an agreement, or just for themselves) needs it, so
+			// viewers and commenters only read their own past entries.
+			p(
+				"time",
+				"log",
+				"Log time",
+				"Start timers and add time on this project.",
+				["access.time"],
+			),
 			p(
 				"time",
 				"view_team_logs",
-				"View the team's time",
-				"See every member's logs on this project, not just their own.",
+				"View everyone's time",
+				"See everyone's time on this project, not just your own.",
 				["access.time"],
 			),
 		],
