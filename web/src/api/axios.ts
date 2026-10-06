@@ -38,6 +38,51 @@ export function setPermissionToastHandler(handler: ToastError | null): void {
 	permissionToastHandler = handler;
 }
 
+// The new time API (`/api/time/...`). Never matches the `/api/team-time` alias.
+const TIME_API_PATH = /\/api\/time(?:[/?#]|$)/;
+
+// Time 403s the time UI answers in place ("You can't log time on this
+// project." + Why?, "Manual time is off for …"). They are not missing
+// permissions, so they never raise the permission toast or a console error.
+const TIME_INLINE_FORBIDDEN_CODES: ReadonlySet<string> = new Set([
+	"NO_LOGGING_CONTEXT",
+	"MANUAL_ENTRIES_DISABLED",
+	"TIME_ENTRY_NO_PROJECT_ACCESS",
+	"TIME_ENTRY_NOT_ON_PROJECT_TEAM",
+	"TIME_ENTRY_NOT_WORKSPACE_MEMBER",
+]);
+
+// Time 409s that are a step in a flow, not a failure: the For picker opens
+// (LOGGING_FOR_REQUIRED), the reload prompt shows (STALE_REVISION), the
+// Switch prompt opens (TIMER_ALREADY_RUNNING). Not worth a console error.
+const TIME_FLOW_CONFLICT_CODES: ReadonlySet<string> = new Set([
+	"LOGGING_FOR_REQUIRED",
+	"STALE_REVISION",
+	"TIMER_ALREADY_RUNNING",
+]);
+
+/** The code of a filter-shaped error body (`{ error: { code } }`), or a raw `{ code }`. */
+function errorBodyCode(data: unknown): string | null {
+	if (!data || typeof data !== "object") return null;
+	const body = data as { code?: unknown; error?: unknown };
+	const inner =
+		body.error && typeof body.error === "object"
+			? (body.error as { code?: unknown })
+			: body;
+	return typeof inner.code === "string" ? inner.code : null;
+}
+
+/** A time-API response whose code is in `codes`. */
+function isTimeApiCode(
+	url: string,
+	data: unknown,
+	codes: ReadonlySet<string>,
+): boolean {
+	if (!TIME_API_PATH.test(url)) return false;
+	const code = errorBodyCode(data);
+	return code !== null && codes.has(code);
+}
+
 // Get API base URL from environment variable
 const API_BASE_URL = import.meta.env.VITE_API_URL || "http://localhost:8000";
 
@@ -125,6 +170,16 @@ apiClient.interceptors.response.use(
 							break;
 						}
 
+						if (
+							isTimeApiCode(
+								url,
+								error.response.data,
+								TIME_INLINE_FORBIDDEN_CODES,
+							)
+						) {
+							break;
+						}
+
 						// Surface structured `missing_permission` errors as a toast so
 						// per-call sites don't have to wire it themselves. The error
 						// still propagates so callers can also render an inline
@@ -144,6 +199,18 @@ apiClient.interceptors.response.use(
 						break;
 					}
 					console.error("Resource not found");
+					break;
+				case 409:
+					if (
+						isTimeApiCode(
+							String(error.config?.url ?? ""),
+							error.response.data,
+							TIME_FLOW_CONFLICT_CODES,
+						)
+					) {
+						break;
+					}
+					console.error(`API Error (${status}):`, error.response.data);
 					break;
 				case 429:
 					console.error("Too many requests - Please try again later");

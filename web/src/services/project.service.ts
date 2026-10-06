@@ -6,6 +6,7 @@ import {
 	parsePlanLimitBody,
 } from "@/lib/planLimitErrors";
 import { supabase } from "@/lib/supabase";
+import type { ClientHoursLevel } from "./time.types";
 
 /**
  * The two creates below use `fetch`, so the axios interceptor never sees their
@@ -220,8 +221,23 @@ export interface ProjectPermissions {
 		view_sensitive: boolean;
 	};
 	time: {
+		/**
+		 * Start timers and add time on this project. Editor and above: viewers
+		 * and commenters can open Time but only read their own entries there.
+		 * Every logging option (team, assignment, workspace, "Just me") needs it.
+		 */
+		log: boolean;
+		/** See every member's time on the project, not just your own. */
 		view_team_logs: boolean;
 	};
+	/**
+	 * `GET /projects/:id/my-permissions` only (L22): the least client-hours
+	 * level over the caller's active client-agreement hirer seats on this
+	 * project, `'none'` without one. The project Time tab shows on `time.log`,
+	 * `time.view_team_logs`, or a level other than `'none'`. Optional because
+	 * stored member permissions and older payloads do not carry it.
+	 */
+	time_client_hours_level?: ClientHoursLevel;
 	/**
 	 * Feature availability rather than a per-member capability, and computed
 	 * server-side from BOTH "is this caller admin-or-stronger" and "is the feature

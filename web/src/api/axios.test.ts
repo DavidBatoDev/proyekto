@@ -125,6 +125,69 @@ describe("axios 403 handling", () => {
 		expect(permissionToast.mock.calls[0][0]).toContain("edit the roadmap");
 	});
 
+	it("keeps the team-time 403 silence for the alias", async () => {
+		const { adapter } = failingAdapter(403, {
+			code: "missing_permission",
+			message: "Nope",
+			path: null,
+			label: "see team time",
+			requiredRole: null,
+		});
+
+		await expect(
+			apiClient.get("/api/team-time/teams/t-1/my-rate", { adapter }),
+		).rejects.toBeInstanceOf(AxiosError);
+		expect(permissionToast).not.toHaveBeenCalled();
+		expect(console.error).not.toHaveBeenCalled();
+	});
+
+	it("never toasts or logs a time 403 the time UI answers in place", async () => {
+		for (const code of ["NO_LOGGING_CONTEXT", "MANUAL_ENTRIES_DISABLED"]) {
+			const { adapter, created } = failingAdapter(403, {
+				error: {
+					code,
+					message: "You can't log time on this project.",
+					status: 403,
+					path: "/api/time/entries/start",
+				},
+			});
+
+			const caught = await apiClient
+				.post("/api/time/entries/start", {}, { adapter })
+				.catch((error: unknown) => error);
+
+			expect(caught).toBe(created.error);
+		}
+		expect(permissionToast).not.toHaveBeenCalled();
+		expect(notifier).not.toHaveBeenCalled();
+		expect(console.error).not.toHaveBeenCalled();
+	});
+
+	it("still raises the upgrade prompt for a time plan limit", async () => {
+		const { adapter } = failingAdapter(403, {
+			error: { ...planLimitBody.error, limit_key: "time_team_rules" },
+		});
+
+		await expect(
+			apiClient.put("/api/time/policies/teams/t-1", {}, { adapter }),
+		).rejects.toBeInstanceOf(AxiosError);
+		expect(notifier).toHaveBeenCalledTimes(1);
+		expect(notifier.mock.calls[0][0]).toMatchObject({
+			limitKey: "time_team_rules",
+		});
+	});
+
+	it("still logs a time 403 that is not a time code", async () => {
+		const { adapter } = failingAdapter(403, {
+			error: { code: "SOMETHING_ELSE", message: "x", status: 403 },
+		});
+
+		await expect(
+			apiClient.get("/api/time/me/overview", { adapter }),
+		).rejects.toBeInstanceOf(AxiosError);
+		expect(console.error).toHaveBeenCalled();
+	});
+
 	it("never treats another status as a plan limit", async () => {
 		const { adapter } = failingAdapter(409, planLimitBody);
 
@@ -132,5 +195,44 @@ describe("axios 403 handling", () => {
 			apiClient.post("/api/teams", {}, { adapter }),
 		).rejects.toBeInstanceOf(AxiosError);
 		expect(notifier).not.toHaveBeenCalled();
+	});
+});
+
+describe("axios 409 handling for /api/time", () => {
+	const conflict = (code: string) => ({
+		error: { code, message: "x", status: 409, path: "/api/time/entries/start" },
+	});
+
+	it("does not console-error the flow codes", async () => {
+		for (const code of [
+			"LOGGING_FOR_REQUIRED",
+			"STALE_REVISION",
+			"TIMER_ALREADY_RUNNING",
+		]) {
+			const { adapter, created } = failingAdapter(409, conflict(code));
+			const caught = await apiClient
+				.post("/api/time/entries/start", {}, { adapter })
+				.catch((error: unknown) => error);
+			expect(caught).toBe(created.error);
+		}
+		expect(console.error).not.toHaveBeenCalled();
+	});
+
+	it("still logs other time conflicts", async () => {
+		const { adapter } = failingAdapter(409, conflict("TIMESHEET_LOCKED"));
+		await expect(
+			apiClient.patch("/api/time/entries/e-1", {}, { adapter }),
+		).rejects.toBeInstanceOf(AxiosError);
+		expect(console.error).toHaveBeenCalledTimes(1);
+	});
+
+	it("still logs the same code outside /api/time", async () => {
+		for (const url of ["/api/team-time/logs/start", "/api/roadmaps/r-1"]) {
+			const { adapter } = failingAdapter(409, conflict("STALE_REVISION"));
+			await expect(apiClient.post(url, {}, { adapter })).rejects.toBeInstanceOf(
+				AxiosError,
+			);
+		}
+		expect(console.error).toHaveBeenCalledTimes(2);
 	});
 });
