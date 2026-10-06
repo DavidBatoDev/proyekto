@@ -37,6 +37,19 @@ if (Capacitor.getPlatform() === "android") {
 		.catch(() => {});
 }
 
+// iOS zooms the page when a text field with a font under 16px is focused, and
+// in the app's WebView the zoom sticks: the screen no longer fits and has to be
+// dragged sideways. Lock the scale in the installed app only — a native app has
+// no page zoom, and the website keeps pinch-zoom for browser users.
+if (Capacitor.isNativePlatform()) {
+	document
+		.querySelector('meta[name="viewport"]')
+		?.setAttribute(
+			"content",
+			"width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover",
+		);
+}
+
 // Android hardware back closes the open modal/panel before navigating away
 // (lib/backStack.ts). Native only; the browser keeps its own back behaviour.
 if (Capacitor.isNativePlatform()) {

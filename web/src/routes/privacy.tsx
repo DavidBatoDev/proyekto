@@ -15,6 +15,11 @@ import { COMPANY, COMPANY_ADDRESS } from "@/lib/company";
  *
  * Reachable without an account: both app stores want a privacy-policy URL on
  * the listing, and signup links here.
+ *
+ * The one deliberate exception to the vendor-neutral rule is "Google user
+ * data": Google's OAuth verification requires a specific disclosure of what we
+ * do with Google data and the verbatim Limited Use statement. Keep it in step
+ * with the scopes declared on the Google consent screen.
  */
 export const Route = createFileRoute("/privacy")({
 	component: PrivacyPage,
@@ -168,6 +173,81 @@ const SECTIONS: LegalSection[] = [
 		),
 	},
 	{
+		id: "google-user-data",
+		heading: "Google user data",
+		body: (
+			<>
+				<p>
+					<strong>Sign in with Google.</strong> If you sign in with Google, we
+					receive your name, email address and profile picture from your Google
+					account. We use them only to create your Proyekto account and sign you
+					in.
+				</p>
+				<p>
+					<strong>Google Calendar.</strong> If you choose to connect Google
+					Calendar, Proyekto can view and edit events on your Google calendars.
+					We use this access only to:
+				</p>
+				<ul>
+					<li>
+						create the meetings you schedule in Proyekto on your Google
+						Calendar, with a Google Meet link and invitations to the guests you
+						add;
+					</li>
+					<li>
+						update or cancel those events when you change or cancel the meeting
+						in Proyekto; and
+					</li>
+					<li>
+						show your Google Calendar events next to your Proyekto meetings, so
+						you can schedule around them.
+					</li>
+				</ul>
+				<p>
+					We store your Google account email, an encrypted credential that keeps
+					the connection working, and the identifiers of the events Proyekto
+					creates. We do not store the contents of your other Google Calendar
+					events: we read them when you view your calendar and show them only to
+					you.
+				</p>
+				<p>
+					We do not sell Google user data or use it for advertising. We do not
+					use it to develop, improve or train generalized AI or machine-learning
+					models. We share it only as needed to provide these features (for
+					example, guests you invite receive the calendar invitation), to comply
+					with the law, or with your consent. People at Proyekto do not read it
+					unless you ask us to, for security purposes, or where the law requires
+					it.
+				</p>
+				<p>
+					You can remove Proyekto's access at any time from your{" "}
+					<a
+						href="https://myaccount.google.com/permissions"
+						target="_blank"
+						rel="noopener noreferrer"
+					>
+						Google Account permissions
+					</a>
+					, or by emailing{" "}
+					<a href="mailto:support@proyekto.tech">support@proyekto.tech</a>. When
+					access is removed, we delete the stored credential.
+				</p>
+				<p>
+					Proyekto's use and transfer to any other app of information received
+					from Google APIs will adhere to the{" "}
+					<a
+						href="https://developers.google.com/terms/api-services-user-data-policy"
+						target="_blank"
+						rel="noopener noreferrer"
+					>
+						Google API Services User Data Policy
+					</a>
+					, including the Limited Use requirements.
+				</p>
+			</>
+		),
+	},
+	{
 		id: "cookies",
 		heading: "Cookies and similar technologies",
 		body: (
@@ -282,7 +362,7 @@ function PrivacyPage() {
 		<LegalPage
 			title="Privacy Policy"
 			intro="How Proyekto collects, uses and shares Personal Data."
-			updated="29 September 2026"
+			updated="6 October 2026"
 			sections={SECTIONS}
 		/>
 	);

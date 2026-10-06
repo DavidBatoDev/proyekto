@@ -1010,7 +1010,7 @@ export function RoadmapViewContent({
 							"The roadmap you're looking for doesn't exist or you don't have access to it."}
 					</p>
 					<Link
-						to="/"
+						to="/dashboard"
 						className="app-cta inline-flex items-center gap-2 rounded-lg px-6 py-3 text-white transition-colors"
 					>
 						Go to Home

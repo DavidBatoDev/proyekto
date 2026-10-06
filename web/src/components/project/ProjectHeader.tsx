@@ -239,8 +239,12 @@ export function ProjectHeader() {
 	return (
 		<div className="z-10 flex h-full w-full items-center justify-between gap-2 px-4 sm:gap-3 sm:px-6">
 			<div className="flex min-w-0 flex-1 items-center gap-3 sm:gap-4">
+				{/* Straight to the dashboard, not "/": in the installed app the "/"
+				    hop never redirects, so the tap stranded the screen without its
+				    header. DashboardHeader's mark does the same. */}
 				<Link
-					to="/"
+					to="/dashboard"
+					aria-label="Go to dashboard"
 					className="flex shrink-0 items-center border-r border-slate-200 pr-3 sm:pr-4"
 				>
 					<BrandMark variant="logomark" className="h-7" />
