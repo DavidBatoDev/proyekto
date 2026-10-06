@@ -295,15 +295,49 @@ describe('notification email registry', () => {
           total_amount: 4321.99,
           currency: 'USD',
         },
-        linkUrl: '/teams/team-1/time/my-logs',
+        linkUrl: '/time',
       });
 
       expect(email?.subject).toBe('A payment was recorded for your time');
+      // D79: the button opens the bare Time page, never a team page.
+      expect(email?.text).toContain(
+        'View your time: https://www.proyekto.test/time',
+      );
       for (const part of [email?.subject, email?.html, email?.text]) {
         expect(part).not.toContain('4321');
         expect(part).not.toContain('USD');
         expect(part).not.toMatch(/[$€£¥₱]/);
       }
+    });
+
+    it('links to the Time pages when the row carries no link (D79)', () => {
+      const sheetEmail = renderNotificationEmail('timesheet_returned', {
+        ...sheetCtx('Ana returned Sep 22–28'),
+        linkUrl: null,
+      });
+      expect(sheetEmail?.text).toContain(
+        'Open timesheet: https://www.proyekto.test/time/timesheets/sheet-1',
+      );
+
+      const payoutEmail = renderNotificationEmail('time_payout_recorded', {
+        ...ctx,
+        content: { payout_id: 'payout-1', message: 'A payment was recorded' },
+        linkUrl: null,
+      });
+      expect(payoutEmail?.text).toContain(
+        'View your time: https://www.proyekto.test/time',
+      );
+      expect(payoutEmail?.html).not.toContain('/teams/');
+
+      // An id is encoded, so a stray character cannot change the link.
+      const odd = renderNotificationEmail('timesheet_reminder', {
+        ...ctx,
+        content: { timesheet_id: '../x' },
+        linkUrl: null,
+      });
+      expect(odd?.text).toContain(
+        'https://www.proyekto.test/time/timesheets/..%2Fx',
+      );
     });
 
     it('degrades to a sentence when the content blob is bare', () => {

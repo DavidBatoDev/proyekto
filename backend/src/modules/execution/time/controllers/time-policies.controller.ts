@@ -15,10 +15,19 @@ import { IsOptional, IsTimeZone } from 'class-validator';
 import { CurrentUser } from '../../../../common/decorators/current-user.decorator';
 import { SupabaseAuthGuard } from '../../../../common/guards/supabase-auth.guard';
 import type { AuthenticatedUser } from '../../../../common/interfaces/authenticated-request.interface';
-import { TeamTimePolicyDto, WorkspaceTimePolicyDto } from '../dto/policies.dto';
+import {
+  PolicyHistoryQueryDto,
+  TeamTimePolicyDto,
+  WorkspaceTimePolicyDto,
+} from '../dto/policies.dto';
 import { TimeGuestGuard } from '../guards/time-guest.guard';
 import { TimePolicyService } from '../time-policy.service';
-import type { TeamPolicyView, WorkspacePolicyView } from '../time.types';
+import type {
+  Paged,
+  PolicyHistoryRow,
+  TeamPolicyView,
+  WorkspacePolicyView,
+} from '../time.types';
 
 /** `?tz=` on the workspace policy GET: a manager's browser timezone, used only to materialise a missing row. */
 export class WorkspacePolicyQueryDto {
@@ -30,13 +39,15 @@ const ID_PIPE = new ParseUUIDPipe({ errorHttpStatusCode: 404 });
 
 /**
  * Workspace policy and team override (backend.md "Writes", §2.11). Misses are 404: a caller who does not manage
- * the workspace or team learns nothing about it. Guests 404 on every route (D08).
+ * the workspace or team learns nothing about it, except that a workspace member may read (never write) the
+ * workspace policy (A4). Guests 404 on every route (D08).
  */
 @UseGuards(SupabaseAuthGuard, TimeGuestGuard)
 @Controller('time/policies')
 export class TimePoliciesController {
   constructor(private readonly policy: TimePolicyService) {}
 
+  /** Managers: editable (`?tz=` seeds a missing row). Members: read-only (`can_edit:false`), never seeds (A4). */
   @Get('workspaces/:workspaceId')
   getWorkspace(
     @CurrentUser() user: AuthenticatedUser,
@@ -53,6 +64,19 @@ export class TimePoliciesController {
     @Body() dto: WorkspaceTimePolicyDto,
   ): Promise<WorkspacePolicyView> {
     return this.policy.putWorkspacePolicy(user.id, workspaceId, dto);
+  }
+
+  /** A7: the workspace policy's and its teams' override audit rows, newest first. Managers only; not plan-gated. */
+  @Get('workspaces/:workspaceId/history')
+  workspaceHistory(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('workspaceId', ID_PIPE) workspaceId: string,
+    @Query() query: PolicyHistoryQueryDto,
+  ): Promise<Paged<PolicyHistoryRow>> {
+    return this.policy.workspacePolicyHistory(user.id, workspaceId, {
+      page: query.page,
+      limit: query.limit,
+    });
   }
 
   @Get('teams/:teamId')

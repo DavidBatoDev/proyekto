@@ -92,6 +92,9 @@ export interface LoggingOption {
   /** Governing workspace name when it differs from the project's workspace (L57). */
   workspace_tag: string | null;
   approver_hint: ApproverScope | null;
+  /** A8, assignment options only: the engagement whose terms govern the time (talent, else client), for the
+   *  web-only "View terms →" link. Absent on every other kind. */
+  engagement_id?: string | null;
 }
 
 export interface UnavailableOption {
@@ -109,6 +112,70 @@ export interface LoggingForResult {
   reason?: 'required' | 'confirm' | 'none';
   personal_reason?: 'plan' | 'no_governed_option';
   unavailable: UnavailableOption[];
+}
+
+// ── Projects and loggers (A9, A11) ──────────────────────────────────────────
+/** A9: one project the caller can log time on (`time.log` and at least one option after the step-7 collapse). */
+export interface LoggableProject {
+  id: string;
+  title: string;
+  workspace_id: string | null;
+  /** How many For options the picker offers (the resolver's `options.length`, always ≥ 1). */
+  options: number;
+  /** The option a new entry uses without asking (the single option), else the remembered prefill awaiting one
+   *  tap; null when the picker must ask. */
+  default_kind: ContextKind | null;
+  /** Additive: `projects.status`, so the picker can sink or hide archived projects. */
+  status: string | null;
+  /** Additive: when the caller last logged here (`started_at` of their newest entry among their latest 1000),
+   *  for "the default is the most recently logged project". Null when none. */
+  last_logged_at: string | null;
+}
+
+/** A9 `GET /time/me/projects`: most recently logged first, then by title. */
+export interface MyProjectsResult {
+  projects: LoggableProject[];
+  /** Additive: the caller can log on more than MY_PROJECTS_MAX projects; the least recently logged were left out. */
+  truncated?: true;
+}
+
+/** A11: what a person's primary option is. `none` only when Proyekto could not resolve them just now. */
+export type ProjectLoggerReason =
+  | 'team'
+  | 'workspace'
+  | 'agreement'
+  | 'personal'
+  | 'none';
+
+/** project_access roles (the share ladder). */
+export type ProjectShareRole =
+  | 'viewer'
+  | 'commenter'
+  | 'editor'
+  | 'admin'
+  | 'owner';
+
+/** A11: one person who can log time on the project. */
+export interface ProjectLogger {
+  /** The person's id, or `masked:<project_access id>` for placed talent the viewer may not name (L22), as on the
+   *  project roster. */
+  user_id: string;
+  /** "Delivery team member" when masked. */
+  display_name: string | null;
+  role: ProjectShareRole;
+  reason: ProjectLoggerReason;
+  /** The primary option as a phrase: the team or workspace name, "agreement with Pixel Studio", "just you";
+   *  '' for `none`. */
+  label: string;
+  /** Additive: how many options they have here (several = they pick per entry). 0 for `none`. */
+  options: number;
+}
+
+/** A11 `GET /time/projects/:projectId/loggers`. */
+export interface ProjectLoggersResult {
+  people: ProjectLogger[];
+  /** Additive: more than LOGGERS_MAX people hold `time.log`; the rest were not resolved. */
+  truncated?: true;
 }
 
 // ── Policy ──────────────────────────────────────────────────────────────────
@@ -142,14 +209,37 @@ export interface ResolvedTimePolicy {
   member: MemberCaps | null;
   /** TS layer: engagement scope only, from settingsInForceOn; legacy contracts 'none'. */
   client_hours_detail_level: ClientHoursLevel | null;
+  /** A8, `GET …/policy?for=assignment:<id>` only: the engagement whose terms govern (the sheet scope's
+   *  engagement), for the web-only "View terms →" link. Absent for every other context. */
+  engagement_id?: string | null;
 }
 
 export interface WorkspacePolicyView {
   workspace_id: string;
   policy: ResolvedTimePolicy;
-  /** Row missing or updated_by IS NULL (CHANGE-11). */
+  /** Row missing or updated_by IS NULL (CHANGE-11). Members see it too (A4). */
   policy_unconfirmed: boolean;
+  /** True for workspace managers (`can_manage_workspace`); false for a plain member's read-only view (A4). */
   can_edit: boolean;
+}
+
+/** A7: what one policy audit row did. `confirmed` = an update that changed no setting ("Looks right"). */
+export type PolicyHistoryKind = 'created' | 'changed' | 'confirmed' | 'deleted';
+
+/** A7: one `time_policy_events` row of the workspace policy or one of the workspace's team overrides. */
+export interface PolicyHistoryRow {
+  id: number;
+  created_at: string;
+  /** Null for a system write (no actor) or an actor whose profile is gone. */
+  actor: { id: string; display_name: string | null } | null;
+  /** Setting → [before, after], bookkeeping columns (ids, scope, created/updated stamps) removed. `created`
+   *  rows read [null, value] for each set field; `deleted` rows read [value, null]; `confirmed` rows are {}. */
+  changes: Record<string, [unknown, unknown]>;
+  scope: 'workspace' | 'team';
+  team_id: string | null;
+  /** The team's current name; null on workspace rows. */
+  team_name: string | null;
+  kind: PolicyHistoryKind;
 }
 
 export interface TeamPolicyView {
@@ -308,6 +398,15 @@ export type EntryWarning =
       code: 'CONTRACT_WEEKLY_LIMIT';
       limit_minutes: number;
       logged_minutes: number;
+    }
+  | {
+      /** A6 (D65): the workspace or team policy weekly limit. An indicator only; it never blocks or cuts. */
+      code: 'POLICY_WEEKLY_LIMIT';
+      limit_minutes: number;
+      /** The member's minutes on that sheet scope in the policy week, this write included. */
+      logged_minutes: number;
+      /** The sheet scope's label ("Prodigitality Services Inc. Team", "Acme"). */
+      label: string;
     };
 
 export type EntryWithWarnings = TimeEntryView & { warnings: EntryWarning[] };
@@ -454,10 +553,30 @@ export interface TimesheetEventRow {
   created_at: string;
 }
 
+/** A person who decides (or would decide) a sheet, as shown to its member (A1, A2). At most
+ *  DECIDER_NAMES_MAX per list, deleted profiles skipped, sorted by display name. */
+export interface DeciderName {
+  id: string;
+  display_name: string | null;
+}
+
+/** A1: where submitting the member's own `open`/`returned` sheet now would go
+ *  (`time_sheet_routing_preview(id, 'submit')` plus the names of that scope's deciders).
+ *  `deciders` is empty for `auto` and `self`, and for a scope nobody can decide ("No one else can approve this"). */
+export interface RoutingPreview {
+  approver_scope: ApproverScope;
+  cost_money: boolean;
+  deciders: DeciderName[];
+}
+
 export interface TimesheetSummary extends TimesheetRow {
   entry_count: number;
   running_count: number;
   logged_seconds: number; // Σ duration of its entries now
+  /** A1, `GET /time/me/timesheets` only: the member's `open`/`returned` sheets. Absent when the preview failed. */
+  routing_preview?: RoutingPreview;
+  /** A2, `GET /time/me/timesheets` only: the member's `submitted` sheets (time_timesheet_deciders). */
+  deciders?: DeciderName[];
 }
 
 export interface TimesheetDetail {
@@ -474,7 +593,22 @@ export interface TimesheetDetail {
   };
   /** Deciders only. */
   freeze_preview?: FreezePreview;
+  /** Deciders, and the member while the sheet is `submitted`. */
   deciders_count?: number;
+  /** A1: the member only, on their own `open`/`returned` sheet. Absent when the preview failed. */
+  routing_preview?: RoutingPreview;
+  /** A2: the member only, while their sheet is `submitted` (at most 5 of `deciders_count`). */
+  deciders?: DeciderName[];
+}
+
+/** A3: what a decider should look at before approving a waiting sheet. */
+export interface ApprovalFlags {
+  /** Entries with `duration_seconds` ≥ 10 h or a `flagged_reason`. */
+  needs_review: number;
+  /** The freeze preview's over-cap total (the detail's `freeze_preview.over_cap_seconds`). */
+  over_cap_seconds: number;
+  /** Running entries (same as `running_count`). */
+  running: number;
 }
 
 export interface ApprovalRow extends TimesheetSummary {
@@ -485,6 +619,38 @@ export interface ApprovalRow extends TimesheetSummary {
   } | null;
   /** Set when the sheet's policy workspace differs from the viewer's current one (E27). */
   policy_workspace: { id: string; name: string } | null;
+  /** A3: on the `submitted` queue only (the `decided` queue carries none). */
+  flags?: ApprovalFlags;
+  /** A3: `over_cap_seconds` was not computed for this row (past the first 50 waiting rows of the page, or the
+   *  freeze preview failed) and reads 0. */
+  flags_partial?: true;
+}
+
+/** Error extras of 409 `STALE_REVISION` from a timesheet transition (A10). `timesheet_id` names the sheet that
+ *  changed, so bulk approve can say "Nothing was approved: Leo Cruz's timesheet changed." */
+export interface TimesheetStaleExtras {
+  timesheet_id: string;
+  /** Revision mismatch. */
+  expected?: number;
+  actual?: number;
+  /** The sheet's entries changed after the freeze was built. */
+  reason?: 'entry_set';
+}
+
+/** Error extras of 409 `TIMESHEET_HAS_SETTLED_ENTRIES` (A12). The lookups are best effort: any of the optional
+ *  keys may be missing. `reason` 'paid' with `payout_id` → "in payout …"; 'paid' with `paid_outside` → "paid
+ *  outside Proyekto"; 'billed' with `invoice_number` and `invoice_status` ('draft' or issued) → the invoice copy. */
+export interface TimesheetSettledExtras {
+  timesheet_id: string;
+  reason: 'paid' | 'billed' | 'legacy';
+  /** reason 'paid': the payout of the earliest paid entry on the sheet. */
+  payout_id?: string;
+  /** reason 'paid' with no payout: an entry was paid outside Proyekto (legacy marker). */
+  paid_outside?: true;
+  /** reason 'billed': the invoice of the sheet's earliest reservation. */
+  invoice_id?: string;
+  invoice_number?: string;
+  invoice_status?: string;
 }
 
 export interface OverviewContext {
@@ -541,13 +707,23 @@ export type ReportScope =
       clientLevel: ClientHoursLevel | null;
     };
 
+export type ReportGroupBy =
+  | 'day'
+  | 'week'
+  | 'member'
+  | 'project'
+  | 'task'
+  | 'context';
+
 export interface ReportSummary {
   scope: { kind: ReportScope['kind']; id: string };
   timezone: string;
   total_seconds: number;
   payable_seconds: number;
   groups: Array<{
+    /** `week` (A5): the week-start date `YYYY-MM-DD` in the scope's policy timezone and week start. */
     key: string;
+    /** `week` (A5): "Sep 22–28", "Sep 29–Oct 5", or with years when the week spans two years. */
     label: string;
     total_seconds: number;
     payable_seconds: number;

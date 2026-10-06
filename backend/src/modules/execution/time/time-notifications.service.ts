@@ -11,16 +11,9 @@ import { UPSTASH_REDIS_CLIENT } from '../../../config/redis.tokens';
 import { SUPABASE_ADMIN } from '../../../config/supabase.module';
 import { NotificationsService } from '../../shared/notifications/notifications.service';
 import { teamManagerIds } from '../teams/team-authority';
-import {
-  type TeamTimePage,
-  teamTimeEntryPath,
-  teamTimePath,
-  timePath,
-} from '../workspaces/workspace-paths';
-import { WorkspacesService } from '../workspaces/workspaces.service';
+import { timePath } from '../workspaces/workspace-paths';
 import type {
   CommentRow,
-  ContextKind,
   EntryAuthRow,
   FlaggedReason,
   TimeEntryView,
@@ -36,10 +29,11 @@ import type {
  * - No message, push or email carries an amount, a rate or a currency
  *   (CHANGE-19). Hours and dates are fine; money never is. The spec pins it.
  * - `notifications.project_id` stays null: a timesheet spans projects.
- * - Timesheet types link to `timePath({ timesheetId })`. Comment, payout and
- *   timer notifications for team-context entries keep the team page link
- *   (`teamTimeEntryPath`), which stays valid after the web moves to `/time`;
- *   other contexts link to `timePath({ entryId })` (D29).
+ * - Links go to the Time pages (D79, replacing the D29 gap links): timesheet
+ *   types to `/time/timesheets/<id>`; entry notices (comment, timer still
+ *   running, timer stopped) to `/time?entry=<id>` for every context and every
+ *   recipient; a recorded payout to `/time`. Links stored before D79 point at
+ *   the team time pages, which the web keeps as redirect stubs.
  * - D51: a notification goes out after a committed RPC, payout or comment, so
  *   it must never turn that success into an error. Every method except
  *   `hasNotified` catches and logs at `warn`. Callers `await` it (Cloud Run
@@ -350,12 +344,6 @@ function idsFrom(data: unknown): string[] {
     .filter(isId);
 }
 
-type EntryLinkRef = {
-  id: string;
-  context_kind: ContextKind;
-  team_id: string | null;
-};
-
 interface Outgoing {
   actorId: string | null;
   content: Record<string, unknown>;
@@ -372,8 +360,7 @@ export class TimeNotificationsService {
   constructor(
     @Inject(SUPABASE_ADMIN) private readonly sb: SupabaseClient,
     private readonly notifications: NotificationsService,
-    private readonly workspaces: WorkspacesService,
-    // Appended and optional (W1 review F1), so harnesses keep compiling. Null
+    // Optional (W1 review F1), so harnesses keep compiling. Null
     // (no Upstash credentials) means hasNotified probes the bell rows only.
     @Optional()
     @Inject(UPSTASH_REDIS_CLIENT)
@@ -553,7 +540,7 @@ export class TimeNotificationsService {
       const out: Outgoing = {
         actorId: null,
         content: buildTimeContent('timer_running_long', { entryId: entry.id }),
-        link: await this.entryLink(entry, 'my-logs'),
+        link: timePath({ entryId: entry.id }),
       };
       await Promise.all(
         recipients.map((userId) =>
@@ -583,7 +570,7 @@ export class TimeNotificationsService {
           entryId: entry.id,
           reason,
         }),
-        link: await this.entryLink(entry, 'my-logs'),
+        link: timePath({ entryId: entry.id }),
       };
       await Promise.all(
         recipients.flatMap((userId) => [
@@ -616,7 +603,8 @@ export class TimeNotificationsService {
   /**
    * `time_payout_recorded` to the member: "A payment was recorded for your
    * time", content `{payout_id, entry_count}`, no amount and no currency (E67).
-   * Payouts are team-only, so the link is the member's team time page.
+   * The link is the bare Time page (D79): no amount, and no payout page on
+   * native.
    */
   async payoutRecorded(
     p: { id: string; member_user_id: string; team_id: string },
@@ -635,7 +623,7 @@ export class TimeNotificationsService {
           payoutId: p.id,
           entryCount,
         }),
-        link: teamTimePath(await this.slugFor(p.team_id), p.team_id, 'my-logs'),
+        link: timePath(),
       };
       await Promise.all(
         recipients.map((userId) =>
@@ -695,20 +683,14 @@ export class TimeNotificationsService {
         }),
         comment_id: comment.id,
       };
-      const slug =
-        entry.context_kind === 'team' && entry.team_id
-          ? await this.slugFor(entry.team_id)
-          : null;
+      // D79: one link for every recipient; the entry detail opens over /time.
+      const link = timePath({ entryId: entry.id });
       await Promise.all(
         recipients.map((userId) =>
           this.send(userId, 'time_log_comment_added', {
             actorId,
             content,
-            link: this.entryLinkWith(
-              entry,
-              slug,
-              userId === member ? 'my-logs' : 'team-logs',
-            ),
+            link,
           }),
         ),
       );
@@ -858,40 +840,6 @@ export class TimeNotificationsService {
     )) as { data: unknown; error: { message: string } | null };
     if (viewError) throw new Error(errorText(viewError));
     return canView === true ? [reviewer] : [];
-  }
-
-  /** Null on any failure: the bare team path still lands (the web redirects it). */
-  private async slugFor(teamId: string): Promise<string | null> {
-    try {
-      return await this.workspaces.findSlugForTeam(teamId);
-    } catch (err) {
-      this.logger.warn(
-        `time_notify_slug_failed team=${teamId}: ${errorText(err)}`,
-      );
-      return null;
-    }
-  }
-
-  private async entryLink(
-    entry: EntryLinkRef,
-    page: TeamTimePage,
-  ): Promise<string> {
-    const slug =
-      entry.context_kind === 'team' && entry.team_id
-        ? await this.slugFor(entry.team_id)
-        : null;
-    return this.entryLinkWith(entry, slug, page);
-  }
-
-  /** D29: team-context entries keep the team page link; every other context goes to /time. */
-  private entryLinkWith(
-    entry: EntryLinkRef,
-    slug: string | null,
-    page: TeamTimePage,
-  ): string {
-    return entry.context_kind === 'team' && entry.team_id
-      ? teamTimeEntryPath(slug, entry.team_id, page, entry.id)
-      : timePath({ entryId: entry.id });
   }
 
   private async typeId(name: string): Promise<string | null> {

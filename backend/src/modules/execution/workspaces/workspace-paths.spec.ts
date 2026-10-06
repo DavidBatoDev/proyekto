@@ -1,39 +1,8 @@
-import { teamTimeEntryPath, teamTimePath, timePath } from './workspace-paths';
+import * as paths from './workspace-paths';
+import { timePath } from './workspace-paths';
 
 const ENTRY = '6f1c2b8e-4d3a-4f9b-9c1e-2a7d5e8b0c11';
 const SHEET = '0b7e9d2a-1c4f-4e8a-b3d6-5f9a8c7e6d21';
-
-describe('teamTimePath', () => {
-  it('prefixes the workspace slug when the team has one', () => {
-    expect(teamTimePath('acme', 'team-1', 'team-logs')).toBe(
-      '/w/acme/teams/team-1/time/team-logs',
-    );
-  });
-
-  /**
-   * An unhomed team still gets a working link: the bare path is a real route
-   * that redirects to the reader's last-visited workspace.
-   */
-  it('falls back to the bare path when the team has no workspace', () => {
-    expect(teamTimePath(null, 'team-1', 'my-logs')).toBe(
-      '/teams/team-1/time/my-logs',
-    );
-  });
-});
-
-describe('teamTimeEntryPath', () => {
-  it('opens one entry on the team page', () => {
-    expect(teamTimeEntryPath('acme', 'team-1', 'my-logs', ENTRY)).toBe(
-      `/w/acme/teams/team-1/time/my-logs?log=${ENTRY}`,
-    );
-  });
-
-  it('keeps the bare fallback for an unhomed team', () => {
-    expect(teamTimeEntryPath(null, 'team-1', 'team-logs', ENTRY)).toBe(
-      `/teams/team-1/time/team-logs?log=${ENTRY}`,
-    );
-  });
-});
 
 describe('timePath', () => {
   it('is the bare Time page with no argument', () => {
@@ -78,5 +47,17 @@ describe('timePath', () => {
   it('encodes ids, so a stray character cannot change the link', () => {
     expect(timePath({ entryId: 'a&b#c' })).toBe('/time?entry=a%26b%23c');
     expect(timePath({ timesheetId: '../x' })).toBe('/time/timesheets/..%2Fx');
+  });
+});
+
+/**
+ * D79 (A13): new notifications never link to the team time pages. Old
+ * `…/time/{my-logs,team-logs}?log=` links stay valid through the web's
+ * redirect stubs, so nothing here builds them any more.
+ */
+describe('team time page builders (retired by D79)', () => {
+  it('no longer exports the team page link builders', () => {
+    expect(paths).not.toHaveProperty('teamTimePath');
+    expect(paths).not.toHaveProperty('teamTimeEntryPath');
   });
 });

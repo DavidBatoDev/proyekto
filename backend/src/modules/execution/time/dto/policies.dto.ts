@@ -131,3 +131,16 @@ export class TeamTimePolicyDto implements TeamTimePolicyInput {
   @Max(14)
   reminder_days?: number | null;
 }
+
+/** A7 `GET /time/policies/workspaces/:workspaceId/history?page&limit`. */
+export const POLICY_HISTORY_DEFAULT_LIMIT = 20;
+export const POLICY_HISTORY_MAX_LIMIT = 100;
+
+export class PolicyHistoryQueryDto {
+  @IsOptional() @IsInt() @Min(1) page?: number = 1;
+  @IsOptional()
+  @IsInt()
+  @Min(1)
+  @Max(POLICY_HISTORY_MAX_LIMIT)
+  limit?: number = POLICY_HISTORY_DEFAULT_LIMIT;
+}

@@ -462,6 +462,18 @@ function capWindows(
   return out;
 }
 
+/** A weekly-limit warning fires once a timer would start with the week already at the limit, or once logged
+ *  time passes it (D46, A6). */
+function overLimit(
+  loggedMinutes: number,
+  limitMinutes: number,
+  mode: 'start' | 'manual',
+): boolean {
+  return mode === 'start'
+    ? loggedMinutes >= limitMinutes
+    : loggedMinutes > limitMinutes;
+}
+
 function memo<K, V>(cache: Map<K, Promise<V>>, key: K, load: () => Promise<V>) {
   let hit = cache.get(key);
   if (!hit) {
@@ -524,12 +536,16 @@ export class TimeEntriesService {
     const workType: WorkType =
       task?.work_type ?? input.work_type ?? 'real_work';
 
-    const [estimate, displayName, contract] = await Promise.all([
+    const [estimate, displayName, contract, , policyLimit] = await Promise.all([
       this.rates.estimate(option, userId, input.project_id, workType, at),
       this.displayNameSnapshot(userId),
       this.contractWeekWarning(userId, op, at, 0, 'start'),
       // D46: a timer cannot start once a cap that needs approval is full (refuses before the insert).
       this.assertHourCap(userId, op, at, 0, 'start'),
+      // A6: the policy weekly limit only warns (best effort). The alias answers no warnings, so it skips the read.
+      alias
+        ? Promise.resolve(null)
+        : this.policyWeekWarningSoft(userId, op, at, 0, 'start'),
     ]);
     const startedAt = at.toISOString();
     const insert: Record<string, unknown> = {
@@ -560,7 +576,10 @@ export class TimeEntriesService {
     const row = data as unknown as SelfRow;
 
     await this.openSegment(row.id, 'work', startedAt);
-    return { ...selfView(row, false), warnings: contract ? [contract] : [] };
+    const warnings: EntryWarning[] = [];
+    if (contract) warnings.push(contract);
+    if (policyLimit) warnings.push(policyLimit);
+    return { ...selfView(row, false), warnings };
   }
 
   /** D77: any running timer of the caller (any project, any context) → 409 TIMER_ALREADY_RUNNING; alias 400 (D07). */
@@ -734,14 +753,31 @@ export class TimeEntriesService {
     const breakSeconds = Math.min(Math.max(0, requestedBreak), grossSeconds);
     const netSeconds = Math.max(0, grossSeconds - breakSeconds);
 
-    const [estimate, displayName, overlap, contract] = await Promise.all([
-      this.rates.estimate(option, userId, input.project_id, workType, started),
-      this.displayNameSnapshot(userId),
-      this.overlapWarning(userId, started, ended),
-      this.contractWeekWarning(userId, op, started, netSeconds, 'manual'),
-      // D46 (refuses before the insert).
-      this.assertHourCap(userId, op, started, netSeconds, 'manual'),
-    ]);
+    const [estimate, displayName, overlap, contract, , policyLimit] =
+      await Promise.all([
+        this.rates.estimate(
+          option,
+          userId,
+          input.project_id,
+          workType,
+          started,
+        ),
+        this.displayNameSnapshot(userId),
+        this.overlapWarning(userId, started, ended),
+        this.contractWeekWarning(userId, op, started, netSeconds, 'manual'),
+        // D46 (refuses before the insert).
+        this.assertHourCap(userId, op, started, netSeconds, 'manual'),
+        // A6: warns only (best effort); skipped on the alias, which answers no warnings.
+        alias
+          ? Promise.resolve(null)
+          : this.policyWeekWarningSoft(
+              userId,
+              op,
+              started,
+              netSeconds,
+              'manual',
+            ),
+      ]);
 
     const insert: Record<string, unknown> = {
       ...contextColumns(option),
@@ -775,6 +811,7 @@ export class TimeEntriesService {
     const warnings: EntryWarning[] = [];
     if (overlap) warnings.push(overlap);
     if (contract) warnings.push(contract);
+    if (policyLimit) warnings.push(policyLimit);
     return { ...selfView(row, false), warnings };
   }
 
@@ -785,7 +822,7 @@ export class TimeEntriesService {
     entryId: string,
     input: UpdateEntryInput,
     o: { purpose?: 'edit' | 'alias'; native?: boolean } = {},
-  ): Promise<TimeEntryView> {
+  ): Promise<EntryWithWarnings> {
     const purpose: WritePurpose = o.purpose ?? 'edit';
     const alias = purpose === 'alias' ? { native: o.native === true } : null;
     await this.authority.assertOwnEntry(userId, entryId);
@@ -979,7 +1016,9 @@ export class TimeEntriesService {
       patch.currency_snapshot = estimate.currency_snapshot;
     }
 
-    if (Object.keys(patch).length === 0) return selfView(row, billed);
+    if (Object.keys(patch).length === 0) {
+      return { ...selfView(row, billed), warnings: [] };
+    }
 
     // One UPDATE for every changed column, compare-and-swap on the row read above; a deadlock is retried once
     // (D20: trg_40 takes FOR SHARE on the sheet).
@@ -1009,7 +1048,13 @@ export class TimeEntriesService {
         member_user_id: updated.member_user_id,
       });
     }
-    return selfView(updated, false);
+    // A6: only an edit that changed hours or the context can move a weekly total; the alias answers no
+    // warnings. Read after the write, best effort.
+    const warnings =
+      purpose !== 'alias' && (timesChanged || option !== null)
+        ? await this.editWeekWarnings(userId, updated, op)
+        : [];
+    return { ...selfView(updated, false), warnings };
   }
 
   async remove(
@@ -1596,7 +1641,7 @@ export class TimeEntriesService {
   /**
    * The contract weekly limit only warns (D46, L12): per (worker, governing engagement), engagement week.
    * Only a limit that comes from the contract raises `CONTRACT_WEEKLY_LIMIT` (D76); a workspace/team policy
-   * limit on the same entry is not the contract's, and its write-time warning waits for the web PR.
+   * limit is `POLICY_WEEKLY_LIMIT` on team and workspace time only (A6).
    */
   private async contractWeekWarning(
     memberId: string,
@@ -1617,18 +1662,114 @@ export class TimeEntriesService {
     ) {
       return null;
     }
-    const week = weekWindow(localDate(at, op.timezone), op.policy.week_start);
-    const range = localRangeToUtc(week, op.timezone);
-    // The engagement's sheets of this member that touch the week; their entries are the engagement's time.
+    const loggedMinutes = await this.weekMinutes(
+      memberId,
+      { kind: 'engagement', ref: op.scope.scope_ref },
+      op,
+      at,
+      addSeconds,
+      'contractWeek',
+    );
+    return overLimit(loggedMinutes, limit, mode)
+      ? {
+          code: 'CONTRACT_WEEKLY_LIMIT',
+          limit_minutes: limit,
+          logged_minutes: loggedMinutes,
+        }
+      : null;
+  }
+
+  /**
+   * A6 (D65): the workspace or team policy weekly limit only warns, never blocks and never cuts. Team and
+   * workspace time only, and only when the resolved limit comes from the workspace or a team override (a
+   * contract-set limit is CONTRACT_WEEKLY_LIMIT; an agreement's workspace fallback never warns). The window is
+   * the policy week in the policy timezone, over the member's sheets of that sheet scope: the "Weekly limit 40h
+   * (Prodigitality) · 38:15 logged" total of the review screen.
+   */
+  private async policyWeekWarning(
+    memberId: string,
+    op: OptionPolicy,
+    at: Date,
+    addSeconds: number,
+    mode: 'start' | 'manual',
+  ): Promise<EntryWarning | null> {
+    const limit = op.policy?.weekly_limit_minutes ?? null;
+    const source = op.policy?.sources?.weekly_limit_minutes;
+    if (
+      (op.option.kind !== 'team' && op.option.kind !== 'workspace') ||
+      !op.scope ||
+      !op.policy ||
+      !op.timezone ||
+      (source !== 'workspace' && source !== 'team') ||
+      limit === null ||
+      limit <= 0
+    ) {
+      return null;
+    }
+    const loggedMinutes = await this.weekMinutes(
+      memberId,
+      { kind: op.scope.scope_kind, ref: op.scope.scope_ref },
+      op,
+      at,
+      addSeconds,
+      'policyWeek',
+    );
+    return overLimit(loggedMinutes, limit, mode)
+      ? {
+          code: 'POLICY_WEEKLY_LIMIT',
+          limit_minutes: limit,
+          logged_minutes: loggedMinutes,
+          label: op.scope.scope_label,
+        }
+      : null;
+  }
+
+  /**
+   * A6 on create and start: the limit is an indicator only (D65, D74), so a failed week read is logged and gives
+   * no warning; it never refuses the write (team and workspace time did no such read before A6).
+   */
+  private async policyWeekWarningSoft(
+    memberId: string,
+    op: OptionPolicy,
+    at: Date,
+    addSeconds: number,
+    mode: 'start' | 'manual',
+  ): Promise<EntryWarning | null> {
+    try {
+      return await this.policyWeekWarning(memberId, op, at, addSeconds, mode);
+    } catch (err) {
+      this.logger.warn(
+        `${mode === 'start' ? 'start' : 'create'}.policyWeekWarning failed: ${err instanceof Error ? err.message : String(err)}`,
+      );
+      return null;
+    }
+  }
+
+  /**
+   * Minutes the member logged in the policy week holding `at` (policy timezone and week start) on their sheets
+   * of one sheet scope, plus `addSeconds`; legacy rejected time is left out. Callers pass a resolved policy.
+   */
+  private async weekMinutes(
+    memberId: string,
+    scope: { kind: string; ref: string },
+    op: OptionPolicy,
+    at: Date,
+    addSeconds: number,
+    operation: string,
+  ): Promise<number> {
+    const tz = op.timezone ?? 'UTC';
+    const week = weekWindow(localDate(at, tz), op.policy?.week_start ?? 1);
+    const range = localRangeToUtc(week, tz);
+    // The member's sheets of that scope touching the week; their entries are the scope's time.
     const { data: sheets, error: sheetError } = await this.sb
       .from('timesheets')
       .select('id')
       .eq('member_user_id', memberId)
-      .eq('scope_kind', 'engagement')
-      .eq('scope_ref', op.scope.scope_ref)
+      .eq('scope_kind', scope.kind)
+      .eq('scope_ref', scope.ref)
       .lte('period_start', week.end)
       .gte('period_end', week.start);
-    if (sheetError) this.readFail('contractWeek.sheets', sheetError);
+    if (sheetError) this.readFail(`${operation}.sheets`, sheetError);
     const sheetIds = ((sheets ?? []) as Array<{ id: string }>).map((s) => s.id);
 
     let loggedSeconds = 0;
@@ -1640,25 +1781,51 @@ export class TimeEntriesService {
         .gte('started_at', range.fromIso)
         .lt('started_at', range.toExclusiveIso)
         .or('legacy_status.is.null,legacy_status.neq.rejected');
-      if (error) this.readFail('contractWeek.entries', error);
+      if (error) this.readFail(`${operation}.entries`, error);
       for (const r of (data ?? []) as Array<{
         duration_seconds: number | null;
       }>) {
         loggedSeconds += Math.max(0, r.duration_seconds ?? 0);
       }
     }
-    const loggedMinutes = Math.round(
-      (loggedSeconds + Math.max(0, addSeconds)) / 60,
-    );
-    const warn =
-      mode === 'start' ? loggedMinutes >= limit : loggedMinutes > limit;
-    return warn
-      ? {
-          code: 'CONTRACT_WEEKLY_LIMIT',
-          limit_minutes: limit,
-          logged_minutes: loggedMinutes,
-        }
-      : null;
+    return Math.round((loggedSeconds + Math.max(0, addSeconds)) / 60);
+  }
+
+  /**
+   * A6: the weekly-limit warnings of an edit that changed hours or the context, read after the committed write
+   * (the edited entry is already in its week). Best effort: a failed read is logged and gives no warning, so a
+   * saved edit never turns into an error.
+   */
+  private async editWeekWarnings(
+    userId: string,
+    updated: SelfRow,
+    op: OptionPolicy | null,
+  ): Promise<EntryWarning[]> {
+    try {
+      const at = new Date(updated.started_at);
+      const policyOp =
+        op ??
+        (await this.optionPolicy(
+          currentOption(updated, null),
+          userId,
+          updated.project_id,
+          at,
+        ));
+      // A running timer warns once the week holds the limit (as a start); a stopped entry once it passes it.
+      const mode = updated.ended_at ? 'manual' : 'start';
+      const [contract, policyLimit] = await Promise.all([
+        this.contractWeekWarning(userId, policyOp, at, 0, mode),
+        this.policyWeekWarning(userId, policyOp, at, 0, mode),
+      ]);
+      return [contract, policyLimit].filter(
+        (w): w is EntryWarning => w !== null,
+      );
+    } catch (err) {
+      this.logger.warn(
+        `update.weekWarnings failed entry=${updated.id}: ${err instanceof Error ? err.message : String(err)}`,
+      );
+      return [];
+    }
   }
 
   /** E28: overlap is allowed and only warns. */

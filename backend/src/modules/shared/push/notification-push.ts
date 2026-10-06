@@ -83,6 +83,41 @@ export interface ChatHeadlineInput {
 const str = (value: unknown): string | null =>
   typeof value === 'string' && value.trim().length > 0 ? value : null;
 
+/** Time types emitted since the timesheet rebuild (not the historical `time_log_*` review types). */
+const TIME_TYPE_NAMES: ReadonlySet<string> = new Set([
+  'timesheet_submitted',
+  'timesheet_returned',
+  'timesheet_approved',
+  'timesheet_reopened',
+  'timesheet_reopen_requested',
+  'timesheet_reminder',
+  'timer_running_long',
+  'timer_auto_stopped',
+  'time_payout_recorded',
+  'timesheets_imported',
+  'time_log_comment_added',
+]);
+
+/**
+ * The tap target when a row carries no `link_url` (D79): time types open the
+ * Time pages (the timesheet, the entry, the waiting list, else `/time`), as
+ * TimeNotificationsService's `timePath` links do; everything else opens the
+ * notification list. `shared/` never imports `execution/`, so the paths are
+ * mirrored here.
+ */
+function defaultLink(
+  typeName: string,
+  content: Record<string, unknown>,
+): string {
+  if (!TIME_TYPE_NAMES.has(typeName)) return '/notifications';
+  if (typeName === 'timesheets_imported') return '/time#waiting';
+  const sheetId = str(content.timesheet_id);
+  if (sheetId) return `/time/timesheets/${encodeURIComponent(sheetId.trim())}`;
+  const entryId = str(content.entry_id);
+  if (entryId) return `/time?entry=${encodeURIComponent(entryId.trim())}`;
+  return '/time';
+}
+
 /**
  * Messenger-style headline: who it was from, and what they actually said.
  *
@@ -116,7 +151,8 @@ export function buildChatHeadline(input: ChatHeadlineInput): {
 /**
  * Translate an in-app notification into an FCM push payload. The `data` map is
  * string->string (FCM requirement) and carries the type, ids, and a deep-link
- * (`link_url`, default `/notifications`) so a background/cold-start tap can route.
+ * (`link_url`; without one, `defaultLink`: the Time pages for time types, else
+ * `/notifications`) so a background/cold-start tap can route.
  *
  * Chat normally does NOT come through here — `ChatPushService` sends per message
  * and the chat call sites pass `skipPush`. The chat
@@ -147,7 +183,7 @@ export function buildPushMessage(input: BuildPushInput): PushMessage {
   const data: Record<string, string> = {
     notification_id: input.notificationId,
     type: input.typeName,
-    link_url: input.linkUrl ?? '/notifications',
+    link_url: input.linkUrl ?? defaultLink(input.typeName, content),
   };
   if (input.projectId) data.project_id = input.projectId;
 

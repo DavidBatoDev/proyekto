@@ -727,6 +727,8 @@ describe('step 2: assignments', () => {
         // The engagement's policy workspace differs from the project's.
         workspace_tag: 'Prodigitality',
         approver_hint: 'hirer',
+        // A8: the governing (talent) engagement, for "View terms →".
+        engagement_id: TALENT_ENG,
       },
     ]);
   });
@@ -742,7 +744,29 @@ describe('step 2: assignments', () => {
     expect(r.options[0]).toMatchObject({
       rate_source: 'none',
       approver_hint: 'auto',
+      engagement_id: CLIENT_ENG,
     });
+  });
+
+  it('A8: engagement_id names the talent engagement when an assignment has both; other kinds carry none', async () => {
+    const { service } = await build({
+      assignments: [
+        {
+          id: ASSIGN_1,
+          talent_engagement_id: TALENT_ENG,
+          client_engagement_id: CLIENT_ENG,
+        },
+      ],
+      teams: [{ id: TEAM_A, name: 'A' }],
+    });
+    const r = await service.resolve(ME, PROJECT, {
+      at: NOW(),
+      purpose: 'read',
+    });
+    const byKind = new Map(r.options.map((o) => [o.kind, o]));
+    expect(byKind.get('assignment')?.engagement_id).toBe(TALENT_ENG);
+    expect(byKind.get('team')).toBeDefined();
+    expect(byKind.get('team')).not.toHaveProperty('engagement_id');
   });
 
   const unavailableCases: Array<{
@@ -1400,6 +1424,28 @@ describe('policyFor', () => {
       expect.any(Date),
       { memberUserId: ME, projectId: PROJECT, teamId: TEAM_A },
     );
+  });
+
+  it('A8: an assignment policy names the governing engagement; a team policy does not', async () => {
+    const { service } = await build({
+      assignments: [{ id: ASSIGN_1, talent_engagement_id: TALENT_ENG }],
+      teams: [{ id: TEAM_A, name: 'A' }],
+    });
+    const forAssignment = await service.policyFor(
+      ME,
+      PROJECT,
+      { kind: 'assignment', id: ASSIGN_1 },
+      NOW(),
+    );
+    expect(forAssignment.engagement_id).toBe(TALENT_ENG);
+    expect(forAssignment.timezone).toBe('UTC');
+    const forTeam = await service.policyFor(
+      ME,
+      PROJECT,
+      { kind: 'team', id: TEAM_A },
+      NOW(),
+    );
+    expect(forTeam).not.toHaveProperty('engagement_id');
   });
 
   it('null = the selected option', async () => {

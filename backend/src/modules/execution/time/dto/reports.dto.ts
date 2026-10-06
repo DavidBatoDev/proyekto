@@ -9,7 +9,11 @@ import {
   Max,
   Min,
 } from 'class-validator';
-import type { ContextKind, TimesheetStatus } from '../time.types';
+import type {
+  ContextKind,
+  ReportGroupBy,
+  TimesheetStatus,
+} from '../time.types';
 
 export class ReportQueryDto {
   @Matches(/^(team|project|workspace|engagement):[0-9a-fA-F-]{36}$/)
@@ -23,9 +27,10 @@ export class ReportQueryDto {
   @IsOptional()
   @IsIn(['assignment', 'team', 'workspace'])
   context_kind?: Exclude<ContextKind, 'personal'>;
+  /** Summary grouping. `week` (A5) is the policy week of the scope. Entries and export accept it and ignore it. */
   @IsOptional()
-  @IsIn(['day', 'member', 'project', 'task', 'context'])
-  group_by?: 'day' | 'member' | 'project' | 'task' | 'context';
+  @IsIn(['day', 'week', 'member', 'project', 'task', 'context'])
+  group_by?: ReportGroupBy;
   @IsOptional() @IsInt() @Min(1) page?: number = 1;
   @IsOptional() @IsInt() @Min(1) @Max(200) limit?: number = 100;
   @IsOptional() @IsIn(['csv', 'xlsx']) format?: 'csv' | 'xlsx';

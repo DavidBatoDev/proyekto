@@ -2,6 +2,7 @@ import {
   BadRequestException,
   ConflictException,
   HttpException,
+  Logger,
   NotFoundException,
 } from '@nestjs/common';
 import { Test } from '@nestjs/testing';
@@ -1492,6 +1493,311 @@ describe('createManual', () => {
     expect(view.warnings).toEqual([]);
     // No week scan when the limit is not the contract's.
     expect(b.db.calls.some((c) => c.table === 'timesheets')).toBe(false);
+  });
+});
+
+// ── policy weekly limit (A6) ────────────────────────────────────────────────────────────────────────────────
+describe('policy weekly limit (A6, D65)', () => {
+  /** The member's workspace sheet for the week of NOW (Mon Oct 5 – Sun Oct 11, UTC policy). */
+  const wsSheet = (over: Row = {}): Row => ({
+    id: SHEET,
+    member_user_id: USER,
+    scope_kind: 'workspace',
+    scope_ref: WS,
+    period_start: '2026-10-05',
+    period_end: '2026-10-11',
+    ...over,
+  });
+  /** 2 h already logged on that sheet (Tue Oct 6). */
+  const tables = (extra: Partial<Record<string, Row[]>> = {}) => ({
+    ...baseTables(),
+    timesheets: [wsSheet()],
+    time_entries: [entry()],
+    ...extra,
+  });
+  const limit = (
+    minutes: number,
+    source: string = 'workspace',
+  ): Partial<ResolvedTimePolicy> => ({
+    weekly_limit_minutes: minutes,
+    sources: { weekly_limit_minutes: source as never },
+  });
+  const manual = (over: Row = {}) => ({
+    project_id: PROJECT,
+    started_at: '2026-10-07T01:00:00.000Z',
+    ended_at: '2026-10-07T03:00:00.000Z',
+    ...over,
+  });
+  const sheetReads = (b: Awaited<ReturnType<typeof build>>) =>
+    b.db.calls.filter((c) => c.table === 'timesheets').length;
+
+  it('manual time past a workspace limit warns with the sheet scope label; nothing blocks', async () => {
+    const b = await build({ tables: tables(), policy: limit(180) });
+    const view = await b.service.createManual(USER, manual());
+    expect(view.warnings).toEqual([
+      {
+        code: 'POLICY_WEEKLY_LIMIT',
+        limit_minutes: 180,
+        logged_minutes: 240,
+        label: 'Acme',
+      },
+    ]);
+    expect(b.db.writes('time_entries', 'insert')).toHaveLength(1);
+    // The week is read on the member's sheets of that scope only.
+    const sheetsCall = b.db.calls.find((c) => c.table === 'timesheets');
+    expect(sheetsCall?.filters).toEqual(
+      expect.arrayContaining([
+        ['eq', 'member_user_id', USER],
+        ['eq', 'scope_kind', 'workspace'],
+        ['eq', 'scope_ref', WS],
+      ]),
+    );
+  });
+
+  it('a team-override limit warns the same way; a workspace option too', async () => {
+    const team = await build({ tables: tables(), policy: limit(180, 'team') });
+    expect(
+      (await team.service.createManual(USER, manual())).warnings,
+    ).toMatchObject([{ code: 'POLICY_WEEKLY_LIMIT', label: 'Acme' }]);
+
+    const ws = await build({
+      tables: tables(),
+      policy: limit(180),
+      option: option({
+        kind: 'workspace',
+        id: WS,
+        label: 'Acme',
+        sheet_scope: { kind: 'workspace', ref: WS },
+      }),
+    });
+    expect(
+      (await ws.service.createManual(USER, manual())).warnings,
+    ).toMatchObject([{ code: 'POLICY_WEEKLY_LIMIT', logged_minutes: 240 }]);
+  });
+
+  it('at or under the limit there is no warning', async () => {
+    const b = await build({ tables: tables(), policy: limit(240) });
+    const view = await b.service.createManual(USER, manual());
+    expect(view.warnings).toEqual([]);
+  });
+
+  it('a default-, contract- or member-sourced limit never raises it, and reads no week', async () => {
+    for (const source of ['default', 'contract', 'member']) {
+      const b = await build({ tables: tables(), policy: limit(60, source) });
+      const view = await b.service.createManual(USER, manual());
+      expect(view.warnings).toEqual([]);
+      expect(sheetReads(b)).toBe(0);
+    }
+  });
+
+  it('agreement and personal time never raise it (team and workspace contexts only)', async () => {
+    const assignment = await build({
+      tables: tables(),
+      policy: limit(60),
+      option: option({
+        kind: 'assignment',
+        id: ASSIGN,
+        label: 'Acme Corp',
+        sheet_scope: { kind: 'engagement', ref: ENG },
+      }),
+    });
+    assignment.policy.sheetScopeFor.mockResolvedValue({
+      scope_kind: 'engagement',
+      scope_ref: ENG,
+      policy_workspace_id: WS,
+      scope_label: 'Acme Corp',
+    } as never);
+    expect(
+      (await assignment.service.createManual(USER, manual())).warnings,
+    ).toEqual([]);
+    expect(sheetReads(assignment)).toBe(0);
+
+    const personal = await build({
+      tables: tables(),
+      policy: limit(60),
+      option: PERSONAL,
+    });
+    expect(
+      (await personal.service.createManual(USER, manual())).warnings,
+    ).toEqual([]);
+    expect(sheetReads(personal)).toBe(0);
+  });
+
+  it("only the member's own sheets of that scope count, and legacy rejected time is out", async () => {
+    const b = await build({
+      tables: tables({
+        timesheets: [
+          wsSheet(),
+          wsSheet({ id: uid(71), scope_kind: 'team', scope_ref: TEAM_B }),
+          wsSheet({ id: uid(72), member_user_id: OTHER }),
+        ],
+        time_entries: [
+          entry(),
+          entry({ id: uid(81), timesheet_id: uid(71) }),
+          entry({
+            id: uid(82),
+            timesheet_id: uid(72),
+            member_user_id: OTHER,
+          }),
+          entry({ id: uid(83), legacy_status: 'rejected' }),
+          // Last week, same sheet scope: outside the window.
+          entry({
+            id: uid(84),
+            started_at: '2026-10-04T23:00:00.000Z',
+            ended_at: '2026-10-04T23:30:00.000Z',
+            duration_seconds: 1800,
+          }),
+        ],
+      }),
+      policy: limit(200),
+    });
+    const view = await b.service.createManual(USER, manual());
+    expect(view.warnings).toEqual([
+      {
+        code: 'POLICY_WEEKLY_LIMIT',
+        limit_minutes: 200,
+        logged_minutes: 240,
+        label: 'Acme',
+      },
+    ]);
+  });
+
+  it('a timer warns when the week already holds the limit', async () => {
+    const at = await build({ tables: tables(), policy: limit(120) });
+    expect(
+      (await at.service.start(USER, { project_id: PROJECT })).warnings,
+    ).toEqual([
+      {
+        code: 'POLICY_WEEKLY_LIMIT',
+        limit_minutes: 120,
+        logged_minutes: 120,
+        label: 'Acme',
+      },
+    ]);
+    const under = await build({ tables: tables(), policy: limit(121) });
+    expect(
+      (await under.service.start(USER, { project_id: PROJECT })).warnings,
+    ).toEqual([]);
+  });
+
+  it('the alias answers no warnings, so it never reads the week', async () => {
+    const b = await build({ tables: tables(), policy: limit(60) });
+    await b.service.createManual(USER, manual(), { purpose: 'alias' });
+    await b.service.start(USER, { project_id: PROJECT }, { purpose: 'alias' });
+    expect(sheetReads(b)).toBe(0);
+  });
+
+  it('an edit that adds hours warns, read after the write (the edited entry counted once)', async () => {
+    const b = await build({ tables: tables(), policy: limit(180) });
+    const view = await b.service.update(USER, ENTRY, {
+      ended_at: '2026-10-06T05:00:00.000Z',
+    });
+    expect(view.duration_seconds).toBe(4 * 3600);
+    expect(view.warnings).toEqual([
+      {
+        code: 'POLICY_WEEKLY_LIMIT',
+        limit_minutes: 180,
+        logged_minutes: 240,
+        label: 'Acme',
+      },
+    ]);
+  });
+
+  it('an edit that changes no hours and no context reads no week', async () => {
+    const b = await build({ tables: tables(), policy: limit(60) });
+    const view = await b.service.update(USER, ENTRY, { note: 'Kickoff' });
+    expect(view.warnings).toEqual([]);
+    expect(sheetReads(b)).toBe(0);
+    const unchanged = await build({ tables: tables(), policy: limit(60) });
+    expect((await unchanged.service.update(USER, ENTRY, {})).warnings).toEqual(
+      [],
+    );
+  });
+
+  it('a running timer moved earlier warns once the week holds the limit', async () => {
+    const b = await build({
+      tables: tables({ time_entries: [entry(), running({ id: uid(85) })] }),
+      policy: limit(120),
+    });
+    const view = await b.service.update(USER, uid(85), {
+      started_at: '2026-10-07T00:30:00.000Z',
+    });
+    expect(view.warnings).toMatchObject([
+      { code: 'POLICY_WEEKLY_LIMIT', logged_minutes: 120 },
+    ]);
+  });
+
+  it('a failed week read after a saved edit gives no warning, never an error', async () => {
+    const warn = jest
+      .spyOn(Logger.prototype, 'warn')
+      .mockImplementation(() => undefined);
+    const b = await build({ tables: tables(), policy: limit(60) });
+    b.db.failNext('timesheets', 'select', {
+      code: '42P01',
+      message: 'relation does not exist',
+    });
+    const view = await b.service.update(USER, ENTRY, {
+      ended_at: '2026-10-06T05:00:00.000Z',
+    });
+    expect(view.warnings).toEqual([]);
+    expect(b.db.tables.time_entries[0].duration_seconds).toBe(4 * 3600);
+    expect(warn).toHaveBeenCalled();
+    warn.mockRestore();
+  });
+
+  it('a failed week read never refuses Add time or Start: the write lands with no warning', async () => {
+    const warn = jest
+      .spyOn(Logger.prototype, 'warn')
+      .mockImplementation(() => undefined);
+    const failure = { code: '42P01', message: 'relation does not exist' };
+    const created = await build({ tables: tables(), policy: limit(60) });
+    created.db.failNext('timesheets', 'select', failure);
+    const view = await created.service.createManual(USER, manual());
+    expect(view.warnings).toEqual([]);
+    expect(created.db.writes('time_entries', 'insert')).toHaveLength(1);
+
+    const started = await build({ tables: tables(), policy: limit(60) });
+    started.db.failNext('timesheets', 'select', failure);
+    const timer = await started.service.start(USER, { project_id: PROJECT });
+    expect(timer.warnings).toEqual([]);
+    expect(started.db.writes('time_entries', 'insert')).toHaveLength(1);
+    expect(warn).toHaveBeenCalledTimes(2);
+    warn.mockRestore();
+  });
+
+  it('an agreement edit past the contract limit warns CONTRACT_WEEKLY_LIMIT', async () => {
+    const t = tables({
+      timesheets: [
+        wsSheet({ id: uid(71), scope_kind: 'engagement', scope_ref: ENG }),
+      ],
+      time_entries: [
+        entry({
+          context_kind: 'assignment',
+          context_ref: ASSIGN,
+          context_label_snapshot: 'Acme Corp',
+          team_id: null,
+          engagement_assignment_id: ASSIGN,
+          timesheet_id: uid(71),
+        }),
+      ],
+    });
+    const b = await build({ tables: t, policy: limit(180, 'contract') });
+    b.policy.sheetScopeFor.mockResolvedValue({
+      scope_kind: 'engagement',
+      scope_ref: ENG,
+      policy_workspace_id: WS,
+      scope_label: 'Acme Corp',
+    } as never);
+    const view = await b.service.update(USER, ENTRY, {
+      ended_at: '2026-10-06T05:00:00.000Z',
+    });
+    expect(view.warnings).toEqual([
+      {
+        code: 'CONTRACT_WEEKLY_LIMIT',
+        limit_minutes: 180,
+        logged_minutes: 240,
+      },
+    ]);
   });
 });
 

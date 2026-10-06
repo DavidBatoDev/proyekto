@@ -15,9 +15,11 @@ import { EngagementsService } from '../../marketplace/engagements/engagements.se
 import type { EntitlementRef } from '../../shared/entitlements/entitlement-keys';
 import { EntitlementsService } from '../../shared/entitlements/entitlements.service';
 import { isTeamManager } from '../teams/team-authority';
-import type {
-  TeamTimePolicyInput,
-  WorkspaceTimePolicyInput,
+import {
+  POLICY_HISTORY_DEFAULT_LIMIT,
+  POLICY_HISTORY_MAX_LIMIT,
+  type TeamTimePolicyInput,
+  type WorkspaceTimePolicyInput,
 } from './dto/policies.dto';
 import { TimeCacheService } from './time-cache';
 import {
@@ -31,6 +33,9 @@ import type {
   ClientHoursLevel,
   ContextKind,
   MemberCaps,
+  Paged,
+  PolicyHistoryKind,
+  PolicyHistoryRow,
   RateType,
   ResolvedTimePolicy,
   SheetScopeRef,
@@ -38,6 +43,90 @@ import type {
   TeamPolicyView,
   WorkspacePolicyView,
 } from './time.types';
+
+/** A policy's timezone and ISO week start (1 = Monday … 7 = Sunday). */
+export interface PeriodBasics {
+  timezone: string;
+  week_start: number;
+}
+
+/** 1..7, else Monday (time_policies CHECK; the SQL default). */
+function safeWeekStart(value: unknown): number {
+  const n = typeof value === 'number' ? value : Number(value);
+  return Number.isInteger(n) && n >= 1 && n <= 7 ? n : 1;
+}
+
+// ── Policy history (A7) ─────────────────────────────────────────────────────────────────────────────────────
+
+const POLICY_EVENT_SELECT =
+  'id, policy_id, actor_user_id, changes, scope, team_id, workspace_id, created_at';
+
+interface PolicyEventRow {
+  id: number;
+  policy_id: string | null;
+  actor_user_id: string | null;
+  changes: unknown;
+  scope: string | null;
+  team_id: string | null;
+  workspace_id: string | null;
+  created_at: string;
+}
+
+/** Row columns that are not settings: never shown as a change. `updated_by` alone is the "Looks right" stamp. */
+const POLICY_BOOKKEEPING_KEYS: ReadonlySet<string> = new Set([
+  'id',
+  'scope',
+  'team_id',
+  'workspace_id',
+  'created_at',
+  'created_by',
+  'updated_at',
+  'updated_by',
+]);
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return value !== null && typeof value === 'object' && !Array.isArray(value);
+}
+
+/**
+ * Pure. One `time_policy_events.changes` value (tg_time_policies_events, M3) as a history line:
+ * an INSERT stores the new row (`id` present, scalar values), an UPDATE `{ key: [old, new] }` of the changed
+ * columns only, the M3 delete event `{ deleted: true, row }`. Settings only; nulls are left out of created and
+ * deleted rows (a team override's null field means "inherit").
+ */
+export function policyEventChanges(raw: unknown): {
+  kind: PolicyHistoryKind;
+  changes: Record<string, [unknown, unknown]>;
+} {
+  const changes: Record<string, [unknown, unknown]> = {};
+  if (!isRecord(raw)) return { kind: 'changed', changes };
+  if (raw.deleted === true) {
+    const row = isRecord(raw.row) ? raw.row : {};
+    for (const [key, value] of Object.entries(row)) {
+      if (POLICY_BOOKKEEPING_KEYS.has(key) || value === null) continue;
+      changes[key] = [value, null];
+    }
+    return { kind: 'deleted', changes };
+  }
+  if ('id' in raw && !Array.isArray(raw.id)) {
+    for (const [key, value] of Object.entries(raw)) {
+      if (POLICY_BOOKKEEPING_KEYS.has(key) || value === null) continue;
+      changes[key] = [null, value];
+    }
+    return { kind: 'created', changes };
+  }
+  for (const [key, value] of Object.entries(raw)) {
+    if (POLICY_BOOKKEEPING_KEYS.has(key)) continue;
+    changes[key] =
+      Array.isArray(value) && value.length === 2
+        ? [value[0] as unknown, value[1] as unknown]
+        : [null, value];
+  }
+  return {
+    kind: Object.keys(changes).length > 0 ? 'changed' : 'confirmed',
+    changes,
+  };
+}
 
 // ── Shared readers (also used by TimeRatesService, which cannot call back into this service's caps) ──────────
 
@@ -235,6 +324,8 @@ const MAX_RETROACTIVE_DAYS = 3650;
 const INVALID_TEXT_REPRESENTATION = '22P02';
 const UNIQUE_VIOLATION = '23505';
 const CHECK_VIOLATION = '23514';
+/** PostgREST 416: a counted read asked for an offset past the last row. */
+const RANGE_NOT_SATISFIABLE = 'PGRST103';
 
 const CLIENT_HOURS_LEVELS: readonly ClientHoursLevel[] = [
   'none',
@@ -379,16 +470,139 @@ export class TimePolicyService {
     return typeof data === 'string' && data.length > 0 ? data : null;
   }
 
-  /** can_manage_workspace else 404 */
+  /** can_manage_workspace → the editable view; else a `workspace_members` row → the read-only view (A4); else 404. */
   async getWorkspacePolicy(
     callerId: string,
     workspaceId: string,
     tzHint?: string,
   ): Promise<WorkspacePolicyView> {
+    if (await this.canManageWorkspace(workspaceId, callerId)) {
+      // Only a manager's browser timezone seeds the row (CHANGE-11); without ?tz= a GET never writes.
+      if (tzHint) {
+        await this.ensureWorkspacePolicy(workspaceId, tzHint, callerId);
+      }
+      return this.workspaceView(workspaceId, true);
+    }
+    // A4: a member reads the policy and never materialises or seeds it, so `?tz=` is ignored. Without a row the
+    // view is the resolved defaults with policy_unconfirmed.
+    if (!(await this.isWorkspaceMember(workspaceId, callerId))) {
+      throw timeNotFound('scope');
+    }
+    return this.workspaceView(workspaceId, false);
+  }
+
+  /**
+   * A7: the audit trail of the workspace policy and of the overrides of the workspace's teams, newest first.
+   * Managers only (404 otherwise); not plan-gated. Read from `time_policy_events` (L23), whose rows the triggers
+   * write. Team rows are matched by the workspace's current teams, so a team that left the workspace, or was
+   * deleted, no longer shows here (the audit export matches the same way).
+   */
+  async workspacePolicyHistory(
+    callerId: string,
+    workspaceId: string,
+    q: { page?: number; limit?: number } = {},
+  ): Promise<Paged<PolicyHistoryRow>> {
     await this.assertCanManageWorkspace(workspaceId, callerId);
-    // Only a manager's browser timezone seeds the row (CHANGE-11); without ?tz= a GET never writes.
-    if (tzHint) await this.ensureWorkspacePolicy(workspaceId, tzHint, callerId);
-    return this.workspaceView(workspaceId);
+    const page = Math.max(1, Math.trunc(q.page ?? 1));
+    const limit = Math.min(
+      POLICY_HISTORY_MAX_LIMIT,
+      Math.max(1, Math.trunc(q.limit ?? POLICY_HISTORY_DEFAULT_LIMIT)),
+    );
+    const offset = (page - 1) * limit;
+
+    const teamsRes = await this.sb
+      .from('teams')
+      .select('id, name')
+      .eq('workspace_id', workspaceId);
+    if (teamsRes.error) {
+      this.fail('history_teams', teamsRes.error as PgErrorLike);
+    }
+    const teamNames = new Map(
+      ((teamsRes.data ?? []) as Array<{ id: string; name: string | null }>).map(
+        (t) => [t.id.toLowerCase(), t.name ?? 'Team'],
+      ),
+    );
+    const owners = [
+      `workspace_id.eq.${workspaceId}`,
+      ...(teamNames.size > 0
+        ? [`team_id.in.(${[...teamNames.keys()].join(',')})`]
+        : []),
+    ];
+    const eventsRes = await this.sb
+      .from('time_policy_events')
+      .select(POLICY_EVENT_SELECT, { count: 'exact' })
+      .or(owners.join(','))
+      .order('created_at', { ascending: false })
+      .order('id', { ascending: false })
+      .range(offset, offset + limit - 1);
+    if (eventsRes.error) {
+      // A counted read whose offset is past the last row is PostgREST's 416 PGRST103: a page past the end is an
+      // empty page with the real total, never a 500.
+      if ((eventsRes.error as PgErrorLike).code === RANGE_NOT_SATISFIABLE) {
+        const head = await this.sb
+          .from('time_policy_events')
+          .select('id', { count: 'exact', head: true })
+          .or(owners.join(','));
+        if (head.error) this.fail('history_count', head.error as PgErrorLike);
+        return { items: [], total: head.count ?? 0, page, limit };
+      }
+      this.fail('history_events', eventsRes.error as PgErrorLike);
+    }
+    const events = (eventsRes.data ?? []) as unknown as PolicyEventRow[];
+
+    const actorIds = [
+      ...new Set(
+        events
+          .map((e) => e.actor_user_id)
+          .filter((id): id is string => typeof id === 'string' && id !== ''),
+      ),
+    ];
+    const names = new Map<string, string | null>();
+    if (actorIds.length > 0) {
+      const profilesRes = await this.sb
+        .from('profiles')
+        .select('id, display_name')
+        .in('id', actorIds);
+      if (profilesRes.error) {
+        this.fail('history_actors', profilesRes.error as PgErrorLike);
+      }
+      for (const p of (profilesRes.data ?? []) as Array<{
+        id: string;
+        display_name: string | null;
+      }>) {
+        names.set(p.id, p.display_name ?? null);
+      }
+    }
+
+    const items = events.map((e): PolicyHistoryRow => {
+      const { kind, changes } = policyEventChanges(e.changes);
+      const teamId = e.team_id ?? null;
+      return {
+        id: e.id,
+        created_at: e.created_at,
+        actor:
+          e.actor_user_id && names.has(e.actor_user_id)
+            ? {
+                id: e.actor_user_id,
+                display_name: names.get(e.actor_user_id) ?? null,
+              }
+            : null,
+        changes,
+        scope: teamId !== null || e.scope === 'team' ? 'team' : 'workspace',
+        team_id: teamId,
+        team_name:
+          teamId !== null
+            ? (teamNames.get(teamId.toLowerCase()) ?? null)
+            : null,
+        kind,
+      };
+    });
+    return {
+      items,
+      total: eventsRes.count ?? offset + items.length,
+      page,
+      limit,
+    };
   }
 
   async putWorkspacePolicy(
@@ -439,7 +653,7 @@ export class TimePolicyService {
     if (error) this.fail('workspace_update', error as PgErrorLike, 'save');
 
     await this.cache.bumpEpoch();
-    return this.workspaceView(workspaceId);
+    return this.workspaceView(workspaceId, true);
   }
 
   /** isTeamManager else 404 */
@@ -555,6 +769,11 @@ export class TimePolicyService {
 
   /** resolve(team scope via sheetScopeFor).timezone */
   async teamTimezone(teamId: string): Promise<string> {
+    return (await this.teamPeriodBasics(teamId)).timezone;
+  }
+
+  /** The team policy's timezone and week start, resolved on the team's routed sheet scope (A5 report weeks). */
+  async teamPeriodBasics(teamId: string): Promise<PeriodBasics> {
     const scope = await this.scopeFor('team', teamId, null);
     const policy = await this.resolve(
       scope
@@ -563,7 +782,37 @@ export class TimePolicyService {
       scope?.policy_workspace_id ?? null,
       new Date(),
     );
-    return safeTimezone(policy.timezone);
+    return {
+      timezone: safeTimezone(policy.timezone),
+      week_start: safeWeekStart(policy.week_start),
+    };
+  }
+
+  /** The workspace policy row's timezone and week start, else UTC and Monday; never materialises (A5). */
+  async workspacePeriodBasics(
+    workspaceId: string | null,
+  ): Promise<PeriodBasics> {
+    if (!workspaceId) return { timezone: 'UTC', week_start: 1 };
+    const { data, error } = await this.sb
+      .from('time_policies')
+      .select('timezone, week_start')
+      .eq('scope', 'workspace')
+      .eq('workspace_id', workspaceId)
+      .maybeSingle();
+    if (error) {
+      if ((error as PgErrorLike).code === INVALID_TEXT_REPRESENTATION) {
+        return { timezone: 'UTC', week_start: 1 };
+      }
+      this.fail('workspace_period', error as PgErrorLike);
+    }
+    const row = data as {
+      timezone?: string | null;
+      week_start?: number | null;
+    } | null;
+    return {
+      timezone: safeTimezone(row?.timezone),
+      week_start: safeWeekStart(row?.week_start),
+    };
   }
 
   /** D26: team.workspace_id ?? entitlements.resolveScopeForTeam(team.id). Never null. */
@@ -606,6 +855,7 @@ export class TimePolicyService {
 
   private async workspaceView(
     workspaceId: string,
+    canEdit: boolean,
   ): Promise<WorkspacePolicyView> {
     const [rowRes, policy] = await Promise.all([
       this.sb
@@ -627,8 +877,8 @@ export class TimePolicyService {
       policy,
       // CHANGE-11: missing row, or nobody has saved or confirmed it yet.
       policy_unconfirmed: !row || row.updated_by === null,
-      // Only managers reach this view, and timezone / week start stay writable on every plan.
-      can_edit: true,
+      // Managers: timezone / week start stay writable on every plan. Members read only (A4).
+      can_edit: canEdit,
     };
   }
 
@@ -709,6 +959,16 @@ export class TimePolicyService {
     workspaceId: string,
     userId: string,
   ): Promise<void> {
+    if (!(await this.canManageWorkspace(workspaceId, userId))) {
+      throw timeNotFound('scope');
+    }
+  }
+
+  /** rpc can_manage_workspace; a malformed id is a miss (404), never a 500. */
+  private async canManageWorkspace(
+    workspaceId: string,
+    userId: string,
+  ): Promise<boolean> {
     const { data, error } = (await this.sb.rpc('can_manage_workspace', {
       p_workspace_id: workspaceId,
       p_user_id: userId,
@@ -719,7 +979,27 @@ export class TimePolicyService {
       }
       this.fail('can_manage_workspace', error);
     }
-    if (data !== true) throw timeNotFound('scope');
+    return data === true;
+  }
+
+  /** A `workspace_members` row (the seat; A4's reader rule). */
+  private async isWorkspaceMember(
+    workspaceId: string,
+    userId: string,
+  ): Promise<boolean> {
+    const { data, error } = await this.sb
+      .from('workspace_members')
+      .select('user_id')
+      .eq('workspace_id', workspaceId)
+      .eq('user_id', userId)
+      .maybeSingle();
+    if (error) {
+      if ((error as PgErrorLike).code === INVALID_TEXT_REPRESENTATION) {
+        throw timeNotFound('scope');
+      }
+      this.fail('workspace_member', error as PgErrorLike);
+    }
+    return data !== null && data !== undefined;
   }
 
   private async readTeamRowId(teamId: string): Promise<{ id: string } | null> {

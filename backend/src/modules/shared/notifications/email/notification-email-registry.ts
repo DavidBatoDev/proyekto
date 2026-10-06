@@ -158,6 +158,18 @@ const TIME_TRACKER_FOOTER =
   'You received this email because you track time on Proyekto.';
 
 /**
+ * Where a time email's button goes when the notification row carries no link
+ * (D79): the timesheet named in the content, else the Time page. The producer
+ * (TimeNotificationsService) always sets `link_url` from `timePath`, which
+ * builds the same `/time/timesheets/<id>` and `/time` paths; `shared/` never
+ * imports `execution/`, so the two literals are mirrored here.
+ */
+function timeFallbackLink(content: Record<string, unknown>): string {
+  const sheetId = str(content, 'timesheet_id');
+  return sheetId ? `/time/timesheets/${encodeURIComponent(sheetId)}` : '/time';
+}
+
+/**
  * The shared shape of the time emails: one sentence saying what happened and
  * one button back to the timesheet.
  *
@@ -179,7 +191,10 @@ function buildTimeEmail(
 ): RenderedEmail {
   const message = str(ctx.content, 'message');
   const lead = message ? ensureSentence(message) : copy.fallbackLead;
-  const href = absolute(ctx.appUrl, ctx.linkUrl);
+  const href = absolute(
+    ctx.appUrl,
+    ctx.linkUrl ?? timeFallbackLink(ctx.content),
+  );
   const greeting = firstNameGreeting(ctx.recipientName);
 
   return {

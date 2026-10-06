@@ -41,7 +41,13 @@ import {
   TIME_INTERNAL_CODE,
   timeNotFound,
 } from './time-errors';
-import { localDate, localRangeToUtc, safeTimezone } from './time-periods';
+import {
+  addDays,
+  localDate,
+  localRangeToUtc,
+  safeTimezone,
+  weekWindow,
+} from './time-periods';
 import { TimePolicyService } from './time-policy.service';
 import type {
   ClientHoursLevel,
@@ -205,6 +211,10 @@ type GroupBy = NonNullable<ReportQueryDto['group_by']>;
 interface ScopeInfo {
   scope: ReportScope;
   planRef: EntitlementRef;
+  /** The scope policy's ISO week start when the scope read already knows it (engagement); else read on demand. */
+  weekStart: number | null;
+  /** Project scope: the project's workspace, whose policy dates the report (timezone, week start). */
+  policyWorkspaceId: string | null;
   engagementKind: EngagementKind | null;
   /** The hirer of a client engagement: approved hours only, no identity (bar D57), no note, no cost. */
   clientView: boolean;
@@ -401,6 +411,45 @@ function sanitiseFilePart(value: string): string {
   return value.replace(/[^0-9A-Za-z-]/g, '');
 }
 
+/** 1..7, else Monday (the SQL default week start). */
+function weekStartOrMonday(value: unknown): number {
+  const n = typeof value === 'number' ? value : Number(value);
+  return Number.isInteger(n) && n >= 1 && n <= 7 ? n : 1;
+}
+
+const MONTH_SHORT = [
+  'Jan',
+  'Feb',
+  'Mar',
+  'Apr',
+  'May',
+  'Jun',
+  'Jul',
+  'Aug',
+  'Sep',
+  'Oct',
+  'Nov',
+  'Dec',
+] as const;
+
+/**
+ * Pure (A5). The label of the 7-day week starting on local date `start` (ux.md "Formats"): "Sep 22–28" within a
+ * month, "Sep 29–Oct 5" across months, and "Dec 29, 2025–Jan 4, 2026" across years (the key carries the year
+ * otherwise; the web adds it when it is not the current one).
+ */
+export function weekLabel(start: string): string {
+  const end = addDays(start, 6);
+  const [sy, sm, sd] = start.split('-').map(Number);
+  const [ey, em, ed] = end.split('-').map(Number);
+  const startMonth = MONTH_SHORT[sm - 1];
+  const endMonth = MONTH_SHORT[em - 1];
+  if (sy !== ey) {
+    return `${startMonth} ${sd}, ${sy}–${endMonth} ${ed}, ${ey}`;
+  }
+  if (sm !== em) return `${startMonth} ${sd}–${endMonth} ${ed}`;
+  return `${startMonth} ${sd}–${ed}`;
+}
+
 @Injectable()
 export class TimeReportsService {
   private readonly logger = new Logger(TimeReportsService.name);
@@ -457,6 +506,8 @@ export class TimeReportsService {
     const range = this.range(q, info.scope.timezone);
     const groupBy = this.groupByFor(info, q.group_by);
     const filters = await this.filtersFor(viewerId, info, q, range);
+    // A5: weeks of the scope's policy (its timezone and week start), read only when grouping by week.
+    const weekStart = groupBy === 'week' ? await this.weekStartFor(info) : 1;
 
     const groups = new Map<string, GroupAcc>();
     const sheetsByStatus = new Map<TimesheetStatus, Set<string>>(
@@ -480,7 +531,13 @@ export class TimeReportsService {
           .range(offset, offset + PAGE_ROWS - 1);
         if (error) this.fail('summary', error);
         const rows = (data ?? []) as SummaryRow[];
-        const labels = await this.groupLabels(viewerId, info, groupBy, rows);
+        const labels = await this.groupLabels(
+          viewerId,
+          info,
+          groupBy,
+          rows,
+          weekStart,
+        );
         for (const row of rows) {
           // E64: a legacy rejected entry never reaches report totals.
           if (row.legacy_status === 'rejected') continue;
@@ -818,6 +875,8 @@ export class TimeReportsService {
     return {
       scope,
       planRef,
+      weekStart: null,
+      policyWorkspaceId: null,
       engagementKind: null,
       clientView: false,
       clientLevel: null,
@@ -883,7 +942,10 @@ export class TimeReportsService {
     const timezone = safeTimezone(
       await this.policy.workspaceTimezone(project.workspace_id),
     );
-    return this.base({ kind: 'project', id, planRef, timezone }, planRef);
+    return {
+      ...this.base({ kind: 'project', id, planRef, timezone }, planRef),
+      policyWorkspaceId: project.workspace_id,
+    };
   }
 
   /** `can_manage_workspace` + `time_reports_export`; sheets whose policy workspace is W. */
@@ -956,6 +1018,8 @@ export class TimeReportsService {
         },
         planRef,
       ),
+      // The engagement week: contract, else the policy workspace's (the same resolve as the timezone).
+      weekStart: weekStartOrMonday(resolved.week_start),
       engagementKind: kind,
       clientView,
       clientLevel,
@@ -1306,13 +1370,34 @@ export class TimeReportsService {
 
   // ── Summary grouping ─────────────────────────────────────────────────────────────────────────────────────
 
-  /** The client groups by what its level shows: day at `summary`; day, project or task at `detailed`. */
+  /** The client groups by what its level shows: day or week at `summary` ("hours by week", A5); day, week,
+   *  project or task at `detailed`. */
   private groupByFor(info: ScopeInfo, requested?: GroupBy): GroupBy {
     const groupBy = requested ?? 'day';
     if (!info.clientView) return groupBy;
     const allowed: GroupBy[] =
-      info.clientLevel === 'detailed' ? ['day', 'project', 'task'] : ['day'];
+      info.clientLevel === 'detailed'
+        ? ['day', 'week', 'project', 'task']
+        : ['day', 'week'];
     return allowed.includes(groupBy) ? groupBy : 'day';
+  }
+
+  /** A5: the ISO week start of the scope's policy. Team: the team policy; project: its workspace's policy row;
+   *  workspace: W's row; engagement: read with the scope. Monday when nothing sets it. */
+  private async weekStartFor(info: ScopeInfo): Promise<number> {
+    if (info.weekStart !== null) return info.weekStart;
+    const s = info.scope;
+    switch (s.kind) {
+      case 'team':
+        return (await this.policy.teamPeriodBasics(s.id)).week_start;
+      case 'project':
+        return (await this.policy.workspacePeriodBasics(info.policyWorkspaceId))
+          .week_start;
+      case 'workspace':
+        return (await this.policy.workspacePeriodBasics(s.id)).week_start;
+      default:
+        return 1;
+    }
   }
 
   /** Per page: the labels and cost the viewer may read, fetched by class for the rows that allow it. */
@@ -1321,6 +1406,7 @@ export class TimeReportsService {
     info: ScopeInfo,
     groupBy: GroupBy,
     rows: SummaryRow[],
+    weekStart: number,
   ): Promise<{
     groupOf: (row: SummaryRow) => { key: string; label: string };
     cost: Map<string, CostLabelRow>;
@@ -1425,6 +1511,10 @@ export class TimeReportsService {
               CONTEXT_KIND_LABEL[row.context_kind] ??
               'Other',
           };
+        case 'week': {
+          const week = weekWindow(localDate(row.started_at, tz), weekStart);
+          return { key: week.start, label: weekLabel(week.start) };
+        }
         default: {
           const day = localDate(row.started_at, tz);
           return { key: day, label: day };
@@ -1435,7 +1525,7 @@ export class TimeReportsService {
   }
 
   private sortGroups(groupBy: GroupBy, groups: GroupAcc[]): GroupAcc[] {
-    if (groupBy === 'day') {
+    if (groupBy === 'day' || groupBy === 'week') {
       return groups.sort((a, b) => a.key.localeCompare(b.key));
     }
     return groups.sort(

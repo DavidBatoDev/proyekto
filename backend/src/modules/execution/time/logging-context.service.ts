@@ -349,7 +349,7 @@ export class LoggingContextService {
         at,
       );
     }
-    return this.policy.resolve(
+    const policy = await this.policy.resolve(
       option.sheet_scope,
       target.policyWorkspaceId,
       at,
@@ -359,6 +359,17 @@ export class LoggingContextService {
         ...(target.teamId ? { teamId: target.teamId } : {}),
       },
     );
+    if (option.kind !== 'assignment') return policy;
+    // A8: the governing engagement, whose terms these are ("View terms →", web only). The engagement sheet
+    // scope's ref is the same engagement.
+    return {
+      ...policy,
+      engagement_id:
+        option.engagement_id ??
+        (option.sheet_scope.kind === 'engagement'
+          ? option.sheet_scope.ref
+          : null),
+    };
   }
 
   // ── The resolver ────────────────────────────────────────────────────────────
@@ -546,6 +557,8 @@ export class LoggingContextService {
         workspace_tag: null,
         approver_hint:
           a.governing_kind === 'talent_services' ? 'hirer' : 'auto',
+        // A8: the engagement whose terms govern (talent, else client), for "View terms →" (web only).
+        engagement_id: a.governing_engagement_id,
       },
       policyWorkspaceId: scope.policy_workspace_id,
       teamId: null,

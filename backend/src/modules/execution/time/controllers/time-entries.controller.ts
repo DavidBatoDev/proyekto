@@ -5,6 +5,9 @@ import {
   Get,
   HttpCode,
   HttpStatus,
+  Inject,
+  InternalServerErrorException,
+  Optional,
   Param,
   ParseUUIDPipe,
   Patch,
@@ -40,14 +43,18 @@ import {
 } from '../guards/time-guest.guard';
 import { LoggingContextService } from '../logging-context.service';
 import { TimeEntriesService } from '../time-entries.service';
+import { TimeLoggersService } from '../time-loggers.service';
+import { TimeMeService } from '../time-me.service';
 import { TimesheetsService } from '../timesheets.service';
 import { EMPTY_TIME_OVERVIEW } from '../time.types';
 import type {
   CommentRow,
   EntryWithWarnings,
   LoggingForResult,
+  MyProjectsResult,
   MySummary,
   Paged,
+  ProjectLoggersResult,
   ResolvedTimePolicy,
   SegmentRow,
   TimeEntryView,
@@ -59,6 +66,17 @@ import type {
 
 /** A malformed id is a miss (404), never a 400 that confirms the route shape. */
 const ID_PIPE = new ParseUUIDPipe({ errorHttpStatusCode: 404 });
+
+/** The two A-3 services are optional constructor params (positional harnesses); DI always provides them. */
+function provided<T>(service: T | null): T {
+  if (!service) {
+    throw new InternalServerErrorException({
+      code: 'TIME_INTERNAL',
+      message: "Proyekto couldn't load this time. Try again.",
+    });
+  }
+  return service;
+}
 
 /** `?at=` for the picker: a valid instant, else now. */
 function atOrNow(value: string | undefined): Date {
@@ -80,6 +98,13 @@ export class TimeEntriesController {
     private readonly entries: TimeEntriesService,
     private readonly loggingContext: LoggingContextService,
     private readonly timesheets: TimesheetsService,
+    // Appended and optional (A-3), so positional harnesses keep compiling.
+    @Optional()
+    @Inject(TimeMeService)
+    private readonly me: TimeMeService | null = null,
+    @Optional()
+    @Inject(TimeLoggersService)
+    private readonly projectLoggers: TimeLoggersService | null = null,
   ) {}
 
   // ── Project pickers ────────────────────────────────────────────────────────────────────────────────────
@@ -132,6 +157,16 @@ export class TimeEntriesController {
     );
   }
 
+  /** A11: everyone with `time.log` here and the option their time goes to ("Who can log time here"). Project
+   *  admins and owners only, else 404; placed talent the viewer may not name is masked or left out (L22). */
+  @Get('projects/:projectId/loggers')
+  loggers(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('projectId', ID_PIPE) projectId: string,
+  ): Promise<ProjectLoggersResult> {
+    return provided(this.projectLoggers).forProject(user.id, projectId);
+  }
+
   /** Tasks and the presets the policy shows (`access.roadmap`, L1). */
   @Get('projects/:projectId/work-items')
   workItems(
@@ -151,6 +186,15 @@ export class TimeEntriesController {
   ): Promise<TimeEntryView | null> {
     if (user.is_guest) return Promise.resolve(null);
     return this.entries.getRunning(user.id);
+  }
+
+  /** A9: the projects the caller can log on (`time.log` and ≥ 1 option), most recently logged first, ≤ 200;
+   *  cached 30 s per user under the For-resolver epoch. */
+  @Get('me/projects')
+  myProjects(
+    @CurrentUser() user: AuthenticatedUser,
+  ): Promise<MyProjectsResult> {
+    return provided(this.me).projects(user.id);
   }
 
   @Get('me/entries')
@@ -281,13 +325,14 @@ export class TimeEntriesController {
     return this.entries.get(user.id, id);
   }
 
-  /** `expected_updated_at` is required here (D42); a stale copy is 409 STALE_REVISION. */
+  /** `expected_updated_at` is required here (D42); a stale copy is 409 STALE_REVISION. Answers the warnings
+   *  (A6), always present, possibly []. */
   @Patch('entries/:id')
   update(
     @CurrentUser() user: AuthenticatedUser,
     @Param('id', ID_PIPE) id: string,
     @Body() dto: UpdateEntryDto,
-  ): Promise<TimeEntryView> {
+  ): Promise<EntryWithWarnings> {
     return this.entries.update(user.id, id, dto, { purpose: 'edit' });
   }
 

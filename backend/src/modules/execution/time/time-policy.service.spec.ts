@@ -19,6 +19,7 @@ import {
   type TeamMemberRateRow,
   TimePolicyService,
   pickMemberRateInForce,
+  policyEventChanges,
 } from './time-policy.service';
 
 // ── In-memory PostgREST stand-in ───────────────────────────────────────────────────────────────────────────
@@ -32,6 +33,11 @@ interface Call {
   op: 'select' | 'insert' | 'update' | 'delete';
   payload?: Row;
   filters: Array<[string, unknown]>;
+  /** The `.or()` expression, when one was sent. */
+  or?: string;
+  range?: [number, number];
+  /** `select(..., { head: true })`: the count only. */
+  head?: boolean;
 }
 
 interface World {
@@ -39,7 +45,37 @@ interface World {
   teams: Row[];
   team_members: Row[];
   team_member_rates: Row[];
+  workspace_members: Row[];
+  time_policy_events: Row[];
+  profiles: Row[];
   managers: Record<string, string[]>; // workspace id → can_manage_workspace users
+}
+
+/** `a.eq.v,b.in.(x,y)`: top-level commas only (the or-filter shapes the policy service sends). */
+function orFilter(expr: string): (row: Row) => boolean {
+  const parts: string[] = [];
+  let depth = 0;
+  let cur = '';
+  for (const ch of expr) {
+    if (ch === '(') depth++;
+    if (ch === ')') depth--;
+    if (depth === 0 && ch === ',') {
+      parts.push(cur);
+      cur = '';
+    } else cur += ch;
+  }
+  parts.push(cur);
+  const preds = parts.map((part) => {
+    const [col, op, ...rest] = part.split('.');
+    const raw = rest.join('.');
+    if (op === 'eq') return (row: Row) => row[col] === raw;
+    if (op === 'in') {
+      const values = raw.replace(/^\(|\)$/g, '').split(',');
+      return (row: Row) => values.includes(String(row[col]));
+    }
+    throw new Error(`fake: unsupported or-filter ${part}`);
+  });
+  return (row) => preds.some((p) => p(row));
 }
 
 function fakeDb(world: World, rpcOverrides: Record<string, RpcHandler> = {}) {
@@ -152,8 +188,22 @@ function fakeDb(world: World, rpcOverrides: Record<string, RpcHandler> = {}) {
     let op: Call['op'] = 'select';
     let payload: Row | undefined;
     const filters: Array<[string, unknown]> = [];
+    const preds: Array<(row: Row) => boolean> = [];
+    const orders: Array<[string, boolean]> = [];
+    let orExpr: string | undefined;
+    let range: [number, number] | undefined;
+    let counted = false;
+    let head = false;
     const exec = () => {
-      calls.push({ table, op, payload, filters: [...filters] });
+      calls.push({
+        table,
+        op,
+        payload,
+        filters: [...filters],
+        or: orExpr,
+        range,
+        ...(head ? { head } : {}),
+      });
       const failure = failures[`${table}:${op}`];
       if (failure) return { data: null, error: failure };
       const rows = world[table] as Row[];
@@ -175,13 +225,54 @@ function fakeDb(world: World, rpcOverrides: Record<string, RpcHandler> = {}) {
         );
         return { data: null, error: null };
       }
+      let out = rows.filter((row) => match(row) && preds.every((p) => p(row)));
+      for (const [col, asc] of [...orders].reverse()) {
+        out = [...out].sort((a, b) => {
+          const av = a[col] as string | number;
+          const bv = b[col] as string | number;
+          const c = av < bv ? -1 : av > bv ? 1 : 0;
+          return asc ? c : -c;
+        });
+      }
+      const count = out.length;
+      // PostgREST: a counted read whose offset is past the last row is a 416 PGRST103.
+      if (range && counted && range[0] > count) {
+        return {
+          data: null,
+          error: {
+            code: 'PGRST103',
+            message: 'Requested range not satisfiable',
+          },
+          count: null,
+        };
+      }
+      if (head) return { data: null, error: null, count };
+      if (range) out = out.slice(range[0], range[1] + 1);
       return {
-        data: rows.filter(match).map((row) => ({ ...row })),
+        data: out.map((row) => ({ ...row })),
         error: null,
+        count,
       };
     };
     const chain = {
-      select: () => chain,
+      select: (_cols?: string, o?: { count?: string; head?: boolean }) => {
+        counted = o?.count !== undefined;
+        head = o?.head === true;
+        return chain;
+      },
+      in: (col: string, values: unknown[]) => {
+        preds.push((row) => values.includes(row[col]));
+        return chain;
+      },
+      or: (expr: string) => {
+        orExpr = expr;
+        preds.push(orFilter(expr));
+        return chain;
+      },
+      range: (a: number, b: number) => {
+        range = [a, b];
+        return chain;
+      },
       insert: (p: Row) => {
         op = 'insert';
         payload = p;
@@ -204,7 +295,10 @@ function fakeDb(world: World, rpcOverrides: Record<string, RpcHandler> = {}) {
         filters.push([col, value]);
         return chain;
       },
-      order: () => chain,
+      order: (col: string, o?: { ascending?: boolean }) => {
+        orders.push([col, o?.ascending !== false]);
+        return chain;
+      },
       limit: () => chain,
       maybeSingle: () => {
         const res = exec();
@@ -308,6 +402,9 @@ function world(over: Partial<World> = {}): World {
       { team_id: TEAM, user_id: MEMBER, role: 'member' },
     ],
     team_member_rates: [],
+    workspace_members: [],
+    time_policy_events: [],
+    profiles: [],
     managers: { [WS]: [WS_ADMIN] },
     ...over,
   };
@@ -837,6 +934,398 @@ describe('workspace policy', () => {
       t.service.putWorkspacePolicy(WS_ADMIN, WS, { week_start: 3 }),
     ).rejects.toBeInstanceOf(UnprocessableEntityException);
   });
+
+  // ── A4: members read the workspace policy ──
+  const seat = (userId: string, workspaceId = WS): Row => ({
+    workspace_id: workspaceId,
+    user_id: userId,
+  });
+
+  it('A4: a member reads the defaults read-only, unconfirmed, and never materialises the row (?tz= ignored)', async () => {
+    const t = await build(world({ workspace_members: [seat(MEMBER)] }));
+    const view = await t.service.getWorkspacePolicy(MEMBER, WS, 'Asia/Manila');
+    expect(view).toEqual(
+      expect.objectContaining({
+        workspace_id: WS,
+        policy_unconfirmed: true,
+        can_edit: false,
+      }),
+    );
+    expect(view.policy.period_kind).toBe('biweekly');
+    expect(t.db.rpcCalls('time_ensure_workspace_policy')).toEqual([]);
+    expect(t.db.writes('time_policies')).toEqual([]);
+    expect(t.cache.bumpEpoch).not.toHaveBeenCalled();
+  });
+
+  it('A4: a member sees a saved row as confirmed', async () => {
+    const t = await build(
+      world({
+        workspace_members: [seat(MEMBER)],
+        time_policies: [
+          {
+            id: 'pol-ws',
+            scope: 'workspace',
+            workspace_id: WS,
+            updated_by: WS_ADMIN,
+          },
+        ],
+      }),
+    );
+    const view = await t.service.getWorkspacePolicy(MEMBER, WS);
+    expect(view.policy_unconfirmed).toBe(false);
+    expect(view.can_edit).toBe(false);
+  });
+
+  it('A4: a seat in another workspace is a 404 that reads no policy', async () => {
+    const t = await build(world({ workspace_members: [seat(MEMBER, 'ws-2')] }));
+    await expect(
+      codeOf(t.service.getWorkspacePolicy(MEMBER, WS)),
+    ).resolves.toBe('TIME_NOT_FOUND');
+    expect(t.db.rpcCalls('time_resolve_policy')).toEqual([]);
+  });
+
+  it('A4: a manager gets the editable view without a seat lookup', async () => {
+    const t = await build(world());
+    const view = await t.service.getWorkspacePolicy(WS_ADMIN, WS);
+    expect(view.can_edit).toBe(true);
+    expect(t.db.calls.some((c) => c.table === 'workspace_members')).toBe(false);
+  });
+
+  it('A4: PUT stays manager-only (a member is a 404 and nothing is written)', async () => {
+    const t = await build(world({ workspace_members: [seat(MEMBER)] }));
+    await expect(
+      codeOf(t.service.putWorkspacePolicy(MEMBER, WS, { confirm: true })),
+    ).resolves.toBe('TIME_NOT_FOUND');
+    expect(t.db.rpcCalls('time_ensure_workspace_policy')).toEqual([]);
+    expect(t.db.writes('time_policies')).toEqual([]);
+  });
+
+  it('A4: a seat read failure is a fixed-copy 500 without the Postgres text', async () => {
+    const t = await build(world({ workspace_members: [seat(MEMBER)] }));
+    t.db.failures['workspace_members:select'] = {
+      code: '42P01',
+      message: 'relation "workspace_members" does not exist',
+    };
+    const err = await t.service
+      .getWorkspacePolicy(MEMBER, WS)
+      .catch((e: unknown) => e);
+    expect(err).toBeInstanceOf(InternalServerErrorException);
+    expect(
+      JSON.stringify((err as InternalServerErrorException).getResponse()),
+    ).not.toContain('relation');
+  });
+});
+
+// ── A7: policy history ─────────────────────────────────────────────────────────────────────────────────────
+
+describe('workspace policy history (A7)', () => {
+  const OTHER_TEAM = 'team-2';
+  const at = (day: number) => `2026-10-0${day}T00:00:00.000Z`;
+  const historyWorld = (): World =>
+    world({
+      teams: [
+        {
+          id: TEAM,
+          name: 'Design',
+          owner_id: OWNER,
+          workspace_id: WS,
+          member_rates_enabled: false,
+        },
+        {
+          id: OTHER_TEAM,
+          name: 'Elsewhere',
+          owner_id: OWNER,
+          workspace_id: 'ws-2',
+          member_rates_enabled: false,
+        },
+      ],
+      workspace_members: [{ workspace_id: WS, user_id: MEMBER }],
+      profiles: [
+        { id: WS_ADMIN, display_name: 'Ana Reyes' },
+        { id: OWNER, display_name: 'Olive Owner' },
+        { id: ADMIN, display_name: null },
+      ],
+      time_policy_events: [
+        {
+          id: 1,
+          policy_id: 'pol-ws',
+          actor_user_id: WS_ADMIN,
+          // INSERT: the new row (tg_time_policies_events).
+          changes: {
+            id: 'pol-ws',
+            scope: 'workspace',
+            workspace_id: WS,
+            team_id: null,
+            period_kind: 'weekly',
+            week_start: 1,
+            timezone: 'Asia/Manila',
+            retroactive_days: null,
+            created_by: WS_ADMIN,
+            updated_by: null,
+            created_at: at(1),
+          },
+          scope: 'workspace',
+          team_id: null,
+          workspace_id: WS,
+          created_at: at(1),
+        },
+        {
+          id: 2,
+          policy_id: 'pol-ws',
+          actor_user_id: WS_ADMIN,
+          changes: {
+            period_kind: ['weekly', 'semi_monthly'],
+            updated_by: [null, WS_ADMIN],
+          },
+          scope: 'workspace',
+          team_id: null,
+          workspace_id: WS,
+          created_at: at(2),
+        },
+        {
+          id: 3,
+          policy_id: 'pol-ws',
+          actor_user_id: OWNER,
+          // "Looks right": only the stamp moved.
+          changes: { updated_by: [WS_ADMIN, OWNER] },
+          scope: 'workspace',
+          team_id: null,
+          workspace_id: WS,
+          created_at: at(3),
+        },
+        {
+          id: 4,
+          policy_id: 'pol-team',
+          actor_user_id: ADMIN,
+          changes: {
+            id: 'pol-team',
+            scope: 'team',
+            team_id: TEAM,
+            workspace_id: null,
+            rounding_minutes: 15,
+            weekly_limit_minutes: null,
+          },
+          scope: 'team',
+          team_id: TEAM,
+          workspace_id: null,
+          created_at: at(4),
+        },
+        {
+          id: 5,
+          policy_id: null,
+          actor_user_id: OWNER,
+          // The M3 delete event survives its row (D23).
+          changes: {
+            deleted: true,
+            row: {
+              id: 'pol-team',
+              scope: 'team',
+              team_id: TEAM,
+              rounding_minutes: 15,
+              weekly_limit_minutes: null,
+            },
+          },
+          scope: 'team',
+          team_id: TEAM,
+          workspace_id: null,
+          created_at: at(5),
+        },
+        {
+          id: 6,
+          policy_id: 'pol-ws-2',
+          actor_user_id: OWNER,
+          changes: { reminder_days: [1, 2] },
+          scope: 'workspace',
+          team_id: null,
+          workspace_id: 'ws-2',
+          created_at: at(6),
+        },
+        {
+          id: 7,
+          policy_id: 'pol-team-2',
+          actor_user_id: OWNER,
+          changes: { reminder_days: [1, 3] },
+          scope: 'team',
+          team_id: OTHER_TEAM,
+          workspace_id: null,
+          created_at: at(6),
+        },
+        {
+          id: 8,
+          policy_id: 'pol-ws',
+          // An actor whose profile is gone.
+          actor_user_id: 'u-gone',
+          changes: { rounding_minutes: [0, 5] },
+          scope: 'workspace',
+          team_id: null,
+          workspace_id: WS,
+          created_at: '2026-09-30T00:00:00.000Z',
+        },
+      ],
+    });
+
+  it('managers get the workspace rows and its teams’ override rows, newest first, with names and kinds', async () => {
+    const t = await build(historyWorld());
+    const page = await t.service.workspacePolicyHistory(WS_ADMIN, WS);
+    expect(page.total).toBe(6);
+    expect(page.page).toBe(1);
+    expect(page.limit).toBe(20);
+    expect(page.items.map((r) => r.id)).toEqual([5, 4, 3, 2, 1, 8]);
+    const byId = new Map(page.items.map((r) => [r.id, r]));
+    expect(byId.get(5)).toEqual({
+      id: 5,
+      created_at: at(5),
+      actor: { id: OWNER, display_name: 'Olive Owner' },
+      changes: { rounding_minutes: [15, null] },
+      scope: 'team',
+      team_id: TEAM,
+      team_name: 'Design',
+      kind: 'deleted',
+    });
+    expect(byId.get(4)).toMatchObject({
+      actor: { id: ADMIN, display_name: null },
+      changes: { rounding_minutes: [null, 15] },
+      kind: 'created',
+      team_name: 'Design',
+    });
+    expect(byId.get(3)).toMatchObject({ changes: {}, kind: 'confirmed' });
+    expect(byId.get(2)).toMatchObject({
+      actor: { id: WS_ADMIN, display_name: 'Ana Reyes' },
+      changes: { period_kind: ['weekly', 'semi_monthly'] },
+      scope: 'workspace',
+      team_id: null,
+      team_name: null,
+      kind: 'changed',
+    });
+    expect(byId.get(1)).toMatchObject({
+      changes: {
+        period_kind: [null, 'weekly'],
+        week_start: [null, 1],
+        timezone: [null, 'Asia/Manila'],
+      },
+      kind: 'created',
+    });
+    expect(Object.keys(byId.get(1)!.changes)).not.toContain('retroactive_days');
+    expect(byId.get(8)).toMatchObject({ actor: null, kind: 'changed' });
+    // One events read, scoped in SQL to the workspace row and the workspace's teams.
+    const events = t.db.calls.filter((c) => c.table === 'time_policy_events');
+    expect(events).toHaveLength(1);
+    expect(events[0].or).toBe(`workspace_id.eq.${WS},team_id.in.(${TEAM})`);
+    expect(t.entitlements.assertFeature).not.toHaveBeenCalled();
+    expect(t.entitlements.hasFeature).not.toHaveBeenCalled();
+  });
+
+  it('pages with page and limit (offset in SQL, total kept)', async () => {
+    const t = await build(historyWorld());
+    const page = await t.service.workspacePolicyHistory(WS_ADMIN, WS, {
+      page: 2,
+      limit: 2,
+    });
+    expect(page).toEqual(
+      expect.objectContaining({ total: 6, page: 2, limit: 2 }),
+    );
+    expect(page.items.map((r) => r.id)).toEqual([3, 2]);
+    const events = t.db.calls.filter((c) => c.table === 'time_policy_events');
+    expect(events[0].range).toEqual([2, 3]);
+  });
+
+  it('a page past the end (PostgREST 416 PGRST103) is an empty page with the real total, not a 500', async () => {
+    const t = await build(historyWorld());
+    const page = await t.service.workspacePolicyHistory(WS_ADMIN, WS, {
+      page: 3,
+      limit: 5,
+    });
+    expect(page).toEqual({ items: [], total: 6, page: 3, limit: 5 });
+    const events = t.db.calls.filter((c) => c.table === 'time_policy_events');
+    expect(events).toHaveLength(2);
+    expect(events[0].range).toEqual([10, 14]);
+    // The count-only read keeps the same owners filter (no other workspace's rows).
+    expect(events[1]).toMatchObject({
+      head: true,
+      or: `workspace_id.eq.${WS},team_id.in.(${TEAM})`,
+    });
+    expect(events[1].range).toBeUndefined();
+    // The page right after the last row is still a plain empty read.
+    const edge = await build(historyWorld());
+    const after = await edge.service.workspacePolicyHistory(WS_ADMIN, WS, {
+      page: 3,
+      limit: 3,
+    });
+    expect(after).toEqual({ items: [], total: 6, page: 3, limit: 3 });
+    expect(
+      edge.db.calls.filter((c) => c.table === 'time_policy_events'),
+    ).toHaveLength(1);
+  });
+
+  it('clamps the limit to 100 and the page to 1', async () => {
+    const t = await build(historyWorld());
+    const page = await t.service.workspacePolicyHistory(WS_ADMIN, WS, {
+      page: 0,
+      limit: 500,
+    });
+    expect(page.page).toBe(1);
+    expect(page.limit).toBe(100);
+  });
+
+  it('a workspace without teams reads its own rows only', async () => {
+    const t = await build({ ...historyWorld(), teams: [] });
+    const page = await t.service.workspacePolicyHistory(WS_ADMIN, WS);
+    expect(page.items.map((r) => r.id)).toEqual([3, 2, 1, 8]);
+    const events = t.db.calls.filter((c) => c.table === 'time_policy_events');
+    expect(events[0].or).toBe(`workspace_id.eq.${WS}`);
+  });
+
+  it('a member (or anyone else) is a 404 that reads no history', async () => {
+    const t = await build(historyWorld());
+    await expect(
+      codeOf(t.service.workspacePolicyHistory(MEMBER, WS)),
+    ).resolves.toBe('TIME_NOT_FOUND');
+    await expect(
+      codeOf(t.service.workspacePolicyHistory(OWNER, WS)),
+    ).resolves.toBe('TIME_NOT_FOUND');
+    expect(t.db.calls.some((c) => c.table === 'time_policy_events')).toBe(
+      false,
+    );
+  });
+
+  it('an events read failure is a fixed-copy 500 without the Postgres text', async () => {
+    const t = await build(historyWorld());
+    t.db.failures['time_policy_events:select'] = {
+      code: '42703',
+      message: 'column "secret" does not exist',
+    };
+    const err = await t.service
+      .workspacePolicyHistory(WS_ADMIN, WS)
+      .catch((e: unknown) => e);
+    expect(err).toBeInstanceOf(InternalServerErrorException);
+    expect(
+      JSON.stringify((err as InternalServerErrorException).getResponse()),
+    ).not.toContain('secret');
+  });
+});
+
+describe('policyEventChanges (A7)', () => {
+  it('reads anything that is not an object as an empty change', () => {
+    expect(policyEventChanges(null)).toEqual({ kind: 'changed', changes: {} });
+    expect(policyEventChanges(['x'])).toEqual({
+      kind: 'changed',
+      changes: {},
+    });
+  });
+
+  it('a deleted event without its row is an empty deletion', () => {
+    expect(policyEventChanges({ deleted: true })).toEqual({
+      kind: 'deleted',
+      changes: {},
+    });
+  });
+
+  it('an update value that is not a pair reads as [null, value]', () => {
+    expect(policyEventChanges({ timezone: 'UTC' })).toEqual({
+      kind: 'changed',
+      changes: { timezone: [null, 'UTC'] },
+    });
+  });
 });
 
 // ── team policy ────────────────────────────────────────────────────────────────────────────────────────────
@@ -1221,6 +1710,62 @@ describe('timezones and planRefForTeam', () => {
     expect(t.db.rpcCalls('time_resolve_policy')[0]).toEqual(
       expect.objectContaining({ p_scope_kind: 'workspace', p_scope_ref: WS }),
     );
+  });
+
+  it('teamPeriodBasics: the team policy timezone and week start (A5)', async () => {
+    const t = await build(world(), {
+      time_resolve_policy: () => ({
+        data: sqlPolicy({ timezone: 'Asia/Tokyo', week_start: 7 }),
+        error: null,
+      }),
+    });
+    await expect(t.service.teamPeriodBasics(TEAM)).resolves.toEqual({
+      timezone: 'Asia/Tokyo',
+      week_start: 7,
+    });
+  });
+
+  it('teamPeriodBasics: a bad zone is UTC and a bad week start is Monday', async () => {
+    const t = await build(world(), {
+      time_resolve_policy: () => ({
+        data: sqlPolicy({ timezone: 'Mars/Olympus', week_start: 0 }),
+        error: null,
+      }),
+    });
+    await expect(t.service.teamPeriodBasics(TEAM)).resolves.toEqual({
+      timezone: 'UTC',
+      week_start: 1,
+    });
+  });
+
+  it('workspacePeriodBasics: the row, else UTC and Monday; never materialises (A5)', async () => {
+    const w = world({
+      time_policies: [
+        {
+          id: 'pol-ws',
+          scope: 'workspace',
+          workspace_id: WS,
+          timezone: 'Asia/Manila',
+          week_start: 7,
+        },
+      ],
+    });
+    const t = await build(w);
+    await expect(t.service.workspacePeriodBasics(WS)).resolves.toEqual({
+      timezone: 'Asia/Manila',
+      week_start: 7,
+    });
+    await expect(t.service.workspacePeriodBasics('ws-none')).resolves.toEqual({
+      timezone: 'UTC',
+      week_start: 1,
+    });
+    const before = t.db.calls.length;
+    await expect(t.service.workspacePeriodBasics(null)).resolves.toEqual({
+      timezone: 'UTC',
+      week_start: 1,
+    });
+    expect(t.db.calls.length).toBe(before);
+    expect(t.db.rpcCalls('time_ensure_workspace_policy')).toEqual([]);
   });
 
   it("planRefForTeam: the team's workspace, else the resolved team scope", async () => {

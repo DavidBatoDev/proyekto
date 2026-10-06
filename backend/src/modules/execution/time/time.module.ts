@@ -18,6 +18,8 @@ import { TimeAuthorityService } from './time-authority.service';
 import { TimeCacheService } from './time-cache';
 import { TimeCronService } from './time-cron.service';
 import { TimeEntriesService } from './time-entries.service';
+import { TimeLoggersService } from './time-loggers.service';
+import { TimeMeService } from './time-me.service';
 import { TimeNotificationsService } from './time-notifications.service';
 import { TimePolicyService } from './time-policy.service';
 import { TimeProjectsFacade } from './time-projects.facade';
@@ -69,6 +71,9 @@ import { TimesheetsService } from './timesheets.service';
     TimeReportsService,
     TimeProjectsFacade,
     TeamTimeLegacyService,
+    // A-3: GET time/me/projects (A9) and GET time/projects/:projectId/loggers (A11).
+    TimeMeService,
+    TimeLoggersService,
   ],
   exports: [
     TimeCacheService,

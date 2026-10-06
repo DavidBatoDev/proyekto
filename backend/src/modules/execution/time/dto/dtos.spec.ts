@@ -25,7 +25,11 @@ import {
   PolicyQueryDto,
   PutLoggingForDto,
 } from './logging-for.dto';
-import { TeamTimePolicyDto, WorkspaceTimePolicyDto } from './policies.dto';
+import {
+  PolicyHistoryQueryDto,
+  TeamTimePolicyDto,
+  WorkspaceTimePolicyDto,
+} from './policies.dto';
 import { UpdateTimePreferencesDto } from './preferences.dto';
 import { AuditExportQueryDto, ReportQueryDto } from './reports.dto';
 import {
@@ -145,6 +149,7 @@ describe('time DTOs', () => {
       ],
       ['WorkspaceTimePolicyDto', WorkspaceTimePolicyDto, {}],
       ['TeamTimePolicyDto', TeamTimePolicyDto, {}],
+      ['PolicyHistoryQueryDto', PolicyHistoryQueryDto, {}],
     ])(
       '%s accepts a valid body and rejects an unknown field',
       async (_name, cls, valid) => {
@@ -419,6 +424,38 @@ describe('time DTOs', () => {
         { ...range, scope: `team:${UUID}` },
         'scope',
       );
+    });
+
+    it('ReportQueryDto group_by takes week (A5) beside the other groupings', async () => {
+      const base = {
+        scope: `team:${UUID}`,
+        from: '2026-10-01',
+        to: '2026-10-31',
+      };
+      for (const group_by of [
+        'day',
+        'week',
+        'member',
+        'project',
+        'task',
+        'context',
+      ]) {
+        await ok(ReportQueryDto, { ...base, group_by });
+      }
+      await rejected(
+        ReportQueryDto,
+        { ...base, group_by: 'month' },
+        'group_by',
+      );
+    });
+
+    it('PolicyHistoryQueryDto pages 1.. with a limit of 1..100 (A7), query strings converted', async () => {
+      await ok(PolicyHistoryQueryDto, { page: '2', limit: '100' });
+      const dto = plainToInstance(PolicyHistoryQueryDto, {});
+      expect(dto).toEqual(expect.objectContaining({ page: 1, limit: 20 }));
+      await rejected(PolicyHistoryQueryDto, { page: 0 }, 'page');
+      await rejected(PolicyHistoryQueryDto, { limit: 101 }, 'limit');
+      await rejected(PolicyHistoryQueryDto, { limit: 'many' }, 'limit');
     });
 
     it('UpdateTimePreferencesDto needs an IANA timezone', async () => {

@@ -16,6 +16,7 @@ import { TimeNotificationsService } from './time-notifications.service';
 import { TimePolicyService } from './time-policy.service';
 import { TimeRatesService } from './time-rates.service';
 import {
+  FLAGS_BUDGET_MS,
   TIMESHEET_NOTE_REQUIRED_MESSAGE,
   TimesheetsService,
   isTransitionRefusal,
@@ -2289,5 +2290,885 @@ describe('TimesheetsService.overview', () => {
     expect(JSON.stringify((err as HttpException).getResponse())).not.toContain(
       'exploded',
     );
+  });
+});
+
+// ── web PR additions (A1, A2, A3, A10, A12) ─────────────────────────────────
+const P_ANA = uid(4); // MANAGER
+const P_BEA = uid(5);
+const P_CARL = uid(7);
+const P_DINA = uid(8);
+const P_EVE = uid(9);
+const P_ZED = uid(2); // DECIDER
+const P_NONAME = uid(6);
+
+function profile(id: string, name: string | null, deleted = false): Row {
+  return {
+    id,
+    display_name: name,
+    avatar_url: null,
+    deleted_at: deleted ? '2026-09-01T00:00:00.000Z' : null,
+  };
+}
+
+const PEOPLE = [
+  profile(P_ZED, 'Zed'),
+  profile(P_ANA, 'Ana'),
+  profile(P_BEA, 'Bea'),
+  profile(P_NONAME, null),
+  profile(P_CARL, 'Carl', true),
+  profile(P_DINA, 'Dina'),
+  profile(P_EVE, 'Eve'),
+];
+
+function rpcCalls(db: ReturnType<typeof fakeDb>, name: string): Row[] {
+  return db.rpc.mock.calls.filter((c) => c[0] === name).map((c) => c[1]);
+}
+
+describe('A1 routing_preview (member, open/returned)', () => {
+  const future = {
+    status: 'open' as const,
+    approver_scope: null,
+    policy_snapshot: {},
+    period_start: '2999-01-04',
+    period_end: '2999-01-10',
+  };
+
+  it('names the deciders of the routed scope: sorted, deleted skipped, capped at 5; one preview read', async () => {
+    const mocks = defaultMocks();
+    const row = sheet(future);
+    mocks.authority.assertViewTimesheet.mockResolvedValue(row);
+    const { service, db } = await setup(
+      { timesheets: [row], time_entries: [entry({})], profiles: PEOPLE },
+      {
+        time_sheet_routing_preview: () => ({
+          data: {
+            approver_scope: 'workspace',
+            routing: {
+              base: 'workspace',
+              cost_money: true,
+              deciders_count: 6,
+              fallback: 'none',
+            },
+          },
+        }),
+        time_scope_deciders: () => ({
+          data: [P_ZED, P_ANA, P_BEA, P_NONAME, P_CARL, P_DINA, P_EVE],
+        }),
+      },
+      mocks,
+    );
+    const detail = await service.get(MEMBER, S1);
+    expect(detail.routing_preview).toEqual({
+      approver_scope: 'workspace',
+      cost_money: true,
+      deciders: [
+        { id: P_ANA, display_name: 'Ana' },
+        { id: P_BEA, display_name: 'Bea' },
+        { id: P_DINA, display_name: 'Dina' },
+        { id: P_EVE, display_name: 'Eve' },
+        { id: P_ZED, display_name: 'Zed' },
+      ],
+    });
+    expect(rpcCalls(db, 'time_sheet_routing_preview')).toEqual([
+      { p_timesheet_id: S1, p_action: 'submit' },
+    ]);
+    expect(rpcCalls(db, 'time_scope_deciders')).toEqual([
+      {
+        p_approver_scope: 'workspace',
+        p_team_id: null,
+        p_policy_workspace_id: WS,
+        p_engagement_id: null,
+        p_member_user_id: MEMBER,
+      },
+    ]);
+    // A manual route before the period's last day: no early submit (D13), and no A2 list while open.
+    expect(detail.viewer.actions).toEqual([]);
+    expect(detail).not.toHaveProperty('deciders');
+    expect(detail).not.toHaveProperty('deciders_count');
+  });
+
+  it('auto/self routes have no deciders and need no decider read; self still submits early', async () => {
+    const mocks = defaultMocks();
+    const row = sheet(future);
+    mocks.authority.assertViewTimesheet.mockResolvedValue(row);
+    const { service, db } = await setup(
+      { timesheets: [row], time_entries: [entry({})], profiles: PEOPLE },
+      {
+        time_sheet_routing_preview: () => ({
+          data: {
+            approver_scope: 'self',
+            routing: { cost_money: false, fallback: 'self' },
+          },
+        }),
+      },
+      mocks,
+    );
+    const detail = await service.get(MEMBER, S1);
+    expect(detail.routing_preview).toEqual({
+      approver_scope: 'self',
+      cost_money: false,
+      deciders: [],
+    });
+    expect(detail.viewer.actions).toEqual(['submit']);
+    expect(rpcCalls(db, 'time_scope_deciders')).toHaveLength(0);
+  });
+
+  it('a returned engagement sheet previews its hirer ("Goes to Ana Reyes")', async () => {
+    const mocks = defaultMocks();
+    const row = sheet({
+      status: 'returned',
+      approver_scope: 'hirer',
+      scope_kind: 'engagement',
+      scope_ref: ENG,
+      engagement_id: ENG,
+      workspace_id: null,
+    });
+    mocks.authority.assertViewTimesheet.mockResolvedValue(row);
+    const { service, db } = await setup(
+      { timesheets: [row], time_entries: [entry({})], profiles: PEOPLE },
+      {
+        time_sheet_routing_preview: () => ({
+          data: { approver_scope: 'hirer', routing: { cost_money: true } },
+        }),
+        time_scope_deciders: () => ({ data: [P_ANA] }),
+      },
+      mocks,
+    );
+    const detail = await service.get(MEMBER, S1);
+    expect(detail.routing_preview).toEqual({
+      approver_scope: 'hirer',
+      cost_money: true,
+      deciders: [{ id: P_ANA, display_name: 'Ana' }],
+    });
+    expect(rpcCalls(db, 'time_scope_deciders')[0]).toMatchObject({
+      p_approver_scope: 'hirer',
+      p_engagement_id: ENG,
+      p_member_user_id: MEMBER,
+    });
+    expect(detail.viewer.actions).toEqual(['submit']);
+  });
+
+  it('omitted when the preview is null, malformed or fails, or a name read fails; the detail still loads', async () => {
+    for (const answer of [
+      { data: null },
+      { data: { approver_scope: 'nobody' } },
+      { error: { code: 'XX000', message: 'boom' } },
+    ]) {
+      const mocks = defaultMocks();
+      const row = sheet(future);
+      mocks.authority.assertViewTimesheet.mockResolvedValue(row);
+      const { service } = await setup(
+        { timesheets: [row], time_entries: [entry({})] },
+        { time_sheet_routing_preview: () => answer },
+        mocks,
+      );
+      const detail = await service.get(MEMBER, S1);
+      expect(detail).not.toHaveProperty('routing_preview');
+      // An unknown route never offers an early submit.
+      expect(detail.viewer.actions).toEqual([]);
+    }
+
+    for (const failing of ['scope', 'names'] as const) {
+      const mocks = defaultMocks();
+      const row = sheet(future);
+      mocks.authority.assertViewTimesheet.mockResolvedValue(row);
+      const { service, db } = await setup(
+        { timesheets: [row], time_entries: [entry({})], profiles: PEOPLE },
+        {
+          time_sheet_routing_preview: () => ({
+            data: { approver_scope: 'workspace', routing: {} },
+          }),
+          time_scope_deciders: () =>
+            failing === 'scope'
+              ? { error: { code: 'XX000', message: 'boom' } }
+              : { data: [P_ANA] },
+        },
+        mocks,
+      );
+      if (failing === 'names') {
+        db.failures.profiles = { code: 'XX000', message: 'boom' };
+      }
+      const detail = await service.get(MEMBER, S1);
+      expect(detail).not.toHaveProperty('routing_preview');
+      expect(detail.sheet.id).toBe(S1);
+    }
+  });
+
+  it('never for anyone but the member, nor for the member once submitted or approved', async () => {
+    const mocks = defaultMocks();
+    const open = sheet(future);
+    mocks.authority.assertViewTimesheet.mockResolvedValue(open);
+    const a = await setup(
+      { timesheets: [open], time_entries: [entry({})] },
+      {
+        time_sheet_routing_preview: () => ({
+          data: { approver_scope: 'workspace', routing: {} },
+        }),
+      },
+      mocks,
+    );
+    expect(await a.service.get(MANAGER, S1)).not.toHaveProperty(
+      'routing_preview',
+    );
+    expect(rpcCalls(a.db, 'time_sheet_routing_preview')).toHaveLength(0);
+
+    for (const status of ['submitted', 'approved'] as const) {
+      const m = defaultMocks();
+      const row = sheet({ status });
+      m.authority.assertViewTimesheet.mockResolvedValue(row);
+      const b = await setup(
+        { timesheets: [row], time_entries: [entry({})] },
+        {},
+        m,
+      );
+      expect(await b.service.get(MEMBER, S1)).not.toHaveProperty(
+        'routing_preview',
+      );
+      expect(rpcCalls(b.db, 'time_sheet_routing_preview')).toHaveLength(0);
+    }
+  });
+});
+
+describe('A2 deciders (member, submitted)', () => {
+  it('names who the submitted sheet waits on; the decider view keeps only deciders_count', async () => {
+    const mocks = defaultMocks();
+    const row = sheet({});
+    mocks.authority.assertViewTimesheet.mockResolvedValue(row);
+    mocks.authority.approversFor.mockResolvedValue([
+      P_ZED,
+      P_ANA,
+      P_CARL,
+      P_BEA,
+      P_DINA,
+      P_EVE,
+      P_NONAME,
+    ]);
+    const { service } = await setup(
+      { timesheets: [row], time_entries: [entry({})], profiles: PEOPLE },
+      {},
+      mocks,
+    );
+    const detail = await service.get(MEMBER, S1);
+    expect(detail.deciders_count).toBe(7);
+    expect(detail.deciders).toEqual([
+      { id: P_ANA, display_name: 'Ana' },
+      { id: P_BEA, display_name: 'Bea' },
+      { id: P_DINA, display_name: 'Dina' },
+      { id: P_EVE, display_name: 'Eve' },
+      { id: P_ZED, display_name: 'Zed' },
+    ]);
+    expect(detail).not.toHaveProperty('routing_preview');
+
+    const m = defaultMocks();
+    m.authority.assertViewTimesheet.mockResolvedValue(row);
+    m.authority.canDecide.mockResolvedValue(true);
+    const b = await setup(
+      { timesheets: [row], time_entries: [entry({})], profiles: PEOPLE },
+      {},
+      m,
+    );
+    const asDecider = await b.service.get(DECIDER, S1);
+    expect(asDecider.deciders_count).toBe(1);
+    expect(asDecider).not.toHaveProperty('deciders');
+  });
+
+  it('a failed name read only omits the list', async () => {
+    const mocks = defaultMocks();
+    const row = sheet({});
+    mocks.authority.assertViewTimesheet.mockResolvedValue(row);
+    const { service, db } = await setup(
+      { timesheets: [row], time_entries: [entry({})] },
+      {},
+      mocks,
+    );
+    db.failures.profiles = { code: 'XX000', message: 'boom' };
+    const detail = await service.get(MEMBER, S1);
+    expect(detail.deciders_count).toBe(1);
+    expect(detail).not.toHaveProperty('deciders');
+  });
+});
+
+describe('A1 + A2 on me/timesheets', () => {
+  it('previews open/returned sheets (one scope read per scope), names submitted ones, leaves the rest', async () => {
+    const S4 = uid(103);
+    const S5 = uid(104);
+    const S6 = uid(105);
+    const mocks = defaultMocks();
+    mocks.authority.approversFor.mockResolvedValue([P_ZED]);
+    const { service, db } = await setup(
+      {
+        timesheets: [
+          sheet({ id: S1, status: 'submitted' }),
+          sheet({
+            id: S2,
+            status: 'open',
+            period_start: '2026-09-21',
+            period_end: '2026-09-27',
+          }),
+          sheet({
+            id: S3,
+            status: 'returned',
+            period_start: '2026-09-07',
+            period_end: '2026-09-13',
+          }),
+          sheet({
+            id: S4,
+            status: 'open',
+            period_start: '2026-09-28',
+            period_end: '2026-10-04',
+          }),
+          sheet({
+            id: S5,
+            status: 'approved',
+            period_start: '2026-08-31',
+            period_end: '2026-09-06',
+          }),
+          sheet({
+            id: S6,
+            status: 'open',
+            period_start: '2026-08-24',
+            period_end: '2026-08-30',
+          }),
+        ],
+        time_entries: [],
+        profiles: PEOPLE,
+      },
+      {
+        time_sheet_routing_preview: (args) =>
+          args.p_timesheet_id === S4
+            ? { error: { code: 'XX000', message: 'boom' } }
+            : args.p_timesheet_id === S6
+              ? { data: { approver_scope: 'auto', routing: {} } }
+              : {
+                  data: {
+                    approver_scope: 'workspace',
+                    routing: { cost_money: false },
+                  },
+                },
+        time_scope_deciders: () => ({ data: [P_ANA, P_CARL] }),
+      },
+      mocks,
+    );
+    const items = await service.listMine(MEMBER, {});
+    const byId = new Map(items.map((s) => [s.id, s]));
+    const workspacePreview = {
+      approver_scope: 'workspace',
+      cost_money: false,
+      deciders: [{ id: P_ANA, display_name: 'Ana' }],
+    };
+    expect(byId.get(S2)?.routing_preview).toEqual(workspacePreview);
+    expect(byId.get(S3)?.routing_preview).toEqual(workspacePreview);
+    expect(byId.get(S6)?.routing_preview).toEqual({
+      approver_scope: 'auto',
+      cost_money: false,
+      deciders: [],
+    });
+    // A failed preview leaves only that sheet undecorated.
+    expect(byId.get(S4)).not.toHaveProperty('routing_preview');
+    expect(byId.get(S1)?.deciders).toEqual([
+      { id: P_ZED, display_name: 'Zed' },
+    ]);
+    expect(byId.get(S1)).not.toHaveProperty('routing_preview');
+    expect(byId.get(S5)).not.toHaveProperty('routing_preview');
+    expect(byId.get(S5)).not.toHaveProperty('deciders');
+    // The same scope is read once; deciders only for the submitted sheet; one profile read.
+    expect(rpcCalls(db, 'time_scope_deciders')).toHaveLength(1);
+    expect(mocks.authority.approversFor).toHaveBeenCalledTimes(1);
+    expect(mocks.authority.approversFor).toHaveBeenCalledWith(S1);
+    expect(db.from.mock.calls.filter((c) => c[0] === 'profiles')).toHaveLength(
+      1,
+    );
+  });
+
+  it('a failed name read leaves the list undecorated but answered', async () => {
+    const { service, db } = await setup(
+      {
+        timesheets: [
+          sheet({ id: S1, status: 'submitted' }),
+          sheet({ id: S2, status: 'open' }),
+        ],
+        time_entries: [],
+      },
+      {
+        time_sheet_routing_preview: () => ({
+          data: { approver_scope: 'team', routing: {} },
+        }),
+        time_scope_deciders: () => ({ data: [P_ANA] }),
+      },
+    );
+    db.failures.profiles = { code: 'XX000', message: 'boom' };
+    const items = await service.listMine(MEMBER, {});
+    expect(items).toHaveLength(2);
+    for (const s of items) {
+      expect(s).not.toHaveProperty('routing_preview');
+      expect(s).not.toHaveProperty('deciders');
+    }
+  });
+});
+
+describe('A3 approval queue flags', () => {
+  const teamSheet = {
+    scope_kind: 'team',
+    scope_ref: TEAM,
+    team_id: TEAM,
+    workspace_id: null,
+    approver_scope: 'team',
+  } as const;
+  const teamEntry = {
+    context_kind: 'team',
+    context_ref: TEAM,
+    team_id: TEAM,
+  } as const;
+
+  it('needs_review, over_cap_seconds and running per waiting row, from one entry read and a rate-free preview', async () => {
+    const mocks = defaultMocks();
+    mocks.rates.memberCaps.mockResolvedValue({
+      weekly_limit_hours: 10,
+      monthly_limit_hours: null,
+      overtime_requires_approval: true,
+    });
+    const { service, db, rates } = await setup(
+      {
+        timesheets: [
+          sheet({
+            id: S1,
+            ...teamSheet,
+            submitted_at: '2026-09-21T01:00:00.000Z',
+          }),
+          sheet({
+            id: S2,
+            member_user_id: OUTSIDER,
+            submitted_at: '2026-09-21T02:00:00.000Z',
+          }),
+        ],
+        time_entries: [
+          entry({ id: E1, ...teamEntry, duration_seconds: 6 * HOUR }),
+          entry({
+            id: E2,
+            ...teamEntry,
+            started_at: '2026-09-16T09:00:00.000Z',
+            duration_seconds: 6 * HOUR,
+          }),
+          // Running: counted in `running`, adds nothing to the freeze.
+          entry({
+            id: E3,
+            ...teamEntry,
+            started_at: '2026-09-17T09:00:00.000Z',
+            ended_at: null,
+            duration_seconds: null,
+          }),
+          // S2: one entry over 10 h, one flagged by the cron.
+          entry({
+            id: E4,
+            member_user_id: OUTSIDER,
+            timesheet_id: S2,
+            duration_seconds: 11 * HOUR,
+          }),
+          entry({
+            id: uid(204),
+            member_user_id: OUTSIDER,
+            timesheet_id: S2,
+            started_at: '2026-09-16T09:00:00.000Z',
+            duration_seconds: HOUR,
+            flagged_reason: 'auto_stopped_24h',
+          }),
+        ],
+        profiles: [profile(MEMBER, 'Maria'), profile(OUTSIDER, 'Leo')],
+      },
+      { time_approval_queue_ids: () => ({ data: [S1, S2] }) },
+      mocks,
+    );
+    const page = await service.queue(DECIDER, {
+      status: 'submitted',
+      page: 1,
+      limit: 50,
+    });
+    const byId = new Map(page.items.map((r) => [r.id, r]));
+    expect(byId.get(S1)?.flags).toEqual({
+      needs_review: 0,
+      over_cap_seconds: 2 * HOUR,
+      running: 1,
+    });
+    expect(byId.get(S2)?.flags).toEqual({
+      needs_review: 2,
+      over_cap_seconds: 0,
+      running: 0,
+    });
+    expect(byId.get(S1)).not.toHaveProperty('flags_partial');
+    // The preview reads no rates (no cap needs them) and never writes.
+    expect(rates.freezeRate).not.toHaveBeenCalled();
+    expect(rates.legacyCutoff).not.toHaveBeenCalled();
+    expect(transitionCalls(db)).toHaveLength(0);
+    // One preview build per waiting sheet (bounded concurrency): one sheet read each besides the queue's own.
+    expect(
+      db.from.mock.calls.filter((c) => c[0] === 'timesheets'),
+    ).toHaveLength(3);
+  });
+
+  it('no preview starts once the page budget is spent: the rows left read 0 with flags_partial', async () => {
+    const ids = Array.from({ length: 10 }, (_, i) => uid(1100 + i));
+    const mocks = defaultMocks();
+    let late = false;
+    // The first cap read marks the budget spent; the 8 builds already in flight still finish.
+    mocks.rates.memberCaps.mockImplementation(() => {
+      late = true;
+      return Promise.resolve({
+        weekly_limit_hours: 0.5,
+        monthly_limit_hours: null,
+        overtime_requires_approval: true,
+      });
+    });
+    const { service } = await setup(
+      {
+        timesheets: ids.map((id, i) =>
+          sheet({ id, ...teamSheet, member_user_id: uid(5100 + i) }),
+        ),
+        time_entries: ids.map((id, i) =>
+          entry({
+            id: uid(1200 + i),
+            ...teamEntry,
+            member_user_id: uid(5100 + i),
+            timesheet_id: id,
+          }),
+        ),
+      },
+      { time_approval_queue_ids: () => ({ data: ids }) },
+      mocks,
+    );
+    const now = jest
+      .spyOn(Date, 'now')
+      .mockImplementation(() => (late ? FLAGS_BUDGET_MS + 1 : 0));
+    try {
+      const page = await service.queue(DECIDER, {
+        status: 'submitted',
+        page: 1,
+        limit: 50,
+      });
+      expect(page.items.map((r) => r.id)).toEqual(ids);
+      for (const r of page.items.slice(0, 8)) {
+        expect(r).not.toHaveProperty('flags_partial');
+        expect(r.flags?.over_cap_seconds).toBe(HOUR / 2);
+      }
+      for (const r of page.items.slice(8)) {
+        expect(r.flags_partial).toBe(true);
+        expect(r.flags?.over_cap_seconds).toBe(0);
+      }
+      // The two skipped sheets were never built.
+      expect(mocks.rates.memberCaps).toHaveBeenCalledTimes(8);
+    } finally {
+      now.mockRestore();
+    }
+  });
+
+  it('two sheets of one member are previewed alone, as each detail shows them (not as one bulk batch)', async () => {
+    const mocks = defaultMocks();
+    mocks.rates.memberCaps.mockResolvedValue({
+      weekly_limit_hours: null,
+      monthly_limit_hours: 10,
+      overtime_requires_approval: false,
+    });
+    const { service } = await setup(
+      {
+        timesheets: [
+          sheet({ id: S1, ...teamSheet }),
+          sheet({
+            id: S2,
+            ...teamSheet,
+            period_start: '2026-09-21',
+            period_end: '2026-09-27',
+            submitted_at: '2026-09-28T01:00:00.000Z',
+          }),
+        ],
+        time_entries: [
+          entry({ id: E1, ...teamEntry, duration_seconds: 7 * HOUR }),
+          entry({
+            id: E2,
+            ...teamEntry,
+            timesheet_id: S2,
+            started_at: '2026-09-22T09:00:00.000Z',
+            duration_seconds: 7 * HOUR,
+          }),
+        ],
+      },
+      { time_approval_queue_ids: () => ({ data: [S1, S2] }) },
+      mocks,
+    );
+    const page = await service.queue(DECIDER, {
+      status: 'submitted',
+      page: 1,
+      limit: 50,
+    });
+    expect(page.items.map((r) => r.flags?.over_cap_seconds)).toEqual([0, 0]);
+    // Bulk-approving both would cut the later one; each detail (and so each row) shows it alone.
+    const together = await service.buildFreeze([S1, S2], {
+      approveOvertime: false,
+      mode: 'approve',
+    });
+    expect(together.preview[S2].over_cap_seconds).toBe(4 * HOUR);
+    const alone = await service.buildFreeze([S2], {
+      approveOvertime: false,
+      mode: 'approve',
+    });
+    expect(alone.preview[S2].over_cap_seconds).toBe(0);
+  });
+
+  it('past the first 50 waiting rows, over_cap_seconds reads 0 with flags_partial', async () => {
+    const ids = Array.from({ length: 52 }, (_, i) => uid(1000 + i));
+    const { service } = await setup(
+      {
+        timesheets: ids.map((id, i) =>
+          sheet({ id, member_user_id: uid(5000 + i) }),
+        ),
+        time_entries: [],
+      },
+      { time_approval_queue_ids: () => ({ data: ids }) },
+    );
+    const page = await service.queue(DECIDER, {
+      status: 'submitted',
+      page: 1,
+      limit: 100,
+    });
+    expect(page.items).toHaveLength(52);
+    expect(page.items.filter((r) => r.flags_partial)).toHaveLength(2);
+    expect(page.items.slice(50).map((r) => r.id)).toEqual(ids.slice(50));
+    for (const r of page.items.slice(50)) {
+      expect(r.flags_partial).toBe(true);
+      expect(r.flags?.over_cap_seconds).toBe(0);
+    }
+    expect(page.items[0]).not.toHaveProperty('flags_partial');
+  });
+
+  it('a failed preview marks its rows partial and the queue still answers; the decided queue has no flags', async () => {
+    const mocks = defaultMocks();
+    mocks.rates.memberCaps.mockRejectedValue(new Error('rates exploded'));
+    const { service } = await setup(
+      {
+        timesheets: [sheet({ id: S1, ...teamSheet })],
+        time_entries: [entry({ id: E1, ...teamEntry })],
+      },
+      { time_approval_queue_ids: () => ({ data: [S1] }) },
+      mocks,
+    );
+    const waiting = await service.queue(DECIDER, {
+      status: 'submitted',
+      page: 1,
+      limit: 50,
+    });
+    expect(waiting.items[0]).toMatchObject({
+      flags: { needs_review: 0, over_cap_seconds: 0, running: 0 },
+      flags_partial: true,
+    });
+
+    const decided = await service.queue(DECIDER, {
+      status: 'decided',
+      page: 1,
+      limit: 50,
+    });
+    expect(decided.items).toHaveLength(1);
+    expect(decided.items[0]).not.toHaveProperty('flags');
+    expect(decided.items[0]).not.toHaveProperty('flags_partial');
+  });
+});
+
+describe('A10 bulk-approve STALE_REVISION names the sheet', () => {
+  it.each([
+    [
+      'revision',
+      { timesheet_id: S2, expected: 7, actual: 8 },
+      { timesheet_id: S2, expected: 7, actual: 8 },
+    ],
+    [
+      'entry_set',
+      { reason: 'entry_set', timesheet_id: S2 },
+      { timesheet_id: S2, reason: 'entry_set' },
+    ],
+  ])(
+    '%s: 409 with timesheet_id, all or none, never retried',
+    async (_kind, detail, extras) => {
+      const { service, db, notifications } = await setup(
+        {
+          timesheets: [sheet({ id: S1 }), sheet({ id: S2, revision: 7 })],
+          time_entries: [
+            entry({ id: E1, timesheet_id: S1 }),
+            entry({ id: E2, timesheet_id: S2 }),
+          ],
+        },
+        transitionReturning(() => ({
+          error: { message: 'STALE_REVISION', details: JSON.stringify(detail) },
+        })),
+      );
+      const err = await service
+        .approveBulk(DECIDER, { ids: [S1, S2], expected_revisions: [3, 7] })
+        .catch((e: unknown) => e);
+      expect(err).toBeInstanceOf(ConflictException);
+      expect((err as HttpException).getResponse()).toEqual({
+        code: 'STALE_REVISION',
+        message: 'This timesheet changed. Reload to see the latest version.',
+        ...extras,
+      });
+      expect(transitionCalls(db)).toHaveLength(1);
+      expect(notifications.sheetDecided).not.toHaveBeenCalled();
+    },
+  );
+});
+
+describe('A12 TIMESHEET_HAS_SETTLED_ENTRIES extras', () => {
+  const INV1 = uid(400);
+  const INV2 = uid(401);
+  const PAY1 = uid(300);
+  const PAY2 = uid(301);
+  const SETTLED_MESSAGE =
+    'This timesheet has time that was already paid or billed, so it cannot be reopened.';
+
+  function refusing(reason: string) {
+    return transitionReturning(() => ({
+      error: {
+        message: 'TIMESHEET_HAS_SETTLED_ENTRIES',
+        details: JSON.stringify({ timesheet_id: S1, reason }),
+      },
+    }));
+  }
+
+  async function reopen(service: TimesheetsService): Promise<HttpException> {
+    const err = await service
+      .act(DECIDER, 'reopen', [S1], [3], { note: 'Split Thursday' })
+      .catch((e: unknown) => e);
+    expect(err).toBeInstanceOf(ConflictException);
+    return err as HttpException;
+  }
+
+  const approved = sheet({ status: 'approved', decision_kind: 'manual' });
+
+  it('paid: the payout of the earliest paid entry on the sheet', async () => {
+    const { service } = await setup(
+      {
+        timesheets: [approved],
+        time_entries: [
+          entry({ id: E1, payout_id: null }),
+          entry({
+            id: E2,
+            started_at: '2026-09-17T09:00:00.000Z',
+            payout_id: PAY1,
+          }),
+          entry({
+            id: E3,
+            started_at: '2026-09-16T09:00:00.000Z',
+            payout_id: PAY2,
+          }),
+          // Another sheet's earlier payout never counts.
+          entry({
+            id: E4,
+            timesheet_id: S2,
+            started_at: '2026-09-01T09:00:00.000Z',
+            payout_id: uid(302),
+          }),
+        ],
+      },
+      refusing('paid'),
+    );
+    expect((await reopen(service)).getResponse()).toEqual({
+      code: 'TIMESHEET_HAS_SETTLED_ENTRIES',
+      message: SETTLED_MESSAGE,
+      timesheet_id: S1,
+      reason: 'paid',
+      payout_id: PAY2,
+    });
+  });
+
+  it('paid with no payout: paid outside Proyekto', async () => {
+    const { service } = await setup(
+      {
+        timesheets: [approved],
+        time_entries: [
+          entry({ id: E1, payout_id: null, legacy_status: 'paid_outside' }),
+        ],
+      },
+      refusing('paid'),
+    );
+    const body = (await reopen(service)).getResponse();
+    expect(body).toMatchObject({ reason: 'paid', paid_outside: true });
+    expect(body).not.toHaveProperty('payout_id');
+  });
+
+  it('billed: the invoice of the earliest reservation on the sheet, with number and status', async () => {
+    const { service } = await setup(
+      {
+        timesheets: [approved],
+        time_entries: [
+          entry({ id: E1 }),
+          entry({ id: E2, started_at: '2026-09-16T09:00:00.000Z' }),
+          entry({ id: E4, timesheet_id: S2 }),
+        ],
+        invoice_time_entries: [
+          {
+            invoice_id: INV2,
+            entry_id: E1,
+            created_at: '2026-09-25T00:00:00.000Z',
+          },
+          {
+            invoice_id: INV1,
+            entry_id: E2,
+            created_at: '2026-09-22T00:00:00.000Z',
+          },
+          // Earlier, but on another sheet.
+          {
+            invoice_id: uid(402),
+            entry_id: E4,
+            created_at: '2026-09-01T00:00:00.000Z',
+          },
+        ],
+        invoices: [
+          { id: INV1, number: 'INV-0042', status: 'draft' },
+          { id: INV2, number: 'INV-0043', status: 'issued' },
+        ],
+      },
+      refusing('billed'),
+    );
+    expect((await reopen(service)).getResponse()).toEqual({
+      code: 'TIMESHEET_HAS_SETTLED_ENTRIES',
+      message: SETTLED_MESSAGE,
+      timesheet_id: S1,
+      reason: 'billed',
+      invoice_id: INV1,
+      invoice_number: 'INV-0042',
+      invoice_status: 'draft',
+    });
+  });
+
+  it('a failed lookup keeps the original refusal; legacy adds nothing', async () => {
+    const original = {
+      code: 'TIMESHEET_HAS_SETTLED_ENTRIES',
+      message: SETTLED_MESSAGE,
+      timesheet_id: S1,
+      reason: 'billed',
+    };
+    const a = await setup(
+      {
+        timesheets: [approved],
+        time_entries: [entry({ id: E1 })],
+        invoice_time_entries: [
+          {
+            invoice_id: INV1,
+            entry_id: E1,
+            created_at: '2026-09-22T00:00:00.000Z',
+          },
+        ],
+      },
+      refusing('billed'),
+    );
+    a.db.failures.invoices = { code: 'XX000', message: 'invoices exploded' };
+    const err = await reopen(a.service);
+    expect(err.getResponse()).toEqual(original);
+    expect(JSON.stringify(err.getResponse())).not.toContain('exploded');
+
+    const b = await setup(
+      { timesheets: [approved], time_entries: [entry({ id: E1 })] },
+      refusing('legacy'),
+    );
+    expect((await reopen(b.service)).getResponse()).toEqual({
+      ...original,
+      reason: 'legacy',
+    });
   });
 });

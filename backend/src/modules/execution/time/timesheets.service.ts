@@ -36,6 +36,7 @@ import {
   isDeadlock,
   mapTimeDbError,
   throwTimeDb,
+  timeError,
   timeNotFound,
 } from './time-errors';
 import {
@@ -59,7 +60,9 @@ import { TimeRatesService } from './time-rates.service';
 import {
   EMPTY_TIME_OVERVIEW,
   type ApprovalRow,
+  type ApproverScope,
   type ContextKind,
+  type DeciderName,
   type EntryAuthRow,
   type FreezeEntryValue,
   type FreezePayload,
@@ -70,6 +73,7 @@ import {
   type Paged,
   type PolicySnapshot,
   type RateType,
+  type RoutingPreview,
   type SheetFreeze,
   type SheetRouting,
   type SheetScopeKind,
@@ -99,6 +103,32 @@ const MINE_LIMIT = 200;
 const OVERVIEW_DAYS = 30;
 /** Most recent entries the overview reads to find the caller's contexts. */
 const OVERVIEW_ENTRY_LIMIT = 1000;
+/** A1/A2: names per decider list. */
+export const DECIDER_NAMES_MAX = 5;
+/** A3 `needs_review`: an entry this long (or carrying a flagged_reason) needs a look (ux.md "Long timers"). */
+export const NEEDS_REVIEW_SECONDS = 10 * 3600;
+/** A3 `over_cap_seconds`: freeze previews per queue page; later rows read 0 with `flags_partial`. */
+export const FLAGS_FREEZE_MAX = 50;
+/** A3: no new freeze preview starts once a queue page has spent this long on them; the rest read `flags_partial`,
+ *  so the waiting list answers well inside the global request timeout (D52). */
+export const FLAGS_BUDGET_MS = 5_000;
+/** Concurrent per-sheet calls while decorating `me/timesheets` (A1/A2) and previewing queue flags (A3). */
+const DECORATE_CONCURRENCY = 8;
+
+const APPROVER_SCOPES: ReadonlySet<string> = new Set<ApproverScope>([
+  'team',
+  'workspace',
+  'hirer',
+  'auto',
+  'self',
+]);
+/** A zero rate for preview-only freezes (the caps never read the rate). */
+const NO_RATE: FrozenRate = {
+  rate: 0,
+  rateType: 'hourly',
+  currency: 'USD',
+  amountable: false,
+};
 
 const ACTIONS: ReadonlySet<TimesheetAction> = new Set<TimesheetAction>([
   'submit',
@@ -142,7 +172,8 @@ const FREEZE_ENTRY_SELECT =
   'engagement_assignment_id, timesheet_id, started_at, ended_at, duration_seconds, work_type_snapshot, ' +
   'created_at, rate_snapshot, rate_type_snapshot, currency_snapshot, legacy_status';
 
-const SHEET_STATS_SELECT = 'id, timesheet_id, ended_at, duration_seconds';
+const SHEET_STATS_SELECT =
+  'id, timesheet_id, ended_at, duration_seconds, flagged_reason';
 
 const TIMESHEET_COLUMNS = TIMESHEET_SELECT.split(',').map((c) => c.trim());
 
@@ -178,6 +209,7 @@ interface StatsRow {
   timesheet_id: string | null;
   ended_at: string | null;
   duration_seconds: number | null;
+  flagged_reason: string | null;
 }
 
 interface SheetStats {
@@ -185,6 +217,18 @@ interface SheetStats {
   running_count: number;
   logged_seconds: number;
 }
+
+/** time_sheet_routing_preview, narrowed to what A1 returns. */
+interface RouteResult {
+  approver_scope: ApproverScope;
+  cost_money: boolean;
+}
+
+/** The scope columns time_scope_deciders reads from a sheet. */
+type DeciderScopeSheet = Pick<
+  TimesheetRow,
+  'team_id' | 'policy_workspace_id' | 'engagement_id' | 'member_user_id'
+>;
 
 interface OverviewEntryRow {
   id: string;
@@ -369,6 +413,46 @@ function addToGroup(
   w.windows.push(key);
 }
 
+/** At most `limit` calls in flight; results in input order. */
+async function mapLimit<T, R>(
+  items: T[],
+  limit: number,
+  fn: (item: T) => Promise<R>,
+): Promise<R[]> {
+  const out = new Array<R>(items.length);
+  let next = 0;
+  const worker = async (): Promise<void> => {
+    while (next < items.length) {
+      const i = next++;
+      out[i] = await fn(items[i]);
+    }
+  };
+  await Promise.all(
+    Array.from({ length: Math.min(limit, items.length) }, worker),
+  );
+  return out;
+}
+
+/** The ids' names in display order (name, then id), capped; ids without a live profile are skipped. */
+function pickNames(
+  ids: string[],
+  names: Map<string, DeciderName>,
+): DeciderName[] {
+  return distinct(ids)
+    .map((id) => names.get(id))
+    .filter((n): n is DeciderName => n !== undefined)
+    .sort((a, b) => {
+      const an = a.display_name ?? '';
+      const bn = b.display_name ?? '';
+      // Unnamed profiles last.
+      if ((an === '') !== (bn === '')) return an === '' ? 1 : -1;
+      const byName = an.localeCompare(bn);
+      if (byName !== 0) return byName;
+      return a.id < b.id ? -1 : a.id > b.id ? 1 : 0;
+    })
+    .slice(0, DECIDER_NAMES_MAX);
+}
+
 /** Per-call memo of async lookups (one freeze build, one overview). */
 class Memo<T> {
   private readonly values = new Map<string, Promise<T>>();
@@ -398,12 +482,16 @@ export class TimesheetsService {
 
   // ── reads ───────────────────────────────────────────────────────────────────────────────────────────
 
-  /** can_view_timesheet else 404. Entries redacted by class (hydrate); deciders get the freeze preview. */
+  /** can_view_timesheet else 404. Entries redacted by class (hydrate); deciders get the freeze preview. The
+   *  member gets where a submit would go (A1, open/returned) or who it waits on (A2, submitted). */
   async get(viewerId: string, id: string): Promise<TimesheetDetail> {
     const sheet = await this.authority.assertViewTimesheet(viewerId, id);
     const isMember = sheet.member_user_id === viewerId;
+    const memberEditable =
+      isMember && (sheet.status === 'open' || sheet.status === 'returned');
+    const memberSubmitted = isMember && sheet.status === 'submitted';
 
-    const [snapshot, authRows, events, canDecide] = await Promise.all([
+    const [snapshot, authRows, events, canDecide, route] = await Promise.all([
       this.policySnapshot(sheet.id),
       this.entryAuthRows(sheet.id),
       this.events(sheet.id),
@@ -411,6 +499,10 @@ export class TimesheetsService {
       isMember
         ? Promise.resolve(false)
         : this.authority.canDecide(viewerId, sheet.id),
+      // A1 (and canSubmitNow): read once, best effort.
+      memberEditable
+        ? this.routingPreviewSoft(sheet.id)
+        : Promise.resolve(null),
     ]);
     // Email only in self and team-manager views (backend.md "Cost and Content Redaction").
     const withEmail =
@@ -429,12 +521,13 @@ export class TimesheetsService {
       stats.logged_seconds += Math.max(0, e.duration_seconds ?? 0);
     }
     const { rules, routing } = splitSnapshot(snapshot, sheet.status);
-    const actions = await this.viewerActions(
+    const actions = this.viewerActions(
       sheet,
       isMember,
       canDecide,
       entries,
       stats,
+      route,
     );
 
     const detail: TimesheetDetail = {
@@ -467,13 +560,28 @@ export class TimesheetsService {
     }
     // deciders_count = 0 drives "No one else can approve this. Add a workspace admin." (ux.md), which the member
     // reads on their submitted sheet, so the member gets it while submitted too.
-    if (canDecide || (isMember && sheet.status === 'submitted')) {
-      detail.deciders_count = (await this.deciders(sheet.id)).length;
+    if (canDecide || memberSubmitted) {
+      const ids = await this.deciders(sheet.id);
+      detail.deciders_count = ids.length;
+      // A2: "Waiting on Ana Reyes". Best effort: a failed name read only omits the list.
+      if (memberSubmitted) {
+        const names = await this.profileNamesSoft(ids);
+        if (names) detail.deciders = pickNames(ids, names);
+      }
+    }
+    // A1: "Goes to …" on the Submit sheet. Omitted when the preview (or a name read) failed.
+    if (memberEditable && route) {
+      const ids = await this.scopeDecidersSoft(sheet, route.approver_scope);
+      const names = ids ? await this.profileNamesSoft(ids) : null;
+      if (ids && names) {
+        detail.routing_preview = { ...route, deciders: pickNames(ids, names) };
+      }
     }
     return detail;
   }
 
-  /** The caller's own sheets (every workspace, by member id), newest first; `origin` and `submission_kind` kept. */
+  /** The caller's own sheets (every workspace, by member id), newest first; `origin` and `submission_kind` kept.
+   *  Open/returned sheets carry `routing_preview` (A1), submitted ones `deciders` (A2). */
   async listMine(
     userId: string,
     q: { from?: string; to?: string },
@@ -489,7 +597,11 @@ export class TimesheetsService {
       .order('id', { ascending: true })
       .limit(MINE_LIMIT);
     if (error) this.fail('list_mine', error);
-    return this.summaries((data ?? []) as unknown as TimesheetRow[]);
+    const items = await this.summaries(
+      (data ?? []) as unknown as TimesheetRow[],
+    );
+    await this.decorateMine(items);
+    return items;
   }
 
   // ── transitions ─────────────────────────────────────────────────────────────────────────────────────
@@ -600,7 +712,18 @@ export class TimesheetsService {
       freeze = await build();
       res = await call(freeze);
     }
-    if (res.error) throwTimeDb(res.error);
+    if (res.error) {
+      // A12: name the payout or invoice that blocks a reopen (best effort, after the RPC refused).
+      const mapped = mapTimeDbError(res.error);
+      if (
+        mapped &&
+        errorBody(mapped).code === 'TIMESHEET_HAS_SETTLED_ENTRIES'
+      ) {
+        throw await this.withSettlement(mapped);
+      }
+      // A10: STALE_REVISION keeps the RPC's `timesheet_id` (and expected/actual or reason) as extras.
+      throwTimeDb(res.error);
+    }
 
     const after = (Array.isArray(res.data) ? res.data : [])
       .filter(isSnapshotObject)
@@ -656,10 +779,16 @@ export class TimesheetsService {
    * finally the amount. The workspace/team policy `weekly_limit_minutes` never cuts payable time (it is a review
    * indicator and a write-time warning). Already-approved payable time in each window counts against the cap.
    * The preview carries no money; the caller adds per-currency totals only for a cost-visible viewer.
+   * `previewOnly` (A3 queue flags) skips the rate lookups, which no cap reads, and returns an empty `payload`:
+   * its result must never reach the RPC.
    */
   async buildFreeze(
     sheetIds: string[],
-    o: { approveOvertime: boolean; mode: 'approve' | 'submit' },
+    o: {
+      approveOvertime: boolean;
+      mode: 'approve' | 'submit';
+      previewOnly?: boolean;
+    },
   ): Promise<{
     payload: FreezePayload;
     preview: Record<string, FreezePreview>;
@@ -707,7 +836,8 @@ export class TimesheetsService {
       bySheet.set(e.timesheet_id, list);
     }
 
-    const cutoff = await this.rates.legacyCutoff();
+    const previewOnly = o.previewOnly === true;
+    const cutoff = previewOnly ? null : await this.rates.legacyCutoff();
     const rateMemo = new Memo<FrozenRate>();
     const settingsMemo = new Memo<EngagementTimeSettingsRow | null>();
     const capsMemo = new Memo<{
@@ -749,7 +879,9 @@ export class TimesheetsService {
                 Math.max(0, Math.floor(e.duration_seconds ?? 0)),
                 rounding,
               );
-        const rate = await this.freezeRateFor(e, sheet, d, cutoff, rateMemo);
+        const rate = previewOnly
+          ? NO_RATE
+          : await this.freezeRateFor(e, sheet, d, cutoff, rateMemo);
         work.push({ e, d, rounded, payable: rounded, rate, windows: [] });
       }
 
@@ -895,7 +1027,7 @@ export class TimesheetsService {
           over_cap_seconds: over,
         });
       }
-      payload[sheet.id] = sheetFreeze;
+      if (!previewOnly) payload[sheet.id] = sheetFreeze;
       preview[sheet.id] = {
         timesheet_id: sheet.id,
         entries: previewEntries,
@@ -942,16 +1074,19 @@ export class TimesheetsService {
     const slice = sheets.slice((page - 1) * limit, page * limit);
     if (slice.length === 0) return { items: [], total, page, limit };
 
-    const [summaries, members, workspaces] = await Promise.all([
-      this.summaries(slice),
-      this.memberProfiles(distinct(slice.map((s) => s.member_user_id))),
-      this.workspaceNames(distinct(slice.map((s) => s.policy_workspace_id))),
-    ]);
+    const waiting = status === 'submitted';
+    const [{ items: summaries, needsReview }, members, workspaces, overCap] =
+      await Promise.all([
+        this.summariesWithReview(slice),
+        this.memberProfiles(distinct(slice.map((s) => s.member_user_id))),
+        this.workspaceNames(distinct(slice.map((s) => s.policy_workspace_id))),
+        waiting ? this.overCapFor(slice) : Promise.resolve(null),
+      ]);
     const current = q.currentWorkspaceId ?? null;
     const items: ApprovalRow[] = summaries.map((s) => {
       const wsId = s.policy_workspace_id;
       const name = wsId ? workspaces.get(wsId) : undefined;
-      return {
+      const row: ApprovalRow = {
         ...s,
         member: s.member_user_id
           ? (members.get(s.member_user_id) ?? null)
@@ -961,6 +1096,16 @@ export class TimesheetsService {
             ? { id: wsId, name }
             : null,
       };
+      // A3: the waiting queue only (a decided sheet has nothing left to decide).
+      if (overCap) {
+        row.flags = {
+          needs_review: needsReview.get(s.id) ?? 0,
+          over_cap_seconds: overCap.seconds.get(s.id) ?? 0,
+          running: s.running_count,
+        };
+        if (overCap.partial.has(s.id)) row.flags_partial = true;
+      }
+      return row;
     });
     return { items, total, page, limit };
   }
@@ -1105,14 +1250,16 @@ export class TimesheetsService {
     return this.authority.approversFor(sheetId);
   }
 
-  /** What the viewer may do now (the RPC still decides; this only drives the buttons). */
-  private async viewerActions(
+  /** What the viewer may do now (the RPC still decides; this only drives the buttons). `route` is the member's
+   *  routing preview of an open/returned sheet (null when not read or failed). */
+  private viewerActions(
     sheet: TimesheetRow,
     isMember: boolean,
     canDecide: boolean,
     entries: TimeEntryView[],
     stats: SheetStats,
-  ): Promise<TimesheetAction[]> {
+    route: RouteResult | null,
+  ): TimesheetAction[] {
     const actions: TimesheetAction[] = [];
     const locks = new Set(entries.map((e) => e.locked_reason));
     if (isMember) {
@@ -1122,7 +1269,7 @@ export class TimesheetsService {
           if (
             stats.entry_count > 0 &&
             stats.running_count === 0 &&
-            (await this.canSubmitNow(sheet))
+            this.canSubmitNow(sheet, route)
           ) {
             actions.push('submit');
           }
@@ -1168,22 +1315,352 @@ export class TimesheetsService {
     return actions;
   }
 
-  /** D13: a manual-route sheet submits from the period's last local day; auto/self and resubmits any time. */
-  private async canSubmitNow(sheet: TimesheetRow): Promise<boolean> {
+  /** D13: a manual-route sheet submits from the period's last local day; auto/self and resubmits any time.
+   *  An unknown route (preview failed) never offers an early submit. */
+  private canSubmitNow(
+    sheet: TimesheetRow,
+    route: RouteResult | null,
+  ): boolean {
     if (sheet.status === 'returned') return true;
     const today = localDate(new Date(), safeTimezone(sheet.timezone));
     if (today >= sheet.period_end) return true;
+    return route !== null && SELF_ROUTES.has(route.approver_scope);
+  }
+
+  // ── internals: routing and decider names (A1, A2) ───────────────────────────────────────────────────
+
+  /** time_sheet_routing_preview(id, 'submit'); null when the sheet is gone, the answer is malformed, or the
+   *  call fails (logged at warn: it only decorates a read). */
+  private async routingPreviewSoft(
+    sheetId: string,
+  ): Promise<RouteResult | null> {
     try {
       const { data, error } = (await this.sb.rpc('time_sheet_routing_preview', {
-        p_timesheet_id: sheet.id,
+        p_timesheet_id: sheetId,
         p_action: 'submit',
       })) as RpcResult;
-      if (error || !isSnapshotObject(data)) return false;
+      if (error) {
+        this.logger.warn(
+          `timesheet_routing_preview_failed sheet=${sheetId} code=${error.code ?? 'none'}`,
+        );
+        return null;
+      }
+      if (!isSnapshotObject(data)) return null;
       const scope = (data as { approver_scope?: unknown }).approver_scope;
-      return typeof scope === 'string' && SELF_ROUTES.has(scope);
-    } catch {
-      return false;
+      if (typeof scope !== 'string' || !APPROVER_SCOPES.has(scope)) {
+        return null;
+      }
+      const routing = (data as { routing?: unknown }).routing;
+      return {
+        approver_scope: scope as ApproverScope,
+        cost_money:
+          isSnapshotObject(routing) &&
+          (routing as { cost_money?: unknown }).cost_money === true,
+      };
+    } catch (error) {
+      this.logger.warn(
+        `timesheet_routing_preview_failed sheet=${sheetId}: ${error instanceof Error ? error.message : String(error)}`,
+      );
+      return null;
     }
+  }
+
+  /** time_scope_deciders for a routed scope on this sheet's frozen columns; `auto`/`self` have none (no call).
+   *  Null on failure. */
+  private scopeDecidersSoft(
+    sheet: DeciderScopeSheet,
+    scope: ApproverScope,
+    memo?: Memo<string[] | null>,
+  ): Promise<string[] | null> {
+    if (!DECIDER_ROUTES.has(scope)) return Promise.resolve([]);
+    const load = async (): Promise<string[] | null> => {
+      try {
+        const { data, error } = (await this.sb.rpc('time_scope_deciders', {
+          p_approver_scope: scope,
+          p_team_id: sheet.team_id,
+          p_policy_workspace_id: sheet.policy_workspace_id,
+          p_engagement_id: sheet.engagement_id,
+          p_member_user_id: sheet.member_user_id,
+        })) as RpcResult;
+        if (error) {
+          this.logger.warn(
+            `time_scope_deciders_failed scope=${scope} code=${error.code ?? 'none'}`,
+          );
+          return null;
+        }
+        return distinct(uuidList(data));
+      } catch (error) {
+        this.logger.warn(
+          `time_scope_deciders_failed scope=${scope}: ${error instanceof Error ? error.message : String(error)}`,
+        );
+        return null;
+      }
+    };
+    if (!memo) return load();
+    const key = [
+      scope,
+      sheet.team_id ?? '',
+      sheet.policy_workspace_id ?? '',
+      sheet.engagement_id ?? '',
+      sheet.member_user_id ?? '',
+    ].join('|');
+    return memo.get(key, load);
+  }
+
+  /** time_timesheet_deciders; null on failure (unlike decidersSoft, an empty list would read "no one"). */
+  private async decidersOrNull(sheetId: string): Promise<string[] | null> {
+    try {
+      return await this.deciders(sheetId);
+    } catch (error) {
+      this.logger.warn(
+        `timesheet_deciders_failed sheet=${sheetId}: ${error instanceof Error ? error.message : String(error)}`,
+      );
+      return null;
+    }
+  }
+
+  /** id → {id, display_name} for live profiles (deleted ones are absent); null when a read fails. */
+  private async profileNamesSoft(
+    ids: string[],
+  ): Promise<Map<string, DeciderName> | null> {
+    const out = new Map<string, DeciderName>();
+    for (const part of chunks(distinct(ids))) {
+      const { data, error } = await this.sb
+        .from('profiles')
+        .select('id, display_name, deleted_at')
+        .in('id', part);
+      if (error) {
+        this.logger.warn(
+          `timesheet_decider_names_failed code=${error.code ?? 'none'}`,
+        );
+        return null;
+      }
+      for (const p of (data ?? []) as Array<{
+        id: string;
+        display_name: string | null;
+        deleted_at: string | null;
+      }>) {
+        if (p.deleted_at) continue;
+        out.set(p.id, { id: p.id, display_name: p.display_name ?? null });
+      }
+    }
+    return out;
+  }
+
+  /**
+   * A1 + A2 on `me/timesheets` (at most MINE_LIMIT rows): one routing preview per open/returned sheet, one
+   * time_scope_deciders per distinct scope, one time_timesheet_deciders per submitted sheet (at most
+   * DECORATE_CONCURRENCY calls in flight), then one batched profile read for every name. Best effort per sheet;
+   * a failed name read leaves every sheet undecorated.
+   */
+  private async decorateMine(items: TimesheetSummary[]): Promise<void> {
+    const editable = items.filter(
+      (s) => s.status === 'open' || s.status === 'returned',
+    );
+    const submitted = items.filter((s) => s.status === 'submitted');
+    if (editable.length === 0 && submitted.length === 0) return;
+
+    const scopeMemo = new Memo<string[] | null>();
+    const [routes, deciderLists] = await Promise.all([
+      mapLimit(editable, DECORATE_CONCURRENCY, async (s) => {
+        const route = await this.routingPreviewSoft(s.id);
+        if (!route) return null;
+        const ids = await this.scopeDecidersSoft(
+          s,
+          route.approver_scope,
+          scopeMemo,
+        );
+        return ids ? { route, ids } : null;
+      }),
+      mapLimit(submitted, DECORATE_CONCURRENCY, (s) =>
+        this.decidersOrNull(s.id),
+      ),
+    ]);
+    const names = await this.profileNamesSoft([
+      ...routes.flatMap((r) => r?.ids ?? []),
+      ...deciderLists.flatMap((l) => l ?? []),
+    ]);
+    if (!names) return;
+    editable.forEach((s, i) => {
+      const r = routes[i];
+      if (r) {
+        const preview: RoutingPreview = {
+          ...r.route,
+          deciders: pickNames(r.ids, names),
+        };
+        s.routing_preview = preview;
+      }
+    });
+    submitted.forEach((s, i) => {
+      const ids = deciderLists[i];
+      if (ids) s.deciders = pickNames(ids, names);
+    });
+  }
+
+  // ── internals: queue flags (A3) and settled extras (A12) ────────────────────────────────────────────
+
+  /**
+   * Over-cap seconds per waiting sheet of a queue page: the detail's freeze preview (approve mode, overtime not
+   * approved), rate lookups skipped. The first FLAGS_FREEZE_MAX submitted rows are previewed one sheet per build,
+   * exactly as each detail shows them, with at most DECORATE_CONCURRENCY builds in flight (a build reads its
+   * caps and windows one after another, so one batch for the whole page would serialise every read). No build
+   * starts once FLAGS_BUDGET_MS has passed. Rows past the cap or the budget, and rows whose build failed, are
+   * `partial` (read 0).
+   */
+  private async overCapFor(
+    sheets: TimesheetRow[],
+  ): Promise<{ seconds: Map<string, number>; partial: Set<string> }> {
+    const seconds = new Map<string, number>();
+    const eligible = sheets.filter((s) => s.status === 'submitted');
+    const computed = eligible.slice(0, FLAGS_FREEZE_MAX);
+    const partial = new Set(eligible.slice(FLAGS_FREEZE_MAX).map((s) => s.id));
+    const deadline = Date.now() + FLAGS_BUDGET_MS;
+    let skipped = 0;
+    await mapLimit(computed, DECORATE_CONCURRENCY, async (s) => {
+      if (Date.now() > deadline) {
+        partial.add(s.id);
+        skipped += 1;
+        return;
+      }
+      try {
+        const { preview } = await this.buildFreeze([s.id], {
+          approveOvertime: false,
+          mode: 'approve',
+          previewOnly: true,
+        });
+        seconds.set(s.id, preview[s.id]?.over_cap_seconds ?? 0);
+      } catch (error) {
+        this.logger.warn(
+          `timesheet_queue_flags_failed sheet=${s.id}: ${error instanceof Error ? error.message : String(error)}`,
+        );
+        partial.add(s.id);
+      }
+    });
+    if (skipped > 0) {
+      this.logger.warn(
+        `timesheet_queue_flags_budget skipped=${skipped} budget_ms=${FLAGS_BUDGET_MS}`,
+      );
+    }
+    return { seconds, partial };
+  }
+
+  /** TIMESHEET_HAS_SETTLED_ENTRIES plus what settled it (A12); any lookup failure keeps the original error. */
+  private async withSettlement(mapped: HttpException): Promise<HttpException> {
+    const body = errorBody(mapped);
+    const sheetId =
+      typeof body.timesheet_id === 'string' ? body.timesheet_id : null;
+    if (!sheetId) return mapped;
+    try {
+      const extras = await this.settlementExtras(sheetId, body.reason);
+      if (!extras) return mapped;
+      // timeError drops the reserved keys (code, message, …) from the extras.
+      return timeError(
+        'TIMESHEET_HAS_SETTLED_ENTRIES',
+        typeof body.message === 'string' ? body.message : undefined,
+        { ...body, ...extras },
+      );
+    } catch (error) {
+      this.logger.warn(
+        `timesheet_settlement_lookup_failed sheet=${sheetId}: ${error instanceof Error ? error.message : String(error)}`,
+      );
+      return mapped;
+    }
+  }
+
+  /**
+   * reason 'paid': the payout of the earliest paid entry, else `paid_outside` for a legacy paid-outside entry.
+   * reason 'billed': the invoice (id, number, status) of the sheet's earliest reservation. 'legacy': nothing.
+   * Throws on a read error (the caller keeps the original refusal).
+   */
+  private async settlementExtras(
+    sheetId: string,
+    reason: unknown,
+  ): Promise<Record<string, unknown> | null> {
+    const check = (op: string, error: PgErrorLike | null): void => {
+      if (error) throw new Error(`${op} code=${error.code ?? 'none'}`);
+    };
+    if (reason === 'paid') {
+      const paid = await this.sb
+        .from('time_entries')
+        .select('id, payout_id')
+        .eq('timesheet_id', sheetId)
+        .not('payout_id', 'is', null)
+        .order('started_at', { ascending: true })
+        .order('id', { ascending: true })
+        .limit(1);
+      check('settled_payout', paid.error);
+      const payoutId = (
+        (paid.data ?? []) as Array<{ payout_id: string | null }>
+      )[0]?.payout_id;
+      if (payoutId) return { payout_id: payoutId };
+      const outside = await this.sb
+        .from('time_entries')
+        .select('id')
+        .eq('timesheet_id', sheetId)
+        .eq('legacy_status', 'paid_outside')
+        .limit(1);
+      check('settled_paid_outside', outside.error);
+      return ((outside.data ?? []) as unknown[]).length > 0
+        ? { paid_outside: true }
+        : null;
+    }
+    if (reason !== 'billed') return null;
+
+    let first: { invoice_id: string; created_at: string } | null = null;
+    for (let from = 0; ; from += PAGE) {
+      const ids = await this.sb
+        .from('time_entries')
+        .select('id')
+        .eq('timesheet_id', sheetId)
+        .order('id', { ascending: true })
+        .range(from, from + PAGE - 1);
+      check('settled_entries', ids.error);
+      const entryIds = ((ids.data ?? []) as Array<{ id: string }>).map(
+        (r) => r.id,
+      );
+      for (const part of chunks(entryIds)) {
+        const res = await this.sb
+          .from('invoice_time_entries')
+          .select('invoice_id, entry_id, created_at')
+          .in('entry_id', part)
+          .order('created_at', { ascending: true })
+          .order('invoice_id', { ascending: true })
+          .limit(1);
+        check('settled_reservation', res.error);
+        const row = (
+          (res.data ?? []) as Array<{ invoice_id: string; created_at: string }>
+        )[0];
+        if (
+          row &&
+          (!first ||
+            row.created_at < first.created_at ||
+            (row.created_at === first.created_at &&
+              row.invoice_id < first.invoice_id))
+        ) {
+          first = row;
+        }
+      }
+      if (entryIds.length < PAGE || from + PAGE >= MAX_PAGED_ROWS) break;
+    }
+    if (!first) return null;
+    const invoice = await this.sb
+      .from('invoices')
+      .select('id, number, status')
+      .eq('id', first.invoice_id)
+      .maybeSingle();
+    check('settled_invoice', invoice.error);
+    const inv = invoice.data as {
+      id: string;
+      number: string | null;
+      status: string | null;
+    } | null;
+    return inv
+      ? {
+          invoice_id: inv.id,
+          ...(inv.number ? { invoice_number: inv.number } : {}),
+          ...(inv.status ? { invoice_status: inv.status } : {}),
+        }
+      : { invoice_id: first.invoice_id };
   }
 
   // ── internals: the freeze ───────────────────────────────────────────────────────────────────────────
@@ -1453,15 +1930,33 @@ export class TimesheetsService {
 
   /** TimesheetSummary = the row + entry_count, running_count, logged_seconds of its entries now. */
   private async summaries(sheets: TimesheetRow[]): Promise<TimesheetSummary[]> {
-    if (sheets.length === 0) return [];
-    const stats = await this.sheetStats(sheets.map((s) => s.id));
-    return sheets.map((s) => ({ ...s, ...(stats.get(s.id) ?? emptyStats()) }));
+    return (await this.summariesWithReview(sheets)).items;
   }
 
-  private async sheetStats(
-    sheetIds: string[],
-  ): Promise<Map<string, SheetStats>> {
+  /** summaries plus, from the same entry read, each sheet's Needs-review count (A3). */
+  private async summariesWithReview(sheets: TimesheetRow[]): Promise<{
+    items: TimesheetSummary[];
+    needsReview: Map<string, number>;
+  }> {
+    if (sheets.length === 0) return { items: [], needsReview: new Map() };
+    const { stats, needsReview } = await this.sheetStats(
+      sheets.map((s) => s.id),
+    );
+    return {
+      items: sheets.map((s) => ({
+        ...s,
+        ...(stats.get(s.id) ?? emptyStats()),
+      })),
+      needsReview,
+    };
+  }
+
+  private async sheetStats(sheetIds: string[]): Promise<{
+    stats: Map<string, SheetStats>;
+    needsReview: Map<string, number>;
+  }> {
     const out = new Map<string, SheetStats>();
+    const needsReview = new Map<string, number>();
     const rows = await this.readPaged<StatsRow>(
       'sheet_stats',
       sheetIds,
@@ -1476,12 +1971,19 @@ export class TimesheetsService {
     for (const r of rows) {
       if (!r.timesheet_id) continue;
       const s = out.get(r.timesheet_id) ?? emptyStats();
+      const seconds = Math.max(0, toNumber(r.duration_seconds) ?? 0);
       s.entry_count += 1;
       if (!r.ended_at) s.running_count += 1;
-      s.logged_seconds += Math.max(0, toNumber(r.duration_seconds) ?? 0);
+      s.logged_seconds += seconds;
       out.set(r.timesheet_id, s);
+      if (seconds >= NEEDS_REVIEW_SECONDS || r.flagged_reason) {
+        needsReview.set(
+          r.timesheet_id,
+          (needsReview.get(r.timesheet_id) ?? 0) + 1,
+        );
+      }
     }
-    return out;
+    return { stats: out, needsReview };
   }
 
   /** Every row for the ids, chunked by id list and paged past PostgREST's row cap. */

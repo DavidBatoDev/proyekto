@@ -6,7 +6,6 @@ import { renderNotificationEmail } from '../../shared/notifications/email/notifi
 import { NotificationsService } from '../../shared/notifications/notifications.service';
 import { buildPushMessage } from '../../shared/push/notification-push';
 import { teamManagerIds } from '../teams/team-authority';
-import { WorkspacesService } from '../workspaces/workspaces.service';
 import {
   NOTIFIED_MARKER_TTL_SECONDS,
   TIME_PAYOUT_MESSAGE,
@@ -251,16 +250,11 @@ async function setup(over: Partial<World> = {}, o: { redis?: FakeRedis } = {}) {
       Promise.resolve(id ? (NAMES[id] ?? null) : null),
     ),
   };
-  const workspaces = {
-    findSlugForTeam: jest.fn(() => Promise.resolve('acme')),
-  };
-
   const moduleRef = await Test.createTestingModule({
     providers: [
       TimeNotificationsService,
       { provide: SUPABASE_ADMIN, useValue: sb },
       { provide: NotificationsService, useValue: notifications },
-      { provide: WorkspacesService, useValue: workspaces },
       ...(o.redis
         ? [{ provide: UPSTASH_REDIS_CLIENT, useValue: o.redis }]
         : []),
@@ -277,7 +271,6 @@ async function setup(over: Partial<World> = {}, o: { redis?: FakeRedis } = {}) {
   return {
     service,
     notifications,
-    workspaces,
     calls,
     rpc,
     order,
@@ -889,7 +882,7 @@ describe('TimeNotificationsService', () => {
     });
   });
 
-  describe('timer notifications (D29 links)', () => {
+  describe('timer notifications (D79 links)', () => {
     const teamEntry = {
       id: 'entry-1',
       member_user_id: MEMBER,
@@ -898,7 +891,7 @@ describe('TimeNotificationsService', () => {
       started_at: '2026-09-23T01:00:00Z',
     };
 
-    it('a team-context entry keeps the team page link', async () => {
+    it('a team-context entry links to /time?entry= (no team page, no slug)', async () => {
       const t = await setup();
       await t.service.timerRunningLong(teamEntry);
       expect(t.sent()).toEqual([
@@ -906,29 +899,34 @@ describe('TimeNotificationsService', () => {
           user_id: MEMBER,
           type_name: 'timer_running_long',
           content: expect.objectContaining({ entry_id: 'entry-1' }),
-          link_url: '/w/acme/teams/team-1/time/my-logs?log=entry-1',
+          link_url: '/time?entry=entry-1',
         }),
       ]);
+      expect(t.calls.some((c) => c.table === 'workspaces')).toBe(false);
     });
 
-    it('any other context links to /time?entry=', async () => {
-      const t = await setup();
-      await t.service.timerRunningLong({
-        ...teamEntry,
-        context_kind: 'personal',
-        team_id: null,
-      });
-      expect(t.sent()[0].link_url).toBe('/time?entry=entry-1');
-      expect(t.workspaces.findSlugForTeam).not.toHaveBeenCalled();
-    });
+    it.each(['personal', 'workspace', 'assignment'] as const)(
+      'a %s entry links to /time?entry= too',
+      async (kind) => {
+        const t = await setup();
+        await t.service.timerRunningLong({
+          ...teamEntry,
+          context_kind: kind,
+          team_id: null,
+        });
+        expect(t.sent()[0].link_url).toBe('/time?entry=entry-1');
+      },
+    );
 
-    it('falls back to the bare team path when the slug lookup fails', async () => {
+    it('a 24 h auto-stop on a team entry links to /time?entry=', async () => {
       const t = await setup();
-      t.workspaces.findSlugForTeam.mockRejectedValueOnce(new Error('db'));
-      await t.service.timerRunningLong(teamEntry);
-      expect(t.sent()[0].link_url).toBe(
-        '/teams/team-1/time/my-logs?log=entry-1',
-      );
+      await t.service.timerAutoStopped(teamEntry, 'auto_stopped_24h');
+      expect(t.sent()).toEqual([
+        expect.objectContaining({
+          type_name: 'timer_auto_stopped',
+          link_url: '/time?entry=entry-1',
+        }),
+      ]);
     });
 
     it('auto-stop carries {entry_id, reason} and clears the running-long notice', async () => {
@@ -973,7 +971,7 @@ describe('TimeNotificationsService', () => {
   });
 
   describe('payoutRecorded', () => {
-    it('tells the member with no amount, linking their team time page', async () => {
+    it('tells the member with no amount, linking the bare Time page (D79)', async () => {
       const t = await setup();
       const payout = {
         id: 'payout-1',
@@ -993,7 +991,7 @@ describe('TimeNotificationsService', () => {
             entry_count: 3,
             message: 'A payment was recorded for your time',
           },
-          link_url: '/w/acme/teams/team-1/time/my-logs',
+          link_url: '/time',
         },
       ]);
     });
@@ -1030,12 +1028,10 @@ describe('TimeNotificationsService', () => {
         [MEMBER, DECIDER_B, REVIEWER, MANAGER].sort(),
       );
       expect(t.sent()).toHaveLength(4);
-      expect(byUser.get(MEMBER)?.link_url).toBe(
-        '/w/acme/teams/team-1/time/my-logs?log=entry-1',
-      );
-      expect(byUser.get(DECIDER_B)?.link_url).toBe(
-        '/w/acme/teams/team-1/time/team-logs?log=entry-1',
-      );
+      // D79: one /time link for the member and every other recipient alike.
+      for (const user of [MEMBER, DECIDER_B, REVIEWER, MANAGER]) {
+        expect(byUser.get(user)?.link_url).toBe('/time?entry=entry-1');
+      }
       expect(byUser.get(MEMBER)?.content).toEqual({
         entry_id: 'entry-1',
         comment_id: 'comment-1',
@@ -1182,7 +1178,6 @@ describe('TimeNotificationsService', () => {
       t.notifications.createNotification.mockRejectedValue(new Error('x'));
       t.notifications.clearForSubject.mockRejectedValue(new Error('x'));
       t.notifications.resolveActorName.mockRejectedValue(new Error('x'));
-      t.workspaces.findSlugForTeam.mockRejectedValue(new Error('x'));
       mockTeamManagerIds.mockRejectedValue(new Error('x'));
       const s = sheet();
       const e = {
@@ -1212,6 +1207,61 @@ describe('TimeNotificationsService', () => {
           t.service.commentAdded(entry(), comment(), DECIDER_A),
         ]),
       ).resolves.toHaveLength(12);
+    });
+  });
+
+  describe('D79: every link goes to the Time pages', () => {
+    it('no sender links a team time page, whatever the context', async () => {
+      const t = await setup({ reviewer: REVIEWER });
+      mockTeamManagerIds.mockResolvedValue([MANAGER]);
+      const s = sheet();
+      const e = {
+        id: 'entry-1',
+        member_user_id: MEMBER,
+        context_kind: 'team' as const,
+        team_id: 'team-1',
+        started_at: s.created_at,
+      };
+      await t.service.sheetSubmitted(s, [DECIDER_A, DECIDER_B], MEMBER);
+      await t.service.sheetDecided(s, 'approve', DECIDER_A, [DECIDER_A]);
+      await t.service.sheetDecided(s, 'return', DECIDER_A, [DECIDER_A]);
+      await t.service.sheetDecided(s, 'reopen', DECIDER_A, [DECIDER_A]);
+      await t.service.reopenRequested(s, [DECIDER_A], MEMBER);
+      await t.service.reminder(s);
+      await t.service.timerRunningLong(e);
+      await t.service.timerAutoStopped(e, 'stopped_by_assignment_end');
+      await t.service.payoutRecorded(
+        { id: 'p', member_user_id: MEMBER, team_id: 'team-1' },
+        1,
+        DECIDER_A,
+      );
+      await t.service.commentAdded(entry(), comment(), DECIDER_A);
+
+      const links = new Map<string, Set<string>>();
+      for (const n of t.sent()) {
+        const set = links.get(n.type_name) ?? new Set<string>();
+        set.add(n.link_url);
+        links.set(n.type_name, set);
+      }
+      const only = (type: string) => [...(links.get(type) ?? [])];
+      for (const type of [
+        'timesheet_submitted',
+        'timesheet_approved',
+        'timesheet_returned',
+        'timesheet_reopened',
+        'timesheet_reopen_requested',
+        'timesheet_reminder',
+      ]) {
+        expect(only(type)).toEqual(['/time/timesheets/sheet-1']);
+      }
+      expect(only('timer_running_long')).toEqual(['/time?entry=entry-1']);
+      expect(only('timer_auto_stopped')).toEqual(['/time?entry=entry-1']);
+      expect(only('time_log_comment_added')).toEqual(['/time?entry=entry-1']);
+      expect(only('time_payout_recorded')).toEqual(['/time']);
+      for (const n of t.sent()) {
+        expect(n.link_url.startsWith('/time')).toBe(true);
+        expect(n.link_url).not.toMatch(/\/teams\/|my-logs|team-logs|\?log=/);
+      }
     });
   });
 

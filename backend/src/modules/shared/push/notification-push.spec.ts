@@ -206,6 +206,50 @@ describe('buildPushMessage', () => {
       expect(msg.data).not.toHaveProperty('context_title');
       expect(msg.data).not.toHaveProperty('message');
     });
+
+    it('passes the /time links through unchanged (D79)', () => {
+      for (const link of [
+        '/time/timesheets/sheet-1',
+        '/time?entry=entry-1',
+        '/time',
+        '/time#waiting',
+      ]) {
+        expect(
+          buildPushMessage({
+            notificationId: 'n-l',
+            typeName: 'timer_running_long',
+            linkUrl: link,
+          }).data?.link_url,
+        ).toBe(link);
+      }
+    });
+
+    it('without a link, a time tap opens the Time pages, never the team pages (D79)', () => {
+      const linkOf = (typeName: string, content: Record<string, unknown>) =>
+        buildPushMessage({ notificationId: 'n-d', typeName, content }).data
+          ?.link_url;
+
+      expect(linkOf('timesheet_returned', { timesheet_id: 'sheet-1' })).toBe(
+        '/time/timesheets/sheet-1',
+      );
+      expect(linkOf('timer_auto_stopped', { entry_id: 'entry-1' })).toBe(
+        '/time?entry=entry-1',
+      );
+      expect(linkOf('time_log_comment_added', { entry_id: 'a&b' })).toBe(
+        '/time?entry=a%26b',
+      );
+      expect(linkOf('time_payout_recorded', { payout_id: 'payout-1' })).toBe(
+        '/time',
+      );
+      expect(linkOf('timesheets_imported', {})).toBe('/time#waiting');
+      // Historical per-entry types and every other type keep the list.
+      expect(linkOf('time_log_approved', { log_id: 'l-1' })).toBe(
+        '/notifications',
+      );
+      expect(linkOf('task_assigned', { task_id: 't-1' })).toBe(
+        '/notifications',
+      );
+    });
   });
 
   it('drops non-scalar content values', () => {

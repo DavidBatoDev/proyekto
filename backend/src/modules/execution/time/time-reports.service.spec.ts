@@ -19,6 +19,7 @@ import {
   andOfOrGroups,
   EXPORT_MAX_ROWS,
   TimeReportsService,
+  weekLabel,
 } from './time-reports.service';
 import type { EntryAuthRow, TimeEntryView } from './time.types';
 
@@ -223,6 +224,12 @@ async function build(handlers: Record<string, Handler> = {}) {
     teamTimezone: jest.fn().mockResolvedValue('Asia/Manila'),
     workspaceTimezone: jest.fn().mockResolvedValue('Asia/Manila'),
     resolve: jest.fn().mockResolvedValue({ timezone: 'Asia/Manila' }),
+    teamPeriodBasics: jest
+      .fn()
+      .mockResolvedValue({ timezone: 'Asia/Manila', week_start: 1 }),
+    workspacePeriodBasics: jest
+      .fn()
+      .mockResolvedValue({ timezone: 'Asia/Manila', week_start: 1 }),
   };
   const entitlements = {
     assertFeature: jest.fn().mockResolvedValue(undefined),
@@ -286,6 +293,16 @@ describe('andOfOrGroups', () => {
     expect(andOfOrGroups([['a.eq.1', 'b.eq.2'], [], ['c.is.null']])).toBe(
       'and(or(a.eq.1,b.eq.2),or(c.is.null))',
     );
+  });
+});
+
+describe('weekLabel (A5)', () => {
+  it('reads "Sep 22–28" in a month, names both months across one, and both years across a year end', () => {
+    expect(weekLabel('2026-09-22')).toBe('Sep 22–28');
+    expect(weekLabel('2026-09-29')).toBe('Sep 29–Oct 5');
+    expect(weekLabel('2026-02-23')).toBe('Feb 23–Mar 1');
+    expect(weekLabel('2028-02-23')).toBe('Feb 23–29');
+    expect(weekLabel('2025-12-29')).toBe('Dec 29, 2025–Jan 4, 2026');
   });
 });
 
@@ -875,6 +892,46 @@ describe('TimeReportsService "Client hours" (client hirer, CHANGE-7, D57)', () =
     ]);
     expect(authority.costVisible).not.toHaveBeenCalled();
   });
+
+  it('A5: "hours by week" at summary and at detailed, in the engagement week, with no identity or cost read', async () => {
+    const approvedRow = {
+      ...authRow({ id: 'e1' }),
+      duration_seconds: 9000,
+      payable_seconds: 7200,
+      legacy_status: null,
+      work_item: 'task',
+      context_label_snapshot: 'Studio',
+      timesheets: { status: 'approved' },
+    };
+    const rowsHandler: Record<string, Handler> = {
+      time_entries: (call) =>
+        offsetOf(call) === 0 ? { data: [approvedRow] } : { data: [] },
+    };
+    for (const level of ['summary', 'detailed'] as const) {
+      const { service, policy, authority } = await clientBuild(
+        level,
+        rowsHandler,
+      );
+      policy.resolve.mockResolvedValue({
+        timezone: 'Asia/Manila',
+        week_start: 1,
+      });
+      const summary = await service.summary(
+        VIEWER,
+        query({ scope: `engagement:${ENGAGEMENT}`, group_by: 'week' }),
+      );
+      expect(summary.groups).toEqual([
+        {
+          key: '2026-08-31',
+          label: 'Aug 31–Sep 6',
+          total_seconds: 7200,
+          payable_seconds: 7200,
+        },
+      ]);
+      expect(authority.costVisible).not.toHaveBeenCalled();
+      expect(authority.identityVisible).not.toHaveBeenCalled();
+    }
+  });
 });
 
 // ── Summary ───────────────────────────────────────────────────────────────────────────────────────────────────
@@ -1091,6 +1148,130 @@ describe('TimeReportsService.summary', () => {
     );
     const summary = await service.summary(VIEWER, query());
     expect(summary.under_agreements_seconds).toBe(1800);
+  });
+
+  // ── A5: group_by=week ──
+  // 2026-09-02 is a Wednesday. 2026-09-06T20:00Z is Sunday in UTC but Monday 04:00 in Manila.
+  const weekRows = [
+    summaryRow({
+      id: 'w1',
+      timesheet_id: 's1',
+      duration_seconds: 7200,
+      payable_seconds: 3600,
+      timesheets: { status: 'approved' },
+    }),
+    summaryRow({
+      id: 'w2',
+      timesheet_id: 's1',
+      started_at: '2026-09-02T16:30:00.000Z',
+    }),
+    summaryRow({
+      id: 'w3',
+      timesheet_id: 's2',
+      started_at: '2026-09-06T20:00:00.000Z',
+      duration_seconds: 1800,
+    }),
+    // Legacy rejected: never in a week total (E64).
+    summaryRow({
+      id: 'w4',
+      timesheet_id: 's3',
+      duration_seconds: 99_999,
+      payable_seconds: 0,
+      legacy_status: 'rejected',
+      timesheets: { status: 'approved' },
+    }),
+  ];
+  const weekHandlers = (): Record<string, Handler> => ({
+    time_entries: (call: Call) =>
+      call.select.startsWith(ENTRY_AUTH_SELECT) && offsetOf(call) === 0
+        ? { data: weekRows }
+        : { data: [] },
+  });
+
+  it('A5 team scope: weeks of the team policy (timezone and Monday start), keyed by week start, ascending', async () => {
+    const { service, policy } = await build(weekHandlers());
+    const summary = await service.summary(VIEWER, query({ group_by: 'week' }));
+    expect(summary.groups).toEqual([
+      {
+        key: '2026-08-31',
+        label: 'Aug 31–Sep 6',
+        total_seconds: 7200 + 3600,
+        payable_seconds: 3600,
+      },
+      {
+        key: '2026-09-07',
+        label: 'Sep 7–13',
+        total_seconds: 1800,
+        payable_seconds: 0,
+      },
+    ]);
+    expect(summary.total_seconds).toBe(7200 + 3600 + 1800);
+    expect(policy.teamPeriodBasics).toHaveBeenCalledWith(TEAM);
+    expect(policy.workspacePeriodBasics).not.toHaveBeenCalled();
+  });
+
+  it('A5: the policy week start moves the week (Sunday)', async () => {
+    const { service, policy } = await build(weekHandlers());
+    policy.teamPeriodBasics.mockResolvedValue({
+      timezone: 'Asia/Manila',
+      week_start: 7,
+    });
+    const summary = await service.summary(VIEWER, query({ group_by: 'week' }));
+    expect(summary.groups.map((g) => [g.key, g.label])).toEqual([
+      ['2026-08-30', 'Aug 30–Sep 5'],
+      ['2026-09-06', 'Sep 6–12'],
+    ]);
+  });
+
+  it('A5 project and workspace scopes read the week start of the governing workspace policy row', async () => {
+    const project = await build(weekHandlers());
+    project.policy.workspacePeriodBasics.mockResolvedValue({
+      timezone: 'Asia/Manila',
+      week_start: 3,
+    });
+    const byProject = await project.service.summary(
+      VIEWER,
+      query({ scope: `project:${PROJECT}`, group_by: 'week' }),
+    );
+    expect(project.policy.workspacePeriodBasics).toHaveBeenCalledWith(
+      WORKSPACE,
+    );
+    // Wednesday start: Sep 2 opens its own week.
+    expect(byProject.groups.map((g) => g.key)).toEqual(['2026-09-02']);
+
+    const ws = await build(weekHandlers());
+    await ws.service.summary(
+      VIEWER,
+      query({ scope: `workspace:${WORKSPACE}`, group_by: 'week' }),
+    );
+    expect(ws.policy.workspacePeriodBasics).toHaveBeenCalledWith(WORKSPACE);
+    expect(ws.policy.teamPeriodBasics).not.toHaveBeenCalled();
+  });
+
+  it('A5 engagement scope: the week start comes from the same resolve as the timezone (no extra read)', async () => {
+    const { service, policy } = await build(weekHandlers());
+    policy.resolve.mockResolvedValue({
+      timezone: 'Asia/Manila',
+      week_start: 7,
+    });
+    const summary = await service.summary(
+      VIEWER,
+      query({ scope: `engagement:${ENGAGEMENT}`, group_by: 'week' }),
+    );
+    expect(summary.groups.map((g) => g.key)).toEqual([
+      '2026-08-30',
+      '2026-09-06',
+    ]);
+    expect(policy.teamPeriodBasics).not.toHaveBeenCalled();
+    expect(policy.workspacePeriodBasics).not.toHaveBeenCalled();
+  });
+
+  it('A5: other groupings never read the week start', async () => {
+    const { service, policy } = await build(weekHandlers());
+    await service.summary(VIEWER, query({ group_by: 'day' }));
+    await service.summary(VIEWER, query());
+    expect(policy.teamPeriodBasics).not.toHaveBeenCalled();
+    expect(policy.workspacePeriodBasics).not.toHaveBeenCalled();
   });
 });
 
