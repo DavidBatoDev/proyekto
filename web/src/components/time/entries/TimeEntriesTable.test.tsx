@@ -171,7 +171,7 @@ function row(container: HTMLElement, id: string): HTMLElement {
 }
 
 function openMenu(rowEl: HTMLElement) {
-	fireEvent.click(within(rowEl).getByRole("button", { name: "Log actions" }));
+	fireEvent.click(within(rowEl).getByRole("button", { name: "Entry actions" }));
 }
 
 function menuLabels(): string[] {

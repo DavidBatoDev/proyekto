@@ -123,6 +123,13 @@ export interface UnavailableOption {
 	id: string | null;
 	label: string;
 	reason: UnavailableReason;
+	/**
+	 * A-4, team rows only: the workspace the row answers to (its plan's for
+	 * `plan`, the team's own for `team_time_off`), for "Prodigitality's plan
+	 * doesn't include timesheets." / "Prodigitality has time tracking off for
+	 * this team." Omitted when unknown or unnamed.
+	 */
+	workspace_name?: string;
 }
 
 export interface LoggingForResult {

@@ -735,11 +735,41 @@ describe("settled entries (the reopen table)", () => {
 				{ native: false },
 			).message,
 		).toBe("Billed on an invoice. Void it without a replacement to reopen.");
+		// An id alone (no number, no status) keeps the generic invoice wording
+		// and its link.
 		expect(
-			settledEntriesCopy({ reason: "billed" }, { native: false }).message,
-		).toBe(
-			"These hours are on an invoice. Remove them from the draft, or void the invoice without a replacement, to reopen.",
+			settledEntriesCopy(
+				{ reason: "billed", invoice_id: "i1" },
+				{ native: false },
+			),
+		).toEqual({
+			message:
+				"These hours are on an invoice. Remove them from the draft, or void the invoice without a replacement, to reopen.",
+			link: { kind: "invoice", id: "i1" },
+		});
+	});
+
+	it("gives a member's own billed reopen the reason only, with no invoice (D80)", () => {
+		expect(settledEntriesCopy({ reason: "billed" }, { native: false })).toEqual(
+			{
+				message: "This time is already being billed, so it can't be reopened.",
+				link: null,
+			},
 		);
+		// The member also gets paid_outside/payout_id keys, never invoice ones.
+		expect(
+			settledEntriesCopy(
+				{ reason: "billed", timesheet_id: "s1", paid_outside: false },
+				{ native: false },
+			),
+		).toEqual({
+			message: "This time is already being billed, so it can't be reopened.",
+			link: null,
+		});
+		// The app keeps its own row.
+		expect(
+			settledEntriesCopy({ reason: "billed" }, { native: true }).message,
+		).toBe("This time is already being billed. Reopen it on the web.");
 	});
 
 	it("says paid outside Proyekto the same way everywhere", () => {

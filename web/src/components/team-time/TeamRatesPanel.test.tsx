@@ -158,7 +158,7 @@ describe("TeamRatesPanel", () => {
 	it("opens the person's time through the host", async () => {
 		const viewMemberTime = vi.fn();
 		renderPanel(viewMemberTime);
-		const view = await screen.findByRole("button", { name: /view logs/i });
+		const view = await screen.findByRole("button", { name: /view time/i });
 		fireEvent.click(view);
 		expect(viewMemberTime).toHaveBeenCalledWith("user-1");
 	});

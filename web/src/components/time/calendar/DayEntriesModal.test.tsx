@@ -103,7 +103,7 @@ function renderDay(props: Partial<Parameters<typeof DayEntriesModal>[0]> = {}) {
 
 function openMenu(entryId: string) {
 	const row = document.querySelector(`tr[data-entry-id="${entryId}"]`);
-	const trigger = row?.querySelector('button[aria-label="Log actions"]');
+	const trigger = row?.querySelector('button[aria-label="Entry actions"]');
 	if (!trigger) throw new Error("no menu trigger");
 	fireEvent.click(trigger);
 }

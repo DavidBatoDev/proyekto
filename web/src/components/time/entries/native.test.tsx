@@ -228,7 +228,7 @@ describe("entries kit on native", () => {
 		fireEvent.click(
 			within(
 				container.querySelector('[data-entry-id="o"]') as HTMLElement,
-			).getByRole("button", { name: "Log actions" }),
+			).getByRole("button", { name: "Entry actions" }),
 		);
 		assertNativeSafe(document.body);
 	});

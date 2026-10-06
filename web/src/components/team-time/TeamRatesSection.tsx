@@ -51,7 +51,7 @@ interface TeamRatesSectionProps {
 	loadingRates: boolean;
 	canManageRates: boolean;
 	pendingMemberById: Record<string, boolean>;
-	/** Omit to hide the per-member "View Logs" button. */
+	/** Omit to hide the per-member "View time" button. */
 	onViewLogs?: (member: TeamMember) => void;
 	onOpenAddRate: () => void;
 	onManageMember: (member: TeamMember) => void;
@@ -117,11 +117,10 @@ export function TeamRatesSection({
 			<div className="flex items-center justify-between gap-3">
 				<div>
 					<h2 className="text-base font-semibold text-foreground">
-						Team Member Time Rates
+						Member rates
 					</h2>
 					<p className="mt-0.5 text-xs text-muted-foreground">
-						Members need at least one active project rate before they can use
-						the My Logs tab.
+						A rate prices a member's approved time on a project.
 					</p>
 				</div>
 				{canManageRates && (
@@ -264,7 +263,7 @@ export function TeamRatesSection({
 														disabled={isPending}
 														className="rounded-md border border-border bg-muted px-2.5 py-1 text-xs font-semibold text-foreground hover:bg-accent hover:text-accent-foreground disabled:cursor-not-allowed disabled:opacity-50"
 													>
-														View Logs
+														View time
 													</button>
 												)}
 												{canManageRates && (

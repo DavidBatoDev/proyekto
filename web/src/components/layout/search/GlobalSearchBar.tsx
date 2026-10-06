@@ -9,10 +9,12 @@ import {
 	useState,
 } from "react";
 import { RoadmapNodeGlyph } from "@/components/common/NodeGlyph";
+import { isTimeNavVisible } from "@/components/layout/sidebar/executionNavigation";
 import { useDashboardProjectsQuery } from "@/hooks/useDashboardProjectsQuery";
 import { useAllRoadmapsFullQuery } from "@/hooks/useProjectQueries";
 import { isActiveConsultant } from "@/lib/auth-utils";
 import { isNativeApp } from "@/lib/platform";
+import { useTimeOverview } from "@/queries/time";
 import type { Project } from "@/services/project.service";
 import type { FullRoadmapWithProject } from "@/services/roadmap.service";
 import { useProfile, useUser } from "@/stores/authStore";
@@ -60,12 +62,18 @@ function GlobalSearchBarInner({
 	const containerRef = useRef<HTMLDivElement>(null);
 	const inputRef = useRef<HTMLInputElement>(null);
 	const listId = useId();
+	// The sidebar's Time gate: search offers Time only to someone the sidebar
+	// shows it to (closed while the overview loads, like the sidebar).
+	const timeVisible = isTimeNavVisible(useTimeOverview().data);
 
 	const pages = useMemo(
 		// The platform cannot change within a page's lifetime, so it is not a
 		// memo key — do not "fix" it into one.
-		() => buildSearchablePages(isActiveConsultant(profile), isNativeApp()),
-		[profile],
+		() =>
+			buildSearchablePages(isActiveConsultant(profile), isNativeApp(), {
+				time: timeVisible,
+			}),
+		[profile, timeVisible],
 	);
 	const projectsQuery = useDashboardProjectsQuery();
 	// Enabled only while the search is open: the all-full payload is every

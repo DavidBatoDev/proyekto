@@ -194,6 +194,41 @@ describe("For surfaces on native", () => {
 		assertNativeSafe(plain.container);
 	});
 
+	it("a team row's reason names its workspace (A-4) and stays safe", () => {
+		const { container } = render(
+			<ForPicker
+				result={{
+					...result,
+					unavailable: [
+						{
+							kind: "team",
+							id: "t2",
+							label: "Design Team",
+							reason: "plan",
+							workspace_name: "Prodigitality",
+						},
+						{
+							kind: "team",
+							id: "t3",
+							label: "Ops Team",
+							reason: "team_time_off",
+							workspace_name: "Prodigitality",
+						},
+					],
+				}}
+				value={null}
+				onChange={vi.fn()}
+			/>,
+		);
+		expect(container.textContent).toContain(
+			"Prodigitality's plan doesn't include timesheets.",
+		);
+		expect(container.textContent).toContain(
+			"Prodigitality has time tracking off for this team.",
+		);
+		assertNativeSafe(container);
+	});
+
 	it("Who approves this time: no View terms, no /engagements link, no banned words", () => {
 		const { container } = render(
 			<WhoApprovesContent option={agreement} policy={terms} />,

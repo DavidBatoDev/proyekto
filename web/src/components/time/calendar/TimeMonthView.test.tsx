@@ -346,7 +346,7 @@ describe("TimeMonthView", () => {
 		fireEvent.click(dayButton("2026-10-05"));
 		await screen.findByRole("dialog");
 		const trigger = document.querySelector(
-			'tr[data-entry-id="e1"] button[aria-label="Log actions"]',
+			'tr[data-entry-id="e1"] button[aria-label="Entry actions"]',
 		);
 		fireEvent.click(trigger as Element);
 		fireEvent.click(screen.getByText("Edit"));
@@ -365,7 +365,7 @@ describe("TimeMonthView", () => {
 		await screen.findByRole("dialog");
 		fireEvent.click(
 			document.querySelector(
-				'tr[data-entry-id="e1"] button[aria-label="Log actions"]',
+				'tr[data-entry-id="e1"] button[aria-label="Entry actions"]',
 			) as Element,
 		);
 		fireEvent.click(screen.getByText("Delete"));

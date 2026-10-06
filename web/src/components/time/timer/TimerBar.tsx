@@ -123,7 +123,7 @@ function TimerBarView({
 				className={cn(
 					BUTTON,
 					isPaused
-						? "bg-success text-success-foreground hover:bg-success/90"
+						? "border border-success/50 bg-success/15 text-success-foreground hover:bg-success/25"
 						: "border border-border text-foreground hover:bg-muted",
 				)}
 			>

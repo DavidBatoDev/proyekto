@@ -159,7 +159,11 @@ function UnavailableRow({ item }: { item: UnavailableOption }) {
 					) : null}
 				</span>
 				<span className="mt-0.5 block text-xs text-muted-foreground">
-					{unavailableReasonText(item)}
+					{/* A-4: a team row names the workspace it answers to ("Prodigitality's
+					    plan…"); other kinds keep their own label. */}
+					{unavailableReasonText(item, {
+						ownerName: item.kind === "team" ? item.workspace_name : undefined,
+					})}
 				</span>
 			</span>
 		</div>

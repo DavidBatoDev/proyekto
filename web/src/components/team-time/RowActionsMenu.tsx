@@ -26,6 +26,7 @@ export function RowActionsMenu({
 	disabled,
 	loading,
 	menuZIndexClassName = "z-70",
+	ariaLabel = "Entry actions",
 }: {
 	rowId: string;
 	openMenuRowId: string | null;
@@ -35,6 +36,8 @@ export function RowActionsMenu({
 	loading?: boolean;
 	/** Override when the menu is portalled above a higher-stacked modal (default sits below modals like PayMemberModal at z-165). */
 	menuZIndexClassName?: string;
+	/** The trigger's accessible name and tooltip. Copy rule: never "log" as a noun. */
+	ariaLabel?: string;
 }) {
 	const triggerRef = useRef<HTMLButtonElement | null>(null);
 	const menuRef = useRef<HTMLDivElement | null>(null);
@@ -82,11 +85,11 @@ export function RowActionsMenu({
 	}, [isOpen, items.length, onSetOpenMenuRowId]);
 
 	const toneClass = (tone: MenuTone | undefined) => {
-		if (tone === "success") return "text-emerald-700 hover:bg-emerald-50";
-		if (tone === "info") return "text-indigo-700 hover:bg-indigo-50";
-		if (tone === "warning") return "text-amber-700 hover:bg-amber-50";
-		if (tone === "danger") return "text-rose-700 hover:bg-rose-50";
-		return "text-slate-700 hover:bg-slate-50";
+		if (tone === "success") return "text-success-foreground hover:bg-muted";
+		if (tone === "info") return "text-info-foreground hover:bg-muted";
+		if (tone === "warning") return "text-warning-foreground hover:bg-muted";
+		if (tone === "danger") return "text-destructive hover:bg-muted";
+		return "text-foreground hover:bg-muted";
 	};
 
 	return (
@@ -96,9 +99,9 @@ export function RowActionsMenu({
 				type="button"
 				onClick={() => onSetOpenMenuRowId(isOpen ? null : rowId)}
 				disabled={disabled}
-				title="Log actions"
-				aria-label="Log actions"
-				className="inline-flex items-center justify-center h-7 w-8 rounded-md border border-slate-300 bg-white text-slate-700 hover:bg-slate-50 disabled:opacity-50 disabled:cursor-not-allowed"
+				title={ariaLabel}
+				aria-label={ariaLabel}
+				className="inline-flex items-center justify-center h-7 w-8 rounded-md border border-border bg-card text-foreground hover:bg-muted disabled:opacity-50 disabled:cursor-not-allowed"
 			>
 				{loading ? (
 					<Loader2 className="h-3.5 w-3.5 animate-spin" />
@@ -110,7 +113,7 @@ export function RowActionsMenu({
 				? createPortal(
 						<div
 							ref={menuRef}
-							className={`fixed ${menuZIndexClassName} min-w-[200px] rounded-lg border border-slate-200 bg-white p-1 shadow-lg`}
+							className={`fixed ${menuZIndexClassName} min-w-[200px] rounded-lg border border-border bg-popover p-1 text-popover-foreground shadow-lg`}
 							style={{
 								top: menuPosition.top,
 								left: menuPosition.left,

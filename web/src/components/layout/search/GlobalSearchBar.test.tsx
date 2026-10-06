@@ -50,6 +50,21 @@ vi.mock("@/hooks/useProjectQueries", () => ({
 	}),
 }));
 
+// The sidebar's Time gate reads GET /time/me/overview; the search shares it.
+const timeState: {
+	overview:
+		| {
+				can_log?: boolean;
+				approvals_waiting?: number;
+				workspace_time_admin?: unknown[];
+		  }
+		| undefined;
+} = { overview: undefined };
+
+vi.mock("@/queries/time", () => ({
+	useTimeOverview: () => ({ data: timeState.overview }),
+}));
+
 afterEach(() => {
 	cleanup();
 	vi.clearAllMocks();
@@ -57,6 +72,7 @@ afterEach(() => {
 
 beforeEach(() => {
 	authState.user = { id: "u1" };
+	timeState.overview = undefined;
 });
 
 const getInput = () => screen.getByRole("combobox", { name: "Search" });
@@ -158,6 +174,55 @@ describe("GlobalSearchBar", () => {
 		fireEvent.keyDown(window, { key: "/" });
 		expect(document.activeElement).not.toBe(input);
 		dialog.remove();
+	});
+
+	it("offers the Time page to someone the sidebar shows it to", () => {
+		timeState.overview = { can_log: true };
+		render(<GlobalSearchBar />);
+		const input = getInput();
+		fireEvent.focus(input);
+		fireEvent.change(input, { target: { value: "time" } });
+
+		const option = screen.getByRole("option", { name: "Time" });
+		fireEvent.click(option);
+		expect(navigateMock).toHaveBeenCalledWith({ to: "/time" });
+	});
+
+	it("offers Time to a decider or a workspace time admin who cannot log", () => {
+		timeState.overview = { can_log: false, approvals_waiting: 2 };
+		render(<GlobalSearchBar />);
+		const input = getInput();
+		fireEvent.focus(input);
+		fireEvent.change(input, { target: { value: "time" } });
+		expect(screen.getByRole("option", { name: "Time" })).toBeTruthy();
+
+		cleanup();
+		timeState.overview = { can_log: false, workspace_time_admin: [{}] };
+		render(<GlobalSearchBar />);
+		const second = getInput();
+		fireEvent.focus(second);
+		fireEvent.change(second, { target: { value: "time" } });
+		expect(screen.getByRole("option", { name: "Time" })).toBeTruthy();
+	});
+
+	it("hides the Time page while the overview loads or when the gate is shut", () => {
+		render(<GlobalSearchBar />);
+		const input = getInput();
+		fireEvent.focus(input);
+		fireEvent.change(input, { target: { value: "time" } });
+		expect(screen.queryByRole("option", { name: "Time" })).toBeNull();
+
+		cleanup();
+		timeState.overview = {
+			can_log: false,
+			approvals_waiting: 0,
+			workspace_time_admin: [],
+		};
+		render(<GlobalSearchBar />);
+		const second = getInput();
+		fireEvent.focus(second);
+		fireEvent.change(second, { target: { value: "time" } });
+		expect(screen.queryByRole("option", { name: "Time" })).toBeNull();
 	});
 
 	it("shows No results for a query nothing matches", () => {

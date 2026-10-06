@@ -78,6 +78,82 @@ describe("ForPicker", () => {
 		);
 	});
 
+	it("names a team row's workspace in its reason, from A-4's workspace_name", () => {
+		const { container } = render(
+			<ForPicker
+				result={{
+					...result,
+					unavailable: [
+						{
+							kind: "team",
+							id: "t2",
+							label: "Design Team",
+							reason: "plan",
+							workspace_name: "Prodigitality",
+						},
+						{
+							kind: "team",
+							id: "t3",
+							label: "Ops Team",
+							reason: "team_time_off",
+							workspace_name: "Prodigitality",
+						},
+					],
+				}}
+				value={null}
+				onChange={vi.fn()}
+			/>,
+		);
+		expect(
+			container.querySelector('[data-unavailable="plan"]')?.textContent,
+		).toContain("Prodigitality's plan doesn't include timesheets.");
+		expect(
+			container.querySelector('[data-unavailable="team_time_off"]')
+				?.textContent,
+		).toContain("Prodigitality has time tracking off for this team.");
+	});
+
+	it("keeps the generic team reason without workspace_name, and a workspace row's own label", () => {
+		const { container } = render(
+			<ForPicker
+				result={{
+					...result,
+					unavailable: [
+						{ kind: "team", id: "t2", label: "Design Team", reason: "plan" },
+						{
+							kind: "team",
+							id: "t3",
+							label: "Ops Team",
+							reason: "team_time_off",
+						},
+						{
+							kind: "workspace",
+							id: "w2",
+							label: "Acme Workspace",
+							reason: "plan",
+							// Only team rows read the field.
+							workspace_name: "Someone Else",
+						},
+					],
+				}}
+				value={null}
+				onChange={vi.fn()}
+			/>,
+		);
+		const plans = container.querySelectorAll('[data-unavailable="plan"]');
+		expect(plans[0]?.textContent).toContain(
+			"This team's workspace plan doesn't include timesheets.",
+		);
+		expect(plans[1]?.textContent).toContain(
+			"Acme Workspace's plan doesn't include timesheets.",
+		);
+		expect(plans[1]?.textContent).not.toContain("Someone Else");
+		expect(
+			container.querySelector('[data-unavailable="team_time_off"]')
+				?.textContent,
+		).toContain("Time tracking is off for this team.");
+	});
+
 	it("reports a choice and the remember box", () => {
 		const onChange = vi.fn();
 		const onRemember = vi.fn();

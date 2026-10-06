@@ -363,10 +363,16 @@ export interface SettledEntriesCopy {
  * | On a draft invoice     | "These hours are on draft invoice INV-0042. Remove them from the draft to reopen." | "This time is already being billed. Reopen it on the web." |
  * | On an issued invoice   | "Billed on invoice INV-0042. Void it without a replacement to reopen."    | As the draft row                                         |
  * | Paid outside Proyekto  | "Includes time paid outside Proyekto, so it can't be reopened."           | Same                                                     |
+ * | Billed, no invoice keys (D80) | "This time is already being billed, so it can't be reopened."      | As the draft row                                         |
  *
  * Payouts have no number, so the payout is named only when the caller has a
  * label for it (`payoutLabel`); otherwise "a payout". A missing invoice number
  * or status falls back to the wording that fits both.
+ *
+ * D80: `invoice_*` reach only callers who can see cost. A member reopening
+ * their own auto or self sheet gets the reason alone, so a billed refusal with
+ * no invoice keys at all says why and nothing more. An id alone still points
+ * at the invoice.
  */
 export function settledEntriesCopy(
 	extras: unknown,
@@ -407,6 +413,14 @@ export function settledEntriesCopy(
 		const invoiceId = str(e.invoice_id);
 		const number = str(e.invoice_number);
 		const status = str(e.invoice_status);
+		// D80: the member's own auto/self reopen carries no invoice keys (a worker
+		// never sees the client's billing), so it gets the reason only.
+		if (!invoiceId && !number && !status) {
+			return {
+				message: "This time is already being billed, so it can't be reopened.",
+				link: null,
+			};
+		}
 		const link = invoiceId ? { kind: "invoice" as const, id: invoiceId } : null;
 		if (status === "draft") {
 			return {

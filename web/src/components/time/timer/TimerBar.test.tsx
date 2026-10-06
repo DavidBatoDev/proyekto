@@ -120,7 +120,11 @@ describe("TimerBar (full)", () => {
 			breakSeconds: 330,
 		});
 		renderBar(<TimerBar timer={t} />);
-		expect(screen.getByRole("button", { name: "Resume" })).toBeTruthy();
+		const resumeButton = screen.getByRole("button", { name: "Resume" });
+		// Readable on a tint: a solid success fill would hide the same-hue label.
+		expect(resumeButton.className).toContain("bg-success/15");
+		expect(resumeButton.className).toContain("text-success-foreground");
+		expect(resumeButton.className).not.toMatch(/(^|\s)bg-success(\s|$)/);
 		expect(screen.getByTestId("timer-break").textContent).toBe("05:30");
 		expect(screen.getAllByText("On break").length).toBeGreaterThan(0);
 	});
