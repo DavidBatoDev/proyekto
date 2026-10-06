@@ -68,6 +68,7 @@ import type {
 	TimesheetRow,
 	TimesheetSummary,
 } from "@/services/time.types";
+import { useAuthStore } from "@/stores/authStore";
 import { useActiveTimer } from "../timer/useActiveTimer";
 import { StaleRevisionBanner } from "./StaleRevisionBanner";
 import { useTimesheetActions } from "./useTimesheetActions";
@@ -442,6 +443,7 @@ export function SubmitSheetDialog({
 	});
 
 	const actions = useTimesheetActions({ workspaceName });
+	const viewerId = useAuthStore((state) => state.user?.id ?? null);
 	const [acked, setAcked] = useState<ReadonlySet<string>>(new Set());
 	const headingId = useId();
 
@@ -476,6 +478,7 @@ export function SubmitSheetDialog({
 			scopeKind: sheet.scope_kind,
 			label: sheet.scope_label_snapshot,
 			workspaceName,
+			viewerId,
 		},
 	);
 	const label = sheetScopeLabel(sheet.scope_kind, sheet.scope_label_snapshot);

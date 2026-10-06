@@ -292,6 +292,8 @@ function ReviewBody({
 		events: detail.events,
 		names: reviewNames(detail),
 		decidersCount: detail.deciders_count,
+		// V11: the hirer reviewing it reads "Waiting for you", not her own name.
+		viewerCanDecide: viewer.can_decide,
 	});
 	const facts = headerFacts(sheet, grid, { now });
 	const rules = rulesView(detail, { native });
@@ -300,7 +302,11 @@ function ReviewBody({
 			? goesToCopy(
 					sheet.routing_preview?.approver_scope,
 					sheet.routing_preview?.deciders,
-					{ scopeKind: sheet.scope_kind, label: sheet.scope_label_snapshot },
+					{
+						scopeKind: sheet.scope_kind,
+						label: sheet.scope_label_snapshot,
+						viewerId,
+					},
 				)
 			: null;
 	const buttons = reviewButtons(viewer.actions, sheet.status);

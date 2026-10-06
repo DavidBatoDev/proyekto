@@ -213,6 +213,25 @@ describe("TimesheetReview: misses", () => {
 });
 
 describe("TimesheetReview: a decider", () => {
+	it("V11: the hirer reviewing an agreement sheet reads 'Waiting for you', not her own name", async () => {
+		serve(
+			deciderDetail({
+				sheet: sheet({
+					scope_kind: "engagement",
+					// The worker's counterparty, which is the decider herself.
+					scope_label_snapshot: "Ana Reyes",
+					engagement_id: ENGAGEMENT_ID,
+					team_id: null,
+					approver_scope: "hirer",
+				}),
+			}),
+		);
+		renderWith(review());
+		const status = await screen.findByTestId("review-status");
+		expect(status.textContent).toBe("Submitted · Waiting for you");
+		expect(status.textContent).not.toMatch(/Ana Reyes/);
+	});
+
 	it("shows the header, the rules, the grid with merged projects and the history", async () => {
 		serve(deciderDetail());
 		renderWith(review());

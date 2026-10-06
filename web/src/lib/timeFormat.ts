@@ -659,14 +659,34 @@ export interface GoesToContext {
 	label?: string | null;
 	/** The policy workspace's name, for workspace approvers of a team sheet. */
 	workspaceName?: string | null;
+	/**
+	 * The signed-in user (V11): a decider never reads her own name. When the
+	 * deciders include her she is "you", first ("Goes to you and Leo Cruz",
+	 * "Waiting for you"); the others keep their names.
+	 */
+	viewerId?: string | null;
 }
 
+/** What a decider who is the viewer is called in "Goes to …" / "Waiting for …". */
+const VIEWER_DECIDER = "you";
+
+/** The deciders' names; the viewer (by id) as "you", first. */
 function deciderNames(
 	deciders: readonly TimeDecider[] | null | undefined,
+	viewerId?: string | null,
+	options: { viewerDecides?: boolean } = {},
 ): string[] {
-	return (deciders ?? [])
-		.map((decider) => decider.display_name?.trim() ?? "")
-		.filter((name) => name !== "");
+	let viewer = Boolean(options.viewerDecides);
+	const names: string[] = [];
+	for (const decider of deciders ?? []) {
+		if (viewerId && decider.id === viewerId) {
+			viewer = true;
+			continue;
+		}
+		const name = decider.display_name?.trim() ?? "";
+		if (name) names.push(name);
+	}
+	return viewer ? [VIEWER_DECIDER, ...names] : names;
 }
 
 function hasNoDecider(
@@ -711,7 +731,7 @@ export function goesToTarget(
 				: "the workspace owners and admins";
 		}
 		case "hirer": {
-			const names = deciderNames(deciders);
+			const names = deciderNames(deciders, ctx.viewerId);
 			if (names.length) return joinNames(names, "and");
 			return ctx.label?.trim() || "the person who hired you";
 		}
@@ -727,7 +747,7 @@ export function goesToTarget(
  * |------------------|-------------------------------------------------------------------------|
  * | `team`           | "Goes to Prodigitality Services Inc. Team's owners and admins"          |
  * | `workspace`      | "Goes to Acme's workspace owners and admins"                            |
- * | `hirer`          | "Goes to Ana Reyes"                                                     |
+ * | `hirer`          | "Goes to Ana Reyes" ("Goes to you" when the viewer is the decider)      |
  * | `auto` (client)  | "Submitting confirms these hours for your agreement with Acme Corp."    |
  * | `self`           | "You're the only approver here, so this approves itself."              |
  * | none eligible    | "No one else can approve this. Add a workspace admin."                  |
@@ -757,16 +777,25 @@ export function goesToCopy(
 /**
  * The "Waiting on …" sublabel of a submitted sheet: the hirer by name ("Waiting
  * on Ana Reyes"), a team or workspace as a group ("Waiting on Acme's owners
- * and admins").
+ * and admins"). A decider never reads her own name (V11): when the deciders
+ * include the viewer, or she can decide it (`viewerDecides`), it is "Waiting
+ * for you" ("Waiting for you or Leo Cruz"). Without a decider list the hirer
+ * line falls back to `scope_label_snapshot`, the worker's counterparty, which
+ * for the hirer reviewing it is her own name.
  */
 function waitingOn(
 	scope: ApproverScope,
 	deciders: readonly TimeDecider[] | null | undefined,
-	ctx: GoesToContext,
+	ctx: GoesToContext & { viewerDecides?: boolean },
 ): string | null {
 	switch (scope) {
 		case "hirer": {
-			const names = deciderNames(deciders);
+			const names = deciderNames(deciders, ctx.viewerId, {
+				viewerDecides: ctx.viewerDecides,
+			});
+			if (names[0] === VIEWER_DECIDER) {
+				return `Waiting for ${joinNames(names, "or")}`;
+			}
 			if (names.length) return `Waiting on ${joinNames(names, "or")}`;
 			const hirer = ctx.label?.trim();
 			return hirer ? `Waiting on ${hirer}` : null;
@@ -851,6 +880,12 @@ export interface SheetStatusContext extends DateFormatOptions {
 	decidersCount?: number | null;
 	/** The policy workspace's name, for workspace approvers of a team sheet. */
 	workspaceName?: string | null;
+	/**
+	 * The detail's `viewer.can_decide`: the viewer decides this sheet, so a
+	 * hirer-routed one reads "Waiting for you" even without a decider list
+	 * (A2 sends the names to the member only).
+	 */
+	viewerCanDecide?: boolean | null;
 }
 
 const STATUS_LABEL: Record<TimesheetStatus, string> = {
@@ -911,7 +946,8 @@ function latestEvent(
  *   (`auto`/`self`) · "overdue" (past its end, manual routing) · "Reopened by
  *   you" (a member reopen of an own `auto`/`self` sheet; needs `events`).
  * - **Submitted**: "No one else can approve this. Add a workspace admin." ·
- *   "Waiting on Ana Reyes" / "Waiting on Acme's owners and admins" ·
+ *   "Waiting on Ana Reyes" / "Waiting on Acme's owners and admins" ("Waiting
+ *   for you" to a hirer who decides it) ·
  *   "Imported from per-entry review" · "Sent automatically Oct 6" · "Sent when
  *   the account was closed".
  * - **Returned**: "Returned by Ana · 'Split Thursday'" · "Reopened by Ana · '…'".
@@ -994,7 +1030,11 @@ export function sheetStatusView(
 				(ctx.decidersCount === 0 || hasNoDecider(scope, deciders));
 			if (noDecider) sublabels.push(NO_DECIDER_COPY);
 			else if (scope && !sendsItself) {
-				const waiting = waitingOn(scope, deciders, goesTo);
+				const waiting = waitingOn(scope, deciders, {
+					...goesTo,
+					viewerId: ctx.viewerId,
+					viewerDecides: Boolean(ctx.viewerCanDecide),
+				});
 				if (waiting) sublabels.push(waiting);
 			}
 			if (sheet.submission_kind === "legacy") {

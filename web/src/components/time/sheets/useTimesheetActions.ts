@@ -331,6 +331,7 @@ export function sheetSuccessToast(
 					label:
 						target?.scope_label_snapshot ?? row?.scope_label_snapshot ?? null,
 					workspaceName: options.workspaceName ?? null,
+					viewerId: options.viewerId ?? null,
 				},
 				totalSeconds:
 					row?.total_seconds ??

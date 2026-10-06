@@ -618,6 +618,35 @@ describe("goesToCopy", () => {
 			]),
 		).toBe("Ana Reyes and Leo Cruz");
 	});
+
+	it("V11: a decider who is the viewer reads 'you', never her own name", () => {
+		const both = [
+			{ id: "u-ana", display_name: "Ana Reyes" },
+			{ id: "u-leo", display_name: "Leo Cruz" },
+		];
+		expect(
+			goesToCopy("hirer", ana, {
+				scopeKind: "engagement",
+				label: "Ana Reyes",
+				viewerId: "u-ana",
+			}),
+		).toBe("Goes to you");
+		// The others keep their names; the viewer comes first.
+		expect(
+			goesToCopy("hirer", both, { label: "Pixel", viewerId: "u-leo" }),
+		).toBe("Goes to you and Ana Reyes");
+		expect(goesToTarget("hirer", both, { viewerId: "u-ana" })).toBe(
+			"you and Leo Cruz",
+		);
+		// Someone else viewing: names as before.
+		expect(goesToCopy("hirer", both, { viewerId: "u-maria" })).toBe(
+			"Goes to Ana Reyes and Leo Cruz",
+		);
+		// Group routes never name a person, so they read as before.
+		expect(
+			goesToCopy("team", ana, { label: "Design", viewerId: "u-ana" }),
+		).toBe("Goes to Design's owners and admins");
+	});
 });
 
 type Sheet = Parameters<typeof sheetStatusView>[0];
@@ -861,6 +890,61 @@ describe("sheetStatusView", () => {
 		expect(escalated.sublabel).toBe(
 			"Waiting on Prodigitality Workspace's owners and admins",
 		);
+	});
+
+	it("V11: a decider never reads her own name in 'Waiting on …'", () => {
+		const submitted = (over: Partial<TimesheetSummary> = {}) =>
+			sheet({
+				status: "submitted",
+				scope_kind: "engagement",
+				// The worker's counterparty: the hirer herself.
+				scope_label_snapshot: "Cora Villanueva",
+				approver_scope: "hirer",
+				submission_kind: "manual",
+				...over,
+			});
+		const cora = { id: "u-cora", display_name: "Cora Villanueva" };
+		const leo = { id: "u-leo", display_name: "Leo Cruz" };
+		// The decider list names the viewer.
+		expect(
+			sheetStatusView(submitted({ deciders: [cora] }), {
+				now: NOW,
+				viewerId: "u-cora",
+			}).sublabel,
+		).toBe("Waiting for you");
+		expect(
+			sheetStatusView(submitted({ deciders: [leo, cora] }), {
+				now: NOW,
+				viewerId: "u-cora",
+			}).sublabel,
+		).toBe("Waiting for you or Leo Cruz");
+		// The review screen: A2 sends no list to a decider, so the label (her
+		// own name) used to show. `viewer.can_decide` says it waits for her.
+		expect(
+			sheetStatusView(submitted(), {
+				now: NOW,
+				viewerId: "u-cora",
+				viewerCanDecide: true,
+			}).sublabel,
+		).toBe("Waiting for you");
+		// The member still reads the hirer's name.
+		expect(
+			sheetStatusView(submitted({ deciders: [cora] }), {
+				now: NOW,
+				viewerId: "u-theo",
+			}).sublabel,
+		).toBe("Waiting on Cora Villanueva");
+		expect(
+			sheetStatusView(submitted(), { now: NOW, viewerId: "u-theo" }).sublabel,
+		).toBe("Waiting on Cora Villanueva");
+		// A team lead deciding a team sheet: the group copy names no one.
+		expect(
+			sheetStatusView(sheet({ status: "submitted", approver_scope: "team" }), {
+				now: NOW,
+				viewerId: "u-lead",
+				viewerCanDecide: true,
+			}).sublabel,
+		).toBe("Waiting on Prodigitality Services Inc. Team's owners and admins");
 	});
 
 	it("puts 'no one else can approve' first when the deciders are empty", () => {
