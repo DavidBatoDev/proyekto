@@ -5,6 +5,7 @@ import {
 	useQueryClient,
 } from "@tanstack/react-query";
 import { useEffect, useMemo, useState } from "react";
+import { PlanLimitNotice } from "@/components/billing/PlanLimitNotice";
 import { FinanceQueryError } from "@/components/finance/access/FinanceAccessStates";
 import {
 	DEFAULT_RATE_TYPE_DRAFT,
@@ -13,19 +14,24 @@ import {
 	toRateTypePayload,
 } from "@/components/team-time/MemberRateTypeFields";
 import { TeamMemberRateHistoryDrawer } from "@/components/team-time/TeamMemberRateHistoryDrawer";
-import { TeamRatesSection } from "@/components/team-time/TeamRatesSection";
 import {
 	AddRateModal,
 	DeleteRateModal,
 	EditRateModal,
-} from "@/components/team-time/TeamTimeModals";
+	type RateProjectOption,
+} from "@/components/team-time/TeamRateModals";
+import { TeamRatesSection } from "@/components/team-time/TeamRatesSection";
+import { useTeamMoneyAccess } from "@/components/team-time/useTeamMoneyAccess";
+import { TimeReasonCard } from "@/components/time/shared/TimeReasonCard";
 import { useToast } from "@/hooks/useToast";
-import { teamTimeService } from "@/services/team-time.service";
+import { isNativeApp } from "@/lib/platform";
+import { NATIVE_FALLBACK_COPY, timePlanCopy } from "@/lib/timeErrors";
 import {
 	createMemberRate,
 	deleteMemberRate,
 	listMemberRates,
 	listTeamMembers,
+	listTeamProjects,
 	type TeamMember,
 	type TeamMemberRate,
 	updateMemberRate,
@@ -33,11 +39,17 @@ import {
 
 export interface TeamRatesPanelLinks {
 	/**
-	 * Show one member's logs (the workspace opens Team Logs pre-filtered to
-	 * them). Backs each member card's "View Logs" button; omit it and the
+	 * Show one member's time: the host opens the team Report filtered to them
+	 * (`?person=`). Backs each member card's view button; omit it and the
 	 * button is hidden.
 	 */
-	viewMemberLogs?: (userId: string) => void;
+	viewMemberTime?: (userId: string) => void;
+}
+
+/** Shown under the plan notice when the team's plan can't price time with rates. */
+export function ratesPlanDetail(workspaceName?: string | null): string {
+	const name = workspaceName?.trim();
+	return `Saved rates are kept, and price approved time again when ${name || "the workspace"} is on Business.`;
 }
 
 export interface TeamRatesPanelProps {
@@ -54,10 +66,25 @@ function memberDisplayLabel(m: TeamMember | null): string {
 	return m.user?.display_name || composed || m.user?.email || m.user_id;
 }
 
-export function TeamRatesPanel({ teamId, links }: TeamRatesPanelProps) {
+/**
+ * Rates are a web surface (L54: money pages never show in the app), so the
+ * installed app gets a pointer to the web and nothing below mounts.
+ */
+export function TeamRatesPanel(props: TeamRatesPanelProps) {
+	if (isNativeApp()) {
+		return <TimeReasonCard tone="neutral" title={NATIVE_FALLBACK_COPY} />;
+	}
+	return <TeamRatesPanelBody {...props} />;
+}
+
+function TeamRatesPanelBody({ teamId, links }: TeamRatesPanelProps) {
 	const toast = useToast();
 	const qc = useQueryClient();
-	const viewMemberLogs = links?.viewMemberLogs;
+	const viewMemberTime = links?.viewMemberTime;
+	// Rates price approved team time only on a plan with team time rules
+	// (README "Pricing": team rates need time_team_rules). The rate card stays
+	// editable either way; say why it prices nothing.
+	const access = useTeamMoneyAccess(teamId);
 
 	const membersQuery = useQuery({
 		queryKey: ["team", teamId, "members"],
@@ -65,11 +92,19 @@ export function TeamRatesPanel({ teamId, links }: TeamRatesPanelProps) {
 	});
 	const allMembers = membersQuery.data ?? [];
 
+	// The team's attached projects (shared with the team overview and finance).
 	const projectsQuery = useQuery({
-		queryKey: ["team-time", teamId, "projects"],
-		queryFn: () => teamTimeService.listTeamLogProjects(teamId),
+		queryKey: ["teams", teamId, "projects"],
+		queryFn: () => listTeamProjects(teamId),
 	});
-	const attachedProjects = projectsQuery.data ?? [];
+	const attachedProjects = useMemo<RateProjectOption[]>(
+		() =>
+			(projectsQuery.data ?? []).map((row) => ({
+				id: row.project_id,
+				title: row.project?.title ?? null,
+			})),
+		[projectsQuery.data],
+	);
 	const projectTitleById = useMemo(() => {
 		const map: Record<string, string | null> = {};
 		for (const p of attachedProjects) map[p.id] = p.title;
@@ -282,7 +317,7 @@ export function TeamRatesPanel({ teamId, links }: TeamRatesPanelProps) {
 				? attachedProjects.map((p) => p.id).filter((id) => !coveredSet.has(id))
 				: addSelectedProjectIds.filter((id) => !coveredSet.has(id));
 		if (projectIds.length === 0) {
-			toast.error("Pick at least one project that has no active rate yet.");
+			toast.error("Pick at least one project that has no current rate yet.");
 			return;
 		}
 		if (!isRateTypeDraftValid(addRateType)) {
@@ -373,6 +408,16 @@ export function TeamRatesPanel({ teamId, links }: TeamRatesPanelProps) {
 
 	return (
 		<>
+			{access.teamRulesPlanLimit ? (
+				<PlanLimitNotice
+					info={access.teamRulesPlanLimit}
+					workspace={access.planWorkspace}
+					isComplimentary={access.isComplimentary}
+					message={timePlanCopy("time_team_rules")}
+					detail={ratesPlanDetail(access.planWorkspace?.name)}
+					className="mb-4"
+				/>
+			) : null}
 			<TeamRatesSection
 				members={allMembers}
 				activeRatesByUserId={activeRatesByUserId}
@@ -383,7 +428,7 @@ export function TeamRatesPanel({ teamId, links }: TeamRatesPanelProps) {
 				canManageRates
 				pendingMemberById={pendingMemberById}
 				onViewLogs={
-					viewMemberLogs ? (m) => viewMemberLogs(m.user_id) : undefined
+					viewMemberTime ? (m) => viewMemberTime(m.user_id) : undefined
 				}
 				onOpenAddRate={() => setAddOpen(true)}
 				onManageMember={(m) => setHistoryMember(m)}

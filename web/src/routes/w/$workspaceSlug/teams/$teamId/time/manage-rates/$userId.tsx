@@ -1,16 +1,19 @@
 import { createFileRoute, redirect } from "@tanstack/react-router";
+import type { TeamTimeReportSearch } from "@/lib/timeSearch";
 
-// The per-member logs page was retired: "View logs" now opens Team Logs
-// pre-filtered to the member. This route stays only to redirect any old links
-// (e.g. bookmarks) to that filtered Team Logs view.
+// The per-member page was retired: a member's time is the team Report
+// filtered to them. This route stays only to redirect old links (bookmarks,
+// old notifications) to that Report (`/w/<slug>/teams/<t>/time?person=<u>`).
+// A non-uuid id drops out in the Report's search validation.
 export const Route = createFileRoute(
 	"/w/$workspaceSlug/teams/$teamId/time/manage-rates/$userId",
 )({
 	beforeLoad: ({ params }) => {
+		const search: TeamTimeReportSearch = { person: params.userId };
 		throw redirect({
-			to: "/w/$workspaceSlug/teams/$teamId/time/team-logs",
+			to: "/w/$workspaceSlug/teams/$teamId/time",
 			params: { workspaceSlug: params.workspaceSlug, teamId: params.teamId },
-			search: { member: params.userId },
+			search,
 		});
 	},
 });

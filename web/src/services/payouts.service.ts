@@ -1,9 +1,19 @@
 import apiClient from "@/api/axios";
-import type { ProfileMini } from "@/services/team-time.service";
+import { toTimeApiError } from "@/services/time.service";
 
 export type PayoutMethodType = "bank" | "gcash" | "maya" | "paypal" | "other";
 export type PayoutStatus = "recorded" | "void";
 export type PayoutSource = "batch" | "quick";
+
+/** The profile embed on payout and owed rows. */
+export interface ProfileMini {
+	id: string;
+	display_name: string | null;
+	avatar_url: string | null;
+	first_name?: string | null;
+	last_name?: string | null;
+	email?: string | null;
+}
 
 export interface PayoutMethod {
 	id: string;
@@ -48,20 +58,30 @@ export interface Payout {
 	creator?: Pick<ProfileMini, "id" | "display_name" | "avatar_url"> | null;
 }
 
+/** One time entry a payout paid (`GET /payouts/:id`). */
+export interface PayoutEntry {
+	id: string;
+	project_id: string | null;
+	task_id: string | null;
+	started_at: string;
+	ended_at: string | null;
+	duration_seconds: number | null;
+	/** Approved (frozen) time; what the payout total is computed from. */
+	payable_seconds?: number | null;
+	rate_snapshot: number;
+	rate_type_snapshot?: "hourly" | "fixed" | null;
+	currency_snapshot: string;
+	/** Always "paid": every entry still pointing at the payout is paid by it. */
+	status?: string;
+	task?: { id: string; title: string | null } | null;
+	project?: { id: string; title: string | null } | null;
+}
+
 export interface PayoutDetail extends Payout {
-	logs: Array<{
-		id: string;
-		project_id: string;
-		task_id: string | null;
-		started_at: string;
-		ended_at: string | null;
-		duration_seconds: number | null;
-		rate_snapshot: number;
-		currency_snapshot: string;
-		status: string;
-		task?: { id: string; title: string | null } | null;
-		project?: { id: string; title: string | null } | null;
-	}>;
+	/** The entries this payout paid (D37 adds this name). */
+	entries?: PayoutEntry[];
+	/** The same rows under their old name, still sent (D37). */
+	logs?: PayoutEntry[];
 }
 
 export interface CreatePayoutMethodInput {
@@ -78,12 +98,18 @@ export interface CreatePayoutMethodInput {
 
 export type UpdatePayoutMethodInput = Partial<CreatePayoutMethodInput>;
 
-/** An outstanding approved-but-unpaid balance for a member in one currency. */
+/**
+ * A member's Owed balance in one currency: approved team time with no payment
+ * and no legacy marker, fixed-rate time left out (it is paid by hand). The
+ * amount is rounded once on the sum, as the payment itself is.
+ */
 export interface OwedBucket {
 	member_user_id: string;
 	member: ProfileMini | null;
 	currency: string;
+	/** The old name of `entry_count`, still sent (D37). */
 	log_count: number;
+	entry_count?: number;
 	hours: number;
 	amount: number;
 }
@@ -91,7 +117,8 @@ export interface OwedBucket {
 export interface CreatePayoutInput {
 	team_id: string;
 	member_user_id: string;
-	log_ids: string[];
+	/** The time entries paid: all Owed, one member, one currency. */
+	entry_ids: string[];
 	payout_method_id?: string;
 	reference_number?: string;
 	proof_path?: string;
@@ -100,8 +127,20 @@ export interface CreatePayoutInput {
 	source?: PayoutSource;
 }
 
+/** Local dates (`YYYY-MM-DD`) in the team's time zone, both inclusive. */
+export interface OwedRange {
+	from?: string;
+	until?: string;
+}
+
 type ApiResponse<T> = { data: T };
 
+/** The entries of a payout detail, whichever name the server sent. */
+export function payoutEntries(detail: PayoutDetail): PayoutEntry[] {
+	return detail.entries ?? detail.logs ?? [];
+}
+
+/** Payout-method errors keep their old plain shape (the profile pages read `.message`). */
 function extractError(error: unknown, fallback: string): Error {
 	const e = error as {
 		response?: { data?: { error?: { message?: string }; message?: string } };
@@ -113,6 +152,17 @@ function extractError(error: unknown, fallback: string): Error {
 		e?.message ||
 		fallback;
 	return new Error(message);
+}
+
+/**
+ * Payout errors keep their status and code (`PAYOUT_SELF_NOT_ALLOWED`,
+ * `FIXED_RATE_NOT_PAYABLE_BY_ENTRY`, `plan_limit`, 404s), so the money pages
+ * word them through `lib/timeErrors` and `FinanceQueryError` can tell a
+ * refusal from a failure. A `TimeApiError` is still an `Error` with the
+ * server's sentence as its message.
+ */
+function payoutError(error: unknown): Error {
+	return toTimeApiError(error);
 }
 
 export const payoutsService = {
@@ -182,90 +232,100 @@ export const payoutsService = {
 	): Promise<PayoutMethod[]> {
 		try {
 			const res = await apiClient.get<ApiResponse<PayoutMethod[]>>(
-				`/api/payouts/teams/${teamId}/members/${memberId}/payout-methods`,
+				`/api/payouts/teams/${encodeURIComponent(teamId)}/members/${encodeURIComponent(memberId)}/payout-methods`,
 			);
 			return res.data.data ?? [];
 		} catch (e) {
-			throw extractError(e, "Failed to load member's payout methods");
+			throw payoutError(e);
 		}
 	},
 
 	// ─── payouts ────────────────────────────────────────────────────────
 	async createPayout(input: CreatePayoutInput): Promise<Payout> {
 		try {
+			// Only the DTO's keys: the backend refuses unknown ones.
+			const body: CreatePayoutInput = {
+				team_id: input.team_id,
+				member_user_id: input.member_user_id,
+				entry_ids: Array.from(new Set(input.entry_ids)),
+				payout_method_id: input.payout_method_id || undefined,
+				reference_number: input.reference_number || undefined,
+				proof_path: input.proof_path || undefined,
+				note: input.note || undefined,
+				paid_at: input.paid_at || undefined,
+				source: input.source,
+			};
 			const res = await apiClient.post<ApiResponse<Payout>>(
 				"/api/payouts",
-				input,
+				body,
 			);
 			return res.data.data;
 		} catch (e) {
-			throw extractError(e, "Failed to record payout");
+			throw payoutError(e);
 		}
 	},
 
 	async listTeamPayouts(teamId: string, memberId?: string): Promise<Payout[]> {
 		try {
 			const res = await apiClient.get<ApiResponse<Payout[]>>(
-				`/api/payouts/teams/${teamId}`,
+				`/api/payouts/teams/${encodeURIComponent(teamId)}`,
 				{ params: memberId ? { member_user_id: memberId } : undefined },
 			);
 			return res.data.data ?? [];
 		} catch (e) {
-			throw extractError(e, "Failed to load payouts");
+			throw payoutError(e);
 		}
 	},
 
-	async getTeamOwed(
-		teamId: string,
-		range?: { from?: string; to?: string },
-	): Promise<OwedBucket[]> {
+	/** Needs `time_payouts` on the team's plan (a `plan_limit` 403 otherwise). */
+	async getTeamOwed(teamId: string, range?: OwedRange): Promise<OwedBucket[]> {
 		try {
 			const res = await apiClient.get<ApiResponse<OwedBucket[]>>(
-				`/api/payouts/teams/${teamId}/owed`,
+				`/api/payouts/teams/${encodeURIComponent(teamId)}/owed`,
 				{
 					params: {
 						from: range?.from || undefined,
-						to: range?.to || undefined,
+						until: range?.until || undefined,
 					},
 				},
 			);
 			return res.data.data ?? [];
 		} catch (e) {
-			throw extractError(e, "Failed to load outstanding balances");
+			throw payoutError(e);
 		}
 	},
 
 	async getPayout(payoutId: string): Promise<PayoutDetail> {
 		try {
 			const res = await apiClient.get<ApiResponse<PayoutDetail>>(
-				`/api/payouts/${payoutId}`,
+				`/api/payouts/${encodeURIComponent(payoutId)}`,
 			);
 			return res.data.data;
 		} catch (e) {
-			throw extractError(e, "Failed to load payout");
+			throw payoutError(e);
 		}
 	},
 
 	async getProofUrl(payoutId: string): Promise<string> {
 		try {
 			const res = await apiClient.get<ApiResponse<{ url: string }>>(
-				`/api/payouts/${payoutId}/proof-url`,
+				`/api/payouts/${encodeURIComponent(payoutId)}/proof-url`,
 			);
 			return res.data.data.url;
 		} catch (e) {
-			throw extractError(e, "Failed to load proof");
+			throw payoutError(e);
 		}
 	},
 
 	async voidPayout(payoutId: string): Promise<Payout> {
 		try {
 			const res = await apiClient.post<ApiResponse<Payout>>(
-				`/api/payouts/${payoutId}/void`,
+				`/api/payouts/${encodeURIComponent(payoutId)}/void`,
 				{},
 			);
 			return res.data.data;
 		} catch (e) {
-			throw extractError(e, "Failed to void payout");
+			throw payoutError(e);
 		}
 	},
 };

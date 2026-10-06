@@ -1,5 +1,6 @@
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { TeamRatesPanel } from "@/components/team-time/TeamRatesPanel";
+import type { TeamTimeReportSearch } from "@/lib/timeSearch";
 
 export const Route = createFileRoute(
 	"/w/$workspaceSlug/teams/$teamId/time/manage-rates/",
@@ -18,13 +19,13 @@ function ManageRatesTab() {
 		<TeamRatesPanel
 			teamId={teamId}
 			links={{
-				viewMemberLogs: (userId) => {
-					// Team Logs, pre-filtered to this member (replaces the old
-					// per-member sub-page).
+				viewMemberTime: (userId) => {
+					// The team Report (the Time index), filtered to this person.
+					const search: TeamTimeReportSearch = { person: userId };
 					void navigate({
-						to: "/w/$workspaceSlug/teams/$teamId/time/team-logs",
+						to: "/w/$workspaceSlug/teams/$teamId/time",
 						params: { workspaceSlug, teamId },
-						search: { member: userId },
+						search,
 					});
 				},
 			}}

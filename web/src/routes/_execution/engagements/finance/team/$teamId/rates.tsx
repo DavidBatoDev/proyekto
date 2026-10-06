@@ -3,6 +3,7 @@ import { TeamFinanceChrome } from "@/components/finance/team/TeamFinanceChrome";
 import { TimeSettingsLink } from "@/components/finance/team/TimeSettingsLink";
 import { TeamMoneyGate } from "@/components/team-time/TeamMoneyGate";
 import { TeamRatesPanel } from "@/components/team-time/TeamRatesPanel";
+import type { TeamTimeReportSearch } from "@/lib/timeSearch";
 
 /** Member rates, inside the team's finance. */
 export const Route = createFileRoute(
@@ -25,12 +26,15 @@ function TeamRatesPage() {
 				<TeamRatesPanel
 					teamId={teamId}
 					links={{
-						viewMemberLogs: (userId) =>
+						viewMemberTime: (userId) => {
+							// The finance Time tab (the team Report), filtered to this person.
+							const search: TeamTimeReportSearch = { person: userId };
 							void navigate({
 								to: "/engagements/finance/team/$teamId/time-logs",
 								params: { teamId },
-								search: { member: userId },
-							}),
+								search,
+							});
+						},
 					}}
 				/>
 			</TeamMoneyGate>

@@ -3,6 +3,7 @@ import { TeamFinanceChrome } from "@/components/finance/team/TeamFinanceChrome";
 import { TimeSettingsLink } from "@/components/finance/team/TimeSettingsLink";
 import { TeamMoneyGate } from "@/components/team-time/TeamMoneyGate";
 import { TeamPayoutsPanel } from "@/components/team-time/TeamPayoutsPanel";
+import type { TeamTimeReportSearch } from "@/lib/timeSearch";
 
 /** Payouts owed and recorded, inside the team's finance. */
 export const Route = createFileRoute(
@@ -25,7 +26,9 @@ function TeamPayoutsPage() {
 				<TeamPayoutsPanel
 					teamId={teamId}
 					links={{
-						openTeamLogs: (search) =>
+						// "Review" opens the finance Time tab (the team Report) on one
+						// person and one cut-off.
+						openReport: (search: TeamTimeReportSearch) =>
 							void navigate({
 								to: "/engagements/finance/team/$teamId/time-logs",
 								params: { teamId },
