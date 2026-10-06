@@ -1,26 +1,59 @@
-import { createFileRoute } from "@tanstack/react-router";
-import { Clock } from "lucide-react";
-import { AppEmptyState } from "@/components/common/AppPrimitives";
-import { validateTimePageSearch } from "@/lib/timeSearch";
+import {
+	createFileRoute,
+	useNavigate,
+	useRouterState,
+} from "@tanstack/react-router";
+import { useCallback } from "react";
+import {
+	TimePage,
+	type TimePageSearchOptions,
+} from "@/components/time/page/TimePage";
+import { type TimePageSearch, validateTimePageSearch } from "@/lib/timeSearch";
+import type { TimeEntryView } from "@/services/time.types";
 
 /**
- * `/time`: the one personal Time page (ux.md › The Time Page). Search params
- * are final (`for`, `project`, `week`, `entry`; see lib/timeSearch.ts); the
- * body is a placeholder until the page package replaces it.
+ * `/time`: the one personal Time page (ux.md › The Time Page). Search params:
+ * `for`, `project`, `week`, `entry` (lib/timeSearch.ts); `#waiting` scrolls
+ * to Waiting for you. The page itself lives in components/time/page.
  */
 export const Route = createFileRoute("/_execution/time/")({
 	validateSearch: validateTimePageSearch,
-	component: TimePagePlaceholder,
+	component: TimeIndexPage,
 });
 
-function TimePagePlaceholder() {
+function TimeIndexPage() {
+	const search = Route.useSearch();
+	const navigate = useNavigate({ from: Route.fullPath });
+	const hash = useRouterState({ select: (state) => state.location.hash });
+
+	const onSearchChange = useCallback(
+		(patch: Partial<TimePageSearch>, options?: TimePageSearchOptions) => {
+			void navigate({
+				search: (prev: TimePageSearch) => ({ ...prev, ...patch }),
+				replace: options?.replace ?? false,
+			});
+		},
+		[navigate],
+	);
+
+	const onOpenTask = useCallback(
+		(entry: TimeEntryView) => {
+			if (!entry.project_id || !entry.task_id) return;
+			void navigate({
+				to: "/project/$projectId/roadmap",
+				params: { projectId: entry.project_id },
+				search: { taskId: entry.task_id } as never,
+			});
+		},
+		[navigate],
+	);
+
 	return (
-		<div className="p-4 sm:p-6">
-			<AppEmptyState
-				icon={Clock}
-				title="Coming together"
-				description="Time is being set up here."
-			/>
-		</div>
+		<TimePage
+			search={search}
+			onSearchChange={onSearchChange}
+			hash={hash}
+			onOpenTask={onOpenTask}
+		/>
 	);
 }
