@@ -96,7 +96,15 @@ async function bootstrap() {
       // authorization server, and the protocol version during handshake.
       // `Date` is not CORS-safelisted; the web reads it to correct live timers
       // for a skewed device clock (web/src/lib/serverClock.ts).
-      exposedHeaders: ['WWW-Authenticate', 'MCP-Protocol-Version', 'Date'],
+      // `Content-Disposition` carries the server-built filename of file
+      // downloads (time report and audit exports); without it a cross-origin
+      // web client can only fall back to a generic name.
+      exposedHeaders: [
+        'WWW-Authenticate',
+        'MCP-Protocol-Version',
+        'Date',
+        'Content-Disposition',
+      ],
     });
   };
   app.enableCors(corsDelegate);

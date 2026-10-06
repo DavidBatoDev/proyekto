@@ -3038,6 +3038,15 @@ describe('A12 TIMESHEET_HAS_SETTLED_ENTRIES extras', () => {
     return err as HttpException;
   }
 
+  /** The decider path: DECIDER may decide S1 (D80 re-checks it before naming an invoice). */
+  function deciderMocks(): Mocks {
+    const m = defaultMocks();
+    m.authority.canDecide.mockImplementation((user: string) =>
+      Promise.resolve(user === DECIDER),
+    );
+    return m;
+  }
+
   const approved = sheet({ status: 'approved', decision_kind: 'manual' });
 
   it('paid: the payout of the earliest paid entry on the sheet', async () => {
@@ -3091,39 +3100,43 @@ describe('A12 TIMESHEET_HAS_SETTLED_ENTRIES extras', () => {
     expect(body).not.toHaveProperty('payout_id');
   });
 
-  it('billed: the invoice of the earliest reservation on the sheet, with number and status', async () => {
-    const { service } = await setup(
+  /** Two reservations on S1 (INV1 is the earliest) and an earlier one on another sheet. */
+  const billedTables = (sheetRow: Row = approved): Record<string, Row[]> => ({
+    timesheets: [sheetRow],
+    time_entries: [
+      entry({ id: E1 }),
+      entry({ id: E2, started_at: '2026-09-16T09:00:00.000Z' }),
+      entry({ id: E4, timesheet_id: S2 }),
+    ],
+    invoice_time_entries: [
       {
-        timesheets: [approved],
-        time_entries: [
-          entry({ id: E1 }),
-          entry({ id: E2, started_at: '2026-09-16T09:00:00.000Z' }),
-          entry({ id: E4, timesheet_id: S2 }),
-        ],
-        invoice_time_entries: [
-          {
-            invoice_id: INV2,
-            entry_id: E1,
-            created_at: '2026-09-25T00:00:00.000Z',
-          },
-          {
-            invoice_id: INV1,
-            entry_id: E2,
-            created_at: '2026-09-22T00:00:00.000Z',
-          },
-          // Earlier, but on another sheet.
-          {
-            invoice_id: uid(402),
-            entry_id: E4,
-            created_at: '2026-09-01T00:00:00.000Z',
-          },
-        ],
-        invoices: [
-          { id: INV1, number: 'INV-0042', status: 'draft' },
-          { id: INV2, number: 'INV-0043', status: 'issued' },
-        ],
+        invoice_id: INV2,
+        entry_id: E1,
+        created_at: '2026-09-25T00:00:00.000Z',
       },
+      {
+        invoice_id: INV1,
+        entry_id: E2,
+        created_at: '2026-09-22T00:00:00.000Z',
+      },
+      // Earlier, but on another sheet.
+      {
+        invoice_id: uid(402),
+        entry_id: E4,
+        created_at: '2026-09-01T00:00:00.000Z',
+      },
+    ],
+    invoices: [
+      { id: INV1, number: 'INV-0042', status: 'draft' },
+      { id: INV2, number: 'INV-0043', status: 'issued' },
+    ],
+  });
+
+  it('billed: the invoice of the earliest reservation on the sheet, with number and status', async () => {
+    const { service, authority } = await setup(
+      billedTables(),
       refusing('billed'),
+      deciderMocks(),
     );
     expect((await reopen(service)).getResponse()).toEqual({
       code: 'TIMESHEET_HAS_SETTLED_ENTRIES',
@@ -3134,6 +3147,8 @@ describe('A12 TIMESHEET_HAS_SETTLED_ENTRIES extras', () => {
       invoice_number: 'INV-0042',
       invoice_status: 'draft',
     });
+    // D80: the decider is re-checked before any invoice is named.
+    expect(authority.canDecide).toHaveBeenCalledWith(DECIDER, S1);
   });
 
   it('a failed lookup keeps the original refusal; legacy adds nothing', async () => {
@@ -3156,11 +3171,13 @@ describe('A12 TIMESHEET_HAS_SETTLED_ENTRIES extras', () => {
         ],
       },
       refusing('billed'),
+      deciderMocks(),
     );
     a.db.failures.invoices = { code: 'XX000', message: 'invoices exploded' };
     const err = await reopen(a.service);
     expect(err.getResponse()).toEqual(original);
     expect(JSON.stringify(err.getResponse())).not.toContain('exploded');
+    expect(a.db.from.mock.calls.map(([t]) => t)).toContain('invoices');
 
     const b = await setup(
       { timesheets: [approved], time_entries: [entry({ id: E1 })] },
@@ -3169,6 +3186,98 @@ describe('A12 TIMESHEET_HAS_SETTLED_ENTRIES extras', () => {
     expect((await reopen(b.service)).getResponse()).toEqual({
       ...original,
       reason: 'legacy',
+    });
+  });
+
+  describe('D80: the invoice only for a caller who can see cost', () => {
+    /** The member's own self-approved sheet (the member reopen path). */
+    const ownSelf = sheet({
+      status: 'approved',
+      approver_scope: 'self',
+      decision_kind: 'auto',
+    });
+    const memberReopen = async (
+      service: TimesheetsService,
+    ): Promise<HttpException> => {
+      const err = await service
+        .act(MEMBER, 'reopen', [S1], [3])
+        .catch((e: unknown) => e);
+      expect(err).toBeInstanceOf(ConflictException);
+      return err as HttpException;
+    };
+    const tablesRead = (db: ReturnType<typeof fakeDb>) =>
+      db.from.mock.calls.map(([t]) => t);
+
+    it('a member reopening their own sheet gets the reason only: no invoice id, number or status, and none is read', async () => {
+      const { service, db, authority } = await setup(
+        billedTables(ownSelf),
+        refusing('billed'),
+        deciderMocks(),
+      );
+      const body = (await memberReopen(service)).getResponse();
+      expect(body).toEqual({
+        code: 'TIMESHEET_HAS_SETTLED_ENTRIES',
+        message: SETTLED_MESSAGE,
+        timesheet_id: S1,
+        reason: 'billed',
+      });
+      expect(JSON.stringify(body)).not.toMatch(/INV-|invoice/);
+      expect(tablesRead(db)).not.toContain('invoice_time_entries');
+      expect(tablesRead(db)).not.toContain('invoices');
+      expect(authority.canDecide).not.toHaveBeenCalled();
+    });
+
+    it('the member still gets payout_id and paid_outside (their own pay)', async () => {
+      const paid = await setup(
+        {
+          timesheets: [ownSelf],
+          time_entries: [entry({ id: E1, payout_id: PAY1 })],
+        },
+        refusing('paid'),
+      );
+      expect((await memberReopen(paid.service)).getResponse()).toMatchObject({
+        reason: 'paid',
+        payout_id: PAY1,
+      });
+
+      const outside = await setup(
+        {
+          timesheets: [ownSelf],
+          time_entries: [
+            entry({ id: E1, payout_id: null, legacy_status: 'paid_outside' }),
+          ],
+        },
+        refusing('paid'),
+      );
+      expect((await memberReopen(outside.service)).getResponse()).toMatchObject(
+        { reason: 'paid', paid_outside: true },
+      );
+    });
+
+    it('a non-member who is not a decider of the sheet gets the reason only (re-checked, never assumed)', async () => {
+      const { service, db, authority } = await setup(
+        billedTables(),
+        refusing('billed'),
+      );
+      // defaultMocks: canDecide answers false.
+      const body = (await reopen(service)).getResponse();
+      expect(body).not.toHaveProperty('invoice_id');
+      expect(body).not.toHaveProperty('invoice_number');
+      expect(body).not.toHaveProperty('invoice_status');
+      expect(authority.canDecide).toHaveBeenCalledWith(DECIDER, S1);
+      expect(tablesRead(db)).not.toContain('invoices');
+    });
+
+    it('a failed decider check keeps the original refusal', async () => {
+      const m = deciderMocks();
+      m.authority.canDecide.mockRejectedValue(new Error('rpc down'));
+      const { service } = await setup(billedTables(), refusing('billed'), m);
+      expect((await reopen(service)).getResponse()).toEqual({
+        code: 'TIMESHEET_HAS_SETTLED_ENTRIES',
+        message: SETTLED_MESSAGE,
+        timesheet_id: S1,
+        reason: 'billed',
+      });
     });
   });
 });

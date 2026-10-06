@@ -118,6 +118,8 @@ const SCOPE_PATTERN =
   /^(team|project|workspace|engagement):([0-9a-fA-F-]{36})$/;
 const DATE_ONLY = /^\d{4}-\d{2}-\d{2}$/;
 const INVALID_TEXT_REPRESENTATION = '22P02';
+/** PostgREST 416: a counted read asked for an offset past the last row. */
+const RANGE_NOT_SATISFIABLE = 'PGRST103';
 
 /** Rows per internal page (summary, export, audit export). */
 const PAGE_ROWS = 1000;
@@ -495,7 +497,20 @@ export class TimeReportsService {
       .order('started_at', { ascending: false })
       .order('id', { ascending: false })
       .range(offset, offset + limit - 1);
-    if (error) this.fail('entries', error);
+    if (error) {
+      // A counted read whose offset is past the last row is PostgREST's 416 PGRST103: a page past the end is an
+      // empty page with the real total (a count-only read of the same query), never a 500.
+      if (error.code === RANGE_NOT_SATISFIABLE) {
+        const head = await this.applyFilters(
+          this.entryQuery(select, 'head'),
+          info,
+          filters,
+        );
+        if (head.error) this.fail('entries.count', head.error);
+        return { items: [], total: head.count ?? 0, page, limit };
+      }
+      this.fail('entries', error);
+    }
     const rows = ((data ?? []) as EntryAuthRow[]).map(toAuthRow);
     const items = await this.hydrateFor(viewerId, info, rows);
     return { items, total: count ?? offset + rows.length, page, limit };
@@ -1042,12 +1057,17 @@ export class TimeReportsService {
 
   // ── Query building ───────────────────────────────────────────────────────────────────────────────────────
 
-  private entryQuery(select: string, count: boolean): Filterable {
+  /** `count`: true adds the exact count to the rows; 'head' is a count-only read (no rows travel). */
+  private entryQuery(select: string, count: boolean | 'head'): Filterable {
     return this.sb
       .from('time_entries')
       .select(
         select,
-        count ? { count: 'exact' } : undefined,
+        count === 'head'
+          ? { count: 'exact', head: true }
+          : count
+            ? { count: 'exact' }
+            : undefined,
       ) as unknown as Filterable;
   }
 

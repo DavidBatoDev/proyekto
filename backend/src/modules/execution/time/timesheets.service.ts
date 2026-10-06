@@ -713,13 +713,14 @@ export class TimesheetsService {
       res = await call(freeze);
     }
     if (res.error) {
-      // A12: name the payout or invoice that blocks a reopen (best effort, after the RPC refused).
+      // A12: name the payout or invoice that blocks a reopen (best effort, after the RPC refused). D80: the
+      // invoice only for a caller who may see it.
       const mapped = mapTimeDbError(res.error);
       if (
         mapped &&
         errorBody(mapped).code === 'TIMESHEET_HAS_SETTLED_ENTRIES'
       ) {
-        throw await this.withSettlement(mapped);
+        throw await this.withSettlement(mapped, actorId, beforeById);
       }
       // A10: STALE_REVISION keeps the RPC's `timesheet_id` (and expected/actual or reason) as extras.
       throwTimeDb(res.error);
@@ -1544,14 +1545,20 @@ export class TimesheetsService {
     return { seconds, partial };
   }
 
-  /** TIMESHEET_HAS_SETTLED_ENTRIES plus what settled it (A12); any lookup failure keeps the original error. */
-  private async withSettlement(mapped: HttpException): Promise<HttpException> {
+  /** TIMESHEET_HAS_SETTLED_ENTRIES plus what settled it (A12, D80); any lookup failure keeps the original error. */
+  private async withSettlement(
+    mapped: HttpException,
+    actorId: string | null,
+    sheetsById: Map<string, TimesheetRow>,
+  ): Promise<HttpException> {
     const body = errorBody(mapped);
     const sheetId =
       typeof body.timesheet_id === 'string' ? body.timesheet_id : null;
     if (!sheetId) return mapped;
     try {
-      const extras = await this.settlementExtras(sheetId, body.reason);
+      const extras = await this.settlementExtras(sheetId, body.reason, () =>
+        this.mayReadInvoice(actorId, sheetsById.get(sheetId)),
+      );
       if (!extras) return mapped;
       // timeError drops the reserved keys (code, message, …) from the extras.
       return timeError(
@@ -1568,13 +1575,29 @@ export class TimesheetsService {
   }
 
   /**
+   * D80: the client invoice (id, number, status) is the provider's billing, so only a caller who can see cost on
+   * the sheet reads it: a decider. The RPC's non-member reopen path is already gated on can_decide_timesheet; it
+   * is re-checked here so no other path can leak it. The member reopening their own auto/self sheet (a worker)
+   * never learns the client invoice; they get the reason, plus `payout_id` / `paid_outside` (their own pay).
+   */
+  private async mayReadInvoice(
+    actorId: string | null,
+    sheet: TimesheetRow | undefined,
+  ): Promise<boolean> {
+    if (!actorId || !sheet || sheet.member_user_id === actorId) return false;
+    return this.authority.canDecide(actorId, sheet.id);
+  }
+
+  /**
    * reason 'paid': the payout of the earliest paid entry, else `paid_outside` for a legacy paid-outside entry.
-   * reason 'billed': the invoice (id, number, status) of the sheet's earliest reservation. 'legacy': nothing.
+   * reason 'billed': the invoice (id, number, status) of the sheet's earliest reservation, only when
+   * `mayReadInvoice` says so (D80; otherwise nothing is read). 'legacy': nothing.
    * Throws on a read error (the caller keeps the original refusal).
    */
   private async settlementExtras(
     sheetId: string,
     reason: unknown,
+    mayReadInvoice: () => Promise<boolean>,
   ): Promise<Record<string, unknown> | null> {
     const check = (op: string, error: PgErrorLike | null): void => {
       if (error) throw new Error(`${op} code=${error.code ?? 'none'}`);
@@ -1605,6 +1628,7 @@ export class TimesheetsService {
         : null;
     }
     if (reason !== 'billed') return null;
+    if (!(await mayReadInvoice())) return null;
 
     let first: { invoice_id: string; created_at: string } | null = null;
     for (let from = 0; ; from += PAGE) {

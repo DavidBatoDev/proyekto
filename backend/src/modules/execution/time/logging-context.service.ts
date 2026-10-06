@@ -14,6 +14,7 @@ import {
   AssignmentContext,
   EngagementsService,
 } from '../../marketplace/engagements/engagements.service';
+import type { EntitlementRef } from '../../shared/entitlements/entitlement-keys';
 import { EntitlementsService } from '../../shared/entitlements/entitlements.service';
 import { ProjectAuthorizationService } from '../projects/authorization/project-authorization.service';
 import {
@@ -90,6 +91,21 @@ interface Computed {
   result: LoggingForResult;
   /** Every available option before the step-7 collapse, in resolver order. */
   all: Candidate[];
+}
+
+/**
+ * The workspace each team `unavailable[]` row answers to, keyed by the row itself; local to one compute. A-4: it
+ * fills `UnavailableOption.workspace_name?`, so the chip can say "Prodigitality's plan doesn't include timesheets."
+ * / "Prodigitality has time tracking off for this team." (ux.md › For Chip). Additive and optional: omitted when
+ * the team has no workspace or the workspace has no name.
+ */
+type RowWorkspaces = Map<UnavailableOption, string>;
+
+/** The workspace whose plan an entitlement ref reads (a string ref is a workspace id); null for none. */
+function planWorkspaceId(ref: EntitlementRef): string | null {
+  if (ref === null || ref === undefined) return null;
+  if (typeof ref === 'string') return ref.trim() || null;
+  return ref.exempt ? null : (ref.workspaceId ?? null);
 }
 
 function sameId(a: string | null | undefined, b: string | null | undefined) {
@@ -406,6 +422,7 @@ export class LoggingContextService {
 
     const unavailable: UnavailableOption[] = [];
     const candidates: Candidate[] = [];
+    const rowWorkspaces: RowWorkspaces = new Map();
 
     // Steps 2 and 3 read in parallel; placement keeps the resolver order (assignments, then teams).
     // Step 3: curated teams, ordered is_primary DESC, attached_at, team_id (L1). L35: a team equal to an
@@ -420,7 +437,9 @@ export class LoggingContextService {
         ),
         this.suppressionSets(assignments),
         Promise.all(
-          curated.map((team) => this.teamCandidate(team, projectId, at)),
+          curated.map((team) =>
+            this.teamCandidate(team, projectId, at, rowWorkspaces),
+          ),
         ),
       ]);
     const suppressed = new Set<string>();
@@ -472,7 +491,12 @@ export class LoggingContextService {
         : 'no_governed_option';
     }
 
-    await this.fillWorkspaceNames(project, available, unavailable);
+    await this.fillWorkspaceNames(
+      project,
+      available,
+      unavailable,
+      rowWorkspaces,
+    );
 
     // Step 7b: collapse equal (sheet scope, rate source), keeping the first.
     const representative = new Map<string, LoggingOption>();
@@ -566,20 +590,32 @@ export class LoggingContextService {
     };
   }
 
-  /** Null only when SQL has no sheet scope for it (unreachable: time_sheet_scope_for always answers a team). */
+  /** Null only when SQL has no sheet scope for it (unreachable: time_sheet_scope_for always answers a team).
+   *  An unavailable row records the workspace it answers to in `rowWorkspaces` (named by fillWorkspaceNames). */
   private async teamCandidate(
     team: TeamRow,
     projectId: string,
     at: Date,
+    rowWorkspaces: RowWorkspaces,
   ): Promise<Candidate | UnavailableOption | null> {
     const label = team.name ?? 'Team';
-    const off = (reason: UnavailableOption['reason']): UnavailableOption => ({
-      kind: 'team',
-      id: team.id,
-      label,
-      reason,
-    });
-    if (team.time_tracking_enabled !== true) return off('team_time_off');
+    const off = (
+      reason: UnavailableOption['reason'],
+      workspaceId: string | null,
+    ): UnavailableOption => {
+      const row: UnavailableOption = {
+        kind: 'team',
+        id: team.id,
+        label,
+        reason,
+      };
+      if (workspaceId) rowWorkspaces.set(row, workspaceId);
+      return row;
+    };
+    // ux.md: "<team's workspace> has time tracking off for this team."
+    if (team.time_tracking_enabled !== true) {
+      return off('team_time_off', team.workspace_id);
+    }
 
     // D26: the plan subject is never a raw null.
     const planRef = await this.policy.planRefForTeam({
@@ -587,7 +623,8 @@ export class LoggingContextService {
       workspace_id: team.workspace_id,
     });
     if (!(await this.entitlements.hasFeature(planRef, 'time_tracking'))) {
-      return off('plan');
+      // Teams have no plan of their own: the name is the workspace whose plan was read.
+      return off('plan', planWorkspaceId(planRef));
     }
 
     const scope = await this.policy.sheetScopeFor('team', team.id, projectId);
@@ -749,11 +786,13 @@ export class LoggingContextService {
     );
   }
 
-  /** Workspace option labels (the workspace name) and the L57 tag on options governed by another workspace. */
+  /** Workspace option labels (the workspace name), the L57 tag on options governed by another workspace, and the
+   *  `workspace_name` of team `unavailable[]` rows (A-4). One `workspaces` read for all of them. */
   private async fillWorkspaceNames(
     project: ProjectRow,
     candidates: Candidate[],
     unavailable: UnavailableOption[],
+    rowWorkspaces: RowWorkspaces,
   ): Promise<void> {
     const projectWs = project.workspace_id?.toLowerCase() ?? null;
     const foreign = (c: Candidate): string | null =>
@@ -772,6 +811,8 @@ export class LoggingContextService {
     }
     for (const u of unavailable) {
       if (u.kind === 'workspace' && u.id) ids.add(u.id);
+      const owner = rowWorkspaces.get(u);
+      if (owner) ids.add(owner);
     }
     if (ids.size === 0) return;
 
@@ -780,13 +821,17 @@ export class LoggingContextService {
       .select('id, name')
       .in('id', [...ids]);
     if (error) this.fail('workspaces', error);
+    const rows = (data ?? []) as Array<{ id: string; name: string | null }>;
     const names = new Map(
-      ((data ?? []) as Array<{ id: string; name: string | null }>).map((w) => [
-        w.id.toLowerCase(),
-        w.name ?? 'Workspace',
-      ]),
+      rows.map((w) => [w.id.toLowerCase(), w.name ?? 'Workspace']),
     );
     const nameOf = (id: string) => names.get(id.toLowerCase()) ?? 'Workspace';
+    // A team row's owner name is only ever a real name: without one the web keeps its generic sentence.
+    const realNames = new Map(
+      rows
+        .filter((w) => (w.name ?? '').trim() !== '')
+        .map((w) => [w.id.toLowerCase(), (w.name as string).trim()]),
+    );
 
     for (const c of candidates) {
       if (c.option.kind === 'workspace' && c.option.id) {
@@ -797,6 +842,9 @@ export class LoggingContextService {
     }
     for (const u of unavailable) {
       if (u.kind === 'workspace' && u.id) u.label = nameOf(u.id);
+      const owner = rowWorkspaces.get(u);
+      const ownerName = owner ? realNames.get(owner.toLowerCase()) : undefined;
+      if (ownerName) u.workspace_name = ownerName;
     }
   }
 

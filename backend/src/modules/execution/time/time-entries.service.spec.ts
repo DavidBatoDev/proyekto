@@ -1765,6 +1765,55 @@ describe('policy weekly limit (A6, D65)', () => {
     warn.mockRestore();
   });
 
+  it('A-4: a failed contract week read never refuses Add time or Start either: the write lands with no warning', async () => {
+    const warn = jest
+      .spyOn(Logger.prototype, 'warn')
+      .mockImplementation(() => undefined);
+    const failure = { code: '42P01', message: 'relation does not exist' };
+    const agreement = async () => {
+      const b = await build({
+        tables: tables({
+          timesheets: [
+            wsSheet({ id: uid(71), scope_kind: 'engagement', scope_ref: ENG }),
+          ],
+        }),
+        option: option({
+          kind: 'assignment',
+          id: ASSIGN,
+          label: 'Acme Corp',
+          sheet_scope: { kind: 'engagement', ref: ENG },
+        }),
+        policy: limit(60, 'contract'),
+      });
+      b.policy.sheetScopeFor.mockResolvedValue({
+        scope_kind: 'engagement',
+        scope_ref: ENG,
+        policy_workspace_id: WS,
+        scope_label: 'Acme Corp',
+      } as never);
+      b.db.failNext('timesheets', 'select', failure);
+      return b;
+    };
+
+    const created = await agreement();
+    const view = await created.service.createManual(USER, manual());
+    expect(view.warnings).toEqual([]);
+    expect(created.db.writes('time_entries', 'insert')).toHaveLength(1);
+
+    const started = await agreement();
+    const timer = await started.service.start(USER, { project_id: PROJECT });
+    expect(timer.warnings).toEqual([]);
+    expect(started.db.writes('time_entries', 'insert')).toHaveLength(1);
+
+    // The contract read is the one that failed (logged, never in the body).
+    expect(warn.mock.calls.map(([m]) => String(m))).toEqual([
+      expect.stringContaining('create.contractWeekWarning failed'),
+      expect.stringContaining('start.contractWeekWarning failed'),
+    ]);
+    expect(JSON.stringify([view, timer])).not.toContain('relation');
+    warn.mockRestore();
+  });
+
   it('an agreement edit past the contract limit warns CONTRACT_WEEKLY_LIMIT', async () => {
     const t = tables({
       timesheets: [

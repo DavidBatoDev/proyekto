@@ -716,6 +716,82 @@ describe('TimeReportsService.entries', () => {
       expect(JSON.stringify(err.getResponse())).not.toContain('relation');
     });
   });
+
+  describe('A-4: a page past the end', () => {
+    /** PostgREST's range status: a counted read whose offset is past the total is 416 PGRST103; HEAD = count only. */
+    const postgrest =
+      (total: number): Handler =>
+      (call) => {
+        const options = call.options as
+          | { count?: string; head?: boolean }
+          | undefined;
+        if (options?.head) return { data: null, count: total };
+        if (options?.count && offsetOf(call) > total) {
+          return {
+            error: {
+              code: 'PGRST103',
+              message: 'Requested range not satisfiable',
+            },
+          };
+        }
+        return { data: [], count: total };
+      };
+
+    it('is an empty page with the real total from a count-only read of the same query, never a 500', async () => {
+      const { service, db, authority } = await build({
+        time_entries: postgrest(12),
+      });
+      const page = await service.entries(
+        VIEWER,
+        query({ scope: `workspace:${WORKSPACE}`, page: 3, limit: 10 }),
+      );
+      expect(page).toEqual({ items: [], total: 12, page: 3, limit: 10 });
+      expect(authority.hydrate).not.toHaveBeenCalled();
+
+      const [rows, head] = entryCalls(db.calls);
+      expect(entryCalls(db.calls)).toHaveLength(2);
+      expect(head.options).toEqual({ count: 'exact', head: true });
+      // The same select (the inner embed filters the rows) and the same filters, without order or range.
+      expect(head.select).toBe(rows.select);
+      expect(head.ops).toEqual(
+        rows.ops.filter((o) => o[0] !== 'order' && o[0] !== 'range'),
+      );
+      expect(head.ops).toContainEqual([
+        'eq',
+        'timesheets.policy_workspace_id',
+        WORKSPACE,
+      ]);
+    });
+
+    it('an offset equal to the total is a plain empty page from one read', async () => {
+      const { service, db } = await build({ time_entries: postgrest(10) });
+      const page = await service.entries(VIEWER, query({ page: 2, limit: 10 }));
+      expect(page).toEqual({ items: [], total: 10, page: 2, limit: 10 });
+      expect(entryCalls(db.calls)).toHaveLength(1);
+    });
+
+    it('a failed count read is the fixed-copy 500, with no Postgres text', async () => {
+      const { service } = await build({
+        time_entries: (call) =>
+          (call.options as { head?: boolean } | undefined)?.head
+            ? { error: { code: 'XX000', message: 'count exploded secret' } }
+            : {
+                error: {
+                  code: 'PGRST103',
+                  message: 'Requested range not satisfiable',
+                },
+              },
+      });
+      const promise = service.entries(VIEWER, query({ page: 9 }));
+      await expect(promise).rejects.toBeInstanceOf(
+        InternalServerErrorException,
+      );
+      await promise.catch((err: InternalServerErrorException) => {
+        expect(err.getResponse()).toMatchObject({ code: 'TIME_INTERNAL' });
+        expect(JSON.stringify(err.getResponse())).not.toContain('secret');
+      });
+    });
+  });
 });
 
 describe('TimeReportsService "Client hours" (client hirer, CHANGE-7, D57)', () => {
@@ -1546,5 +1622,23 @@ describe('TimeReportsService.auditExport', () => {
       'or',
       `workspace_id.eq.${WORKSPACE},team_id.in.(${TEAM})`,
     ]);
+  });
+
+  it('A-4: its pages never ask for a count, so a page past the end is a plain empty page (PostgREST 416 needs one)', async () => {
+    const { service, db } = await build({
+      teams: () => ({ data: [{ id: TEAM, name: 'Design team' }] }),
+    });
+    await service.auditExport(VIEWER, audit() as never);
+    const paged = db.calls.filter(
+      (c) => c.table === 'timesheet_events' || c.table === 'time_policy_events',
+    );
+    expect(paged.map((c) => c.table)).toEqual([
+      'timesheet_events',
+      'time_policy_events',
+    ]);
+    for (const call of paged) {
+      expect(call.options).toBeUndefined();
+      expect(call.ops).toContainEqual(['range', 0, 999]);
+    }
   });
 });

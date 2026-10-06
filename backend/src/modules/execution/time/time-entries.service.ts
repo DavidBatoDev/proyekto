@@ -539,7 +539,8 @@ export class TimeEntriesService {
     const [estimate, displayName, contract, , policyLimit] = await Promise.all([
       this.rates.estimate(option, userId, input.project_id, workType, at),
       this.displayNameSnapshot(userId),
-      this.contractWeekWarning(userId, op, at, 0, 'start'),
+      // The contract weekly limit only warns (D46, L12): best effort, like A6 below.
+      this.contractWeekWarningSoft(userId, op, at, 0, 'start'),
       // D46: a timer cannot start once a cap that needs approval is full (refuses before the insert).
       this.assertHourCap(userId, op, at, 0, 'start'),
       // A6: the policy weekly limit only warns (best effort). The alias answers no warnings, so it skips the read.
@@ -764,7 +765,8 @@ export class TimeEntriesService {
         ),
         this.displayNameSnapshot(userId),
         this.overlapWarning(userId, started, ended),
-        this.contractWeekWarning(userId, op, started, netSeconds, 'manual'),
+        // Warns only (D46, L12): best effort.
+        this.contractWeekWarningSoft(userId, op, started, netSeconds, 'manual'),
         // D46 (refuses before the insert).
         this.assertHourCap(userId, op, started, netSeconds, 'manual'),
         // A6: warns only (best effort); skipped on the alias, which answers no warnings.
@@ -1677,6 +1679,27 @@ export class TimeEntriesService {
           logged_minutes: loggedMinutes,
         }
       : null;
+  }
+
+  /**
+   * The contract weekly limit on create and start. It is an indicator only (D46, L12: the same never-block rule as
+   * A6), so a failed week read is logged and gives no warning; it never refuses the write.
+   */
+  private async contractWeekWarningSoft(
+    memberId: string,
+    op: OptionPolicy,
+    at: Date,
+    addSeconds: number,
+    mode: 'start' | 'manual',
+  ): Promise<EntryWarning | null> {
+    try {
+      return await this.contractWeekWarning(memberId, op, at, addSeconds, mode);
+    } catch (err) {
+      this.logger.warn(
+        `${mode === 'start' ? 'start' : 'create'}.contractWeekWarning failed: ${err instanceof Error ? err.message : String(err)}`,
+      );
+      return null;
+    }
   }
 
   /**

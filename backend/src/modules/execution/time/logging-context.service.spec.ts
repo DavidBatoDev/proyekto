@@ -540,15 +540,137 @@ describe('step 3: curated teams', () => {
       at: NOW(),
       purpose: 'read',
     });
+    // A-4: each team row names the workspace it answers to ("Prodigitality's plan doesn't include timesheets.").
     expect(r.unavailable).toEqual([
-      { kind: 'team', id: TEAM_A, label: 'Off', reason: 'team_time_off' },
-      { kind: 'team', id: TEAM_B, label: 'Unpaid', reason: 'plan' },
+      {
+        kind: 'team',
+        id: TEAM_A,
+        label: 'Off',
+        reason: 'team_time_off',
+        workspace_name: 'Acme Workspace',
+      },
+      {
+        kind: 'team',
+        id: TEAM_B,
+        label: 'Unpaid',
+        reason: 'plan',
+        workspace_name: 'Prodigitality',
+      },
     ]);
     // Never the workspace name: "Just me" (L31), told why.
     expect(kinds(r)).toEqual(['personal:']);
     expect(r.options[0].label).toBe(PERSONAL_LABEL);
     expect(r.personal_reason).toBe('plan');
     expect(r.selected).toEqual(r.options[0]);
+  });
+
+  describe('A-4: workspace_name on team unavailable rows', () => {
+    it('both team rows are named by one workspaces read; an available team carries no workspace_name', async () => {
+      const { service, db } = await build({
+        teams: [
+          { id: TEAM_A, name: 'Design' },
+          { id: TEAM_B, name: 'Unpaid', workspace_id: OTHER_WS },
+          { id: TEAM_C, name: 'Off', time_tracking_enabled: false },
+        ],
+        features: { [OTHER_WS]: { time_tracking: false } },
+      });
+      const r = await service.resolve(ME, PROJECT, {
+        at: NOW(),
+        purpose: 'read',
+      });
+      expect(kinds(r)).toEqual([`team:${TEAM_A}`]);
+      expect(r.options[0]).not.toHaveProperty('workspace_name');
+      expect(r.unavailable).toEqual([
+        {
+          kind: 'team',
+          id: TEAM_B,
+          label: 'Unpaid',
+          reason: 'plan',
+          workspace_name: 'Prodigitality',
+        },
+        {
+          kind: 'team',
+          id: TEAM_C,
+          label: 'Off',
+          reason: 'team_time_off',
+          workspace_name: 'Acme Workspace',
+        },
+      ]);
+      const reads = db.calls.filter((c) => c.table === 'workspaces');
+      expect(reads).toHaveLength(1);
+      expect(reads[0].filters).toEqual([
+        ['in', 'id', expect.arrayContaining([WS, OTHER_WS])],
+      ]);
+    });
+
+    it('a team without a workspace refused on plan names the workspace whose plan was read', async () => {
+      const { service, policy } = await build({
+        teams: [{ id: TEAM_A, name: 'Loose', workspace_id: null }],
+        // The fake keys a non-string plan ref as 'scope'.
+        features: { scope: { time_tracking: false } },
+      });
+      policy.planRefForTeam.mockResolvedValue({
+        workspaceId: OTHER_WS,
+        exempt: false,
+      } as never);
+      const r = await service.resolve(ME, PROJECT, {
+        at: NOW(),
+        purpose: 'read',
+      });
+      expect(r.unavailable).toEqual([
+        {
+          kind: 'team',
+          id: TEAM_A,
+          label: 'Loose',
+          reason: 'plan',
+          workspace_name: 'Prodigitality',
+        },
+      ]);
+    });
+
+    it('no workspace, or a workspace without a name, leaves workspace_name out (the web keeps its generic copy)', async () => {
+      const unhomed = await build({
+        teams: [
+          { id: TEAM_A, name: 'Loose', workspace_id: null },
+          {
+            id: TEAM_B,
+            name: 'Loose and off',
+            workspace_id: null,
+            time_tracking_enabled: false,
+          },
+        ],
+        features: { scope: { time_tracking: false } },
+      });
+      const r1 = await unhomed.service.resolve(ME, PROJECT, {
+        at: NOW(),
+        purpose: 'read',
+      });
+      expect(r1.unavailable).toEqual([
+        { kind: 'team', id: TEAM_A, label: 'Loose', reason: 'plan' },
+        {
+          kind: 'team',
+          id: TEAM_B,
+          label: 'Loose and off',
+          reason: 'team_time_off',
+        },
+      ]);
+      expect(unhomed.db.calls.some((c) => c.table === 'workspaces')).toBe(
+        false,
+      );
+
+      const unnamed = await build({
+        teams: [{ id: TEAM_A, name: 'Unpaid', workspace_id: OTHER_WS }],
+        features: { [OTHER_WS]: { time_tracking: false } },
+      });
+      unnamed.db.tables.workspaces = [{ id: OTHER_WS, name: '  ' }];
+      const r2 = await unnamed.service.resolve(ME, PROJECT, {
+        at: NOW(),
+        purpose: 'read',
+      });
+      expect(r2.unavailable).toEqual([
+        { kind: 'team', id: TEAM_A, label: 'Unpaid', reason: 'plan' },
+      ]);
+    });
   });
 
   it('the plan subject of a team without a workspace is never a raw null (D26)', async () => {

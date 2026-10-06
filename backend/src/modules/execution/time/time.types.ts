@@ -102,6 +102,10 @@ export interface UnavailableOption {
   id: string | null;
   label: string;
   reason: UnavailableReason;
+  /** A-4, team rows only: the workspace the row answers to (its plan's for `plan`, the team's own for
+   *  `team_time_off`), for "Prodigitality's plan doesn't include timesheets." / "Prodigitality has time tracking
+   *  off for this team." Omitted when unknown or unnamed. */
+  workspace_name?: string;
 }
 
 export interface LoggingForResult {
@@ -647,7 +651,8 @@ export interface TimesheetSettledExtras {
   payout_id?: string;
   /** reason 'paid' with no payout: an entry was paid outside Proyekto (legacy marker). */
   paid_outside?: true;
-  /** reason 'billed': the invoice of the sheet's earliest reservation. */
+  /** reason 'billed': the invoice of the sheet's earliest reservation. D80: the invoice keys go to a decider
+   *  only, never on the member's own auto/self reopen (a worker never learns the client's invoice numbers). */
   invoice_id?: string;
   invoice_number?: string;
   invoice_status?: string;
