@@ -2,6 +2,7 @@
 
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { cleanup, render, screen, waitFor } from "@testing-library/react";
+import type { ReactNode } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type {
 	FinanceHub,
@@ -26,13 +27,26 @@ vi.mock("@/components/finance/FinanceShareDialog", () => ({
 	FINANCE_ROLE_LABELS: { owner: "Owner", manager: "Manager" },
 }));
 // Router-bound chrome: the tab bar and trail need a router; the gate does not.
+// The stand-ins print the tab ids (for the access cases), each tab's label and
+// the trail's current crumb (for the copy cases).
 vi.mock("@/components/common/AppTabs", () => ({
-	AppTabs: ({ items }: { items: Array<{ key: string }> }) => (
-		<nav data-testid="tabs">{items.map((item) => item.key).join(",")}</nav>
+	AppTabs: ({ items }: { items: Array<{ key: string; label: ReactNode }> }) => (
+		<>
+			<nav data-testid="tabs">{items.map((item) => item.key).join(",")}</nav>
+			<ul>
+				{items.map((item) => (
+					<li key={item.key} data-testid={`tab-${item.key}`}>
+						{item.label}
+					</li>
+				))}
+			</ul>
+		</>
 	),
 }));
 vi.mock("@/components/finance/nav/FinanceTrail", () => ({
-	FinanceTrail: () => null,
+	FinanceTrail: ({ current }: { current?: string }) => (
+		<p data-testid="trail-current">{current ?? ""}</p>
+	),
 }));
 vi.mock("@/components/finance/portfolio/FinanceFiltersBar", () => ({
 	FinanceFiltersBar: () => null,
@@ -68,7 +82,9 @@ const readable: TeamFinanceProject = {
 	can_manage_invoices: true,
 };
 
-function renderChrome(section: "imports" | "time-logs" | "expenses") {
+function renderChrome(
+	section: "imports" | "time-logs" | "rates" | "payouts" | "expenses",
+) {
 	const client = new QueryClient({
 		defaultOptions: { queries: { retry: false } },
 	});
@@ -162,4 +178,51 @@ describe("TeamFinanceChrome access gate", () => {
 		);
 		expect(screen.queryByText("page body")).toBeNull();
 	}, 10000);
+});
+
+/**
+ * ux.md › Reports and Chrome: the finance team tab reads "Time" (its id and
+ * URL stay `time-logs`), and its refusal never calls time "logs".
+ */
+describe("TeamFinanceChrome › Time tab", () => {
+	beforeEach(() => {
+		mocks.hub.mockReset();
+		mocks.financeProjects.mockReset().mockResolvedValue([]);
+	});
+	afterEach(cleanup);
+
+	it('labels the time-logs tab "Time" in the tab bar and the trail', async () => {
+		mocks.hub.mockResolvedValue(hubWith({ my_team_role: "admin" }));
+
+		renderChrome("time-logs");
+
+		expect(await screen.findByText("page body")).toBeTruthy();
+		expect(screen.getByTestId("tab-time-logs").textContent).toBe("Time");
+		expect(screen.getByTestId("trail-current").textContent).toBe("Time");
+		expect(screen.getByTestId("tabs").textContent).toContain("time-logs");
+	});
+
+	it.each(["time-logs", "rates", "payouts"] as const)(
+		"refuses %s to a book-only accountant in time words, without mounting the page",
+		async (section) => {
+			mocks.hub.mockResolvedValue(
+				hubWith({ my_team_role: "member", book_role: "accountant" }),
+			);
+
+			renderChrome(section);
+
+			expect(
+				await screen.findByText(
+					"You don't have access to this team's time and pay.",
+				),
+			).toBeTruthy();
+			expect(
+				screen.getByText(
+					"Team owners and admins see the team's time, rates and payouts.",
+				),
+			).toBeTruthy();
+			expect(document.body.textContent).not.toMatch(/\blogs?\b/i);
+			expect(screen.queryByText("page body")).toBeNull();
+		},
+	);
 });

@@ -1,105 +1,136 @@
 import { useQuery } from "@tanstack/react-query";
-import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
+import { createFileRoute, redirect, useNavigate } from "@tanstack/react-router";
 import { Loader2 } from "lucide-react";
-import { useEffect } from "react";
-import { AppSurfaceCard } from "@/components/common/AppPrimitives";
+import { useState } from "react";
+import { useTeamMoneyAccess } from "@/components/team-time/useTeamMoneyAccess";
+import { TimeEntryDetailModal } from "@/components/time/entries/TimeEntryDetailModal";
+import { TimeReport } from "@/components/time/report/TimeReport";
 import {
-	getTeam,
-	hasAnyActiveRate,
-	listTeamMembers,
-} from "@/services/teams.service";
-import { useUser } from "@/stores/authStore";
+	validateTeamTimeReportSearch,
+	validateTimePageSearch,
+} from "@/lib/timeSearch";
+import { timeQueries } from "@/queries/time";
+import { getTeam, listTeamMembers } from "@/services/teams.service";
+import type { TimeEntryView } from "@/services/time.types";
+import { useAuthStore } from "@/stores/authStore";
 
+/**
+ * `/w/<slug>/teams/<t>/time`: the team Report (ux.md › Routes and Redirects).
+ *
+ * - A team manager gets the Report in place (this page used to redirect).
+ * - A member is sent to their own time for the team, `/time?for=team:<t>`.
+ * - Anyone else stays here and the layout shows the refusal card.
+ *
+ * The decision is made in `beforeLoad` so a member never sees the layout
+ * flash. It reads the team and its members under the same keys
+ * `useTeamMoneyAccess` uses, so the layout renders from the cache. A failed
+ * read decides nothing: the page renders and the layout says what failed.
+ */
 export const Route = createFileRoute("/w/$workspaceSlug/teams/$teamId/time/")({
-	component: TimeIndexRedirect,
+	validateSearch: validateTeamTimeReportSearch,
+	beforeLoad: async ({ params, context }) => {
+		const userId = useAuthStore.getState().user?.id;
+		if (!userId) return;
+		const standing = await Promise.all([
+			context.queryClient.ensureQueryData({
+				queryKey: ["team", params.teamId],
+				queryFn: () => getTeam(params.teamId),
+			}),
+			context.queryClient.ensureQueryData({
+				queryKey: ["team", params.teamId, "members"],
+				queryFn: () => listTeamMembers(params.teamId),
+			}),
+		]).catch(() => null);
+		if (!standing) return;
+		const [team, members] = standing;
+		const membership = members.find((member) => member.user_id === userId);
+		const manages =
+			team.owner_id === userId ||
+			membership?.role === "owner" ||
+			membership?.role === "admin";
+		if (manages || !membership) return;
+		throw redirect({
+			to: "/time",
+			search: validateTimePageSearch({ for: `team:${params.teamId}` }),
+			replace: true,
+		});
+	},
+	component: TeamTimeReportPage,
 });
 
 /**
- * Resolves which tab the caller should land on for /teams/$teamId/time:
- *   - "my-logs" if the caller has a rate set
- *   - else "manage-rates" if owner/admin
- *   - else render the no-access fallback
- *
- * Uses useNavigate inside an effect rather than `throw redirect()` —
- * the latter is only valid from `loader`/`beforeLoad`. The required
- * data (team + members) is async, so doing it in beforeLoad would
- * mean blocking on a fetch before the route mounts; redirecting after
- * mount is simpler and the layout already renders the same data.
+ * The Report body. The layout (`route.tsx`) has already checked that the
+ * caller manages the team and that team time is on, so this only mounts the
+ * shared `TimeReport` on the team scope, in the team's policy timezone.
  */
-function TimeIndexRedirect() {
-	const { workspaceSlug, teamId } = Route.useParams();
-	const user = useUser();
-	const navigate = useNavigate();
+function TeamTimeReportPage() {
+	const { teamId } = Route.useParams();
+	const search = Route.useSearch();
+	const navigate = useNavigate({ from: Route.fullPath });
+	const access = useTeamMoneyAccess(teamId);
+	const [openEntry, setOpenEntry] = useState<TimeEntryView | null>(null);
 
-	const teamQuery = useQuery({
-		queryKey: ["team", teamId],
-		queryFn: () => getTeam(teamId),
-	});
-	const membersQuery = useQuery({
-		queryKey: ["team", teamId, "members"],
-		queryFn: () => listTeamMembers(teamId),
-	});
-	const myActiveRateQuery = useQuery({
-		queryKey: ["team", teamId, "rates", "anyActive", user?.id],
-		queryFn: () => hasAnyActiveRate(teamId, user!.id),
-		enabled: Boolean(user?.id),
-	});
+	// Team policy reads are manager-only (404 otherwise); the layout only
+	// renders this page for managers, the guard keeps a stray mount quiet.
+	const policyQuery = useQuery(
+		timeQueries.teamPolicy(access.isApprover ? teamId : null),
+	);
 
-	const team = teamQuery.data;
-	const myMembership = membersQuery.data?.find((m) => m.user_id === user?.id);
-	const isApprover =
-		team?.owner_id === user?.id ||
-		myMembership?.role === "admin" ||
-		myMembership?.role === "owner";
-	const isTeamMember = Boolean(myMembership);
-
-	const allLoaded =
-		teamQuery.isSuccess &&
-		membersQuery.isSuccess &&
-		(!user?.id || myActiveRateQuery.isFetched);
-
-	const target:
-		| "/w/$workspaceSlug/teams/$teamId/time/my-logs"
-		| "/w/$workspaceSlug/teams/$teamId/time/team-logs"
-		| "/w/$workspaceSlug/teams/$teamId/time/manage-rates"
-		| null = allLoaded
-		? isTeamMember
-			? "/w/$workspaceSlug/teams/$teamId/time/my-logs"
-			: isApprover
-				? "/w/$workspaceSlug/teams/$teamId/time/team-logs"
-				: null
-		: null;
-
-	useEffect(() => {
-		if (target) {
-			void navigate({
-				to: target,
-				params: { workspaceSlug, teamId },
-				replace: true,
-			});
-		}
-	}, [target, navigate, teamId]);
-
-	if (!allLoaded || target) {
+	// The default range is counted in the team's timezone, so wait for it
+	// once; a failed read falls back to the device's.
+	if (policyQuery.isLoading) {
 		return (
-			<div className="flex justify-center p-12">
-				<Loader2 className="h-6 w-6 animate-spin text-slate-400" />
+			<div className="flex justify-center p-12" role="status">
+				<Loader2
+					className="h-6 w-6 animate-spin text-muted-foreground"
+					aria-hidden="true"
+				/>
+				<span className="sr-only">Loading</span>
 			</div>
 		);
 	}
 
+	const policy = policyQuery.data?.effective;
+	const planWorkspace = access.planWorkspace;
+
 	return (
-		<AppSurfaceCard>
-			<div className="space-y-3 p-6 text-sm text-slate-600">
-				<p>You don't have access to time tracking on this team.</p>
-				<Link
-					to="/w/$workspaceSlug/teams/$teamId"
-					params={{ workspaceSlug, teamId }}
-					className="text-sky-600 hover:underline"
-				>
-					Back to team
-				</Link>
-			</div>
-		</AppSurfaceCard>
+		<>
+			<TimeReport
+				scope={{ kind: "team", id: teamId }}
+				search={search}
+				onSearchChange={(patch) =>
+					void navigate({
+						search: (prev) => ({ ...prev, ...patch }),
+						replace: true,
+					})
+				}
+				timezone={policy?.timezone ?? null}
+				weekStart={policy?.week_start ?? null}
+				planWorkspace={
+					access.planWorkspaceId
+						? {
+								id: access.planWorkspaceId,
+								name: planWorkspace?.name,
+								slug: planWorkspace?.slug,
+								my_role: planWorkspace?.my_role,
+							}
+						: null
+				}
+				// The pay cut-offs are presets only where the team records payments.
+				cutoffs={
+					access.canPay
+						? { config: access.team?.pay_period_config ?? null }
+						: null
+				}
+				onOpenEntry={setOpenEntry}
+			/>
+			<TimeEntryDetailModal
+				entryId={openEntry?.id ?? null}
+				entry={openEntry}
+				mode="readonly"
+				timeZone={policy?.timezone}
+				onClose={() => setOpenEntry(null)}
+			/>
+		</>
 	);
 }

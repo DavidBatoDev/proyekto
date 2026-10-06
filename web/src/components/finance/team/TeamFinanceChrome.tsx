@@ -37,13 +37,20 @@ const TEAM_FINANCE_TABS: Array<{
 }> = [
 	{ id: "overview", label: "Overview", icon: BarChart3 },
 	{ id: "invoices", label: "Invoices", icon: ReceiptText },
-	{ id: "time-logs", label: "Time logs", icon: Clock },
+	{ id: "time-logs", label: "Time", icon: Clock },
 	{ id: "rates", label: "Rates", icon: HandCoins },
 	{ id: "payouts", label: "Payouts", icon: Wallet },
 	{ id: "expenses", label: "Expenses", icon: TrendingDown },
 	{ id: "imports", label: "Imports", icon: FileUp },
 	{ id: "members", label: "Members", icon: Users },
 ];
+
+/**
+ * The team Time, Rates and Payouts tabs are the team's time and pay, which
+ * team managers run (the team report's `can_manage_team` gate).
+ */
+const TEAM_TIME_DENIED_DESCRIPTION =
+	"Team owners and admins see the team's time, rates and payouts.";
 
 /**
  * What a refused direct URL says, per tab. Imports and invoices are refused
@@ -69,15 +76,15 @@ const DENIED_COPY: Partial<
 	},
 	"time-logs": {
 		title: "You don't have access to this team's time and pay.",
-		description: "Team owners and admins review logs, rates, and payouts.",
+		description: TEAM_TIME_DENIED_DESCRIPTION,
 	},
 	rates: {
 		title: "You don't have access to this team's time and pay.",
-		description: "Team owners and admins review logs, rates, and payouts.",
+		description: TEAM_TIME_DENIED_DESCRIPTION,
 	},
 	payouts: {
 		title: "You don't have access to this team's time and pay.",
-		description: "Team owners and admins review logs, rates, and payouts.",
+		description: TEAM_TIME_DENIED_DESCRIPTION,
 	},
 };
 

@@ -185,3 +185,54 @@ describe("bare /teams/$teamId/…", () => {
 		expect(options.to).toBe("/w/acme/teams/t1/settings/projects");
 	});
 });
+
+/**
+ * ux.md › Routes and Redirects: the bare `/teams/:t/time/**` shells are kept.
+ * This is the first hop of every old team time link: the bare path forwards to
+ * its slugged twin with the query string (`?log=`, `?member=`) intact. The
+ * slugged stubs then send it on to `/time` or the Report
+ * (`routes/w/$workspaceSlug/teams/$teamId/time/redirects.test.ts`).
+ */
+describe("bare /teams/$teamId/time/** (the redirect map's first hop)", () => {
+	beforeEach(() => {
+		window.localStorage.setItem("proyekto_current_workspace:user-1", "ws-acme");
+		getTeam.mockResolvedValue({ id: "t1", workspace_id: "ws-globex" });
+	});
+
+	it.each([
+		// The team Report (index), and the two money tabs that stay.
+		["/teams/t1/time", "/w/globex/teams/t1/time"],
+		["/teams/t1/time/manage-rates", "/w/globex/teams/t1/time/manage-rates"],
+		[
+			"/teams/t1/time/manage-rates/u1",
+			"/w/globex/teams/t1/time/manage-rates/u1",
+		],
+		["/teams/t1/time/payouts", "/w/globex/teams/t1/time/payouts"],
+		// The retired tabs: their slugged stubs redirect onward.
+		["/teams/t1/time/my-logs", "/w/globex/teams/t1/time/my-logs"],
+		["/teams/t1/time/team-logs", "/w/globex/teams/t1/time/team-logs"],
+		["/teams/t1/time/log/e1", "/w/globex/teams/t1/time/log/e1"],
+		// Team settings › Time.
+		["/teams/t1/settings/time", "/w/globex/teams/t1/settings/time"],
+	])("forwards %s to %s, keeping the query string", async (bare, slugged) => {
+		const options = await redirectFrom(call(TeamStub, bare, { teamId: "t1" }));
+		expect(options).toMatchObject({ to: slugged, search: true, replace: true });
+	});
+
+	/** Push links still write the bare shape (lib/pushLink.test.ts). */
+	it("keeps an old ?log= link's entry for the next hop", async () => {
+		const options = await redirectFrom(
+			guard(TeamStub)({
+				params: { teamId: "t1" },
+				context: { queryClient: newClient() },
+				location: {
+					href: "/teams/t1/time/my-logs?log=e1",
+					pathname: "/teams/t1/time/my-logs",
+				},
+			}),
+		);
+		expect(options.to).toBe("/w/globex/teams/t1/time/my-logs");
+		// `search: true` carries ?log=e1 across unchanged.
+		expect(options.search).toBe(true);
+	});
+});
