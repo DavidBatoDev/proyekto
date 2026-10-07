@@ -3,6 +3,7 @@ import {
 	Bell,
 	KeyRound,
 	Palette,
+	PlugZap,
 	Trash2,
 	User,
 	UserCog,
@@ -62,6 +63,12 @@ export function AccountSettingsLayout({
 			to: "/settings/notifications",
 			icon: Bell,
 			active: currentPath.startsWith("/settings/notifications"),
+		},
+		{
+			label: "Integrations",
+			to: "/settings/integrations",
+			icon: PlugZap,
+			active: currentPath.startsWith("/settings/integrations"),
 		},
 		{
 			label: "MCP Access",

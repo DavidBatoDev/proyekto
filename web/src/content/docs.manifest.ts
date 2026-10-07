@@ -601,9 +601,9 @@ export const DOC_ARTICLES: DocArticle[] = [
 		flagged: true,
 		title: "Google Calendar and Meet",
 		description:
-			"An optional integration that mirrors Proyekto meetings into Google Calendar and creates Meet links for you.",
-		updated: UPDATED,
-		keywords: ["google", "meet", "sync", "integration"],
+			"Connect Google Calendar to mirror your Proyekto meetings into it with Meet links, and see your own Google events in Meetings.",
+		updated: "2026-10-07",
+		keywords: ["google", "meet", "sync", "integration", "calendar", "events"],
 		related: ["meetings", "recurring-meetings"],
 	},
 

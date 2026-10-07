@@ -14,4 +14,7 @@ export const meetingKeys = {
 		[...meetingKeys.all, "project", projectId, params ?? {}] as const,
 	detail: (id: string) => [...meetingKeys.all, "detail", id] as const,
 	googleStatus: () => [...meetingKeys.all, "google-status"] as const,
+	googleEventsAll: () => [...meetingKeys.all, "google-events"] as const,
+	googleEvents: (range: { from: string; to: string }) =>
+		[...meetingKeys.googleEventsAll(), range] as const,
 };

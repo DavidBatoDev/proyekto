@@ -1,5 +1,6 @@
 import { ConflictException } from '@nestjs/common';
 import { MeetingsService } from './meetings.service';
+import { GoogleReconnectRequiredError } from './google/google-oauth.service';
 import type {
   Meeting,
   MeetingsRepository,
@@ -61,6 +62,7 @@ function makeGoogle() {
     cancelInstance: jest.fn().mockResolvedValue(undefined),
     truncateSeriesUntil: jest.fn().mockResolvedValue(undefined),
     deleteEvent: jest.fn().mockResolvedValue(undefined),
+    listEvents: jest.fn().mockResolvedValue([]),
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
   } as any;
 }
@@ -677,5 +679,90 @@ describe('MeetingsService', () => {
 
     await expect(service.cancel('user-1', 'm1')).resolves.toBeDefined();
     expect(repo.update).toHaveBeenCalledWith('m1', { status: 'cancelled' });
+  });
+  it('surfaces a revoked Google grant as a 409 reconnect, not a 502', async () => {
+    google.isEnabled.mockReturnValue(true);
+    google.isConnected.mockResolvedValue(true);
+    google.createEvent.mockRejectedValue(new GoogleReconnectRequiredError());
+    repo.getEmailsForUserIds.mockResolvedValue([]);
+
+    await expect(
+      service.create('user-1', googleCreateDto),
+    ).rejects.toMatchObject({
+      status: 409,
+      response: { code: 'GOOGLE_RECONNECT_REQUIRED' },
+    });
+    expect(repo.create).not.toHaveBeenCalled();
+  });
+
+  // ── Google events overlay ────────────────────────────────────────────────
+
+  const googleRange = {
+    from: '2026-10-01T00:00:00.000Z',
+    to: '2026-11-01T00:00:00.000Z',
+  };
+
+  function googleEvent(id: string, recurringEventId: string | null = null) {
+    return {
+      id,
+      recurringEventId,
+      title: id,
+      start: '2026-10-02T09:00:00Z',
+      end: '2026-10-02T10:00:00Z',
+      allDay: false,
+      location: null,
+      htmlLink: null,
+      meetUrl: null,
+      free: false,
+    };
+  }
+
+  it('listGoogleEvents reports not connected without calling Google', async () => {
+    google.isEnabled.mockReturnValue(true);
+    google.isConnected.mockResolvedValue(false);
+
+    await expect(
+      service.listGoogleEvents('user-1', googleRange),
+    ).resolves.toEqual({ connected: false, events: [] });
+    expect(google.listEvents).not.toHaveBeenCalled();
+  });
+
+  it('listGoogleEvents reports not connected when the integration is off', async () => {
+    google.isEnabled.mockReturnValue(false);
+
+    await expect(
+      service.listGoogleEvents('user-1', googleRange),
+    ).resolves.toEqual({ connected: false, events: [] });
+    expect(google.isConnected).not.toHaveBeenCalled();
+  });
+
+  it('listGoogleEvents hides events that mirror a Proyekto meeting', async () => {
+    google.isEnabled.mockReturnValue(true);
+    google.isConnected.mockResolvedValue(true);
+    google.listEvents.mockResolvedValue([
+      googleEvent('personal'),
+      googleEvent('ev-oneoff'),
+      googleEvent('series-master_20261003T010000Z', 'series-master'),
+      googleEvent('other_20261003T010000Z', 'other'),
+    ]);
+    repo.listForUser.mockResolvedValue([
+      baseMeeting({ id: 'm1', google_event_id: 'ev-oneoff' }),
+      baseMeeting({ id: 'm2', google_event_id: 'series-master' }),
+      baseMeeting({ id: 'm3', google_event_id: null }),
+    ]);
+
+    const result = await service.listGoogleEvents('user-1', googleRange);
+
+    expect(result.connected).toBe(true);
+    expect(result.events.map((e) => e.id)).toEqual([
+      'personal',
+      'other_20261003T010000Z',
+    ]);
+    expect(google.listEvents).toHaveBeenCalledWith('user-1', googleRange);
+    // The dedupe lookup pads the window by a day on each side.
+    expect(repo.listForUser).toHaveBeenCalledWith('user-1', {
+      from: '2026-09-30T00:00:00.000Z',
+      to: '2026-11-02T00:00:00.000Z',
+    });
   });
 });

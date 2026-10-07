@@ -1,6 +1,6 @@
 # Frontend
 
-> **Last updated:** 2026-08-11 · **Status:** current
+> **Last updated:** 2026-10-07 · **Status:** current
 
 React 19 + TanStack Router/Query + Tailwind. Everything lives under
 [`web/src/components/meetings/`](../../../web/src/components/meetings/) plus the pure
@@ -105,10 +105,16 @@ Microsoft Teams / …` with an inline SVG logo (`ProviderLogos.tsx`) — that br
 
 The **Google Meet** option is rendered only when `useGoogleCalendarStatus()`
 reports `enabled`. If the organizer isn't connected it shows an inline **Connect
-Google Calendar** button (`googleCalendarService.connectUrl()` → full‑page
-redirect to consent); if connected it shows "Connected as {email}", and submit
-provisions a real Meet link + calendar invite backend‑side. The `/meetings` route
-turns the `?google=connected|error` callback return into a toast. Full detail in
+Google Calendar** button (`useConnectGoogleCalendar("/meetings")` → full‑page
+redirect to consent; on the native app, a "connect from a browser" note
+instead); if connected it shows "Connected as {email}", and submit provisions a
+real Meet link + calendar invite backend‑side. `useGoogleConnectResult()` turns
+the `?google=connected|error` callback return into a toast on `/meetings` and
+`/settings/integrations`.
+
+When connected, the calendar also overlays the user's own Google events
+(read‑only, toggleable from the toolbar) and lists them in the agenda; the
+connection itself is managed in **Settings → Integrations**. Full detail in
 [google-integration.md](./google-integration.md).
 
 ## Data layer
@@ -121,14 +127,18 @@ Typed wrappers over `/api/meetings*` (axios; envelope `{ data }`). Key types:
 `scope?`), `MeetingEditScope = 'this'|'following'|'all'`. Methods: `list`,
 `listForProject`, `get`, `create`, `update(id,payload)`, `reschedule`,
 `cancel(id, scope?)`, `respond`. A separate `googleCalendarService` exposes
-`status()`, `connectUrl()`, `disconnect()` for the Google integration.
+`status()`, `connectUrl(returnTo)`, `disconnect()` and `events({from, to})` for
+the Google integration; `isGoogleReconnectError(err)` recognises the API's
+`GOOGLE_RECONNECT_REQUIRED` error.
 
 ### `hooks/useMeetings.ts`
 
 TanStack Query hooks: `useMeetingsRange`, `useProjectMeetings`, `useMeeting`,
 `useBookMeeting`, `useUpdateMeeting`, `useCancelMeeting` (accepts `string` or
-`{id, scope}`), `useRescheduleMeeting`, `useRespondMeeting`, plus
-`useGoogleCalendarStatus` / `useDisconnectGoogleCalendar`. All meeting mutations
+`{id, scope}`), `useRescheduleMeeting`, `useRespondMeeting`, plus the Google
+hooks `useGoogleCalendarStatus`, `useGoogleCalendarEvents`,
+`useConnectGoogleCalendar`, `useDisconnectGoogleCalendar` and
+`useGoogleConnectResult`. All meeting mutations
 `invalidateQueries({ queryKey: meetingKeys.all })` so calendars + the dashboard
 widget refresh.
 

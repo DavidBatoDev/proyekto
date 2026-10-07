@@ -2,20 +2,31 @@
  * The day agenda side panel: the selected day's meetings with Join / RSVP /
  * Cancel actions. The per-row logic is lifted from the original
  * MeetingsCalendar so behavior (who can manage vs. respond) is unchanged.
+ * Below them, the day's events from the user's Google Calendar (read-only).
  */
 import { format } from "date-fns";
 import { CalendarDays, Loader2, Pencil, Repeat, Video } from "lucide-react";
 import { useState } from "react";
 import { ScopeDialog } from "@/components/meetings/editor/ScopeDialog";
 import { useCancelMeeting, useRespondMeeting } from "@/hooks/useMeetings";
-import { MEETING_TYPE_LABELS, type Meeting } from "@/services/meetings.service";
+import {
+	type GoogleCalendarEvent,
+	MEETING_TYPE_LABELS,
+	type Meeting,
+} from "@/services/meetings.service";
+import { googleEventsOnDay } from "./googleEvents";
 import { meetingsOnDay } from "./model";
+
+const NO_GOOGLE_EVENTS: GoogleCalendarEvent[] = [];
 
 interface AgendaPanelProps {
 	selectedDay: Date;
 	meetings: Meeting[];
 	currentUserId?: string;
 	onEdit?: (meeting: Meeting) => void;
+	/** Read-only events from the user's Google Calendar (overlay). */
+	googleEvents?: GoogleCalendarEvent[];
+	onSelectGoogleEvent?: (event: GoogleCalendarEvent) => void;
 }
 
 export function AgendaPanel({
@@ -23,8 +34,11 @@ export function AgendaPanel({
 	meetings,
 	currentUserId,
 	onEdit,
+	googleEvents = NO_GOOGLE_EVENTS,
+	onSelectGoogleEvent,
 }: AgendaPanelProps) {
 	const dayMeetings = meetingsOnDay(meetings, selectedDay);
+	const dayGoogleEvents = googleEventsOnDay(googleEvents, selectedDay);
 
 	return (
 		<div className="flex h-full min-h-0 flex-col rounded-2xl border border-gray-200 bg-white p-5">
@@ -34,19 +48,76 @@ export function AgendaPanel({
 					{format(selectedDay, "EEEE, MMM d")}
 				</h4>
 			</div>
-			{dayMeetings.length === 0 ? (
-				<p className="text-sm text-gray-500">No meetings scheduled.</p>
-			) : (
-				<div className="thin-scrollbar min-h-0 flex-1 space-y-3 overflow-y-auto">
-					{dayMeetings.map((m) => (
+			<div className="thin-scrollbar min-h-0 flex-1 space-y-3 overflow-y-auto">
+				{dayMeetings.length === 0 ? (
+					<p className="text-sm text-gray-500">No meetings scheduled.</p>
+				) : (
+					dayMeetings.map((m) => (
 						<MeetingRow
 							key={m.id}
 							meeting={m}
 							currentUserId={currentUserId}
 							onEdit={onEdit}
 						/>
-					))}
-				</div>
+					))
+				)}
+
+				{dayGoogleEvents.length > 0 && (
+					<div className="pt-1">
+						<p className="mb-2 text-[11px] font-medium uppercase tracking-wide text-gray-400">
+							From Google Calendar
+						</p>
+						<div className="space-y-2">
+							{dayGoogleEvents.map((event) => (
+								<GoogleEventRow
+									key={event.id}
+									event={event}
+									onSelect={onSelectGoogleEvent}
+								/>
+							))}
+						</div>
+					</div>
+				)}
+			</div>
+		</div>
+	);
+}
+
+function GoogleEventRow({
+	event,
+	onSelect,
+}: {
+	event: GoogleCalendarEvent;
+	onSelect?: (event: GoogleCalendarEvent) => void;
+}) {
+	const when = event.allDay
+		? "All day"
+		: `${format(new Date(event.start), "p")} – ${format(new Date(event.end), "p")}`;
+	return (
+		<div
+			className={`flex items-start justify-between gap-2 rounded-xl border border-gray-200 bg-gray-50 p-3 ${
+				event.free ? "border-dashed" : ""
+			}`}
+		>
+			<button
+				type="button"
+				onClick={() => onSelect?.(event)}
+				className="min-w-0 flex-1 text-left"
+			>
+				<p className="truncate text-sm font-medium text-gray-800">
+					{event.title}
+				</p>
+				<p className="text-xs text-gray-500">{when}</p>
+			</button>
+			{event.meetUrl && (
+				<a
+					href={event.meetUrl}
+					target="_blank"
+					rel="noopener noreferrer"
+					className="inline-flex shrink-0 items-center gap-1 rounded-lg border border-gray-300 px-2.5 py-1 text-xs font-medium text-gray-700 hover:bg-white"
+				>
+					<Video className="h-3.5 w-3.5" /> Join
+				</a>
 			)}
 		</div>
 	);

@@ -1,6 +1,6 @@
 # Backend API
 
-> **Last updated:** 2026-08-11 · **Status:** current
+> **Last updated:** 2026-10-07 · **Status:** current
 
 NestJS module at [`backend/src/modules/execution/meetings/`](../../../backend/src/modules/execution/meetings/).
 Controller → Service → Repository. Every repository call runs as the Supabase
@@ -30,9 +30,14 @@ Phase 5 — see [google-integration.md](./google-integration.md)):
 | Method & path | Guard | Purpose |
 | --- | --- | --- |
 | `GET /google/status` | JWT | `{ enabled, connected, googleEmail? }` |
-| `GET /google/connect` | JWT | `{ url }` Google consent URL |
-| `GET /google/callback` | `@Public()` | OAuth redirect target → 302 to `${CLIENT_URL}/meetings?google=…` |
+| `GET /google/connect?returnTo=` | JWT | `{ url }` Google consent URL (`returnTo`: `/meetings` or `/settings/integrations`) |
+| `GET /google/events?from&to` | JWT + per‑user throttle (60/min) | `{ connected, events[] }` — the user's own Google events, read live, `no-store`, window ≤ 186 days |
+| `GET /google/callback` | `@Public()` | OAuth redirect target → 302 to `${CLIENT_URL}${returnTo}?google=…` |
 | `DELETE /google/connection` | JWT | Revoke + delete the connection |
+
+A revoked Google grant surfaces as `409` with `error.code =
+'GOOGLE_RECONNECT_REQUIRED'` (from `/google/events` and from creating a Google
+Meet meeting); the connection has already been removed by then.
 
 Responses are wrapped `{ data: … }`. List queries take `from`, `to` (ISO8601),
 `status`, `project_id` — all optional; note the list returns **all** statuses

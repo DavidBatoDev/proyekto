@@ -4,6 +4,7 @@
  * and shown with its logo), or no video. Stores a VideoOption + meeting_url;
  * the brand is display-only (see providers.ts).
  */
+import { isNativeApp } from "@/lib/platform";
 import type {
 	GoogleCalendarStatus,
 	VideoOption,
@@ -72,6 +73,12 @@ export function VideoProviderPicker({
 										{googleStatus.googleEmail ?? "your Google account"}
 									</span>
 									. Guests receive a Google Calendar invite.
+								</p>
+							) : isNativeApp() ? (
+								// Google blocks its sign-in inside embedded app webviews.
+								<p className="text-xs text-gray-500">
+									Connect Google Calendar from proyekto.tech in a web browser,
+									then come back here.
 								</p>
 							) : (
 								<button

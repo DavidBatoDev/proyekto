@@ -2,7 +2,9 @@
  * The calendar surface: a Google-style toolbar (Today, prev/next, title, view
  * toggle, timezone, Create) over Day / Week / Month / Year views plus a day
  * agenda panel. Owns view/anchor/selected-day/now state and fetches its own
- * window via useCalendarRange → useMeetingsRange.
+ * window via useCalendarRange → useMeetingsRange. When the user has connected
+ * Google Calendar, their own Google events are overlaid read-only (toggleable);
+ * a Google failure never blocks the meetings themselves.
  */
 import {
 	addDays,
@@ -15,12 +17,27 @@ import {
 	subWeeks,
 	subYears,
 } from "date-fns";
-import { CalendarPlus, ChevronLeft, ChevronRight, Loader2 } from "lucide-react";
-import { useEffect, useState } from "react";
-import { useMeetingsRange } from "@/hooks/useMeetings";
+import {
+	AlertTriangle,
+	CalendarPlus,
+	ChevronLeft,
+	ChevronRight,
+	Eye,
+	EyeOff,
+	Loader2,
+} from "lucide-react";
+import { useEffect, useMemo, useState } from "react";
+import {
+	useConnectGoogleCalendar,
+	useGoogleCalendarEvents,
+	useGoogleCalendarStatus,
+	useMeetingsRange,
+} from "@/hooks/useMeetings";
 import { localTimeZone, timeZoneOffsetLabel } from "@/lib/datetime";
-import type { Meeting } from "@/services/meetings.service";
+import { isNativeApp } from "@/lib/platform";
+import type { GoogleCalendarEvent, Meeting } from "@/services/meetings.service";
 import { AgendaPanel } from "./AgendaPanel";
+import { GoogleEventDetails } from "./GoogleEventDetails";
 import {
 	type CalendarView,
 	useCalendarRange,
@@ -37,6 +54,29 @@ const VIEWS: { id: CalendarView; label: string }[] = [
 	{ id: "month", label: "Month" },
 	{ id: "year", label: "Year" },
 ];
+
+const NO_GOOGLE_EVENTS: GoogleCalendarEvent[] = [];
+const OVERLAY_STORAGE_KEY = "meetings.showGoogleCalendar";
+
+/** Show/hide the Google overlay; remembered per browser when storage allows. */
+function useGoogleOverlayPreference(): [boolean, (next: boolean) => void] {
+	const [show, setShow] = useState<boolean>(() => {
+		try {
+			return window.localStorage.getItem(OVERLAY_STORAGE_KEY) !== "off";
+		} catch {
+			return true;
+		}
+	});
+	const update = (next: boolean) => {
+		setShow(next);
+		try {
+			window.localStorage.setItem(OVERLAY_STORAGE_KEY, next ? "on" : "off");
+		} catch {
+			// Storage blocked (private mode): the choice lasts for this visit.
+		}
+	};
+	return [show, update];
+}
 
 function useNow(): Date {
 	const [now, setNow] = useState(() => new Date());
@@ -77,6 +117,29 @@ export function CalendarShell({
 	const range = useCalendarRange(view, anchor);
 	const meetingsQuery = useMeetingsRange(range);
 	const meetings: Meeting[] = meetingsQuery.data ?? [];
+
+	const { data: googleStatus } = useGoogleCalendarStatus();
+	const [showGoogle, setShowGoogle] = useGoogleOverlayPreference();
+	const googleConnected = Boolean(
+		googleStatus?.enabled && googleStatus.connected,
+	);
+	// useCalendarRange always sets both ends; the shared params type is loose.
+	const googleRange = useMemo(
+		() => ({ from: range.from ?? "", to: range.to ?? "" }),
+		[range],
+	);
+	// The year view only draws dots; skip the (wide) Google fetch there.
+	const googleQuery = useGoogleCalendarEvents(
+		googleRange,
+		googleConnected && showGoogle && view !== "year" && Boolean(range.from),
+	);
+	const googleEvents =
+		googleConnected && showGoogle && googleQuery.data?.connected
+			? googleQuery.data.events
+			: NO_GOOGLE_EVENTS;
+	const [openGoogleEvent, setOpenGoogleEvent] =
+		useState<GoogleCalendarEvent | null>(null);
+	const googleConnect = useConnectGoogleCalendar("/meetings");
 
 	const step = (dir: 1 | -1) => {
 		const move = {
@@ -146,7 +209,51 @@ export function CalendarShell({
 					</h2>
 				</div>
 
-				<div className="flex items-center gap-3">
+				<div className="flex flex-wrap items-center gap-3">
+					{googleStatus?.enabled && googleConnected && (
+						<button
+							type="button"
+							onClick={() => setShowGoogle(!showGoogle)}
+							aria-pressed={showGoogle}
+							title={
+								googleQuery.isError
+									? "Couldn't load your Google Calendar events"
+									: showGoogle
+										? "Hide your Google Calendar events"
+										: "Show your Google Calendar events"
+							}
+							className={`inline-flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-sm font-medium transition-colors ${
+								showGoogle
+									? "border-gray-300 text-gray-700 hover:bg-gray-50"
+									: "border-dashed border-gray-300 text-gray-400 hover:bg-gray-50"
+							}`}
+						>
+							{showGoogle && googleQuery.isFetching ? (
+								<Loader2 className="h-4 w-4 animate-spin" />
+							) : showGoogle && googleQuery.isError ? (
+								<AlertTriangle className="h-4 w-4 text-amber-500" />
+							) : showGoogle ? (
+								<Eye className="h-4 w-4" />
+							) : (
+								<EyeOff className="h-4 w-4" />
+							)}
+							Google Calendar
+						</button>
+					)}
+					{googleStatus?.enabled && !googleConnected && !isNativeApp() && (
+						<button
+							type="button"
+							onClick={() => void googleConnect.connect()}
+							disabled={googleConnect.connecting}
+							title={googleConnect.error ?? undefined}
+							className="inline-flex items-center gap-1.5 rounded-lg border border-gray-300 px-3 py-1.5 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-60"
+						>
+							{googleConnect.connecting && (
+								<Loader2 className="h-4 w-4 animate-spin" />
+							)}
+							Connect Google Calendar
+						</button>
+					)}
 					<span className="hidden text-xs text-gray-400 sm:inline">
 						{timeZoneOffsetLabel(timeZone)} · {timeZone.replace(/_/g, " ")}
 					</span>
@@ -203,6 +310,8 @@ export function CalendarShell({
 								now={now}
 								onSelectMeeting={selectMeeting}
 								onCreateAt={(at) => onCreate?.(at)}
+								googleEvents={googleEvents}
+								onSelectGoogleEvent={setOpenGoogleEvent}
 							/>
 						)}
 						{view === "week" && (
@@ -212,6 +321,8 @@ export function CalendarShell({
 								now={now}
 								onSelectMeeting={selectMeeting}
 								onCreateAt={(at) => onCreate?.(at)}
+								googleEvents={googleEvents}
+								onSelectGoogleEvent={setOpenGoogleEvent}
 							/>
 						)}
 						{view === "month" && (
@@ -222,6 +333,8 @@ export function CalendarShell({
 								selectedDay={selectedDay}
 								onSelectDay={setSelectedDay}
 								onSelectMeeting={selectMeeting}
+								googleEvents={googleEvents}
+								onSelectGoogleEvent={setOpenGoogleEvent}
 							/>
 						)}
 						{view === "year" && (
@@ -240,10 +353,17 @@ export function CalendarShell({
 							meetings={meetings}
 							currentUserId={currentUserId}
 							onEdit={onEditMeeting}
+							googleEvents={googleEvents}
+							onSelectGoogleEvent={setOpenGoogleEvent}
 						/>
 					)}
 				</div>
 			)}
+
+			<GoogleEventDetails
+				event={openGoogleEvent}
+				onClose={() => setOpenGoogleEvent(null)}
+			/>
 		</div>
 	);
 }

@@ -24,6 +24,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { ModalPortal } from "@/components/common/ModalPortal";
 import {
 	useBookMeeting,
+	useConnectGoogleCalendar,
 	useGoogleCalendarStatus,
 	useUpdateMeeting,
 } from "@/hooks/useMeetings";
@@ -35,7 +36,6 @@ import {
 } from "@/lib/datetime";
 import {
 	type CreateMeetingPayload,
-	googleCalendarService,
 	MEETING_TYPE_LABELS,
 	type Meeting,
 	type MeetingEditScope,
@@ -197,7 +197,7 @@ export function MeetingEditorModal({
 
 	// Only query Google status while the editor is open; drives the Meet option.
 	const { data: googleStatus } = useGoogleCalendarStatus(open);
-	const [connectingGoogle, setConnectingGoogle] = useState(false);
+	const googleConnect = useConnectGoogleCalendar("/meetings");
 
 	// Re-seed the form whenever the modal opens (or its target changes).
 	// biome-ignore lint/correctness/useExhaustiveDependencies: re-seed on open/target only.
@@ -268,18 +268,8 @@ export function MeetingEditorModal({
 	// Launch Google consent (full-page redirect). The backend callback returns to
 	// /meetings?google=connected, which the route surfaces as a toast.
 	const connectGoogle = async () => {
-		setConnectingGoogle(true);
 		setErrorMessage(null);
-		try {
-			window.location.href = await googleCalendarService.connectUrl();
-		} catch (err) {
-			setConnectingGoogle(false);
-			setErrorMessage(
-				err instanceof Error
-					? err.message
-					: "Couldn't start Google connection.",
-			);
-		}
+		await googleConnect.connect();
 	};
 
 	const submit = () => {
@@ -468,7 +458,7 @@ export function MeetingEditorModal({
 								onOptionChange={(o) => set("videoOption", o)}
 								onUrlChange={(u) => set("meetingUrl", u)}
 								googleStatus={googleStatus}
-								googleConnecting={connectingGoogle}
+								googleConnecting={googleConnect.connecting}
 								onConnectGoogle={connectGoogle}
 							/>
 						</Row>
@@ -576,9 +566,9 @@ export function MeetingEditorModal({
 							/>
 						</Row>
 
-						{errorMessage && (
+						{(errorMessage || googleConnect.error) && (
 							<div className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
-								{errorMessage}
+								{errorMessage ?? googleConnect.error}
 							</div>
 						)}
 					</div>

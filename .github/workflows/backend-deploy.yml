@@ -249,9 +249,9 @@ jobs:
           # from PUBLIC_API_URL (not a secret). To enable: create the
           # GOOGLE_OAUTH_CLIENT_ID / GOOGLE_OAUTH_CLIENT_SECRET / GOOGLE_TOKEN_ENC_KEY
           # secrets in Secret Manager (grant the runtime SA secretAccessor), then set
-          # the GOOGLE_OAUTH_ENABLED repo var. Until then the Google Meet option is
-          # hidden and nothing changes.
-          if [[ -n "${GOOGLE_OAUTH_ENABLED:-}" ]]; then
+          # the GOOGLE_OAUTH_ENABLED repo var to exactly "true". Any other value
+          # (unset, "false") keeps the Google Calendar integration hidden.
+          if [[ "${GOOGLE_OAUTH_ENABLED:-}" == "true" ]]; then
             ENV_VARS="${ENV_VARS},GOOGLE_OAUTH_ENABLED=true,GOOGLE_OAUTH_REDIRECT_URI=${PUBLIC_API_URL_VALUE}/api/meetings/google/callback"
             SECRETS="${SECRETS},GOOGLE_OAUTH_CLIENT_ID=GOOGLE_OAUTH_CLIENT_ID:latest,GOOGLE_OAUTH_CLIENT_SECRET=GOOGLE_OAUTH_CLIENT_SECRET:latest,GOOGLE_TOKEN_ENC_KEY=GOOGLE_TOKEN_ENC_KEY:latest"
             echo "Google Calendar/Meet OAuth enabled for this deploy."

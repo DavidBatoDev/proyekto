@@ -1,5 +1,6 @@
 import {
   BadRequestException,
+  ConflictException,
   Inject,
   Injectable,
   Logger,
@@ -21,6 +22,33 @@ const REVOKE_URL = 'https://oauth2.googleapis.com/revoke';
 const SCOPES = 'openid email https://www.googleapis.com/auth/calendar.events';
 // OAuth `state` lives this long in Redis between /connect and the callback.
 const STATE_TTL_SECONDS = 600;
+// Access tokens live ~1h; cache them (encrypted) until this many seconds before
+// expiry so calendar views don't mint a fresh token on every request.
+const ACCESS_TOKEN_EXPIRY_MARGIN_SECONDS = 60;
+// Where the OAuth callback may send the user back to. Anything else falls back
+// to the first entry, so `returnTo` can never become an open redirect.
+export const GOOGLE_RETURN_PATHS = ['/meetings', '/settings/integrations'];
+
+/**
+ * Google rejected the stored refresh token (`invalid_grant`): the user revoked
+ * access, changed their password, or the grant expired. The connection row has
+ * already been deleted, so status reports `connected: false` and the user can
+ * simply connect again.
+ */
+export class GoogleReconnectRequiredError extends ConflictException {
+  constructor() {
+    super({
+      message:
+        'Google Calendar access was revoked or expired. Reconnect Google Calendar to continue.',
+      code: 'GOOGLE_RECONNECT_REQUIRED',
+    });
+  }
+}
+
+export interface OAuthState {
+  userId: string;
+  returnTo: string;
+}
 
 export interface GoogleConnectionRow {
   user_id: string;
@@ -42,8 +70,8 @@ export interface GoogleConnectionStatus {
  * The long-lived refresh token is stored (encrypted) in
  * `google_calendar_connections` via the service-role client.
  *
- * Ships dark: when GOOGLE_OAUTH_ENABLED / client id / secret are unset,
- * `isEnabled()` is false and the feature is invisible.
+ * Off unless configured: when GOOGLE_OAUTH_ENABLED / client id / secret are
+ * unset, `isEnabled()` is false and the feature is invisible.
  */
 @Injectable()
 export class GoogleOAuthService {
@@ -64,11 +92,17 @@ export class GoogleOAuthService {
     );
   }
 
-  /** Build the Google consent URL and stash `state → userId` in Redis. */
-  async buildConsentUrl(userId: string): Promise<string> {
+  /** Build the Google consent URL and stash `state → {userId, returnTo}` in Redis. */
+  async buildConsentUrl(userId: string, returnTo?: string): Promise<string> {
     const redis = this.requireRedis();
     const state = randomUUID();
-    await redis.set(this.stateKey(state), userId, { ex: STATE_TTL_SECONDS });
+    const payload: OAuthState = {
+      userId,
+      returnTo: this.safeReturnPath(returnTo),
+    };
+    await redis.set(this.stateKey(state), JSON.stringify(payload), {
+      ex: STATE_TTL_SECONDS,
+    });
 
     const params = new URLSearchParams({
       client_id: this.config.getOrThrow<string>('GOOGLE_OAUTH_CLIENT_ID'),
@@ -83,10 +117,23 @@ export class GoogleOAuthService {
     return `${AUTH_URL}?${params.toString()}`;
   }
 
-  /** Exchange the callback code for tokens; resolves the userId from `state`. */
+  /**
+   * Read and delete the OAuth `state`. Returns null when it is unknown or
+   * expired. Accepts the legacy form (a bare userId string) as well as the
+   * current JSON `{userId, returnTo}`.
+   */
+  async consumeState(state: string): Promise<OAuthState | null> {
+    const redis = this.requireRedis();
+    const stateKey = this.stateKey(state);
+    const raw = await redis.get<unknown>(stateKey);
+    await redis.del(stateKey);
+    return this.parseState(raw);
+  }
+
+  /** Exchange the callback code for tokens on behalf of `userId`. */
   async exchangeCode(
     code: string,
-    state: string,
+    userId: string,
   ): Promise<{
     userId: string;
     googleEmail: string | null;
@@ -94,16 +141,6 @@ export class GoogleOAuthService {
     scope: string | null;
     tokenType: string | null;
   }> {
-    const redis = this.requireRedis();
-    const stateKey = this.stateKey(state);
-    const userId = await redis.get<string>(stateKey);
-    await redis.del(stateKey);
-    if (!userId) {
-      throw new BadRequestException(
-        'The Google sign-in session expired. Try again.',
-      );
-    }
-
     const body = new URLSearchParams({
       code,
       client_id: this.config.getOrThrow<string>('GOOGLE_OAUTH_CLIENT_ID'),
@@ -195,8 +232,15 @@ export class GoogleOAuthService {
     };
   }
 
-  /** Mint a fresh access token from the stored refresh token (per-request). */
+  /**
+   * An access token for `userId`: the cached one when it is still valid,
+   * otherwise a fresh one minted from the stored refresh token (then cached).
+   * Throws `GoogleReconnectRequiredError` when Google rejects the grant.
+   */
   async getAccessToken(userId: string): Promise<string> {
+    const cached = await this.readCachedAccessToken(userId);
+    if (cached) return cached;
+
     const conn = await this.getConnection(userId);
     if (!conn) {
       throw new BadRequestException('Google account is not connected.');
@@ -217,15 +261,38 @@ export class GoogleOAuthService {
     });
     if (!response.ok) {
       const text = await response.text().catch(() => '');
+      if (this.isInvalidGrant(response.status, text)) {
+        this.logger.warn(
+          `Google refresh token rejected for ${userId} (invalid_grant); removing the connection.`,
+        );
+        await this.removeConnection(userId);
+        throw new GoogleReconnectRequiredError();
+      }
       throw new Error(
         `Failed to refresh Google access token (status ${response.status}): ${text}`,
       );
     }
-    const json = (await response.json()) as { access_token?: string };
+    const json = (await response.json()) as {
+      access_token?: string;
+      expires_in?: number;
+    };
     if (!json.access_token) {
       throw new Error('Google token response missing access_token');
     }
+    await this.cacheAccessToken(userId, json.access_token, json.expires_in);
     return json.access_token;
+  }
+
+  /** Drop the cached access token (e.g. after Google answered 401 with it). */
+  async invalidateAccessToken(userId: string): Promise<void> {
+    if (!this.redis) return;
+    try {
+      await this.redis.del(this.accessTokenKey(userId));
+    } catch (err) {
+      this.logger.warn(
+        `Could not clear cached Google token for ${userId}: ${(err as Error).message}`,
+      );
+    }
   }
 
   /** Best-effort revoke, then delete the connection row. Never throws on revoke. */
@@ -245,11 +312,101 @@ export class GoogleOAuthService {
         );
       }
     }
+    await this.removeConnection(userId);
+  }
+
+  /** Clamp a requested return path to the allowlist. */
+  safeReturnPath(returnTo?: string | null): string {
+    return returnTo && GOOGLE_RETURN_PATHS.includes(returnTo)
+      ? returnTo
+      : GOOGLE_RETURN_PATHS[0];
+  }
+
+  /** Delete the connection row and any cached access token. */
+  private async removeConnection(userId: string): Promise<void> {
+    await this.invalidateAccessToken(userId);
     const { error } = await this.supabase
       .from('google_calendar_connections')
       .delete()
       .eq('user_id', userId);
     if (error) throw new Error(error.message);
+  }
+
+  private parseState(raw: unknown): OAuthState | null {
+    if (!raw) return null;
+    let value: unknown = raw;
+    // Upstash deserializes JSON automatically; a legacy bare userId (or a
+    // client with deserialization off) arrives as a string.
+    if (typeof value === 'string') {
+      const text = value;
+      try {
+        value = JSON.parse(text);
+      } catch {
+        return { userId: text, returnTo: GOOGLE_RETURN_PATHS[0] };
+      }
+      if (typeof value === 'string') {
+        return { userId: value, returnTo: GOOGLE_RETURN_PATHS[0] };
+      }
+    }
+    if (typeof value === 'object' && value !== null) {
+      const obj = value as Partial<OAuthState>;
+      if (typeof obj.userId === 'string' && obj.userId) {
+        return {
+          userId: obj.userId,
+          returnTo: this.safeReturnPath(obj.returnTo),
+        };
+      }
+    }
+    return null;
+  }
+
+  private isInvalidGrant(status: number, body: string): boolean {
+    if (status !== 400 && status !== 401) return false;
+    try {
+      const parsed = JSON.parse(body) as { error?: string };
+      return parsed.error === 'invalid_grant';
+    } catch {
+      return body.includes('invalid_grant');
+    }
+  }
+
+  private async readCachedAccessToken(userId: string): Promise<string | null> {
+    if (!this.redis) return null;
+    try {
+      const stored = await this.redis.get<string>(this.accessTokenKey(userId));
+      if (!stored || typeof stored !== 'string') return null;
+      return decryptToken(stored, this.encKey());
+    } catch (err) {
+      this.logger.warn(
+        `Ignoring unreadable cached Google token for ${userId}: ${(err as Error).message}`,
+      );
+      return null;
+    }
+  }
+
+  private async cacheAccessToken(
+    userId: string,
+    accessToken: string,
+    expiresIn?: number,
+  ): Promise<void> {
+    if (!this.redis || !expiresIn) return;
+    const ttl = Math.floor(expiresIn - ACCESS_TOKEN_EXPIRY_MARGIN_SECONDS);
+    if (ttl <= 0) return;
+    try {
+      await this.redis.set(
+        this.accessTokenKey(userId),
+        encryptToken(accessToken, this.encKey()),
+        { ex: ttl },
+      );
+    } catch (err) {
+      this.logger.warn(
+        `Could not cache Google token for ${userId}: ${(err as Error).message}`,
+      );
+    }
+  }
+
+  private accessTokenKey(userId: string): string {
+    return `gcal:token:${userId}`;
   }
 
   private redirectUri(): string {

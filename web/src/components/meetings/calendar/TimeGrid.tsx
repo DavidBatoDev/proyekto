@@ -3,12 +3,21 @@
  * a day-header row, and one relative column per day holding absolutely-
  * positioned event blocks (packed by the overlap layout), hour slots that
  * create a meeting on click, and a red current-time line on today's column.
+ * The optional Google Calendar overlay shares the overlap layout with meetings
+ * (so nothing is drawn on top of anything else) and adds an all-day strip.
  */
 import { format } from "date-fns";
 import { useEffect, useRef } from "react";
-import type { Meeting } from "@/services/meetings.service";
+import type { GoogleCalendarEvent, Meeting } from "@/services/meetings.service";
 import { CurrentTimeLine } from "./CurrentTimeLine";
 import { EventBlock } from "./EventBlock";
+import { GoogleEventBlock, GoogleEventChip } from "./GoogleEventBlock";
+import {
+	allDayGoogleEventsOnDay,
+	googleLayoutId,
+	googleToLayoutEvents,
+	timedGoogleEventsOnDay,
+} from "./googleEvents";
 import {
 	dayKey,
 	sameLocalDay,
@@ -28,12 +37,17 @@ function hourLabel(h: number): string {
 	return `${h12} ${period}`;
 }
 
+const NO_GOOGLE_EVENTS: GoogleCalendarEvent[] = [];
+
 interface TimeGridProps {
 	days: Date[];
 	meetings: Meeting[];
 	now: Date;
 	onSelectMeeting?: (meeting: Meeting) => void;
 	onCreateAt?: (at: Date) => void;
+	/** Read-only events from the user's Google Calendar (overlay). */
+	googleEvents?: GoogleCalendarEvent[];
+	onSelectGoogleEvent?: (event: GoogleCalendarEvent) => void;
 }
 
 export function TimeGrid({
@@ -42,8 +56,14 @@ export function TimeGrid({
 	now,
 	onSelectMeeting,
 	onCreateAt,
+	googleEvents = NO_GOOGLE_EVENTS,
+	onSelectGoogleEvent,
 }: TimeGridProps) {
 	const scrollRef = useRef<HTMLDivElement>(null);
+	const allDayByDay = days.map((day) =>
+		allDayGoogleEventsOnDay(googleEvents, day),
+	);
+	const hasAllDay = allDayByDay.some((list) => list.length > 0);
 
 	// Open scrolled near the working day rather than midnight.
 	useEffect(() => {
@@ -81,6 +101,31 @@ export function TimeGrid({
 				})}
 			</div>
 
+			{/* All-day Google events, one stack per day column. */}
+			{hasAllDay && (
+				<div className="flex shrink-0 border-b border-gray-100">
+					<div
+						className={`${GUTTER} shrink-0 py-1 pr-2 text-right text-[10px] text-gray-400`}
+					>
+						All day
+					</div>
+					{days.map((day, i) => (
+						<div
+							key={dayKey(day)}
+							className="thin-scrollbar max-h-20 flex-1 space-y-0.5 overflow-y-auto border-l border-gray-100 p-1"
+						>
+							{allDayByDay[i].map((event) => (
+								<GoogleEventChip
+									key={event.id}
+									event={event}
+									onClick={onSelectGoogleEvent}
+								/>
+							))}
+						</div>
+					))}
+				</div>
+			)}
+
 			{/* Scrollable grid body — fills the available height (desktop) with a
 			    viewport-height floor so it stays usable when the page flows (mobile). */}
 			<div
@@ -104,7 +149,11 @@ export function TimeGrid({
 				<div className="flex flex-1">
 					{days.map((day) => {
 						const timed = timedMeetingsOnDay(meetings, day);
-						const boxes = layoutDay(toLayoutEvents(timed));
+						const timedGoogle = timedGoogleEventsOnDay(googleEvents, day);
+						const boxes = layoutDay([
+							...toLayoutEvents(timed),
+							...googleToLayoutEvents(timedGoogle),
+						]);
 						const boxById = new Map(boxes.map((b) => [b.id, b]));
 						const isToday = sameLocalDay(day, now);
 						return (
@@ -140,6 +189,17 @@ export function TimeGrid({
 											meeting={t.meeting}
 											box={box}
 											onClick={onSelectMeeting}
+										/>
+									) : null;
+								})}
+								{timedGoogle.map((t) => {
+									const box = boxById.get(googleLayoutId(t.event));
+									return box ? (
+										<GoogleEventBlock
+											key={googleLayoutId(t.event)}
+											event={t.event}
+											box={box}
+											onClick={onSelectGoogleEvent}
 										/>
 									) : null;
 								})}

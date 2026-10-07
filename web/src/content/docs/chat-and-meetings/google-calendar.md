@@ -1,33 +1,36 @@
-Proyekto can optionally connect to your Google account so that meetings you
-schedule here also appear on your Google Calendar, and so that Google Meet links
-can be created for you. It is an integration, not a core part of meetings —
+Proyekto connects to your Google account in two directions. Meetings you
+schedule here appear on your Google Calendar, with Google Meet links created for
+you. Your own Google Calendar events show up in Proyekto's Meetings calendar, so
+you can schedule around them. It is an integration, not a core part of meetings:
 everything on [Meetings](/docs/chat-and-meetings/meetings) works whether or not
-this is switched on.
-
-## Check whether it is available first
-
-> This integration is optional and may not be enabled for your workspace. Check
-> before you plan around it.
-
-The honest way to find out is to open the meeting editor and look: if the Google
-options are not offered, the integration is not available to you, and the
-answer is not somewhere in your own settings. Ask whoever administers your
-workspace. Everything below describes what happens when it *is* enabled.
+you connect.
 
 ## Connecting your account
 
+Go to **Settings → Integrations** and choose **Connect Google Calendar**. You can
+also connect from the Meetings toolbar, or from the meeting editor when you pick
+Google Meet as the video option.
+
 The connection is per person, not per workspace. You connect your own Google
-account, and it affects the meetings you organise — your colleagues connect
-theirs separately, or not at all.
+account, and it affects your own calendar and the meetings you organise. Your
+colleagues connect theirs separately, or not at all.
 
 Connecting sends you through Google's own consent screen, where Google tells you
 what Proyekto is asking for: permission to see and manage events on your
-calendar, so that it can create the events for your Proyekto meetings and keep
-them up to date afterwards. You approve it with Google, not with Proyekto, and
-you can review or revoke it from your Google account at any time.
+calendars. Proyekto uses it to create the events for your Proyekto meetings, keep
+them up to date afterwards, and show your Google events in Meetings. You approve
+it with Google, not with Proyekto, and you can review or revoke it from your
+Google account at any time.
 
-Once connected, Proyekto shows which Google account is attached, so you can tell
-a personal account from a work one at a glance.
+> Google may show a warning that it hasn't verified Proyekto yet. You can
+> continue: choose **Advanced**, then go to Proyekto.
+
+Once connected, Settings → Integrations shows which Google account is attached,
+so you can tell a personal account from a work one at a glance.
+
+Connecting needs a web browser. Google doesn't allow its sign-in inside apps, so
+in the Proyekto mobile app, connect from proyekto.tech in a browser first. The
+app picks the connection up from there.
 
 ## What syncs
 
@@ -45,6 +48,27 @@ Two things, both in the same direction — out of Proyekto, into Google:
 
 Later changes you make in Proyekto — a new time, a new title, a cancellation —
 are reflected on the Google event.
+
+## Your Google events in Proyekto
+
+Once you are connected, the Meetings calendar also shows the events on your
+primary Google calendar: the dentist, the flight, the meeting someone booked in
+Google. They sit alongside your Proyekto meetings, drawn lighter so the two are
+easy to tell apart, and they appear in the day agenda under **From Google
+Calendar**.
+
+- **They are read-only.** Open one to see its time and place, join its Google
+  Meet call, or jump to it in Google Calendar to change it there.
+- **They are yours alone.** Nobody else in your projects sees your Google
+  events, and Proyekto doesn't store them. They are read from Google each time
+  you open the calendar.
+- **No duplicates.** A Proyekto meeting that is already on your Google Calendar
+  shows once, as the Proyekto meeting.
+- **You can hide them.** The **Google Calendar** button in the Meetings toolbar
+  turns them off and on, and your choice is remembered on that device.
+
+Only your primary Google calendar is shown, and the year view shows Proyekto
+meetings only.
 
 ## What does not sync back
 
@@ -92,6 +116,12 @@ You can disconnect at any time, and it is a clean operation:
   are unaffected by whether Proyekto is still connected.
 - **New meetings fall back to the other video options** — a room Proyekto
   creates, a link you paste, or none.
+- **Your Google events disappear from Meetings.** Proyekto stops reading your
+  calendar the moment you disconnect.
+
+Disconnect from **Settings → Integrations**. Removing Proyekto from your Google
+account's permissions has the same effect; the next time Proyekto needs your
+calendar it notices, and offers to connect again.
 
 Reconnecting later starts the mirroring again for meetings from then on; it does
 not go back and recreate events for meetings scheduled while you were

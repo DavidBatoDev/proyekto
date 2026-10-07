@@ -38,6 +38,7 @@ import { Route as DocsIndexRouteImport } from './routes/docs/index'
 import { Route as AdminIndexRouteImport } from './routes/admin/index'
 import { Route as SettingsNotificationsRouteImport } from './routes/settings/notifications'
 import { Route as SettingsMcpTokensRouteImport } from './routes/settings/mcp-tokens'
+import { Route as SettingsIntegrationsRouteImport } from './routes/settings/integrations'
 import { Route as SettingsDeleteAccountRouteImport } from './routes/settings/delete-account'
 import { Route as SettingsBlockedRouteImport } from './routes/settings/blocked'
 import { Route as SettingsAppearanceRouteImport } from './routes/settings/appearance'
@@ -356,6 +357,11 @@ const SettingsNotificationsRoute = SettingsNotificationsRouteImport.update({
 const SettingsMcpTokensRoute = SettingsMcpTokensRouteImport.update({
   id: '/mcp-tokens',
   path: '/mcp-tokens',
+  getParentRoute: () => SettingsRouteRoute,
+} as any)
+const SettingsIntegrationsRoute = SettingsIntegrationsRouteImport.update({
+  id: '/integrations',
+  path: '/integrations',
   getParentRoute: () => SettingsRouteRoute,
 } as any)
 const SettingsDeleteAccountRoute = SettingsDeleteAccountRouteImport.update({
@@ -1419,6 +1425,7 @@ export interface FileRoutesByFullPath {
   '/settings/appearance': typeof SettingsAppearanceRoute
   '/settings/blocked': typeof SettingsBlockedRoute
   '/settings/delete-account': typeof SettingsDeleteAccountRoute
+  '/settings/integrations': typeof SettingsIntegrationsRoute
   '/settings/mcp-tokens': typeof SettingsMcpTokensRoute
   '/settings/notifications': typeof SettingsNotificationsRoute
   '/admin/': typeof AdminIndexRoute
@@ -1616,6 +1623,7 @@ export interface FileRoutesByTo {
   '/settings/appearance': typeof SettingsAppearanceRoute
   '/settings/blocked': typeof SettingsBlockedRoute
   '/settings/delete-account': typeof SettingsDeleteAccountRoute
+  '/settings/integrations': typeof SettingsIntegrationsRoute
   '/settings/mcp-tokens': typeof SettingsMcpTokensRoute
   '/settings/notifications': typeof SettingsNotificationsRoute
   '/admin': typeof AdminIndexRoute
@@ -1817,6 +1825,7 @@ export interface FileRoutesById {
   '/settings/appearance': typeof SettingsAppearanceRoute
   '/settings/blocked': typeof SettingsBlockedRoute
   '/settings/delete-account': typeof SettingsDeleteAccountRoute
+  '/settings/integrations': typeof SettingsIntegrationsRoute
   '/settings/mcp-tokens': typeof SettingsMcpTokensRoute
   '/settings/notifications': typeof SettingsNotificationsRoute
   '/admin/': typeof AdminIndexRoute
@@ -2024,6 +2033,7 @@ export interface FileRouteTypes {
     | '/settings/appearance'
     | '/settings/blocked'
     | '/settings/delete-account'
+    | '/settings/integrations'
     | '/settings/mcp-tokens'
     | '/settings/notifications'
     | '/admin/'
@@ -2221,6 +2231,7 @@ export interface FileRouteTypes {
     | '/settings/appearance'
     | '/settings/blocked'
     | '/settings/delete-account'
+    | '/settings/integrations'
     | '/settings/mcp-tokens'
     | '/settings/notifications'
     | '/admin'
@@ -2421,6 +2432,7 @@ export interface FileRouteTypes {
     | '/settings/appearance'
     | '/settings/blocked'
     | '/settings/delete-account'
+    | '/settings/integrations'
     | '/settings/mcp-tokens'
     | '/settings/notifications'
     | '/admin/'
@@ -2813,6 +2825,13 @@ declare module '@tanstack/react-router' {
       path: '/mcp-tokens'
       fullPath: '/settings/mcp-tokens'
       preLoaderRoute: typeof SettingsMcpTokensRouteImport
+      parentRoute: typeof SettingsRouteRoute
+    }
+    '/settings/integrations': {
+      id: '/settings/integrations'
+      path: '/integrations'
+      fullPath: '/settings/integrations'
+      preLoaderRoute: typeof SettingsIntegrationsRouteImport
       parentRoute: typeof SettingsRouteRoute
     }
     '/settings/delete-account': {
@@ -4186,6 +4205,7 @@ interface SettingsRouteRouteChildren {
   SettingsAppearanceRoute: typeof SettingsAppearanceRoute
   SettingsBlockedRoute: typeof SettingsBlockedRoute
   SettingsDeleteAccountRoute: typeof SettingsDeleteAccountRoute
+  SettingsIntegrationsRoute: typeof SettingsIntegrationsRoute
   SettingsMcpTokensRoute: typeof SettingsMcpTokensRoute
   SettingsNotificationsRoute: typeof SettingsNotificationsRoute
   SettingsIndexRoute: typeof SettingsIndexRoute
@@ -4195,6 +4215,7 @@ const SettingsRouteRouteChildren: SettingsRouteRouteChildren = {
   SettingsAppearanceRoute: SettingsAppearanceRoute,
   SettingsBlockedRoute: SettingsBlockedRoute,
   SettingsDeleteAccountRoute: SettingsDeleteAccountRoute,
+  SettingsIntegrationsRoute: SettingsIntegrationsRoute,
   SettingsMcpTokensRoute: SettingsMcpTokensRoute,
   SettingsNotificationsRoute: SettingsNotificationsRoute,
   SettingsIndexRoute: SettingsIndexRoute,

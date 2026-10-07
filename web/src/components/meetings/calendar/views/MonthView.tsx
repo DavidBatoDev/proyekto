@@ -2,7 +2,8 @@
  * Month grid — a refactor of the original MeetingsCalendar's left column. Each
  * cell shows the day number (today highlighted) and up to two event chips with
  * a "+N more" overflow. Clicking a day selects it (drives the agenda panel);
- * clicking a chip opens that meeting.
+ * clicking a chip opens that meeting. Google Calendar overlay events fill any
+ * remaining chip slots after the day's meetings.
  */
 import {
 	eachDayOfInterval,
@@ -12,11 +13,15 @@ import {
 	startOfWeek,
 } from "date-fns";
 import { useMemo } from "react";
-import type { Meeting } from "@/services/meetings.service";
+import type { GoogleCalendarEvent, Meeting } from "@/services/meetings.service";
 import { EventChip } from "../EventChip";
+import { GoogleEventChip } from "../GoogleEventBlock";
+import { groupGoogleByDay } from "../googleEvents";
 import { dayKey, groupByDay, sameLocalDay } from "../model";
 
 const WEEKDAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+const CHIPS_PER_CELL = 2;
+const NO_GOOGLE_EVENTS: GoogleCalendarEvent[] = [];
 
 interface MonthViewProps {
 	anchor: Date;
@@ -25,6 +30,9 @@ interface MonthViewProps {
 	selectedDay: Date;
 	onSelectDay: (day: Date) => void;
 	onSelectMeeting?: (meeting: Meeting) => void;
+	/** Read-only events from the user's Google Calendar (overlay). */
+	googleEvents?: GoogleCalendarEvent[];
+	onSelectGoogleEvent?: (event: GoogleCalendarEvent) => void;
 }
 
 export function MonthView({
@@ -34,6 +42,8 @@ export function MonthView({
 	selectedDay,
 	onSelectDay,
 	onSelectMeeting,
+	googleEvents = NO_GOOGLE_EVENTS,
+	onSelectGoogleEvent,
 }: MonthViewProps) {
 	const cells = useMemo(
 		() =>
@@ -44,6 +54,10 @@ export function MonthView({
 		[anchor],
 	);
 	const byDay = useMemo(() => groupByDay(meetings), [meetings]);
+	const googleByDay = useMemo(
+		() => groupGoogleByDay(googleEvents),
+		[googleEvents],
+	);
 	const monthIdx = anchor.getMonth();
 
 	return (
@@ -61,6 +75,11 @@ export function MonthView({
 					const isToday = sameLocalDay(day, now);
 					const isSelected = sameLocalDay(day, selectedDay);
 					const dayMeetings = byDay.get(dayKey(day)) ?? [];
+					const dayGoogle = googleByDay.get(dayKey(day)) ?? [];
+					const googleSlots = Math.max(0, CHIPS_PER_CELL - dayMeetings.length);
+					const hidden =
+						Math.max(0, dayMeetings.length - CHIPS_PER_CELL) +
+						Math.max(0, dayGoogle.length - googleSlots);
 					return (
 						<button
 							type="button"
@@ -82,12 +101,19 @@ export function MonthView({
 								{day.getDate()}
 							</span>
 							<div className="mt-1 space-y-0.5">
-								{dayMeetings.slice(0, 2).map((m) => (
+								{dayMeetings.slice(0, CHIPS_PER_CELL).map((m) => (
 									<EventChip key={m.id} meeting={m} onClick={onSelectMeeting} />
 								))}
-								{dayMeetings.length > 2 && (
+								{dayGoogle.slice(0, googleSlots).map((event) => (
+									<GoogleEventChip
+										key={event.id}
+										event={event}
+										onClick={onSelectGoogleEvent}
+									/>
+								))}
+								{hidden > 0 && (
 									<div className="px-1 text-[10px] text-gray-400">
-										+{dayMeetings.length - 2} more
+										+{hidden} more
 									</div>
 								)}
 							</div>

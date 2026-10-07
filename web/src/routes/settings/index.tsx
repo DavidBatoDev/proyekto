@@ -5,6 +5,7 @@ import {
 	KeyRound,
 	type LucideIcon,
 	Palette,
+	PlugZap,
 	Trash2,
 	UserX,
 } from "lucide-react";
@@ -84,6 +85,13 @@ function SettingsOverviewPage() {
 				"Choose what Proyekto emails you about. In-app notifications are unaffected.",
 			to: "/settings/notifications",
 			icon: Bell,
+		},
+		{
+			label: "Integrations",
+			description:
+				"Connect Google Calendar to mirror meetings with Meet links and see your own events in Meetings.",
+			to: "/settings/integrations",
+			icon: PlugZap,
 		},
 		{
 			label: "MCP Access",

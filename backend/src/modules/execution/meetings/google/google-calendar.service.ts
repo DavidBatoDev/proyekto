@@ -26,11 +26,67 @@ interface GCalEvent {
   };
 }
 
+interface GCalDateTime {
+  date?: string; // all-day: YYYY-MM-DD
+  dateTime?: string; // timed: RFC 3339
+  timeZone?: string;
+}
+
+interface GCalListItem extends GCalEvent {
+  status?: string;
+  summary?: string;
+  location?: string;
+  htmlLink?: string;
+  recurringEventId?: string;
+  transparency?: string;
+  start?: GCalDateTime;
+  end?: GCalDateTime;
+}
+
+interface GCalListResponse {
+  items?: GCalListItem[];
+  nextPageToken?: string;
+}
+
+/** A read-only event from the user's primary Google calendar. Never stored. */
+export interface GoogleCalendarEvent {
+  id: string;
+  /** Master id for an occurrence of a recurring event, else null. */
+  recurringEventId: string | null;
+  title: string;
+  /** RFC 3339 instant for timed events; YYYY-MM-DD for all-day events. */
+  start: string;
+  /** Exclusive end; for all-day events the day after the last day. */
+  end: string;
+  allDay: boolean;
+  location: string | null;
+  htmlLink: string | null;
+  meetUrl: string | null;
+  /** True when the event is marked "free" (doesn't block time). */
+  free: boolean;
+}
+
+// Google caps a page at 2500 but recommends smaller pages; 4 × 250 covers a
+// very busy quarter. Anything beyond is dropped (the view is a convenience).
+const LIST_PAGE_SIZE = 250;
+const LIST_MAX_PAGES = 4;
+const LIST_FIELDS =
+  'nextPageToken,items(id,status,summary,location,htmlLink,hangoutLink,recurringEventId,transparency,start,end,conferenceData/entryPoints)';
+
+type QueryParams = Record<string, string>;
+// Writes always ask for Meet conference data and email attendees about changes.
+const WRITE_QUERY: QueryParams = {
+  conferenceDataVersion: '1',
+  sendUpdates: 'all',
+};
+
 /**
  * Thin Google Calendar REST client (raw fetch, no `googleapis` dep — mirrors the
  * Gmail integration). Creates/patches/deletes events with a Meet conference link
  * and attendees; a recurring series maps to one native Google recurring event.
- * All calls run as the meeting organizer via `GoogleOAuthService.getAccessToken`.
+ * It also lists the user's primary-calendar events for the read-only overlay in
+ * the Meetings calendar. All calls run as the user via
+ * `GoogleOAuthService.getAccessToken`.
  */
 @Injectable()
 export class GoogleCalendarService {
@@ -61,7 +117,7 @@ export class GoogleCalendarService {
     if (input.rrule) {
       body.recurrence = [`RRULE:${this.normalizeRrule(input.rrule)}`];
     }
-    const event = await this.request<GCalEvent>(userId, 'POST', '', body);
+    const event = await this.write<GCalEvent>(userId, 'POST', '', body);
     if (!event?.id) {
       throw new Error('Google Calendar create returned no event id.');
     }
@@ -78,7 +134,7 @@ export class GoogleCalendarService {
     eventId: string,
     patch: Partial<CalendarEventInput>,
   ): Promise<void> {
-    await this.request(
+    await this.write(
       userId,
       'PATCH',
       `/${encodeURIComponent(eventId)}`,
@@ -94,7 +150,7 @@ export class GoogleCalendarService {
     patch: Partial<CalendarEventInput>,
   ): Promise<void> {
     const instanceId = this.deriveInstanceId(eventId, recurrenceIdUtc);
-    await this.request(
+    await this.write(
       userId,
       'PATCH',
       `/${encodeURIComponent(instanceId)}`,
@@ -109,7 +165,7 @@ export class GoogleCalendarService {
     recurrenceIdUtc: string,
   ): Promise<void> {
     const instanceId = this.deriveInstanceId(eventId, recurrenceIdUtc);
-    await this.request(userId, 'PATCH', `/${encodeURIComponent(instanceId)}`, {
+    await this.write(userId, 'PATCH', `/${encodeURIComponent(instanceId)}`, {
       status: 'cancelled',
     });
   }
@@ -121,13 +177,50 @@ export class GoogleCalendarService {
     rrule: string,
     untilIsoUtc: string,
   ): Promise<void> {
-    await this.request(userId, 'PATCH', `/${encodeURIComponent(eventId)}`, {
+    await this.write(userId, 'PATCH', `/${encodeURIComponent(eventId)}`, {
       recurrence: [`RRULE:${this.withUntil(rrule, untilIsoUtc)}`],
     });
   }
 
   async deleteEvent(userId: string, eventId: string): Promise<void> {
-    await this.request(userId, 'DELETE', `/${encodeURIComponent(eventId)}`);
+    await this.write(userId, 'DELETE', `/${encodeURIComponent(eventId)}`);
+  }
+
+  /**
+   * Events on the user's primary calendar overlapping [from, to), with
+   * recurring events expanded into occurrences. Cancelled occurrences are
+   * dropped. Read on demand only; the caller must not persist the result.
+   */
+  async listEvents(
+    userId: string,
+    range: { from: string; to: string },
+  ): Promise<GoogleCalendarEvent[]> {
+    const events: GoogleCalendarEvent[] = [];
+    let pageToken: string | undefined;
+    for (let page = 0; page < LIST_MAX_PAGES; page += 1) {
+      const query: QueryParams = {
+        timeMin: new Date(range.from).toISOString(),
+        timeMax: new Date(range.to).toISOString(),
+        singleEvents: 'true',
+        orderBy: 'startTime',
+        maxResults: String(LIST_PAGE_SIZE),
+        fields: LIST_FIELDS,
+      };
+      if (pageToken) query.pageToken = pageToken;
+      const response = await this.call<GCalListResponse>(
+        userId,
+        'GET',
+        '',
+        query,
+      );
+      for (const item of response?.items ?? []) {
+        const mapped = this.mapListItem(item);
+        if (mapped) events.push(mapped);
+      }
+      pageToken = response?.nextPageToken;
+      if (!pageToken) break;
+    }
+    return events;
   }
 
   // ── internals ───────────────────────────────────────────────────────────────
@@ -157,25 +250,33 @@ export class GoogleCalendarService {
     return body;
   }
 
-  private async request<T>(
+  private write<T>(
     userId: string,
     method: string,
     path: string,
     body?: unknown,
   ): Promise<T | null> {
-    const accessToken = await this.oauth.getAccessToken(userId);
-    const query = new URLSearchParams({
-      conferenceDataVersion: '1',
-      sendUpdates: 'all',
-    });
-    const response = await fetch(`${EVENTS_BASE}${path}?${query.toString()}`, {
-      method,
-      headers: {
-        Authorization: `Bearer ${accessToken}`,
-        'Content-Type': 'application/json',
-      },
-      body: body === undefined ? undefined : JSON.stringify(body),
-    });
+    return this.call<T>(userId, method, path, WRITE_QUERY, body);
+  }
+
+  /**
+   * Authorized request against the primary calendar's events collection. A 401
+   * means the cached access token went stale early (revoked session, clock
+   * skew): drop it and retry once with a freshly minted token.
+   */
+  private async call<T>(
+    userId: string,
+    method: string,
+    path: string,
+    query: QueryParams,
+    body?: unknown,
+  ): Promise<T | null> {
+    const url = `${EVENTS_BASE}${path}?${new URLSearchParams(query).toString()}`;
+    let response = await this.send(userId, method, url, body);
+    if (response.status === 401) {
+      await this.oauth.invalidateAccessToken(userId);
+      response = await this.send(userId, method, url, body);
+    }
     if (!response.ok) {
       const text = await response.text().catch(() => '');
       throw new Error(
@@ -184,6 +285,43 @@ export class GoogleCalendarService {
     }
     if (response.status === 204) return null;
     return (await response.json()) as T;
+  }
+
+  private async send(
+    userId: string,
+    method: string,
+    url: string,
+    body?: unknown,
+  ): Promise<Response> {
+    const accessToken = await this.oauth.getAccessToken(userId);
+    return fetch(url, {
+      method,
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+        'Content-Type': 'application/json',
+      },
+      body: body === undefined ? undefined : JSON.stringify(body),
+    });
+  }
+
+  private mapListItem(item: GCalListItem): GoogleCalendarEvent | null {
+    if (!item.id || item.status === 'cancelled') return null;
+    const allDay = Boolean(item.start?.date);
+    const start = item.start?.dateTime ?? item.start?.date;
+    const end = item.end?.dateTime ?? item.end?.date ?? start;
+    if (!start || !end) return null;
+    return {
+      id: item.id,
+      recurringEventId: item.recurringEventId ?? null,
+      title: item.summary?.trim() || '(No title)',
+      start,
+      end,
+      allDay,
+      location: item.location ?? null,
+      htmlLink: item.htmlLink ?? null,
+      meetUrl: this.extractMeetUrl(item),
+      free: item.transparency === 'transparent',
+    };
   }
 
   private extractMeetUrl(event: GCalEvent): string | null {

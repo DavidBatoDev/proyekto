@@ -138,7 +138,7 @@ function extractError(error: unknown, fallback: string): Error {
 	const e = error as {
 		response?: {
 			status?: number;
-			data?: { error?: { message?: string }; message?: string };
+			data?: { error?: { message?: string; code?: string }; message?: string };
 		};
 		message?: string;
 	};
@@ -149,9 +149,11 @@ function extractError(error: unknown, fallback: string): Error {
 		fallback;
 	const wrapped = new Error(message) as Error & {
 		status?: number;
+		code?: string;
 		cause?: unknown;
 	};
 	wrapped.status = e?.response?.status;
+	wrapped.code = e?.response?.data?.error?.code;
 	wrapped.cause = error;
 	return wrapped;
 }
@@ -271,6 +273,37 @@ export interface GoogleCalendarStatus {
 	googleEmail?: string | null;
 }
 
+/** A read-only event from the user's primary Google calendar (never stored). */
+export interface GoogleCalendarEvent {
+	id: string;
+	recurringEventId: string | null;
+	title: string;
+	/** ISO instant for timed events; YYYY-MM-DD for all-day events. */
+	start: string;
+	/** Exclusive end; for all-day events the day after the last day. */
+	end: string;
+	allDay: boolean;
+	location: string | null;
+	htmlLink: string | null;
+	meetUrl: string | null;
+	/** Marked "free" in Google (doesn't block time). */
+	free: boolean;
+}
+
+export interface GoogleCalendarEvents {
+	connected: boolean;
+	events: GoogleCalendarEvent[];
+}
+
+/** Pages the Google consent screen may return to (the backend clamps to these). */
+export type GoogleReturnPath = "/meetings" | "/settings/integrations";
+
+/** The API's "Google access was revoked or expired; connect again" error. */
+export function isGoogleReconnectError(error: unknown): boolean {
+	const e = error as { status?: number; code?: string } | null;
+	return e?.code === "GOOGLE_RECONNECT_REQUIRED";
+}
+
 export const googleCalendarService = {
 	async status(): Promise<GoogleCalendarStatus> {
 		try {
@@ -284,10 +317,11 @@ export const googleCalendarService = {
 	},
 
 	// Returns the Google consent URL — the caller redirects the browser to it.
-	async connectUrl(): Promise<string> {
+	async connectUrl(returnTo: GoogleReturnPath = "/meetings"): Promise<string> {
 		try {
 			const res = await apiClient.get<ApiResponse<{ url: string }>>(
 				"/api/meetings/google/connect",
+				{ params: { returnTo } },
 			);
 			return res.data.data.url;
 		} catch (e) {
@@ -300,6 +334,22 @@ export const googleCalendarService = {
 			await apiClient.delete("/api/meetings/google/connection");
 		} catch (e) {
 			throw extractError(e, "Failed to disconnect Google Calendar");
+		}
+	},
+
+	// The user's own Google events for a calendar range. Read live, never stored.
+	async events(range: {
+		from: string;
+		to: string;
+	}): Promise<GoogleCalendarEvents> {
+		try {
+			const res = await apiClient.get<ApiResponse<GoogleCalendarEvents>>(
+				"/api/meetings/google/events",
+				{ params: range },
+			);
+			return res.data.data;
+		} catch (e) {
+			throw extractError(e, "Failed to load Google Calendar events");
 		}
 	},
 };

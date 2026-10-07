@@ -30,7 +30,11 @@ import type {
 } from './repositories/meetings.repository.interface';
 import { expandOccurrences, parseUntilCount, wallFromUtc } from './recurrence';
 import { GoogleCalendarService } from './google/google-calendar.service';
-import type { CalendarEventInput } from './google/google-calendar.service';
+import type {
+  CalendarEventInput,
+  GoogleCalendarEvent,
+} from './google/google-calendar.service';
+import { GoogleReconnectRequiredError } from './google/google-oauth.service';
 
 export const MEETINGS_REPOSITORY = Symbol('MEETINGS_REPOSITORY');
 
@@ -39,6 +43,10 @@ const DEFAULT_DURATION_MINUTES = 30;
 // Upper bound for the reminder-scan fetch — matches the max reminder offset
 // (4 weeks). No meeting further out can be due for a reminder yet.
 const REMINDER_SCAN_AHEAD_MS = 40320 * 60_000;
+
+// When hiding Google events that mirror a Proyekto meeting, look this far past
+// the requested window so a meeting that straddles the edge still matches.
+const GOOGLE_DEDUPE_PAD_MS = 24 * 60 * 60_000;
 
 @Injectable()
 export class MeetingsService {
@@ -609,6 +617,47 @@ export class MeetingsService {
     return this.repo.listForUser(userId, query);
   }
 
+  /**
+   * The user's own Google Calendar events in [from, to) for the read-only
+   * overlay. Events that mirror a Proyekto meeting the user can already see are
+   * dropped so nothing shows twice: Google keeps one event id across every
+   * attendee's calendar, and every occurrence of a mirrored series carries the
+   * series' master id as `recurringEventId`. Nothing here is stored or cached.
+   */
+  async listGoogleEvents(
+    userId: string,
+    range: { from: string; to: string },
+  ): Promise<{ connected: boolean; events: GoogleCalendarEvent[] }> {
+    if (
+      !this.googleCalendar.isEnabled() ||
+      !(await this.googleCalendar.isConnected(userId))
+    ) {
+      return { connected: false, events: [] };
+    }
+    const fromMs = Date.parse(range.from);
+    const toMs = Date.parse(range.to);
+    const [events, meetings] = await Promise.all([
+      this.googleCalendar.listEvents(userId, range),
+      this.repo.listForUser(userId, {
+        from: new Date(fromMs - GOOGLE_DEDUPE_PAD_MS).toISOString(),
+        to: new Date(toMs + GOOGLE_DEDUPE_PAD_MS).toISOString(),
+      }),
+    ]);
+    const mirrored = new Set(
+      meetings
+        .map((meeting) => meeting.google_event_id)
+        .filter((id): id is string => Boolean(id)),
+    );
+    return {
+      connected: true,
+      events: events.filter(
+        (event) =>
+          !mirrored.has(event.id) &&
+          !(event.recurringEventId && mirrored.has(event.recurringEventId)),
+      ),
+    };
+  }
+
   async listForProject(
     userId: string,
     projectId: string,
@@ -1102,6 +1151,8 @@ export class MeetingsService {
         });
       return { videoProvider: 'google_meet', meetingUrl, googleEventId };
     } catch (err) {
+      // A revoked grant is the user's to fix (reconnect), not a Google outage.
+      if (err instanceof GoogleReconnectRequiredError) throw err;
       throw new BadGatewayException(
         `Could not create the Google Meet link: ${(err as Error).message}`,
       );
