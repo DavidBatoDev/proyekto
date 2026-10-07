@@ -3,7 +3,8 @@
 
 # Supabase project URL — used to fetch the JWKS that verifies asymmetric
 # (ES256) access tokens, which modern Supabase projects issue by default.
-SUPABASE_URL=https://your-project-ref.supabase.co
+# Use the hosted development project, matching backend/.env.development.local.
+SUPABASE_URL=https://vyiedlwasdwmjbztqznl.supabase.co
 
 # Legacy HS256 project JWT secret (Settings > API > JWT Settings). Only needed
 # if your project still signs tokens symmetrically; asymmetric projects verify
@@ -13,3 +14,9 @@ SUPABASE_JWT_SECRET=your-supabase-jwt-secret
 # Shared secret the backend sends on POST /publish (x-realtime-token header).
 # Must match the backend's REALTIME_PUBLISH_TOKEN.
 REALTIME_PUBLISH_TOKEN=dev-publish-token
+
+# Override the production authorization endpoint in wrangler.toml.
+BACKEND_AUTHORIZE_URL=http://localhost:8001/api/realtime/authorize
+
+# Local web dev servers. Keep this aligned with the browser's actual origin.
+ALLOWED_ORIGINS=http://localhost:3000,http://localhost:3001,http://localhost:5173
