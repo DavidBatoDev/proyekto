@@ -43,27 +43,10 @@ afterEach(() => {
 });
 
 describe("pickTimeEmptyState", () => {
-	it("approver mode is caught up, with the hint only without policy cards (P5 vs P7)", () => {
-		expect(pickTimeEmptyState(overview({ approver_mode: true }))).toEqual({
-			kind: "caught_up",
-			hint: true,
-		});
-		expect(
-			pickTimeEmptyState(
-				overview({
-					approver_mode: true,
-					workspace_time_admin: [
-						{
-							workspace_id: "w1",
-							name: "Acme",
-							slug: "acme",
-							has_time_tracking: true,
-							policy_unconfirmed: false,
-						},
-					],
-				}),
-			),
-		).toEqual({ kind: "caught_up", hint: false });
+	it("ignores approver_mode: one layout, one empty state", () => {
+		expect(pickTimeEmptyState(overview({ approver_mode: true }))).toEqual(
+			pickTimeEmptyState(overview({ approver_mode: false })),
+		);
 	});
 
 	it("nobody can log yet: the placed-on-a-project line (P6)", () => {
@@ -78,29 +61,11 @@ describe("pickTimeEmptyState", () => {
 		});
 	});
 
-	it("one team or workspace context names it (P3)", () => {
+	it("a single team or workspace context never names it (it could be another workspace's)", () => {
 		expect(
 			pickTimeEmptyState(
 				overview({
-					contexts: [
-						context("team", "Prodigitality Services Inc. Team"),
-						context("personal", "Just me", null),
-					],
-				}),
-			),
-		).toEqual({ kind: "team", label: "Prodigitality Services Inc. Team" });
-		expect(
-			pickTimeEmptyState(
-				overview({ contexts: [context("workspace", "Acme")] }),
-			),
-		).toEqual({ kind: "team", label: "Acme" });
-	});
-
-	it("several contexts, or an agreement beside a team, fall back to the starter line", () => {
-		expect(
-			pickTimeEmptyState(
-				overview({
-					contexts: [context("team", "Design"), context("team", "Ops", "t2")],
+					contexts: [context("team", "Design")],
 				}),
 			),
 		).toEqual({ kind: "start" });
@@ -113,12 +78,6 @@ describe("pickTimeEmptyState", () => {
 		).toEqual({ kind: "start" });
 	});
 
-	it("a caller-known team label covers a member with no recent time", () => {
-		expect(
-			pickTimeEmptyState(overview(), { teamLabel: "Design team" }),
-		).toEqual({ kind: "team", label: "Design team" });
-	});
-
 	it("no overview yet reads as the starter line (P1)", () => {
 		expect(pickTimeEmptyState(null)).toEqual({ kind: "start" });
 	});
@@ -126,12 +85,15 @@ describe("pickTimeEmptyState", () => {
 
 describe("timeEmptyText", () => {
 	it("uses the ux.md sentences", () => {
-		expect(timeEmptyText({ kind: "start" }).title).toBe(
-			"Track time on your tasks. Start a timer from any task, or add time you've already worked.",
-		);
-		expect(timeEmptyText({ kind: "team", label: "Acme" }).title).toBe(
-			"You log time for Acme. Start a timer from a task, or add time.",
-		);
+		expect(timeEmptyText({ kind: "start" })).toEqual({
+			title: "No time logged this week",
+			detail:
+				"Start a timer when you begin work, or add time you already spent.",
+		});
+		expect(timeEmptyText({ kind: "no_projects", label: "Test" })).toEqual({
+			title: "Nothing to log time on in Test yet.",
+			detail: "Time is logged on this workspace's projects.",
+		});
 		expect(timeEmptyText({ kind: "caught_up" })).toEqual({
 			title: "You're all caught up.",
 			detail: "Timesheets sent to you will show up here.",
@@ -142,12 +104,6 @@ describe("timeEmptyText", () => {
 		});
 		expect(timeEmptyText({ kind: "placed" }).title).toBe(
 			"When you're placed on a project, you'll be able to log time for it here.",
-		);
-	});
-
-	it("a team pick without a label falls back to the starter line", () => {
-		expect(timeEmptyText({ kind: "team", label: "  " }).title).toBe(
-			TIME_EMPTY_COPY.start,
 		);
 	});
 });
@@ -191,7 +147,7 @@ describe("TimeEmptyState", () => {
 	it("a custom action replaces the buttons", () => {
 		render(
 			<TimeEmptyState
-				kind="team"
+				kind="no_projects"
 				label="Acme"
 				onStartTimer={() => {}}
 				action={<a href="/somewhere">Open</a>}

@@ -29,6 +29,12 @@ import {
  */
 export type ExecutionNavGate = "time";
 
+/**
+ * Where an item sits. `personal`: the person's own pages (Inbox, Meetings), above the workspace switcher, because they read no workspace.
+ * `workspace`: pages of the workspace that is open, below the switcher.
+ */
+export type ExecutionNavGroup = "personal" | "workspace";
+
 export interface ExecutionNavItem {
 	key: string;
 	to: string;
@@ -37,23 +43,17 @@ export interface ExecutionNavItem {
 	match: "exact" | "prefix";
 	/** Absent: always shown. Present: shown only when that gate is open. */
 	gate?: ExecutionNavGate;
+	group: ExecutionNavGroup;
 }
 
 export const EXECUTION_PRIMARY_NAV_ITEMS: ExecutionNavItem[] = [
 	{
-		key: "dashboard",
-		to: "/dashboard",
-		label: "Dashboard",
-		icon: LayoutDashboard,
-		match: "exact",
-	},
-	{ key: "inbox", to: "/inbox", label: "Inbox", icon: Inbox, match: "prefix" },
-	{
-		key: "command-center",
-		to: "/command-center",
-		label: "Command center",
-		icon: ListChecks,
-		match: "exact",
+		key: "inbox",
+		to: "/inbox",
+		label: "Inbox",
+		icon: Inbox,
+		match: "prefix",
+		group: "personal",
 	},
 	{
 		key: "meetings",
@@ -61,16 +61,34 @@ export const EXECUTION_PRIMARY_NAV_ITEMS: ExecutionNavItem[] = [
 		label: "Meetings",
 		icon: CalendarDays,
 		match: "prefix",
+		group: "personal",
 	},
 	{
-		// Covers /time and /time/timesheets/<id>. Bare on purpose: /time is a
-		// personal page, so toWorkspacePath leaves it alone.
+		key: "dashboard",
+		to: "/dashboard",
+		label: "Dashboard",
+		icon: LayoutDashboard,
+		match: "exact",
+		group: "workspace",
+	},
+	{
+		key: "command-center",
+		to: "/command-center",
+		label: "Command center",
+		icon: ListChecks,
+		match: "exact",
+		group: "workspace",
+	},
+	{
+		// Covers /time and /time/timesheets/<id>. Bare on purpose: /time follows the
+		// switcher's workspace, so toWorkspacePath leaves it alone.
 		key: "time",
 		to: "/time",
 		label: "Time",
 		icon: Clock,
 		match: "prefix",
 		gate: "time",
+		group: "workspace",
 	},
 ];
 

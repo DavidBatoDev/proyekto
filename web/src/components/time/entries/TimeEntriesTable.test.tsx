@@ -25,7 +25,12 @@ vi.mock("@tanstack/react-router", async (importOriginal) => {
 
 import { timeService } from "@/services/time.service";
 import type { TimeEntryView } from "@/services/time.types";
-import { TimeEntriesTable } from "./TimeEntriesTable";
+import {
+	formatDecimalHours,
+	sheetColumns,
+	sortSheetEntries,
+	TimeEntriesTable,
+} from "./TimeEntriesTable";
 
 const TZ = "Asia/Manila";
 const NOW = new Date("2026-10-06T04:00:00.000Z"); // Tue Oct 6, 12:00 in Manila
@@ -196,8 +201,15 @@ afterEach(() => {
 	vi.useRealTimers();
 });
 
+function older2() {
+	return entry({ id: "o", started_at: "2026-09-29T01:00:00.000Z" });
+}
+function newer2() {
+	return entry({ id: "n", started_at: "2026-09-30T01:00:00.000Z" });
+}
+
 describe("TimeEntriesTable", () => {
-	it("groups days in the given timezone with the ux columns", () => {
+	it("is a spreadsheet: full date per row, the sheet's columns", () => {
 		const { container } = renderTable(
 			<TimeEntriesTable entries={[open, locked]} timeZone={TZ} />,
 		);
@@ -205,22 +217,25 @@ describe("TimeEntriesTable", () => {
 			(th) => th.textContent,
 		);
 		expect(headers).toEqual([
-			"#",
-			"Task",
+			"Date",
 			"Project",
+			"Task",
 			"For",
-			"In",
-			"Out",
-			"Dur",
+			"Time in",
+			"Time out",
+			"Break (mins)",
+			"Hours",
+			"Status",
+			"Notes",
 			"Actions",
 		]);
-		expect(screen.getByText("Thu Oct 1")).toBeTruthy();
 		const first = row(container, "a");
+		expect(within(first).getByText("Thu, Oct 1, 2026")).toBeTruthy();
 		expect(within(first).getByText("Fix login bug")).toBeTruthy();
 		expect(within(first).getByText("Acme Website")).toBeTruthy();
-		expect(within(first).getByText("09:00")).toBeTruthy();
-		expect(within(first).getByText("12:30")).toBeTruthy();
-		expect(within(first).getByText("3:30")).toBeTruthy();
+		expect(within(first).getByText("9:00 AM")).toBeTruthy();
+		expect(within(first).getByText("12:30 PM")).toBeTruthy();
+		expect(within(first).getByText("3.50")).toBeTruthy();
 		// The For chip, cut at 22 characters.
 		expect(within(first).getByText("Prodigitality Services…")).toBeTruthy();
 		// Preset rows show ◦ and the work item.
@@ -368,7 +383,7 @@ describe("TimeEntriesTable", () => {
 		const r = row(container, "r");
 		expect(within(r).getByText("now")).toBeTruthy();
 		expect(within(r).getAllByText("Running").length).toBeGreaterThan(0);
-		expect(within(r).getByText("1:00")).toBeTruthy();
+		expect(within(r).getByText("1.00")).toBeTruthy();
 		fireEvent.click(within(r).getByRole("button", { name: /Stop/ }));
 		expect(onStop).toHaveBeenCalledWith(running);
 	});
@@ -407,7 +422,7 @@ describe("TimeEntriesTable", () => {
 		const onOpenEntry = vi.fn();
 		const { container } = renderTable(
 			<TimeEntriesTable
-				entries={[open]}
+				entries={[open, locked]}
 				timeZone={TZ}
 				onOpenEntry={onOpenEntry}
 			/>,
@@ -434,8 +449,6 @@ describe("TimeEntriesTable", () => {
 		const header = screen.getByText("Needs review (1)");
 		expect(screen.getByText("one entry ran over 10h")).toBeTruthy();
 		expect(container.querySelector('[data-entry-id="c"]')).toBeNull();
-		// Pulled out of its day: only the open entry's day remains.
-		expect(screen.queryByText("Wed Sep 30")).toBeNull();
 		fireEvent.click(header);
 		expect(row(container, "c")).toBeTruthy();
 		unmount();
@@ -444,28 +457,6 @@ describe("TimeEntriesTable", () => {
 			<TimeEntriesTable entries={[open, long]} mode="review" timeZone={TZ} />,
 		);
 		expect(row(review.container, "c")).toBeTruthy();
-		// Row numbers run on through the groups.
-		expect(within(row(review.container, "c")).getByText("1")).toBeTruthy();
-		expect(within(row(review.container, "a")).getByText("2")).toBeTruthy();
-	});
-
-	it("a day over 8 hours shows ⚠", () => {
-		const { container } = renderTable(
-			<TimeEntriesTable
-				entries={[
-					open,
-					entry({
-						id: "e",
-						started_at: "2026-10-01T05:00:00.000Z",
-						ended_at: "2026-10-01T10:00:00.000Z",
-						duration_seconds: 5 * 3600,
-					}),
-				]}
-				timeZone={TZ}
-			/>,
-		);
-		const total = container.querySelector('[title="Over 8 hours this day"]');
-		expect(total?.textContent).toContain("8:30");
 	});
 
 	it("hidden content reads 'A project you can't open' and the kind only", () => {
@@ -568,19 +559,110 @@ describe("TimeEntriesTable", () => {
 		expect(container.querySelector("input[type=checkbox]")).toBeNull();
 	});
 
-	it("folds Project, In and For into the task cell on a phone", () => {
+	it("stacks rows on a phone instead of scrolling", () => {
 		stubViewport(390);
+		const { container } = renderTable(
+			<TimeEntriesTable entries={[open]} timeZone={TZ} />,
+		);
+		const box = container.querySelector('[data-testid="entries-sheet"]');
+		expect(box?.className).not.toContain("overflow-x-auto");
+		const r = row(container, "a");
+		expect(within(r).getByText("Thu, Oct 1, 2026")).toBeTruthy();
+		expect(within(r).getByText("3.50")).toBeTruthy();
+		expect(within(r).getByText("Acme Website · Fix login bug")).toBeTruthy();
+	});
+
+	it("drops Notes, then Break, then splits times, then Amount as it narrows", () => {
+		stubViewport(1000);
 		const { container } = renderTable(
 			<TimeEntriesTable entries={[open]} timeZone={TZ} />,
 		);
 		const headers = Array.from(container.querySelectorAll("thead th")).map(
 			(th) => th.textContent,
 		);
-		expect(headers).toEqual(["", "Task", "Dur", "Actions"]);
-		const r = row(container, "a");
-		expect(within(r).getByText("Acme Website")).toBeTruthy();
-		expect(within(r).getByText("09:00")).toBeTruthy();
-		expect(within(r).getByText("Prodigitality Services…")).toBeTruthy();
+		expect(headers).toEqual([
+			"Date",
+			"Project",
+			"Task",
+			"Time in",
+			"Time out",
+			"Hours",
+			"Status",
+			"Actions",
+		]);
+		const table = container.querySelector("table");
+		expect(table?.className).toContain("table-fixed");
+	});
+
+	it("totals the hours in decimals, oldest first and the newest last", () => {
+		const running = entry({
+			id: "r",
+			ended_at: null,
+			duration_seconds: null,
+			started_at: new Date(NOW.getTime() - 3600_000).toISOString(),
+		});
+		const older = entry({
+			id: "o",
+			started_at: "2026-09-29T01:00:00.000Z",
+			ended_at: "2026-09-29T02:59:00.000Z",
+			duration_seconds: 7140,
+		});
+		const tieB = entry({
+			id: "tb",
+			started_at: "2026-09-30T01:00:00.000Z",
+			ended_at: "2026-09-30T02:00:00.000Z",
+			duration_seconds: 3600,
+		});
+		const tieA = { ...tieB, id: "ta" };
+		const { container } = renderTable(
+			<TimeEntriesTable
+				entries={[older, tieB, open, running, tieA]}
+				timeZone={TZ}
+			/>,
+		);
+		const ids = Array.from(
+			container.querySelectorAll("tbody tr[data-entry-id]"),
+		).map((tr) => tr.getAttribute("data-entry-id"));
+		expect(ids).toEqual(["o", "ta", "tb", "a", "r"]);
+		expect(within(row(container, "o")).getByText("1.98")).toBeTruthy();
+		// 1.00 (running) + 3.50 + 1.00 + 1.00 + 1.98
+		expect(
+			container.querySelector('[data-testid="entries-total-hours"]')
+				?.textContent,
+		).toBe("8.48");
+	});
+
+	it("sheetColumns drops columns in the agreed order", () => {
+		const opts = { hasAmounts: true, multipleFors: true };
+		expect(sheetColumns(1440, opts)).toEqual({
+			stacked: false,
+			forChip: true,
+			notes: true,
+			breakTime: true,
+			combinedTimes: false,
+			amount: true,
+		});
+		expect(sheetColumns(1200, opts).notes).toBe(false);
+		expect(sheetColumns(1200, opts).breakTime).toBe(true);
+		expect(sheetColumns(1000, opts).breakTime).toBe(false);
+		expect(sheetColumns(1000, opts).combinedTimes).toBe(false);
+		expect(sheetColumns(900, opts).combinedTimes).toBe(true);
+		expect(sheetColumns(900, opts).amount).toBe(true);
+		expect(sheetColumns(700, opts).amount).toBe(false);
+		expect(sheetColumns(700, opts).stacked).toBe(false);
+		expect(sheetColumns(390, opts)).toMatchObject({
+			stacked: true,
+			forChip: false,
+		});
+	});
+
+	it("formats sheet values", () => {
+		expect(formatDecimalHours(32400)).toBe("9.00");
+		expect(formatDecimalHours(7140)).toBe("1.98");
+		expect(sortSheetEntries([newer2(), older2()]).map((e) => e.id)).toEqual([
+			"o",
+			"n",
+		]);
 	});
 
 	it("shows amounts only when asked, for cost viewers", () => {

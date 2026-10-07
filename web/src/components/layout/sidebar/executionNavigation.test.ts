@@ -51,10 +51,28 @@ describe("EXECUTION_PRIMARY_NAV_ITEMS", () => {
 	});
 });
 
+describe("the two groups", () => {
+	it("puts the personal pages first, then the workspace's", () => {
+		const keys = (group: string) =>
+			EXECUTION_PRIMARY_NAV_ITEMS.filter((entry) => entry.group === group).map(
+				(entry) => entry.key,
+			);
+		expect(keys("personal")).toEqual(["inbox", "meetings"]);
+		expect(keys("workspace")).toEqual(["dashboard", "command-center", "time"]);
+		expect(EXECUTION_PRIMARY_NAV_ITEMS.map((entry) => entry.group)).toEqual([
+			"personal",
+			"personal",
+			"workspace",
+			"workspace",
+			"workspace",
+		]);
+	});
+});
+
 describe("the Time item", () => {
-	it("sits right after Meetings, gated on time", () => {
+	it("sits right after Command center, gated on time", () => {
 		const keys = EXECUTION_PRIMARY_NAV_ITEMS.map((entry) => entry.key);
-		expect(keys.indexOf("time")).toBe(keys.indexOf("meetings") + 1);
+		expect(keys.indexOf("time")).toBe(keys.indexOf("command-center") + 1);
 		expect(item("time")).toMatchObject({
 			to: "/time",
 			label: "Time",
@@ -76,17 +94,17 @@ describe("visibleExecutionNavItems", () => {
 			visibleExecutionNavItems(gates).map((entry) => entry.key);
 
 		expect(keysFor({})).toEqual([
-			"dashboard",
 			"inbox",
-			"command-center",
 			"meetings",
+			"dashboard",
+			"command-center",
 		]);
 		expect(keysFor({ time: false })).not.toContain("time");
 		expect(keysFor({ time: true })).toEqual([
-			"dashboard",
 			"inbox",
-			"command-center",
 			"meetings",
+			"dashboard",
+			"command-center",
 			"time",
 		]);
 	});

@@ -3,13 +3,13 @@ import { Link, useRouterState } from "@tanstack/react-router";
 import { Plus, UserPlus, Users } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { timesheetsWaitingText } from "@/components/home/dashboardTimeLine";
+import { useTimeWorkspaceScope } from "@/components/time/page/useTimeWorkspaceScope";
 import { WorkspaceInviteDialog } from "@/components/workspace/WorkspaceInviteDialog";
 import { WorkspaceSwitcher } from "@/components/workspace/WorkspaceSwitcher";
 import { useDashboardProjectsQuery } from "@/hooks/useDashboardProjectsQuery";
 import { useCurrentWorkspace } from "@/hooks/useWorkspaceQueries";
 import { stripWorkspacePrefix, toWorkspacePath } from "@/lib/workspacePaths";
 import { groupByWorkspace } from "@/lib/workspaceScope";
-import { useTimeOverview } from "@/queries/time";
 import type { Project } from "@/services/project.service";
 import {
 	listMyTeams,
@@ -19,7 +19,6 @@ import {
 import { useProfile, useUser } from "@/stores/authStore";
 import {
 	isExecutionNavItemActive,
-	isTimeNavVisible,
 	visibleExecutionNavItems,
 } from "./executionNavigation";
 import { ProjectSidebarLink } from "./ProjectSidebarLink";
@@ -73,15 +72,18 @@ export function SidebarContent() {
 	const routerState = useRouterState();
 	const currentPath = stripWorkspacePrefix(routerState.location.pathname);
 
-	// Time shows only when the overview allows it (can log, has timesheets
-	// waiting, or runs a workspace's time policy) and carries the waiting
-	// count. Hidden while the overview loads, so it never flashes in and out.
-	const timeOverview = useTimeOverview().data;
+	// Time is per workspace: it shows when the person has time, approvals
+	// or the time policy in the open workspace (or personal and agreement
+	// time in their default one), and its badge counts only what waits there.
+	// Hidden while unknown, so it never flashes in and out.
+	const timeScope = useTimeWorkspaceScope();
 	const navItems = useMemo(
-		() => visibleExecutionNavItems({ time: isTimeNavVisible(timeOverview) }),
-		[timeOverview],
+		() => visibleExecutionNavItems({ time: timeScope.visible === true }),
+		[timeScope.visible],
 	);
-	const approvalsWaiting = timeOverview?.approvals_waiting ?? 0;
+	const approvalsWaiting = timeScope.waitingHere;
+	const personalItems = navItems.filter((item) => item.group === "personal");
+	const workspaceItems = navItems.filter((item) => item.group !== "personal");
 
 	const projectsQuery = useDashboardProjectsQuery();
 	const projects = (projectsQuery.data as Project[] | undefined) ?? [];
@@ -219,31 +221,41 @@ export function SidebarContent() {
 		[persistDefaultsMutation],
 	);
 
+	const renderNavItem = (item: (typeof navItems)[number]) => (
+		<SidebarNavLink
+			key={item.key}
+			to={toWorkspacePath(item.to, workspaceSlug)}
+			icon={item.icon}
+			label={item.label}
+			active={isExecutionNavItemActive(item, currentPath)}
+			badge={item.key === "time" ? approvalsWaiting : undefined}
+			badgeLabel={
+				item.key === "time"
+					? timesheetsWaitingText(approvalsWaiting)
+					: undefined
+			}
+		/>
+	);
+
 	return (
 		<>
+			{/* Personal pages first: they read no workspace, so they sit above
+			    the switcher; a hairline separates them from the workspace. */}
+			<nav
+				aria-label="Personal"
+				data-testid="sidebar-personal-nav"
+				className="space-y-0.5 border-b border-sidebar-border px-3 pt-3 pb-2"
+			>
+				{personalItems.map(renderNavItem)}
+			</nav>
+
 			<WorkspaceSwitcher />
 
 			<nav
 				data-tour="sidebar-nav"
 				className="hide-scrollbar flex-1 overflow-y-auto px-3 py-4"
 			>
-				<div className="space-y-0.5">
-					{navItems.map((item) => (
-						<SidebarNavLink
-							key={item.key}
-							to={toWorkspacePath(item.to, workspaceSlug)}
-							icon={item.icon}
-							label={item.label}
-							active={isExecutionNavItemActive(item, currentPath)}
-							badge={item.key === "time" ? approvalsWaiting : undefined}
-							badgeLabel={
-								item.key === "time"
-									? timesheetsWaitingText(approvalsWaiting)
-									: undefined
-							}
-						/>
-					))}
-				</div>
+				<div className="space-y-0.5">{workspaceItems.map(renderNavItem)}</div>
 
 				<div className="mt-6">
 					<div className="mb-1 flex items-center justify-between pr-1">

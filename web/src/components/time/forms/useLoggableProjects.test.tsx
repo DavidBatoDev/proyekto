@@ -7,6 +7,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { timeService } from "@/services/time.service";
 import type { MyTimeProject } from "@/services/time.types";
 import { useAuthStore } from "@/stores/authStore";
+import { LoggingScopeProvider } from "./loggingScope";
 import {
 	defaultLoggableProjectId,
 	isArchivedProject,
@@ -117,6 +118,41 @@ describe("useLoggableProjects", () => {
 		expect(result.current.byId.get("p1")?.title).toBe("Project p1");
 		expect(result.current.truncated).toBe(true);
 		expect(result.current.isEmpty).toBe(false);
+	});
+
+	it("offers only the provided workspace's projects and ignores a default elsewhere", async () => {
+		vi.spyOn(timeService, "listMyProjects").mockResolvedValue({
+			projects: [
+				project("there", { workspace_id: "w-other" }),
+				project("here", { workspace_id: "w1" }),
+			],
+		});
+		client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+		const wrapper = ({ children }: { children: ReactNode }) =>
+			createElement(
+				QueryClientProvider,
+				{ client },
+				createElement(
+					LoggingScopeProvider,
+					{ scope: { current: "w1", isDefault: false } },
+					children,
+				),
+			);
+		const { result } = renderHook(
+			() => useLoggableProjects({ preferredProjectId: "there" }),
+			{ wrapper },
+		);
+		await waitFor(() => expect(result.current.projects).toHaveLength(1));
+		expect(result.current.projects[0].id).toBe("here");
+		expect(result.current.defaultProjectId).toBe("here");
+	});
+
+	it("is empty when nothing is loggable in the scope", async () => {
+		vi.spyOn(timeService, "listMyProjects").mockResolvedValue({
+			projects: [project("there", { workspace_id: "w-other" })],
+		});
+		const { result } = setup({ scope: { current: "w1", isDefault: true } });
+		await waitFor(() => expect(result.current.isEmpty).toBe(true));
 	});
 
 	it("says empty once loaded with nothing to log on", async () => {

@@ -262,7 +262,18 @@ beforeEach(() => {
 		updated_at: "2026-01-01T00:00:00.000Z",
 	});
 	vi.spyOn(timeService, "getRunning").mockResolvedValue(null);
-	vi.spyOn(timeService, "listMyProjects").mockResolvedValue({ projects: [] });
+	// One project in the open workspace: something to log on.
+	vi.spyOn(timeService, "listMyProjects").mockResolvedValue({
+		projects: [
+			{
+				id: "proj-here",
+				title: "Here project",
+				workspace_id: "w1",
+				options: 1,
+				default_kind: "team",
+			},
+		],
+	});
 	vi.spyOn(timeService, "listMyEntries").mockResolvedValue({
 		items: [entry()],
 		total: 1,
@@ -296,7 +307,6 @@ describe("TimePage on native", () => {
 	it("keeps agreement time without money words, amounts or /engagements links", async () => {
 		renderPage(overview());
 		await screen.findByTestId("timesheet-card");
-		await screen.findAllByTestId("waiting-row");
 		await waitFor(() =>
 			expect(document.querySelectorAll("[data-entry-id]").length).toBe(1),
 		);
@@ -321,16 +331,17 @@ describe("TimePage on native", () => {
 		assertNativeSafe();
 	});
 
-	it("approver mode stays clean too", async () => {
+	it("someone who only approves stays clean too", async () => {
 		renderPage(
 			overview({
 				approver_mode: true,
 				contexts: [],
 				workspace_time_admin: [],
+				approvals_waiting: 1,
 			}),
+			{ tab: "approvals" },
 		);
 		await screen.findAllByTestId("waiting-row");
-		await screen.findAllByTestId("decided-row");
 		assertNativeSafe();
 	});
 });

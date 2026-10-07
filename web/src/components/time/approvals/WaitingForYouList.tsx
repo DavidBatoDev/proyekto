@@ -148,6 +148,11 @@ export interface WaitingForYouListProps {
 	currentWorkspaceId?: string | null;
 	/** Narrow to one sheet scope kind. */
 	scopeKind?: SheetScopeKind;
+	/**
+	 * Show only these rows of the page (the Time page's workspace groups). The
+	 * count then counts them, and an empty result renders nothing.
+	 */
+	rowFilter?: (row: ApprovalRow) => boolean;
 	/** The header ("Waiting for you"); `null` hides it (Approve selected then lives in the floating bar only). */
 	title?: string | null;
 	/** Shown when nothing waits; `null` renders nothing instead. */
@@ -183,6 +188,7 @@ const CHECK_HIT =
 export function WaitingForYouList({
 	currentWorkspaceId,
 	scopeKind,
+	rowFilter,
 	title = "Waiting for you",
 	emptyText = WAITING_EMPTY_COPY,
 	pageSize = APPROVAL_FLAGS_PAGE_MAX,
@@ -206,8 +212,11 @@ export function WaitingForYouList({
 			limit,
 		}),
 	);
-	const rows = useMemo(() => query.data?.items ?? [], [query.data]);
-	const total = query.data?.total ?? rows.length;
+	const rows = useMemo(() => {
+		const items = query.data?.items ?? [];
+		return rowFilter ? items.filter(rowFilter) : items;
+	}, [query.data, rowFilter]);
+	const total = rowFilter ? rows.length : (query.data?.total ?? rows.length);
 	const groups = useMemo(() => groupApprovalRows(rows), [rows]);
 	const blocks = useMemo(
 		() => new Map(rows.map((row) => [row.id, approvalRowBlock(row)])),
@@ -564,7 +573,7 @@ export function WaitingForYouList({
 				)}
 			</ul>
 
-			{total > limit ? (
+			{!rowFilter && total > limit ? (
 				<div className="flex items-center justify-end gap-2 text-xs text-muted-foreground">
 					<span>{`Page ${page} of ${Math.ceil(total / limit)}`}</span>
 					<button

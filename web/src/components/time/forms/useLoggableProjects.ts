@@ -19,6 +19,8 @@ import type {
 	MyTimeProjectsResult,
 } from "@/services/time.types";
 import { useAuthStore } from "@/stores/authStore";
+import { projectInScope, type WorkspaceScope } from "../page/workspaceGroups";
+import { useLoggingScope } from "./loggingScope";
 
 /** Statuses the pickers sink below the rest (still loggable: the resolver allows them). */
 const SUNK_STATUSES: ReadonlySet<string> = new Set(["archived"]);
@@ -70,6 +72,8 @@ export interface UseLoggableProjectsOptions {
 	enabled?: boolean;
 	/** A project to default to when it is loggable (`?project=` on /time). */
 	preferredProjectId?: string | null;
+	/** Only this workspace's projects; defaults to the provided logging scope. */
+	scope?: WorkspaceScope | null;
 }
 
 export interface LoggableProjects {
@@ -96,7 +100,15 @@ export function useLoggableProjects(
 		enabled: Boolean(userId) && options.enabled !== false,
 	});
 	const data = query.data;
-	const projects = useMemo(() => orderLoggableProjects(data?.projects), [data]);
+	const provided = useLoggingScope();
+	const scope = options.scope === undefined ? provided : options.scope;
+	const projects = useMemo(
+		() =>
+			orderLoggableProjects(data?.projects).filter(
+				(project) => !scope || projectInScope(project, scope),
+			),
+		[data, scope],
+	);
 	const byId = useMemo(
 		() => new Map(projects.map((project) => [project.id, project] as const)),
 		[projects],

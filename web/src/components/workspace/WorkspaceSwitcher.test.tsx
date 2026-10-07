@@ -61,6 +61,13 @@ vi.mock("@/hooks/useWorkspaceQueries", () => ({
 	useCreateWorkspaceMutation: () => ({ mutateAsync, isPending: false }),
 }));
 
+const timeScope = vi.hoisted(() => ({
+	elsewhere: [] as { workspaceId: string; name: string; count: number }[],
+}));
+vi.mock("@/components/time/page/useTimeWorkspaceScope", () => ({
+	useTimeWorkspaceScope: () => timeScope,
+}));
+
 vi.mock("./WorkspaceInviteDialog", () => ({
 	WorkspaceInviteDialog: () => null,
 }));
@@ -70,6 +77,24 @@ import { WorkspaceSwitcher } from "./WorkspaceSwitcher";
 describe("WorkspaceSwitcher", () => {
 	beforeEach(() => {
 		vi.clearAllMocks();
+		timeScope.elsewhere = [];
+	});
+
+	it("dots the switcher and counts each other workspace with timesheets waiting", () => {
+		timeScope.elsewhere = [
+			{ workspaceId: "ws-globex", name: "Globex", count: 2 },
+		];
+		render(<WorkspaceSwitcher />);
+		expect(screen.getByTestId("workspace-switcher-waiting-dot")).toBeTruthy();
+		fireEvent.click(screen.getByRole("button", { expanded: false }));
+		const count = screen.getByTestId("workspace-waiting-count");
+		expect(count.textContent).toContain("2");
+		expect(count.closest("button")?.textContent).toContain("Globex");
+	});
+
+	it("shows no dot when nothing waits elsewhere", () => {
+		render(<WorkspaceSwitcher />);
+		expect(screen.queryByTestId("workspace-switcher-waiting-dot")).toBeNull();
 	});
 	afterEach(() => {
 		cleanup();

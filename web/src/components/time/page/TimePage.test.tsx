@@ -377,7 +377,18 @@ beforeEach(() => {
 		updated_at: "2026-01-01T00:00:00.000Z",
 	});
 	vi.spyOn(timeService, "getRunning").mockResolvedValue(null);
-	vi.spyOn(timeService, "listMyProjects").mockResolvedValue({ projects: [] });
+	// One project in the open workspace: something to log on.
+	vi.spyOn(timeService, "listMyProjects").mockResolvedValue({
+		projects: [
+			{
+				id: "proj-here",
+				title: "Here project",
+				workspace_id: "w1",
+				options: 1,
+				default_kind: "team",
+			},
+		],
+	});
 });
 
 afterEach(() => {
@@ -474,7 +485,7 @@ describe("TimePage › normal mode", () => {
 	it("refreshes the week when the running timer changes under the page", async () => {
 		const running = vi.spyOn(timeService, "getRunning").mockResolvedValue(null);
 		const { container, spies } = setup();
-		await waitFor(() => expect(rows(container)).toEqual(["e2", "e1"]));
+		await waitFor(() => expect(rows(container)).toEqual(["e1", "e2"]));
 		await waitFor(() => expect(running).toHaveBeenCalled());
 		const before = spies.entries.mock.calls.length;
 		// Another device starts a timer; the next poll sees it.
@@ -494,7 +505,7 @@ describe("TimePage › normal mode", () => {
 		expect(
 			screen.getByRole("heading", { level: 1, name: "Time" }),
 		).toBeTruthy();
-		await waitFor(() => expect(rows(container)).toEqual(["e2", "e1"]));
+		await waitFor(() => expect(rows(container)).toEqual(["e1", "e2"]));
 
 		expect(spies.entries).toHaveBeenCalledWith(
 			expect.objectContaining({ from: "2026-10-05", to: "2026-10-11" }),
@@ -512,7 +523,8 @@ describe("TimePage › normal mode", () => {
 		).toBeTruthy();
 		expect(screen.getByRole("button", { name: "Start timer" })).toBeTruthy();
 		expect(screen.getByRole("button", { name: "Add time" })).toBeTruthy();
-		expect(screen.getByTestId("quick-add")).toBeTruthy();
+		// The quick-add bar is gone from the page: Start timer and Add time cover it.
+		expect(screen.queryByTestId("quick-add")).toBeNull();
 		// Nothing waits: no pill and no section.
 		expect(screen.queryByTestId("waiting-pill")).toBeNull();
 		expect(document.getElementById("waiting")).toBeNull();
@@ -636,16 +648,44 @@ describe("TimePage › normal mode", () => {
 		);
 	});
 
-	it("shows Waiting for you with the pill, and scrolls to #waiting", async () => {
+	it("#waiting opens Approvals with this workspace's waiting sheets", async () => {
 		const scroll = vi.fn();
 		Element.prototype.scrollIntoView = scroll;
 		const { spies } = setup({
 			overview: overview({ approvals_waiting: 2 }),
 			hash: "waiting",
 		});
-		expect(
-			await screen.findByRole("link", { name: "Waiting for you · 2" }),
-		).toBeTruthy();
+		// Two sheets waiting in this workspace.
+		spies.approvals.mockResolvedValue({
+			items: [
+				{
+					...sheet({
+						id: "w1",
+						status: "submitted",
+						policy_workspace_id: "w1",
+					}),
+					member: null,
+					policy_workspace: { id: "ws-b", name: "Beta Workspace" },
+				},
+				{
+					...sheet({
+						id: "w2",
+						status: "submitted",
+						policy_workspace_id: "w1",
+					}),
+					member: null,
+					policy_workspace: { id: "ws-a", name: "Alpha Workspace" },
+				},
+			],
+			total: 2,
+			page: 1,
+			limit: 50,
+		} as never);
+		const tab = await screen.findByRole("tab", { name: "Approvals (2)" });
+		await waitFor(() => expect(tab.getAttribute("aria-selected")).toBe("true"));
+		expect(await screen.findAllByTestId("waiting-row")).toHaveLength(2);
+		expect(screen.queryByTestId("day-strip")).toBeNull();
+		expect(document.querySelectorAll("#waiting")).toHaveLength(1);
 		await waitFor(() =>
 			expect(document.getElementById("waiting")).toBeTruthy(),
 		);
@@ -882,7 +922,7 @@ describe("TimePage › normal mode", () => {
 
 	it("never shows last week's rows under a new week while it loads", async () => {
 		const { container, rerender, onSearchChange } = setup();
-		await waitFor(() => expect(rows(container)).toEqual(["e2", "e1"]));
+		await waitFor(() => expect(rows(container)).toEqual(["e1", "e2"]));
 		vi.spyOn(timeService, "listMyEntries").mockReturnValue(
 			new Promise(() => {}),
 		);
@@ -926,10 +966,10 @@ describe("TimePage › normal mode", () => {
 			entries: [],
 			sheets: [],
 		});
+		// Nothing in this workspace: the calm "not set up" state, no timer.
+		expect(await screen.findByTestId("time-not-set-up")).toBeTruthy();
 		expect(
-			await screen.findByText(
-				"When you're placed on a project, you'll be able to log time for it here.",
-			),
+			screen.getByText("Time isn't set up for you in Prodigitality Workspace."),
 		).toBeTruthy();
 		expect(screen.queryByRole("button", { name: "Start timer" })).toBeNull();
 		expect(screen.queryByRole("button", { name: "Track time" })).toBeNull();
@@ -971,11 +1011,7 @@ describe("TimePage › normal mode", () => {
 			sheets: [],
 		});
 		expect(await screen.findByTestId("for-filter-personal")).toBeTruthy();
-		expect(
-			screen.getByText(
-				"Track time on your tasks. Start a timer from any task, or add time you've already worked.",
-			),
-		).toBeTruthy();
+		expect(screen.getByText("No time logged this week")).toBeTruthy();
 	});
 
 	it("explains a failed overview read", async () => {
@@ -1002,34 +1038,159 @@ describe("TimePage › normal mode", () => {
 	});
 });
 
-describe("TimePage › approver mode", () => {
-	it("collapses to one Start timer pill with Waiting and Decided, and no week", async () => {
-		const { spies } = setup({
+describe("TimePage › one layout", () => {
+	it("gives owners and admins a Time policy button with the summary and Edit", async () => {
+		vi.spyOn(timeService, "getWorkspacePolicy").mockResolvedValue({
+			workspace_id: "w1",
+			policy_unconfirmed: false,
+			can_edit: true,
+			policy: {
+				tracking_enabled: true,
+				period_kind: "weekly",
+				week_start: 1,
+				timezone: "Asia/Manila",
+				approval_required: true,
+				plan: { time_tracking: true, time_team_rules: true },
+			},
+		} as never);
+		setup({
+			overview: overview({
+				workspace_time_admin: [
+					{
+						workspace_id: "w1",
+						name: "Prodigitality Workspace",
+						slug: "prodigitality",
+						has_time_tracking: true,
+						policy_unconfirmed: false,
+					},
+				],
+			}),
+		});
+		fireEvent.click(await screen.findByTestId("time-policy-button"));
+		const popover = await screen.findByTestId("time-policy-popover");
+		await waitFor(() =>
+			expect(popover.textContent).toContain(
+				"Weekly · starts Monday · Asia/Manila · Approval required",
+			),
+		);
+		expect(screen.getByRole("link", { name: "Edit time policy" })).toBeTruthy();
+		// No policy cards on the page.
+		expect(screen.queryByTestId("policy-summary-card")).toBeNull();
+		expect(screen.queryByTestId("policy-confirm-card")).toBeNull();
+	});
+
+	it("gives members no Time policy button", async () => {
+		setup();
+		await screen.findByTestId("day-strip");
+		expect(screen.queryByTestId("time-policy-button")).toBeNull();
+	});
+
+	it("shows one banner when the policy still needs confirming", async () => {
+		setup({
+			overview: overview({
+				workspace_time_admin: [
+					{
+						workspace_id: "w1",
+						name: "Prodigitality Workspace",
+						slug: "prodigitality",
+						has_time_tracking: true,
+						policy_unconfirmed: true,
+					},
+				],
+			}),
+		});
+		await screen.findByTestId("time-tabs");
+		expect(
+			(await screen.findAllByTestId(/policy-confirm-(card|loading)/)).length,
+		).toBe(1);
+	});
+
+	it("opens Approvals by default for an approver with no time here", async () => {
+		setup({
+			overview: overview({
+				approvals_waiting: 0,
+				contexts: [],
+				can_log: false,
+				workspace_time_admin: [
+					{
+						workspace_id: "w1",
+						name: "Prodigitality Workspace",
+						slug: "prodigitality",
+						has_time_tracking: true,
+						policy_unconfirmed: false,
+					},
+				],
+			}),
+			entries: [],
+		});
+		const tab = await screen.findByRole("tab", { name: "Approvals" });
+		await waitFor(() => expect(tab.getAttribute("aria-selected")).toBe("true"));
+		expect(await screen.findByText("You're all caught up.")).toBeTruthy();
+	});
+
+	it("hides the Approvals tab, even from ?tab=approvals, without approvals here", async () => {
+		setup({ search: { tab: "approvals" } });
+		await screen.findByTestId("day-strip");
+		expect(screen.queryByTestId("time-tabs")).toBeNull();
+	});
+
+	it("an empty week offers Start timer and Add time", async () => {
+		setup({ entries: [], sheets: [] });
+		const empty = await screen.findByText("No time logged this week");
+		const card = empty.closest("[data-empty]") as HTMLElement;
+		expect(card.textContent).toContain(
+			"Start a timer when you begin work, or add time you already spent.",
+		);
+		fireEvent.click(within(card).getByRole("button", { name: "Start timer" }));
+		expect(screen.getByTestId("picker-start")).toBeTruthy();
+		fireEvent.click(within(card).getByRole("button", { name: "Add time" }));
+		expect(screen.getByTestId("manual-entry")).toBeTruthy();
+	});
+
+	it("with no project here: no quick add, disabled buttons, a clear empty state", async () => {
+		vi.spyOn(timeService, "listMyProjects").mockResolvedValue({
+			projects: [
+				{
+					id: "elsewhere",
+					title: "[DEV] Client Portal",
+					workspace_id: "w-other",
+					options: 1,
+					default_kind: "team",
+				},
+			],
+		});
+		setup({ entries: [], sheets: [] });
+		expect(
+			await screen.findByText(
+				"Nothing to log time on in Prodigitality Workspace yet.",
+			),
+		).toBeTruthy();
+		expect(
+			screen.getByText("Time is logged on this workspace's projects."),
+		).toBeTruthy();
+		expect(screen.getByRole("link", { name: "Create a project" })).toBeTruthy();
+		expect(screen.queryByTestId("quick-add")).toBeNull();
+		const start = screen.getByRole("button", { name: "Start timer" });
+		expect((start as HTMLButtonElement).disabled).toBe(true);
+		expect(start.getAttribute("title")).toBe(
+			"Nothing to log time on in Prodigitality Workspace yet.",
+		);
+	});
+
+	it("shows the week, not a separate approver page, when approver_mode is set", async () => {
+		setup({
 			overview: overview({
 				approver_mode: true,
 				approvals_waiting: 0,
 				contexts: [],
 			}),
+			entries: [],
+			sheets: [],
 		});
-		expect(await screen.findByTestId("approver-mode")).toBeTruthy();
-		expect(screen.getAllByRole("button", { name: "Start timer" })).toHaveLength(
-			1,
-		);
-		expect(screen.queryByTestId("day-strip")).toBeNull();
-		expect(screen.queryByTestId("time-toolbar")).toBeNull();
-		expect(screen.queryByRole("button", { name: "Track time" })).toBeNull();
-		expect(
-			await screen.findByText(
-				"You're all caught up. Timesheets sent to you will show up here.",
-			),
-		).toBeTruthy();
-		await waitFor(() =>
-			expect(spies.approvals).toHaveBeenCalledWith(
-				expect.objectContaining({ status: "decided" }),
-			),
-		);
-
-		fireEvent.click(screen.getByRole("button", { name: "Start timer" }));
-		expect(screen.getByTestId("picker-start")).toBeTruthy();
+		expect(await screen.findByTestId("day-strip")).toBeTruthy();
+		expect(screen.getByTestId("time-toolbar")).toBeTruthy();
+		expect(screen.queryByTestId("approver-mode")).toBeNull();
+		expect(screen.queryByText(/You're all caught up/)).toBeNull();
+		expect(await screen.findByText("No time logged this week")).toBeTruthy();
 	});
 });

@@ -61,6 +61,8 @@ import {
 	resultFromErrorExtras,
 	toForRequest,
 } from "../for/forOptions";
+import { useLoggingScope } from "../forms/loggingScope";
+import { scopeLoggingFor, type WorkspaceScope } from "../page/workspaceGroups";
 import { setRunningEntry, useTimerUserId } from "./useActiveTimer";
 
 export interface StartTimerRequest {
@@ -207,6 +209,8 @@ export interface StartTimerDeps {
 		warning: (message: string) => void;
 	};
 	onStarted?: (entry: EntryWithWarnings) => void;
+	/** The Time page's workspace: only its For options (workspaceGroups.ts). */
+	scope?: WorkspaceScope | null;
 }
 
 /** The flow as plain functions; the hook below binds it to React state. */
@@ -243,11 +247,14 @@ export function createStartTimerController(
 		}
 	};
 
-	const fetchLoggingFor = (projectId: string, fresh: boolean) =>
-		getDeps().queryClient.fetchQuery(
-			fresh
-				? { ...timeQueries.loggingFor(projectId), staleTime: 0 }
-				: timeQueries.loggingFor(projectId),
+	const fetchLoggingFor = async (projectId: string, fresh: boolean) =>
+		scopeLoggingFor(
+			await getDeps().queryClient.fetchQuery(
+				fresh
+					? { ...timeQueries.loggingFor(projectId), staleTime: 0 }
+					: timeQueries.loggingFor(projectId),
+			),
+			getDeps().scope,
 		);
 
 	const blockedState = (request: StartTimerRequest): StartTimerState => ({
@@ -798,11 +805,13 @@ export function useStartTimer(options: UseStartTimerOptions = {}) {
 	const queryClient = useQueryClient();
 	const toast = useToast();
 	const userId = useTimerUserId();
+	const scope = useLoggingScope();
 	const deps: StartTimerDeps = {
 		queryClient,
 		userId,
 		toast,
 		onStarted: options.onStarted,
+		scope,
 	};
 	const depsRef = useRef(deps);
 	useEffect(() => {

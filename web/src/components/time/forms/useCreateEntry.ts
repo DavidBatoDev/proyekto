@@ -77,6 +77,8 @@ import {
 	resultFromErrorExtras,
 	toForRequest,
 } from "../for/forOptions";
+import { scopeLoggingFor } from "../page/workspaceGroups";
+import { useLoggingScope } from "./loggingScope";
 
 // ── Wall clock in a timezone ────────────────────────────────────────────────
 
@@ -376,7 +378,11 @@ export function useForChoice(
 		pick.projectId === id
 			? pick
 			: { projectId: id, picked: null, remember: null };
-	const result = query.data ?? null;
+	const scope = useLoggingScope();
+	const result = useMemo(
+		() => (query.data ? scopeLoggingFor(query.data, scope) : null),
+		[query.data, scope],
+	);
 	const derived = useMemo(
 		() => deriveForChoice(result, current.picked, current.remember),
 		[result, current.picked, current.remember],

@@ -835,7 +835,6 @@ describe("useTimePageData", () => {
 		await waitFor(() => expect(result.current.sheets).toHaveLength(1));
 		expect(result.current.isCurrentWeek).toBe(true);
 		expect(result.current.zone.source).toBe("preferences");
-		expect(result.current.approverMode).toBe(false);
 	});
 
 	it("waits for the context's sheets, then reads the week in its zone with ?for=", async () => {
@@ -977,17 +976,12 @@ describe("useTimePageData", () => {
 		expect(teams.listMyTeams).toHaveBeenCalled();
 	});
 
-	it("reads no week in approver mode", async () => {
+	it("reads the week even when the overview says approver_mode", async () => {
 		vi.spyOn(timeService, "getOverview").mockResolvedValue(
 			overview({ approver_mode: true, approvals_waiting: 2 }),
 		);
 		const list = vi.spyOn(timeService, "listMyEntries");
-		const { result } = renderHook(() => useTimePageData({}, { now: NOW }), {
-			wrapper,
-		});
-		await waitFor(() => expect(result.current.approverMode).toBe(true));
-		await new Promise((resolve) => setTimeout(resolve, 20));
-		// A read may have started before the overview answered; none after.
-		expect(list.mock.calls.length).toBeLessThanOrEqual(1);
+		renderHook(() => useTimePageData({}, { now: NOW }), { wrapper });
+		await waitFor(() => expect(list).toHaveBeenCalled());
 	});
 });

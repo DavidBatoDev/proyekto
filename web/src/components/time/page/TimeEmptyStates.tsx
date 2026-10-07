@@ -5,17 +5,16 @@
 //
 // | Persona                          | Copy                                                                      |
 // |----------------------------------|---------------------------------------------------------------------------|
-// | P1 / P1b, any logger (default)   | "Track time on your tasks. Start a timer from any task, or add time you've already worked." |
-// | P3 team member                   | "You log time for Prodigitality Services Inc. Team. Start a timer from a task, or add time." |
-// | P5 approver (approver mode)      | "You're all caught up. Timesheets sent to you will show up here."          |
-// | P7 workspace admin who never logs| "You're all caught up." (above the policy cards)                          |
+// | P1 / P1b, any logger (default)   | "No time logged this week." + "Start a timer, or add time you've already worked." |
+// | No project in this workspace     | "Nothing to log time on in <workspace> yet." + "Time is logged on this workspace's projects." |
+// | P5 / P7 approvers                | the same week and empty state (one layout; approver_mode is not read)      |
 // | P6 talent with nothing to log on | "When you're placed on a project, you'll be able to log time for it here." |
 //
 // `pickTimeEmptyState(overview)` chooses one from `GET /time/me/overview`;
 // the page renders it with `<TimeEmptyState {...picked} />`, inside the
 // entries table's `empty` slot or in place of the Waiting list.
 
-import { CalendarCheck, Clock, Inbox, SearchX, Users } from "lucide-react";
+import { CalendarCheck, Clock, Inbox, SearchX } from "lucide-react";
 import type { ReactNode } from "react";
 import { nativeSafe } from "@/lib/timeErrors";
 import { cn } from "@/lib/utils";
@@ -24,8 +23,8 @@ import type { TimeOverview } from "@/services/time.types";
 export type TimeEmptyKind =
 	/** A logger with nothing in view (P1, P1b, and the default). */
 	| "start"
-	/** A logger whose time goes to one team or workspace (P3). */
-	| "team"
+	/** The open workspace has no project to log on. */
+	| "no_projects"
 	/** Approver mode with nothing waiting (P5, P7). */
 	| "caught_up"
 	/** Nobody can log yet (P6: talent not placed on a project). */
@@ -35,10 +34,14 @@ export type TimeEmptyKind =
 
 /** Every sentence this file renders. */
 export const TIME_EMPTY_COPY = {
-	start:
-		"Track time on your tasks. Start a timer from any task, or add time you've already worked.",
-	team: (label: string) =>
-		`You log time for ${label}. Start a timer from a task, or add time.`,
+	start: "No time logged this week",
+	startHint:
+		"Start a timer when you begin work, or add time you already spent.",
+	noProjects: (workspace: string) =>
+		`Nothing to log time on in ${workspace} yet.`,
+	noProjectsHint: "Time is logged on this workspace's projects.",
+	createProject: "Create a project",
+	askOwner: "Ask a workspace owner to add you to a project.",
 	caughtUp: "You're all caught up.",
 	caughtUpHint: "Timesheets sent to you will show up here.",
 	placed:
@@ -51,7 +54,7 @@ export const TIME_EMPTY_COPY = {
 
 export interface TimeEmptyPick {
 	kind: TimeEmptyKind;
-	/** `team`: the team or workspace name. */
+	/** `no_projects`: the workspace's name. */
 	label?: string;
 	/** `caught_up`: add "Timesheets sent to you will show up here." */
 	hint?: boolean;
@@ -60,51 +63,33 @@ export interface TimeEmptyPick {
 /**
  * The empty state the overview calls for.
  *
- * - Approver mode → "You're all caught up." The hint line is for people with
- *   no policy cards under it (P5); a workspace admin (P7) gets the bare line
- *   above their policy cards.
  * - No `time.log` anywhere → the "placed on a project" line (P6).
  * - `filtered` → the filter line.
- * - Exactly one governed context (a team, or a workspace) → "You log time for
- *   <label>." (P3). `teamLabel` names it when the overview has no context yet
+ * - (The old P3 line, "You log time for <label>.", is gone: under the
+ *   switcher it could name another workspace.)
  *   (a member with no recent time).
- * - Otherwise → the starter line (P1).
+ * - Otherwise → "No time logged this week." with the Start timer / Add
+ *   time hint (P1, and approvers: the page has one layout).
  */
 export function pickTimeEmptyState(
 	overview: Pick<
 		TimeOverview,
 		"approver_mode" | "can_log" | "contexts" | "workspace_time_admin"
 	> | null,
-	options: { filtered?: boolean; teamLabel?: string | null } = {},
+	options: { filtered?: boolean } = {},
 ): TimeEmptyPick {
-	if (overview?.approver_mode) {
-		return {
-			kind: "caught_up",
-			hint: (overview.workspace_time_admin?.length ?? 0) === 0,
-		};
-	}
 	if (overview && !overview.can_log) return { kind: "placed" };
 	if (options.filtered) return { kind: "filtered" };
-	const governed = (overview?.contexts ?? []).filter(
-		(context) => context.kind === "team" || context.kind === "workspace",
-	);
-	const others = (overview?.contexts ?? []).filter(
-		(context) => context.kind === "assignment",
-	);
-	const contextLabel =
-		governed.length === 1 && others.length === 0
-			? governed[0].label?.trim()
-			: undefined;
-	const label = contextLabel || options.teamLabel?.trim();
-	if (label) return { kind: "team", label };
+	// "You log time for <label>" is gone: the overview's single context could
+	// be another workspace's, which read wrong under the switcher.
 	return { kind: "start" };
 }
 
 const ICON = {
 	start: Clock,
-	team: Users,
 	caught_up: CalendarCheck,
 	placed: Inbox,
+	no_projects: Inbox,
 	filtered: SearchX,
 } as const;
 
@@ -129,21 +114,27 @@ export function timeEmptyText(pick: TimeEmptyPick): {
 	detail: string | null;
 } {
 	switch (pick.kind) {
-		case "team":
-			return pick.label?.trim()
-				? { title: TIME_EMPTY_COPY.team(pick.label.trim()), detail: null }
-				: { title: TIME_EMPTY_COPY.start, detail: null };
 		case "caught_up":
 			return {
 				title: TIME_EMPTY_COPY.caughtUp,
 				detail: pick.hint === false ? null : TIME_EMPTY_COPY.caughtUpHint,
+			};
+		case "no_projects":
+			return {
+				title: TIME_EMPTY_COPY.noProjects(
+					pick.label?.trim() || "this workspace",
+				),
+				detail: TIME_EMPTY_COPY.noProjectsHint,
 			};
 		case "placed":
 			return { title: TIME_EMPTY_COPY.placed, detail: null };
 		case "filtered":
 			return { title: TIME_EMPTY_COPY.filtered, detail: null };
 		default:
-			return { title: TIME_EMPTY_COPY.start, detail: null };
+			return {
+				title: TIME_EMPTY_COPY.start,
+				detail: TIME_EMPTY_COPY.startHint,
+			};
 	}
 }
 
@@ -163,7 +154,7 @@ export function TimeEmptyState({
 	const text = timeEmptyText({ kind, label, hint });
 	// A team name is the only server text here; keep the native rules on it.
 	const title = nativeSafe(text.title);
-	const logger = kind === "start" || kind === "team";
+	const logger = kind === "start";
 	const buttons =
 		action ??
 		(logger && (onStartTimer || onAddTime) ? (

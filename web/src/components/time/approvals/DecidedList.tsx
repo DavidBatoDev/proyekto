@@ -88,6 +88,8 @@ export interface DecidedListProps {
 	/** `YYYY-MM-DD`; the server defaults to the last 30 days. */
 	since?: string;
 	scopeKind?: SheetScopeKind;
+	/** Only these rows (the Time page: the open workspace's). */
+	rowFilter?: (row: ApprovalRow) => boolean;
 	/** The header; `null` hides it. */
 	title?: string | null;
 	/** Rows to show (the API allows up to 100). */
@@ -112,6 +114,7 @@ export function DecidedList({
 	currentWorkspaceId,
 	since,
 	scopeKind,
+	rowFilter,
 	title = "Decided in the last 30 days",
 	limit = 50,
 	hideWhenEmpty = true,
@@ -130,7 +133,8 @@ export function DecidedList({
 	);
 	const headingId = useId();
 	const tz = userTimezone ?? deviceTimeZone();
-	const rows = query.data?.items ?? [];
+	const all = query.data?.items ?? [];
+	const rows = rowFilter ? all.filter(rowFilter) : all;
 
 	if (query.isPending) return null;
 	if (query.isError) {

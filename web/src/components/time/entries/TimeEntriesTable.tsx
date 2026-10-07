@@ -28,11 +28,7 @@
 import {
 	AlertTriangle,
 	ChevronRight,
-	Coffee,
 	Eye,
-	FolderKanban,
-	LogIn,
-	LogOut,
 	MessageSquare,
 	Pencil,
 	Repeat,
@@ -63,9 +59,6 @@ import {
 	canShowAmounts,
 	deviceTimeZone,
 	formatClock,
-	formatDurationText,
-	formatInstantDateTime,
-	formatInstantTime,
 	workItemLabel,
 } from "@/lib/timeFormat";
 import { localDate, safeTimezone } from "@/lib/timePeriods";
@@ -159,44 +152,155 @@ export interface TimeEntriesTableProps {
 }
 
 // ── Layout ──────────────────────────────────────────────────────────────────
+//
+// A spreadsheet: one row per entry with its full date, a strong header row
+// and a totals row. It never scrolls sideways: the table is fixed-layout and
+// fits its box, and as the width shrinks it drops columns in order (Notes,
+// then Break, then Time in/out fold into one "1:00 – 2:00 PM" cell, then
+// Amount). Below 640 px each row stacks: date and hours, then project ·
+// task, with the status on the right.
+
+export interface VisibleColumns {
+	/** More than one For in view (otherwise every row would say the same). */
+	forChip: boolean;
+	amount: boolean;
+	notes: boolean;
+	breakTime: boolean;
+	/** Time in and Time out as one "1:00 – 2:00 PM" cell. */
+	combinedTimes: boolean;
+	/** Below 640 px: two-line rows instead of columns. */
+	stacked: boolean;
+}
+
+/** Widths (px) at which a column goes; see the comment above. */
+export const SHEET_BREAKPOINTS = {
+	notes: 1280,
+	breakTime: 1100,
+	splitTimes: 960,
+	amount: 800,
+	stacked: 640,
+} as const;
+
+/** The columns a table of `width` px shows. Pure; the hook feeds it the viewport. */
+export function sheetColumns(
+	width: number,
+	options: { hasAmounts: boolean; multipleFors: boolean },
+): VisibleColumns {
+	const stacked = width < SHEET_BREAKPOINTS.stacked;
+	return {
+		stacked,
+		forChip: options.multipleFors && !stacked,
+		notes: width >= SHEET_BREAKPOINTS.notes,
+		breakTime: width >= SHEET_BREAKPOINTS.breakTime,
+		combinedTimes: width < SHEET_BREAKPOINTS.splitTimes,
+		amount: options.hasAmounts && width >= SHEET_BREAKPOINTS.amount,
+	};
+}
 
 /**
- * Which optional columns render at the current width. JS media queries, not
- * `hidden md:table-cell`: the group headers use `colSpan`, and a column whose
- * cells are all `display:none` still takes width from a spanning cell, which
- * pushed the table past a phone's viewport. The same booleans decide what
- * folds into the task cell.
+ * Sheet order, as in a paper timesheet: started_at ascending (ties by id),
+ * so the newest entry, a running one included, is the last row, right above
+ * the totals.
  */
-interface VisibleColumns {
-	rowNumber: boolean;
-	project: boolean;
-	forChip: boolean;
-	timeIn: boolean;
-	timeOut: boolean;
-	breakTime: boolean;
-	amount: boolean;
+export function sortSheetEntries(
+	entries: readonly TimeEntryView[],
+): TimeEntryView[] {
+	return [...entries].sort((a, b) => {
+		const time = Date.parse(a.started_at) - Date.parse(b.started_at);
+		if (time !== 0) return time;
+		return a.id < b.id ? -1 : a.id > b.id ? 1 : 0;
+	});
+}
+
+/** "Fri, Nov 7, 2025" in `timeZone`. */
+export function formatSheetDate(iso: string, timeZone: string): string {
+	const date = new Date(iso);
+	if (Number.isNaN(date.getTime())) return "—";
+	return new Intl.DateTimeFormat("en-US", {
+		weekday: "short",
+		month: "short",
+		day: "numeric",
+		year: "numeric",
+		timeZone: safeTimezone(timeZone),
+	}).format(date);
+}
+
+/** "1:00 PM" in `timeZone`. */
+export function formatSheetTime(
+	iso: string | null | undefined,
+	timeZone: string,
+): string {
+	if (!iso) return "—";
+	const date = new Date(iso);
+	if (Number.isNaN(date.getTime())) return "—";
+	return new Intl.DateTimeFormat("en-US", {
+		hour: "numeric",
+		minute: "2-digit",
+		hour12: true,
+		timeZone: safeTimezone(timeZone),
+	}).format(date);
+}
+
+/** Hours as a decimal with two places: 9.00, 1.98. */
+export function formatDecimalHours(seconds: number): string {
+	return (Math.max(0, seconds) / 3600).toFixed(2);
+}
+
+/** Whole break minutes, "0" when none. */
+export function breakMinutes(seconds: number): string {
+	return String(Math.floor(Math.max(0, seconds) / 60));
+}
+
+/** The totals row: work seconds, and money per currency when shown. */
+export function entriesTotals(
+	entries: readonly TimeEntryView[],
+	options: { nowMs?: number; amounts?: boolean } = {},
+): { seconds: number; amounts: Record<string, number> } {
+	const nowMs = options.nowMs ?? serverNow();
+	let seconds = 0;
+	const amounts: Record<string, number> = {};
+	for (const entry of entries) {
+		seconds += entryWorkSeconds(entry, nowMs);
+		if (!options.amounts) continue;
+		const amount = entryAmount(entry, nowMs);
+		if (amount) {
+			amounts[amount.currency] =
+				(amounts[amount.currency] ?? 0) + amount.amount;
+		}
+	}
+	return { seconds, amounts };
 }
 
 function useVisibleColumns(
-	hasBreaks: boolean,
+	entries: readonly TimeEntryView[],
 	hasAmounts: boolean,
 ): VisibleColumns {
-	const belowSm = useIsMobile(639);
-	const belowMd = useIsMobile(767);
-	const belowLg = useIsMobile(1023);
-	const belowXl = useIsMobile(1279);
-	return useMemo(
-		() => ({
-			rowNumber: !belowSm,
-			project: !belowLg,
-			forChip: !belowLg,
-			timeIn: !belowMd,
-			timeOut: !belowLg,
-			breakTime: hasBreaks && !belowXl,
-			amount: hasAmounts && !belowSm,
-		}),
-		[belowSm, belowMd, belowLg, belowXl, hasBreaks, hasAmounts],
-	);
+	const belowNotes = useIsMobile(SHEET_BREAKPOINTS.notes - 1);
+	const belowBreak = useIsMobile(SHEET_BREAKPOINTS.breakTime - 1);
+	const belowSplit = useIsMobile(SHEET_BREAKPOINTS.splitTimes - 1);
+	const belowAmount = useIsMobile(SHEET_BREAKPOINTS.amount - 1);
+	const belowStacked = useIsMobile(SHEET_BREAKPOINTS.stacked - 1);
+	// The narrowest tier the viewport is in, as a width the helper reads.
+	const width = belowStacked
+		? SHEET_BREAKPOINTS.stacked - 1
+		: belowAmount
+			? SHEET_BREAKPOINTS.amount - 1
+			: belowSplit
+				? SHEET_BREAKPOINTS.splitTimes - 1
+				: belowBreak
+					? SHEET_BREAKPOINTS.breakTime - 1
+					: belowNotes
+						? SHEET_BREAKPOINTS.notes - 1
+						: SHEET_BREAKPOINTS.notes;
+	return useMemo(() => {
+		const fors = new Set(
+			entries.map((e) => `${e.context_kind}:${e.context_ref ?? ""}`),
+		);
+		return sheetColumns(width, {
+			hasAmounts,
+			multipleFors: fors.size > 1,
+		});
+	}, [entries, hasAmounts, width]);
 }
 
 /** A coarse "now" (once a minute while a timer runs) for Needs review membership. */
@@ -267,6 +371,26 @@ export function TimeEntriesTable({
 		() => groupEntries(entries, { timeZone: tz, order, nowMs: groupNow }),
 		[entries, tz, order, groupNow],
 	);
+	// The sheet: Needs review (when any) folds on top; every other entry is
+	// one flat list in `sortSheetEntries` order (no day headers: each row
+	// carries its full date).
+	const sheetGroups = useMemo(() => {
+		const review = groups.filter((group) => group.kind === "review");
+		const rest = groups
+			.filter((group) => group.kind !== "review")
+			.flatMap((group) => group.entries);
+		if (rest.length === 0) return review;
+		const first = groups.find((group) => group.kind !== "review");
+		return [
+			...review,
+			{
+				...(first as EntryGroup),
+				key: "sheet",
+				entries: sortSheetEntries(rest),
+				running: rest.some((e) => !e.ended_at),
+			},
+		];
+	}, [groups]);
 
 	const sheetById = useMemo(() => {
 		const map = new Map<string, EntrySheetInfo>();
@@ -275,10 +399,6 @@ export function TimeEntriesTable({
 	}, [sheets]);
 	const pending = useMemo(() => toIdSet(pendingIds), [pendingIds]);
 
-	const hasBreaks = useMemo(
-		() => entries.some((e) => (e.break_seconds ?? 0) > 0 || isOnBreak(e)),
-		[entries],
-	);
 	const hasAmounts = useMemo(
 		() =>
 			showAmounts &&
@@ -289,7 +409,7 @@ export function TimeEntriesTable({
 			),
 		[entries, showAmounts, native],
 	);
-	const columns = useVisibleColumns(hasBreaks, hasAmounts);
+	const columns = useVisibleColumns(entries, hasAmounts);
 
 	// Selection (mine only).
 	const selectionOn = Boolean(selection) && mode === "mine";
@@ -329,24 +449,19 @@ export function TimeEntriesTable({
 	if (loading) return <EntriesTableSkeleton />;
 	if (entries.length === 0) return <>{empty}</>;
 
-	// Cells a group header spans before the duration total.
-	const leadingSpan =
-		(selectionOn ? 1 : 0) +
-		2 +
-		(columns.project ? 1 : 0) +
-		(columns.forChip ? 1 : 0) +
-		(columns.timeIn ? 1 : 0) +
-		(columns.timeOut ? 1 : 0) +
-		(columns.breakTime ? 1 : 0);
-
-	// Row numbers run on through folded groups, so "#12" names one row
-	// whichever groups are open.
-	const firstNumber: number[] = [];
-	let counter = 0;
-	for (const group of groups) {
-		firstNumber.push(counter + 1);
-		counter += group.entries.length;
-	}
+	// Cells the Needs review band and the totals row span before Hours.
+	const leadingSpan = columns.stacked
+		? (selectionOn ? 1 : 0) + 1
+		: (selectionOn ? 1 : 0) +
+			3 +
+			(columns.forChip ? 1 : 0) +
+			(columns.combinedTimes ? 1 : 2) +
+			(columns.breakTime ? 1 : 0);
+	// Stacked rows: [select] · entry · actions, so the band and the totals
+	// take one cell for the entry and one (hours) for the actions column.
+	const trailingSpan = columns.stacked
+		? 0
+		: (columns.amount ? 1 : 0) + 2 + (columns.notes ? 1 : 0);
 
 	const allSelected =
 		selectableIds.length > 0 && selectedEntries.length === selectableIds.length;
@@ -387,12 +502,15 @@ export function TimeEntriesTable({
 				</div>
 			) : null}
 
-			<div className="overflow-x-auto rounded-2xl border border-border bg-card shadow-sm">
-				<table className="w-full border-collapse text-left">
-					<thead>
-						<tr className="border-b border-border bg-muted/50">
+			<div
+				className="overflow-hidden rounded-lg border border-border bg-card"
+				data-testid="entries-sheet"
+			>
+				<table className="w-full table-fixed border-collapse text-left text-[13px]">
+					<thead className={columns.stacked ? "sr-only" : undefined}>
+						<tr className="bg-foreground text-background">
 							{selectionOn ? (
-								<HeadCell className="w-px pr-0">
+								<HeadCell className="w-10">
 									<SelectAllBox
 										checked={allSelected}
 										indeterminate={someSelected}
@@ -405,38 +523,60 @@ export function TimeEntriesTable({
 									/>
 								</HeadCell>
 							) : null}
-							<HeadCell className="w-px pl-0 pr-0 sm:pl-3 sm:pr-1">
-								{columns.rowNumber ? "#" : ""}
-							</HeadCell>
-							<HeadCell className="w-full min-w-[7rem] max-w-0 sm:min-w-[9rem]">
-								Task
-							</HeadCell>
-							{columns.project && <HeadCell>Project</HeadCell>}
-							{columns.forChip && <HeadCell>For</HeadCell>}
-							{columns.timeIn && <HeadCell>In</HeadCell>}
-							{columns.timeOut && <HeadCell>Out</HeadCell>}
-							{columns.breakTime && <HeadCell>Break</HeadCell>}
-							<HeadCell className="text-right">Dur</HeadCell>
-							{columns.amount && (
-								<HeadCell className="text-right">Amount</HeadCell>
+							{columns.stacked ? (
+								<HeadCell>Entry</HeadCell>
+							) : (
+								<>
+									<HeadCell className="w-[8.5rem]">Date</HeadCell>
+									<HeadCell className="w-[14%]">Project</HeadCell>
+									<HeadCell>Task</HeadCell>
+									{columns.forChip && (
+										<HeadCell className="w-[12%]">For</HeadCell>
+									)}
+									{columns.combinedTimes ? (
+										<HeadCell className="w-[9.5rem]">Time</HeadCell>
+									) : (
+										<>
+											<HeadCell className="w-[5.5rem]">Time in</HeadCell>
+											<HeadCell className="w-[5.5rem]">Time out</HeadCell>
+										</>
+									)}
+									{columns.breakTime && (
+										<HeadCell className="w-[6.5rem] text-right">
+											Break (mins)
+										</HeadCell>
+									)}
+									<HeadCell className="w-[4.5rem] text-right">Hours</HeadCell>
+									{columns.amount && (
+										<HeadCell className="w-[6.5rem] text-right">
+											Amount
+										</HeadCell>
+									)}
+									<HeadCell className="w-[7.5rem]">Status</HeadCell>
+									{columns.notes && (
+										<HeadCell className="w-[14%]">Notes</HeadCell>
+									)}
+								</>
 							)}
-							<HeadCell className="w-px">
+							<HeadCell className="w-[5.5rem]">
 								<span className="sr-only">Actions</span>
 							</HeadCell>
 						</tr>
 					</thead>
-					{groups.map((group, groupIndex) => {
-						const isCollapsed = Boolean(collapsed[group.key]);
+					{sheetGroups.map((group) => {
+						const isReview = group.kind === "review";
+						const isCollapsed = isReview && Boolean(collapsed[group.key]);
 						return (
 							<tbody key={group.key} data-group={group.kind}>
-								<GroupHeaderRow
-									group={group}
-									collapsed={isCollapsed}
-									leadingSpan={leadingSpan}
-									showAmount={columns.amount}
-									isFirst={groupIndex === 0}
-									onToggle={toggleGroup}
-								/>
+								{isReview ? (
+									<GroupHeaderRow
+										group={group}
+										collapsed={isCollapsed}
+										leadingSpan={leadingSpan}
+										trailingSpan={trailingSpan}
+										onToggle={toggleGroup}
+									/>
+								) : null}
 								{!isCollapsed &&
 									group.entries.map((entry, rowIndex) => {
 										const lockOptions = lockOptionsFor(entry);
@@ -445,7 +585,6 @@ export function TimeEntriesTable({
 												key={entry.id}
 												entry={entry}
 												mode={mode}
-												rowNumber={firstNumber[groupIndex] + rowIndex}
 												staggerIndex={Math.min(rowIndex, MAX_STAGGER_STEPS)}
 												columns={columns}
 												timeZone={tz}
@@ -482,6 +621,14 @@ export function TimeEntriesTable({
 							</tbody>
 						);
 					})}
+					<TotalsRow
+						entries={entries}
+						running={hasRunning}
+						leadingSpan={leadingSpan}
+						showAmount={columns.amount}
+						trailingSpan={trailingSpan - (columns.amount ? 1 : 0)}
+						native={native}
+					/>
 				</table>
 			</div>
 		</div>
@@ -498,7 +645,7 @@ function HeadCell({
 	return (
 		<th
 			scope="col"
-			className={`whitespace-nowrap px-2 py-2.5 text-[11px] font-semibold text-muted-foreground sm:px-3 ${className}`}
+			className={`whitespace-nowrap border border-foreground px-2 py-2 text-xs font-bold ${className}`}
 		>
 			{children}
 		</th>
@@ -539,80 +686,121 @@ const GroupHeaderRow = memo(function GroupHeaderRow({
 	group,
 	collapsed,
 	leadingSpan,
-	showAmount,
-	isFirst,
+	trailingSpan,
 	onToggle,
 }: {
 	group: EntryGroup;
 	collapsed: boolean;
 	leadingSpan: number;
-	showAmount: boolean;
-	isFirst: boolean;
+	trailingSpan: number;
 	onToggle: (key: string) => void;
 }) {
-	const isReview = group.kind === "review";
 	return (
 		<tr
 			onClick={() => onToggle(group.key)}
-			className={cn(
-				"cursor-pointer select-none border-b transition-colors duration-150 [&>td]:align-middle",
-				isReview
-					? "border-warning/40 bg-warning/10 hover:bg-warning/15"
-					: "border-border bg-muted/30 hover:bg-muted/60",
-				isFirst ? "" : "border-t",
-			)}
+			className="cursor-pointer select-none border-b border-warning/40 bg-warning/10 transition-colors duration-150 hover:bg-warning/15 [&>td]:align-middle"
 		>
-			{/* The whole band toggles; on phones it is ~40 px tall so it's an easy tap. */}
-			<td colSpan={leadingSpan} className="px-2 py-1.5 max-sm:py-3 sm:px-3">
-				{/* `w-0 min-w-full` keeps a long label from widening the columns it spans. */}
-				<div className="w-0 min-w-full">
-					{/* The row handles the click so the whole band is a target; the
-					    button keeps the toggle keyboard-reachable. */}
-					<button
-						type="button"
-						aria-expanded={!collapsed}
-						className="flex w-full items-center gap-1.5 rounded-md text-left outline-none focus-visible:ring-2 focus-visible:ring-primary/40"
-					>
-						<ChevronRight
-							aria-hidden="true"
-							className={cn(
-								"h-3.5 w-3.5 shrink-0 transition-transform duration-200 ease-out",
-								collapsed ? "" : "rotate-90",
-								isReview ? "text-warning" : "text-muted-foreground",
-							)}
-						/>
-						{isReview && (
-							<AlertTriangle
-								aria-hidden="true"
-								className="h-3.5 w-3.5 shrink-0 text-warning"
-							/>
+			<td colSpan={leadingSpan} className="px-2 py-1.5 max-sm:py-3">
+				<button
+					type="button"
+					aria-expanded={!collapsed}
+					className="flex items-center gap-1.5 rounded-md text-left outline-none focus-visible:ring-2 focus-visible:ring-primary/40"
+				>
+					<ChevronRight
+						aria-hidden="true"
+						className={cn(
+							"h-3.5 w-3.5 shrink-0 text-warning transition-transform duration-200 ease-out",
+							collapsed ? "" : "rotate-90",
 						)}
-						<span className="truncate text-[11px] font-semibold uppercase tracking-wide text-foreground">
-							{group.label}
+					/>
+					<AlertTriangle
+						aria-hidden="true"
+						className="h-3.5 w-3.5 shrink-0 text-warning"
+					/>
+					<span className="text-[11px] font-semibold uppercase tracking-wide text-foreground">
+						{group.label}
+					</span>
+					{group.caption ? (
+						<span className="text-[11px] font-normal normal-case text-muted-foreground">
+							{group.caption}
 						</span>
-						{!isReview && (
-							<span className="shrink-0 text-[11px] tabular-nums text-muted-foreground">
-								· {group.entries.length}
-							</span>
-						)}
-						{group.caption ? (
-							<span className="hidden shrink-0 text-[11px] font-normal normal-case text-muted-foreground md:inline">
-								{group.caption}
-							</span>
-						) : null}
-					</button>
-				</div>
+					) : null}
+				</button>
 			</td>
-			<td className="px-2 py-1.5 text-right sm:px-3">
+			<td className="px-2 py-1.5 text-right">
 				<GroupTotal
 					entries={group.entries}
 					active={group.running}
-					warnOver={group.kind === "day"}
+					warnOver={false}
 				/>
 			</td>
-			{showAmount && <td />}
-			<td />
+			{trailingSpan > 0 ? <td colSpan={trailingSpan} /> : null}
 		</tr>
+	);
+});
+
+/** The totals row: the hours (and money) of every row shown. */
+const TotalsRow = memo(function TotalsRow({
+	entries,
+	running,
+	leadingSpan,
+	showAmount,
+	trailingSpan,
+	native,
+}: {
+	entries: readonly TimeEntryView[];
+	running: boolean;
+	leadingSpan: number;
+	trailingSpan: number;
+	showAmount: boolean;
+	native: boolean;
+}) {
+	const nowMs = useLiveNowMs(running);
+	const totals = entriesTotals(entries, { nowMs, amounts: showAmount });
+	const first = entries.find((e) =>
+		canShowAmounts({ cost: e.cost, kind: e.context_kind, native }),
+	);
+	return (
+		<tfoot>
+			<tr
+				className="border-t-2 border-foreground bg-muted font-bold"
+				data-testid="entries-totals"
+			>
+				<td
+					colSpan={leadingSpan}
+					className="border border-border bg-muted px-2 py-1.5"
+				>
+					Total
+				</td>
+				<td
+					className="border border-border px-2 py-1.5 text-right tabular-nums"
+					data-testid="entries-total-hours"
+				>
+					{formatDecimalHours(totals.seconds)}
+				</td>
+				{showAmount ? (
+					<td
+						className="border border-border px-2 py-1.5 text-right tabular-nums"
+						data-testid="entries-total-amount"
+					>
+						{first ? (
+							<AmountLines
+								amounts={totals.amounts}
+								cost={first.cost}
+								kind={first.context_kind}
+								native={native}
+								empty="—"
+							/>
+						) : (
+							"—"
+						)}
+					</td>
+				) : null}
+				{trailingSpan > 0 ? (
+					<td colSpan={trailingSpan} className="border border-border" />
+				) : null}
+			</tr>
+		</tfoot>
 	);
 });
 
@@ -654,19 +842,6 @@ const GroupTotal = memo(function GroupTotal({
 });
 
 // ── Row ─────────────────────────────────────────────────────────────────────
-
-function CellIcon({
-	icon: Icon,
-}: {
-	icon: ComponentType<{ className?: string }>;
-}) {
-	return (
-		<Icon
-			className="h-3.5 w-3.5 shrink-0 text-muted-foreground/70"
-			aria-hidden="true"
-		/>
-	);
-}
 
 /**
  * Icon-only action that slides in on row hover or keyboard focus (md and up).
@@ -743,7 +918,6 @@ const stopRowClick = (event: { stopPropagation: () => void }) =>
 interface EntryRowProps {
 	entry: TimeEntryView;
 	mode: EntriesTableMode;
-	rowNumber: number;
 	staggerIndex: number;
 	columns: VisibleColumns;
 	timeZone: string;
@@ -771,7 +945,6 @@ interface EntryRowProps {
 const EntryRow = memo(function EntryRow({
 	entry,
 	mode,
-	rowNumber,
 	staggerIndex,
 	columns,
 	timeZone,
@@ -808,14 +981,37 @@ const EntryRow = memo(function EntryRow({
 	const breakSeconds = entryBreakSeconds(entry, nowMs);
 	const amount = columns.amount ? entryAmount(entry, nowMs) : null;
 
-	const startedLabel = formatInstantTime(entry.started_at, timeZone);
+	const dateLabel = formatSheetDate(entry.started_at, timeZone);
+	const startedLabel = formatSheetTime(entry.started_at, timeZone);
+	// Past midnight the out time names its day: "Sat, Nov 8, 2025, 1:00 AM".
 	const endedLabel = entry.ended_at
 		? sameLocalDay(entry.started_at, entry.ended_at, timeZone)
-			? formatInstantTime(entry.ended_at, timeZone)
-			: formatInstantDateTime(entry.ended_at, timeZone, {
-					userTimezone: timeZone,
-				})
+			? formatSheetTime(entry.ended_at, timeZone)
+			: `${formatSheetDate(entry.ended_at, timeZone)}, ${formatSheetTime(entry.ended_at, timeZone)}`
 		: null;
+	const note = hidden ? null : entry.note?.trim() || null;
+	const statusCell = (
+		<div className="flex flex-wrap items-center gap-1">
+			{running ? (
+				<RunningPill onBreak={isOnBreak(entry)} />
+			) : (
+				<span className="rounded bg-muted px-1.5 py-px text-[10px] font-semibold text-foreground">
+					{status}
+				</span>
+			)}
+			{reviewNote ? (
+				<span
+					className="inline-flex shrink-0 items-center gap-0.5 rounded bg-warning/10 px-1 py-px text-[10px] font-semibold text-warning-foreground"
+					title={reviewNote}
+				>
+					<AlertTriangle className="h-3 w-3" aria-hidden="true" />
+					Needs review
+					<span className="sr-only">{reviewNote}</span>
+				</span>
+			) : null}
+			<EntryBadges entry={entry} native={native} />
+		</div>
+	);
 
 	const rules = useMemo(
 		() => entryActions(entry, { mode, pending, canOpenTask }),
@@ -869,15 +1065,6 @@ const EntryRow = memo(function EntryRow({
 	// Only a chip with a popover needs its clicks kept from the row.
 	const chipClick = chipProjectId ? stopRowClick : undefined;
 
-	// What the dropped columns held, folded back into the task cell. The clock
-	// range joins only from sm up: below that the cell is ~112 px wide.
-	const foldProject = !columns.project && Boolean(project);
-	const foldTime = !columns.timeIn;
-	const foldFor = !columns.forChip;
-	const timeText = columns.rowNumber
-		? `${startedLabel} – ${endedLabel ?? "now"}`
-		: startedLabel;
-
 	const tone = pending
 		? "bg-warning/10"
 		: running
@@ -889,7 +1076,7 @@ const EntryRow = memo(function EntryRow({
 	return (
 		<tr
 			className={cn(
-				"group/row time-row-in border-b border-border/60 transition-colors duration-150 [&>td]:align-middle",
+				"group/row time-row-in h-8 transition-colors duration-150 even:bg-muted/30 [&>td]:align-middle",
 				tone,
 				openDetail ? "cursor-pointer" : "",
 			)}
@@ -902,7 +1089,7 @@ const EntryRow = memo(function EntryRow({
 		>
 			{selectionRule ? (
 				<td
-					className="w-px py-1.5 pl-2 pr-0 max-sm:px-3 sm:pl-3"
+					className="w-px border border-border px-2 py-1.5 max-sm:px-3"
 					onClick={(event) => {
 						event.stopPropagation();
 						// The cell is the tap target (the whole row height on a
@@ -928,161 +1115,166 @@ const EntryRow = memo(function EntryRow({
 				</td>
 			) : null}
 
-			{/* Status accent bar, and the row number once there is room. */}
-			<td
-				className={cn(
-					"w-px whitespace-nowrap border-l-[3px] py-1.5 pl-0 pr-0 sm:pl-3 sm:pr-1",
-					ACCENT_CLASS[accent],
-				)}
-				title={status}
-			>
-				{columns.rowNumber && (
-					<span className="inline-flex min-w-[1.25rem] justify-center rounded-md bg-muted px-1 py-0.5 text-[10px] font-semibold tabular-nums text-muted-foreground">
-						{rowNumber}
-					</span>
-				)}
-				<span className="sr-only">{status}</span>
-			</td>
-
-			{/* Task: absorbs the free width so `truncate` has something to cut. */}
-			<td className="w-full min-w-[7rem] max-w-0 px-2 py-1.5 sm:min-w-[9rem] sm:px-3">
-				<div className="min-w-0">
-					<div className="flex items-center gap-1.5">
-						{title.kind === "preset" ? (
-							<span
-								aria-hidden="true"
-								className="shrink-0 text-muted-foreground"
-							>
-								◦
-							</span>
-						) : null}
-						<span
-							className={cn(
-								"block truncate text-[13px]",
-								title.kind === "task"
-									? "font-medium text-foreground"
-									: title.kind === "hidden"
-										? "italic text-muted-foreground"
-										: "text-foreground",
-							)}
-							title={title.text}
-						>
-							{title.text}
+			{columns.stacked ? (
+				<td
+					className={cn(
+						"border-y border-r border-border border-l-[3px] px-2 py-2",
+						ACCENT_CLASS[accent],
+					)}
+					title={status}
+				>
+					<div className="flex items-baseline justify-between gap-2">
+						<span className="truncate font-medium text-foreground">
+							{dateLabel}
 						</span>
-						{hidden ? (
-							<span className="shrink-0 rounded bg-muted px-1.5 py-px text-[10px] font-medium text-muted-foreground">
-								{workItemLabel(entry.work_item)}
-							</span>
-						) : null}
-						{reviewNote ? (
-							<span className="inline-flex shrink-0" title={reviewNote}>
-								<AlertTriangle
-									className="h-3 w-3 text-warning"
-									aria-hidden="true"
-								/>
-								<span className="sr-only">{reviewNote}</span>
-							</span>
-						) : null}
-						{running ? <RunningPill onBreak={isOnBreak(entry)} /> : null}
-						<EntryBadges entry={entry} native={native} />
+						<span
+							className="shrink-0 font-semibold tabular-nums text-foreground"
+							data-testid="entry-hours"
+						>
+							{formatDecimalHours(workSeconds)}
+						</span>
 					</div>
-					{foldProject || foldTime || foldFor ? (
-						<div className="mt-0.5 flex min-w-0 flex-wrap items-center gap-x-1 gap-y-0.5 text-[11px] text-muted-foreground">
-							{foldProject && <span className="truncate">{project}</span>}
-							{foldProject && foldTime && <span className="shrink-0">·</span>}
-							{foldTime && (
-								<span className="shrink-0 whitespace-nowrap tabular-nums">
-									{timeText}
-								</span>
-							)}
-							{foldFor ? (
+					<div className="mt-0.5 flex items-center justify-between gap-2">
+						<span
+							className="min-w-0 truncate text-xs text-muted-foreground"
+							title={[project, title.text].filter(Boolean).join(" · ")}
+						>
+							{[project, title.text].filter(Boolean).join(" · ")}
+						</span>
+						<span className="shrink-0">{statusCell}</span>
+					</div>
+				</td>
+			) : (
+				<>
+					{/* Date: the left accent carries the sheet status. */}
+					<td
+						className={cn(
+							"truncate whitespace-nowrap border-y border-r border-border border-l-[3px] px-2 py-1.5 tabular-nums text-foreground",
+							ACCENT_CLASS[accent],
+						)}
+						title={status}
+					>
+						{dateLabel}
+					</td>
+
+					<td className="border border-border px-2 py-1.5">
+						<span
+							className="block truncate text-muted-foreground"
+							title={project ?? undefined}
+						>
+							{project ?? "—"}
+						</span>
+					</td>
+
+					<td className="border border-border px-2 py-1.5">
+						<div className="flex min-w-0 items-center gap-1.5">
+							{title.kind === "preset" ? (
 								<span
-									className="inline-flex min-w-0 max-w-full"
-									onClick={chipClick}
+									aria-hidden="true"
+									className="shrink-0 text-muted-foreground"
 								>
-									{chip}
+									◦
+								</span>
+							) : null}
+							<span
+								className={cn(
+									"block truncate",
+									title.kind === "task"
+										? "font-medium text-foreground"
+										: title.kind === "hidden"
+											? "italic text-muted-foreground"
+											: "text-foreground",
+								)}
+								title={title.text}
+							>
+								{title.text}
+							</span>
+							{hidden ? (
+								<span className="shrink-0 rounded bg-muted px-1.5 py-px text-[10px] font-medium text-muted-foreground">
+									{workItemLabel(entry.work_item)}
 								</span>
 							) : null}
 						</div>
-					) : null}
-				</div>
-			</td>
+					</td>
 
-			{columns.project && (
-				<td className="max-w-[190px] px-2 py-1.5 sm:px-3">
-					{project ? (
-						<div className="flex items-center gap-1.5">
-							<CellIcon icon={FolderKanban} />
-							<span
-								className="truncate text-xs text-muted-foreground"
-								title={project}
-							>
-								{project}
-							</span>
-						</div>
-					) : (
-						<span className="text-xs text-muted-foreground">—</span>
+					{columns.forChip && (
+						<td
+							className="overflow-hidden border border-border px-2 py-1.5"
+							onClick={chipClick}
+						>
+							{chip}
+						</td>
 					)}
-				</td>
-			)}
 
-			{columns.forChip && (
-				<td className="max-w-[220px] px-2 py-1.5 sm:px-3" onClick={chipClick}>
-					{chip}
-				</td>
-			)}
+					{columns.combinedTimes ? (
+						<td className="truncate whitespace-nowrap border border-border px-2 py-1.5 tabular-nums text-foreground">
+							{startedLabel} – {endedLabel ?? "now"}
+						</td>
+					) : (
+						<>
+							<td className="truncate whitespace-nowrap border border-border px-2 py-1.5 tabular-nums text-foreground">
+								{startedLabel}
+							</td>
+							<td
+								className="truncate whitespace-nowrap border border-border px-2 py-1.5 tabular-nums text-foreground"
+								title={endedLabel ?? undefined}
+							>
+								{endedLabel ?? (
+									<span className="font-medium text-primary">now</span>
+								)}
+							</td>
+						</>
+					)}
+					{columns.breakTime && (
+						<td className="whitespace-nowrap border border-border px-2 py-1.5 text-right tabular-nums text-foreground">
+							{breakMinutes(breakSeconds)}
+						</td>
+					)}
+					<td
+						className="whitespace-nowrap border border-border px-2 py-1.5 text-right font-semibold tabular-nums text-foreground"
+						title={formatClock(workSeconds)}
+						data-testid="entry-hours"
+					>
+						{formatDecimalHours(workSeconds)}
+					</td>
 
-			{columns.timeIn && (
-				<td className="whitespace-nowrap px-2 py-1.5 sm:px-3">
-					<span className="flex items-center gap-1.5 text-xs tabular-nums text-muted-foreground">
-						<CellIcon icon={LogIn} />
-						{startedLabel}
-					</span>
-				</td>
-			)}
+					{columns.amount && (
+						<td className="truncate whitespace-nowrap border border-border px-2 py-1.5 text-right tabular-nums">
+							<AmountLines
+								amounts={amountRecord(amount)}
+								cost={entry.cost}
+								kind={entry.context_kind}
+								native={native}
+								tone={amount?.final ? "default" : "muted"}
+								title={
+									amount && !amount.final ? ENTRY_COPY.estimate : undefined
+								}
+								empty="—"
+							/>
+						</td>
+					)}
 
-			{columns.timeOut && (
-				<td className="whitespace-nowrap px-2 py-1.5 sm:px-3">
-					<span className="flex items-center gap-1.5 text-xs tabular-nums text-muted-foreground">
-						<CellIcon icon={LogOut} />
-						{endedLabel ?? (
-							<span className="font-medium text-primary">now</span>
-						)}
-					</span>
-				</td>
-			)}
+					<td className="overflow-hidden border border-border px-2 py-1.5">
+						{statusCell}
+					</td>
 
-			{columns.breakTime && (
-				<td className="whitespace-nowrap px-2 py-1.5 sm:px-3">
-					<span className="flex items-center gap-1.5 text-xs tabular-nums text-muted-foreground">
-						<CellIcon icon={Coffee} />
-						{breakSeconds >= 60 ? formatDurationText(breakSeconds) : "—"}
-					</span>
-				</td>
-			)}
-
-			<td className="whitespace-nowrap px-2 py-1.5 text-right text-[13px] font-semibold tabular-nums text-foreground sm:px-3">
-				{formatClock(workSeconds)}
-			</td>
-
-			{columns.amount && (
-				<td className="whitespace-nowrap px-2 py-1.5 text-right text-[13px] font-medium sm:px-3">
-					<AmountLines
-						amounts={amountRecord(amount)}
-						cost={entry.cost}
-						kind={entry.context_kind}
-						native={native}
-						tone={amount?.final ? "default" : "muted"}
-						title={amount && !amount.final ? ENTRY_COPY.estimate : undefined}
-						empty="—"
-					/>
-				</td>
+					{columns.notes && (
+						<td className="border border-border px-2 py-1.5">
+							<span
+								className="block truncate text-muted-foreground"
+								title={note ?? undefined}
+							>
+								{note ?? ""}
+							</span>
+						</td>
+					)}
+				</>
 			)}
 
 			{/* Actions. The quick buttons hold their width at rest, so revealing
 			    them on hover never reflows the table. */}
 			<td
-				className="w-px whitespace-nowrap py-1 pl-2 pr-2"
+				className="w-px whitespace-nowrap border border-border py-0.5 pl-2 pr-2"
 				onClick={(event) => event.stopPropagation()}
 			>
 				<div className="flex items-center justify-end gap-0.5">

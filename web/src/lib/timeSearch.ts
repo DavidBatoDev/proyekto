@@ -18,7 +18,7 @@
  *
  * | Route                                   | Params                                          |
  * |-----------------------------------------|-------------------------------------------------|
- * | `/time`                                 | `for`, `project`, `week`, `view`, `entry`       |
+ * | `/time`                                 | `for`, `project`, `week`, `view`, `entry`, `tab` |
  * | `/time/timesheets/$timesheetId`         | `entry`                                         |
  * | `/w/$workspaceSlug/settings/time`       | `tab` (`policy` default, `report`)              |
  * | `/w/$workspaceSlug/teams/$teamId/time`  | `person`, `project`, `for`, `status`, `from`, `to`, `group` |
@@ -161,6 +161,10 @@ function entryParam(value: unknown): string | undefined {
 export const TIME_PAGE_VIEWS = ["list", "month"] as const;
 export type TimePageView = (typeof TIME_PAGE_VIEWS)[number];
 
+/** The Time page's tabs: My time (default) and Approvals. */
+export const TIME_PAGE_TABS = ["mine", "approvals"] as const;
+export type TimePageTab = (typeof TIME_PAGE_TABS)[number];
+
 export interface TimePageSearch {
 	/** Filters to one context and sets the day strip's timezone and week start. */
 	for?: TimeForParam;
@@ -177,6 +181,8 @@ export interface TimePageSearch {
 	view?: TimePageView;
 	/** Opens that entry's detail modal. */
 	entry?: string;
+	/** `approvals` opens the Approvals tab; omitted, the page picks one. */
+	tab?: TimePageTab;
 }
 
 export function validateTimePageSearch(
@@ -188,6 +194,7 @@ export function validateTimePageSearch(
 		week: dateParam(search.week),
 		view: oneOf(search.view, TIME_PAGE_VIEWS),
 		entry: entryParam(search.entry),
+		tab: oneOf(search.tab, TIME_PAGE_TABS),
 	});
 }
 

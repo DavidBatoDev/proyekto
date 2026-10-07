@@ -8,6 +8,7 @@ import {
 	UserPlus,
 } from "lucide-react";
 import { useRef, useState } from "react";
+import { useTimeWorkspaceScope } from "@/components/time/page/useTimeWorkspaceScope";
 import { useDismissOnOutside } from "@/hooks/useDismissOnOutside";
 import { useEnterWorkspace } from "@/hooks/useEnterWorkspace";
 import {
@@ -37,6 +38,14 @@ export function WorkspaceSwitcher() {
 	const { workspace, workspaces, isLoading } = useCurrentWorkspace();
 	const createWorkspace = useCreateWorkspaceMutation();
 	const enterWorkspace = useEnterWorkspace();
+	// Timesheets waiting for this person in OTHER workspaces: a dot on the
+	// switcher and a count beside each such workspace (Time is per workspace,
+	// so the Time badge only counts the open one).
+	const { elsewhere } = useTimeWorkspaceScope();
+	const waitingIn = new Map(
+		elsewhere.map((item) => [item.workspaceId.toLowerCase(), item.count]),
+	);
+	const waitingElsewhere = elsewhere.reduce((sum, item) => sum + item.count, 0);
 
 	const [open, setOpen] = useState(false);
 	const [creating, setCreating] = useState(false);
@@ -105,6 +114,17 @@ export function WorkspaceSwitcher() {
 				<span className="min-w-0 flex-1 truncate text-sm font-semibold text-sidebar-foreground">
 					{label}
 				</span>
+				{waitingElsewhere > 0 ? (
+					<span
+						data-testid="workspace-switcher-waiting-dot"
+						title={`${waitingElsewhere} ${waitingElsewhere === 1 ? "timesheet" : "timesheets"} waiting in another workspace`}
+						className="h-2 w-2 shrink-0 rounded-full bg-warning"
+					>
+						<span className="sr-only">
+							{`${waitingElsewhere} ${waitingElsewhere === 1 ? "timesheet" : "timesheets"} waiting in another workspace`}
+						</span>
+					</span>
+				) : null}
 				<ChevronsUpDown className="h-4 w-4 shrink-0 text-sidebar-foreground/55" />
 			</button>
 
@@ -126,6 +146,16 @@ export function WorkspaceSwitcher() {
 									{initials(item.name)}
 								</span>
 								<span className="min-w-0 flex-1 truncate">{item.name}</span>
+								{waitingIn.get(item.id.toLowerCase()) ? (
+									<span
+										data-testid="workspace-waiting-count"
+										title={`${waitingIn.get(item.id.toLowerCase())} waiting for you`}
+										className="shrink-0 rounded-full bg-warning/15 px-1.5 text-[11px] font-semibold text-foreground"
+									>
+										{waitingIn.get(item.id.toLowerCase())}
+										<span className="sr-only"> waiting for you</span>
+									</span>
+								) : null}
 								{item.id === workspace?.id && (
 									<Check className="h-4 w-4 shrink-0 text-primary" />
 								)}

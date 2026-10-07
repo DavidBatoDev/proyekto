@@ -15,6 +15,7 @@
 
 import { forwardRef } from "react";
 import { cn } from "@/lib/utils";
+import type { ApprovalRow } from "@/services/time.types";
 import { WaitingForYouList } from "../approvals/WaitingForYouList";
 
 /** The anchor `/time#waiting` scrolls to. */
@@ -29,6 +30,10 @@ export interface WaitingSectionProps {
 	emptyText?: string;
 	/** E27: rows of another policy workspace get a tag. */
 	currentWorkspaceId?: string | null;
+	/** Only these rows (one workspace group of the Time page). */
+	rowFilter?: (row: ApprovalRow) => boolean;
+	/** Carry `id="waiting"` (only one group's section does). Default true. */
+	anchor?: boolean;
 	/** The floating "N selected" bar (off on phones). */
 	floatingBar?: boolean;
 	now?: Date;
@@ -43,6 +48,8 @@ export const WaitingSection = forwardRef<HTMLDivElement, WaitingSectionProps>(
 			approverMode = false,
 			emptyText,
 			currentWorkspaceId,
+			rowFilter,
+			anchor = true,
 			floatingBar = true,
 			now,
 			userTimezone,
@@ -54,12 +61,13 @@ export const WaitingSection = forwardRef<HTMLDivElement, WaitingSectionProps>(
 		return (
 			<div
 				ref={ref}
-				id={WAITING_SECTION_ID}
+				id={anchor ? WAITING_SECTION_ID : undefined}
 				tabIndex={-1}
 				className={cn("scroll-mt-24 focus:outline-none", className)}
 			>
 				<WaitingForYouList
 					currentWorkspaceId={currentWorkspaceId}
+					rowFilter={rowFilter}
 					emptyText={approverMode ? (emptyText ?? undefined) : null}
 					floatingBar={floatingBar}
 					now={now}

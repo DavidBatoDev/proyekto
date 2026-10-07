@@ -79,6 +79,11 @@ import type {
 } from "@/services/time.types";
 import { useAuthStore } from "@/stores/authStore";
 import { useTimePreferences } from "./TimePrefsMenu";
+import {
+	contextInScope,
+	sheetInScope,
+	type WorkspaceScope,
+} from "./workspaceGroups";
 
 // ── Constants ───────────────────────────────────────────────────────────────
 
@@ -589,8 +594,6 @@ export interface TimePageData {
 	userId: string | null;
 	overview: TimeOverview | null;
 	overviewQuery: ReturnType<typeof useTimeOverview>;
-	/** Unknown while the overview loads. */
-	approverMode: boolean | null;
 	/** Unknown (null) while the overview loads. */
 	canLog: boolean | null;
 	prefs: PrefsZone & { stored: boolean; isLoading: boolean };
@@ -633,6 +636,12 @@ export function useTimePageData(
 		now?: Date;
 		/** Known workspace names by id (a `?for=workspace:` the overview doesn't list). */
 		names?: Readonly<Record<string, string>>;
+		/**
+		 * Time is per workspace (workspaceGroups.ts): the cards, the For
+		 * choices and the All view's entries keep only what belongs to the
+		 * switcher's workspace. Omitted: nothing is scoped.
+		 */
+		scope?: WorkspaceScope;
 	} = {},
 ): TimePageData {
 	const userId = useAuthStore((state) => state.user?.id ?? null);
@@ -684,10 +693,11 @@ export function useTimePageData(
 	const today = todayIn(zone.timezone, now);
 	const isCurrentWeek = rangeContains(week, today);
 	const forRequest = useMemo(() => forRequestOf(forRef), [forRef]);
-	const approverMode = overview ? overview.approver_mode : null;
 
-	// Entries and sheets of the view week (not in approver mode).
-	const listEnabled = Boolean(userId) && zoneReady && approverMode !== true;
+	// Entries and sheets of the view week.
+	// One layout for everyone: the week is always read (approver_mode no
+	// longer switches the page).
+	const listEnabled = Boolean(userId) && zoneReady;
 	const entriesParams: Omit<MyEntriesQuery, "page" | "limit"> = {
 		from: week.start,
 		to: week.end,
@@ -710,7 +720,18 @@ export function useTimePageData(
 		enabled: listEnabled,
 	});
 
-	const entries = useMemo(() => entriesQuery.data ?? [], [entriesQuery.data]);
+	const scopeRule = options.scope;
+	// An explicit `?for=` already narrows the read to one context.
+	const entries = useMemo(() => {
+		const all = entriesQuery.data ?? [];
+		if (!scopeRule || forRef) return all;
+		return all.filter((entry) =>
+			contextInScope(
+				{ kind: entry.context_kind, id: entry.context_ref },
+				scopeRule,
+			),
+		);
+	}, [entriesQuery.data, scopeRule, forRef]);
 
 	const weekSheets = useMemo(
 		() => sheetsInView(sheetsQuery.data ?? [], week),
@@ -721,8 +742,11 @@ export function useTimePageData(
 		[forRef, context, weekSheets, entries],
 	);
 	const sheets = useMemo(
-		() => sheetsInView(weekSheets, week, { forRef, scope }),
-		[weekSheets, week, forRef, scope],
+		() =>
+			sheetsInView(weekSheets, week, { forRef, scope }).filter(
+				(sheet) => !scopeRule || sheetInScope(sheet, scopeRule),
+			),
+		[weekSheets, week, forRef, scope, scopeRule],
 	);
 	const sheetNames = useMemo(() => sheetPeopleNames(weekSheets), [weekSheets]);
 	const sheetReminders = useMemo(
@@ -759,15 +783,25 @@ export function useTimePageData(
 		sheets,
 	});
 	const forOptions = useMemo(
-		() => forFilterOptions(overview, forRef, { entries, names }),
-		[overview, forRef, entries, names],
+		() =>
+			forFilterOptions(
+				scopeRule && overview
+					? {
+							contexts: (overview.contexts ?? []).filter((item) =>
+								contextInScope(item, scopeRule),
+							),
+						}
+					: overview,
+				forRef,
+				{ entries, names },
+			),
+		[overview, scopeRule, forRef, entries, names],
 	);
 
 	return {
 		userId,
 		overview,
 		overviewQuery,
-		approverMode,
 		canLog: overview ? overview.can_log : null,
 		prefs,
 		forRef,

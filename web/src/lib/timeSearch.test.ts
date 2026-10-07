@@ -88,6 +88,13 @@ describe("validateTimePageSearch", () => {
 		).toEqual({ for: `team:${T}`, project: P, week: "2026-09-29", entry: E });
 	});
 
+	it("reads ?tab= and drops anything else", () => {
+		expect(validateTimePageSearch({ tab: "approvals" })).toEqual({
+			tab: "approvals",
+		});
+		expect(validateTimePageSearch({ tab: "nope" })).toEqual({});
+	});
+
 	it("normalises the API's personal: to the URL's personal", () => {
 		expect(validateTimePageSearch({ for: "personal:" })).toEqual({
 			for: "personal",

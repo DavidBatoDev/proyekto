@@ -13,8 +13,9 @@ import type { TimeEntryView } from "@/services/time.types";
 
 /**
  * `/time`: the one personal Time page (ux.md › The Time Page). Search params:
- * `for`, `project`, `week`, `view` (`list` | `month`, D86), `entry`
- * (lib/timeSearch.ts); `#waiting` scrolls to Waiting for you. The page itself
+ * `for`, `project`, `week`, `view` (`list` | `month`, D86), `entry`,
+ * `tab` (`mine` | `approvals`) (lib/timeSearch.ts); `#waiting` opens the
+ * Approvals tab when something waits. The page itself
  * lives in components/time/page.
  */
 export const Route = createFileRoute("/_execution/time/")({

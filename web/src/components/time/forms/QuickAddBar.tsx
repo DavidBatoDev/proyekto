@@ -160,7 +160,10 @@ export function QuickAddBar({
 }: QuickAddBarProps) {
 	const durationId = useId();
 	const projects = useLoggableProjects({ preferredProjectId });
-	const [selection, setSelection] = useState<TaskPickerSelection | null>(null);
+	const [picked, setSelection] = useState<TaskPickerSelection | null>(null);
+	// A pick from another workspace (the switcher moved) is dropped.
+	const selection =
+		picked?.projectId && projects.byId.has(picked.projectId) ? picked : null;
 	const projectId = selection?.projectId ?? projects.defaultProjectId;
 	const project = projectId ? (projects.byId.get(projectId) ?? null) : null;
 

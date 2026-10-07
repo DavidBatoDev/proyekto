@@ -1,8 +1,9 @@
 /* @vitest-environment jsdom */
 
-// ux.md › Chrome: the primary Time item shows only when the overview allows
-// it (can log, timesheets waiting, or a workspace's time admin) and carries
-// `approvals_waiting` as its badge. A team's own Time item is the Report, so
+// ux.md › Chrome: Time is per workspace. The primary Time item shows when
+// the person has time, approvals or the time policy in the open workspace
+// (or personal time in their default one), and its badge counts only what
+// waits there. A team's own Time item is the Report, so
 // only that team's owners and admins see it.
 
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
@@ -133,9 +134,14 @@ afterEach(() => {
 });
 
 describe("SidebarContent › Time", () => {
-	it("shows Time to someone who can log, bare and without a badge", async () => {
+	it("shows Time to someone who logs personal time in their default workspace", async () => {
 		vi.spyOn(timeService, "getOverview").mockResolvedValue(
-			overview({ can_log: true }),
+			overview({
+				can_log: true,
+				contexts: [
+					{ kind: "personal", id: null, label: "Just me", sheet_scope: null },
+				],
+			} as Partial<TimeOverview>),
 		);
 
 		withClient(<SidebarContent />);
@@ -143,7 +149,8 @@ describe("SidebarContent › Time", () => {
 		const link = await screen.findByRole("link", { name: "Time" });
 		expect(link.getAttribute("href")).toBe("/time");
 		expect(screen.queryByTestId("sidebar-nav-badge")).toBeNull();
-		// It sits after Meetings.
+		// The personal group (Inbox, Meetings) comes first, above the
+		// workspace switcher; the workspace's pages, Time last, follow.
 		const labels = screen
 			.getAllByRole("link")
 			.map((el) => el.textContent)
@@ -153,18 +160,37 @@ describe("SidebarContent › Time", () => {
 				),
 			);
 		expect(labels).toEqual([
-			"Dashboard",
 			"Inbox",
-			"Command center",
 			"Meetings",
+			"Dashboard",
+			"Command center",
 			"Time",
 		]);
+		const personal = screen.getByTestId("sidebar-personal-nav");
+		expect(personal.textContent).toContain("Meetings");
+		expect(personal.textContent).not.toContain("Time");
 	});
 
-	it("badges Time with the timesheets waiting on an approver", async () => {
+	it("badges Time with the timesheets waiting in this workspace only", async () => {
 		vi.spyOn(timeService, "getOverview").mockResolvedValue(
-			overview({ approvals_waiting: 3 }),
+			overview({ approvals_waiting: 4 }),
 		);
+		const waiting = (id: string, ws: string) => ({
+			id,
+			policy_workspace_id: ws,
+			policy_workspace: { id: ws, name: ws },
+		});
+		vi.spyOn(timeService, "listApprovals").mockResolvedValue({
+			items: [
+				waiting("a", "w1"),
+				waiting("b", "w1"),
+				waiting("c", "w1"),
+				waiting("d", "w2"),
+			],
+			total: 4,
+			page: 1,
+			limit: 50,
+		} as never);
 
 		withClient(<SidebarContent />);
 
@@ -192,6 +218,25 @@ describe("SidebarContent › Time", () => {
 		withClient(<SidebarContent />);
 
 		expect(await screen.findByRole("link", { name: "Time" })).toBeTruthy();
+	});
+
+	it("hides Time where the person has nothing, even with time elsewhere", async () => {
+		teams.list = [team({ id: "t9", workspace_id: "w2" })];
+		vi.spyOn(timeService, "getOverview").mockResolvedValue(
+			overview({
+				can_log: false,
+				contexts: [
+					{ kind: "workspace", id: "w2", label: "Other", sheet_scope: null },
+					{ kind: "team", id: "t9", label: "Team", sheet_scope: null },
+				],
+			} as Partial<TimeOverview>),
+		);
+
+		withClient(<SidebarContent />);
+
+		await screen.findByRole("link", { name: "Meetings" });
+		await new Promise((resolve) => setTimeout(resolve, 20));
+		expect(screen.queryByRole("link", { name: "Time" })).toBeNull();
 	});
 
 	it("hides Time from everyone else, and while the overview loads", async () => {

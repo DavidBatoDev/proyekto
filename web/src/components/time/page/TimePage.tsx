@@ -15,8 +15,21 @@
 //   (entries table: Needs review, day groups, For column)
 //   WAITING FOR YOU (3)                                   [Approve selected]
 //
-// Approver mode (`overview.approver_mode`, L36): the header's Start timer
-// pill, Waiting for you, Decided, and the policy cards when nothing waits.
+// Two tabs under the title: My time (the toolbar, quick add, week strip and
+// entries) and Approvals (N) (this workspace's Waiting for you, then Decided),
+// shown only to someone who can approve here. `?tab=approvals` opens it;
+// without a tab, someone with no time of their own here who can approve
+// lands on Approvals, as does `#waiting` with something waiting.
+// `overview.approver_mode` switches nothing. Owners and admins get a "Time
+// policy" button in the header; only a policy to confirm or a plan notice
+// shows a slim banner under the tabs.
+//
+// Time is per workspace (workspaceGroups.ts): the page follows the sidebar's
+// workspace switcher. Its waiting rows, cards, For choices, entries and
+// policy cards are the open workspace's; personal and agreement time shows in
+// the person's default workspace only, with agreement sheets under "Personal
+// & agreements". The running timer stays global. A workspace where the
+// person has no time gets a calm "not set up" state instead of the page.
 //
 // One-time cards sit above the timer bar: the policy confirm card (owners and
 // admins), the legacy grouping banner and the owner-only plan notice.
@@ -31,11 +44,14 @@
 // changes under the page (another device or tab): then the lists refresh.
 
 import { useQueries, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Play, Plus } from "lucide-react";
+import { Link } from "@tanstack/react-router";
+import { Clock, Play, Plus } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useIsMobile } from "@/hooks/useIsMobile";
 import { useCurrentWorkspace } from "@/hooks/useWorkspaceQueries";
-import { timeErrorMessage } from "@/lib/timeErrors";
+import { isNativeApp } from "@/lib/platform";
+import { isVisibleInApp } from "@/lib/platformSurfaces";
+import { nativeSafe, timeErrorMessage } from "@/lib/timeErrors";
 import { formatLocalDay, formatPeriodRange } from "@/lib/timeFormat";
 import { shiftWeek } from "@/lib/timePeriods";
 import type { TimeForParam, TimePageSearch } from "@/lib/timeSearch";
@@ -46,25 +62,26 @@ import type {
 	TimesheetEventRow,
 	TimesheetSummary,
 } from "@/services/time.types";
+import { DecidedList } from "../approvals/DecidedList";
 import { TimeMonthView } from "../calendar/TimeMonthView";
 import { TimeViewToggle, useTimeViewMode } from "../calendar/TimeViewToggle";
 import { ChangeForDialog } from "../edit/ChangeForDialog";
 import { DeleteEntryModal } from "../edit/DeleteEntryModal";
 import { EditEntryModal } from "../edit/EditEntryModal";
 import { TimeEntryDetailModal } from "../entries/TimeEntryDetailModal";
+import { LoggingScopeProvider } from "../forms/loggingScope";
 import {
 	type ManualEntryDraft,
 	ManualEntryModal,
 } from "../forms/ManualEntryModal";
-import { QuickAddBar } from "../forms/QuickAddBar";
 import { TaskPickerModal } from "../forms/TaskPickerModal";
+import { useLoggableProjects } from "../forms/useLoggableProjects";
 import { TimeReasonCard } from "../shared/TimeReasonCard";
 import { SubmitSheetDialog } from "../sheets/SubmitSheetDialog";
 import { timesheetCardLabel } from "../sheets/TimesheetCard";
 import { useTimesheetActions } from "../sheets/useTimesheetActions";
 import { TimerBar } from "../timer/TimerBar";
 import { useActiveTimer, useRunningEntry } from "../timer/useActiveTimer";
-import { ApproverModeView } from "./ApproverModeView";
 import { DayStrip } from "./DayStrip";
 import {
 	ENTRIES_SECTION_COPY,
@@ -80,20 +97,33 @@ import {
 	planDowngradeApplies,
 	TimePlanBanner,
 } from "./LimitBanner";
-import { PolicyConfirmCard } from "./PolicyConfirmCard";
-import { pickTimeEmptyState, TimeEmptyState } from "./TimeEmptyStates";
+import { PolicyConfirmCard, unconfirmedAdmins } from "./PolicyConfirmCard";
+import {
+	pickTimeEmptyState,
+	TIME_EMPTY_COPY,
+	TimeEmptyState,
+} from "./TimeEmptyStates";
 import { TimeMobileFab } from "./TimeMobileFab";
 import { TimePageHeader } from "./TimePageHeader";
+import { TimePolicyButton } from "./TimePolicyButton";
 import { TimePrefsMenu } from "./TimePrefsMenu";
 import { TimesheetCardsSection } from "./TimesheetCardsSection";
+import { resolveTimeTab, type TimeTab, TimeTabs } from "./TimeTabs";
 import {
 	entriesOnDay,
 	onlyPersonal,
 	useTimePageData,
 	weekParam,
 } from "./useTimePageData";
+import { useTimeWorkspaceScope } from "./useTimeWorkspaceScope";
 import { WAITING_SECTION_ID, WaitingSection } from "./WaitingSection";
 import { WeekNavigator } from "./WeekNavigator";
+import {
+	contextInScope,
+	isPersonalSheet,
+	WORKSPACE_GROUPS_COPY,
+	waitingInScope,
+} from "./workspaceGroups";
 
 export const TIME_PAGE_COPY = {
 	startTimer: "Start timer",
@@ -133,7 +163,18 @@ const PRIMARY =
 const SECONDARY =
 	"inline-flex items-center gap-1.5 rounded-lg border border-border px-3 py-1.5 text-xs font-semibold text-foreground transition-colors hover:bg-muted disabled:cursor-not-allowed disabled:opacity-50";
 
-export function TimePage({
+export function TimePage(props: TimePageProps) {
+	// Everything that creates time here (Start timer, Quick add, Add time,
+	// their For choices) is the open workspace's (workspaceGroups.ts).
+	const { scope } = useTimeWorkspaceScope();
+	return (
+		<LoggingScopeProvider scope={scope}>
+			<TimePageBody {...props} />
+		</LoggingScopeProvider>
+	);
+}
+
+function TimePageBody({
 	search,
 	onSearchChange,
 	hash,
@@ -150,11 +191,16 @@ export function TimePage({
 		for (const item of workspaces ?? []) names[item.id] = item.name;
 		return names;
 	}, [workspaces]);
-	const data = useTimePageData(search, { now, names: myWorkspaceNames });
+	const timeScope = useTimeWorkspaceScope();
+	const scope = timeScope.scope;
+	const data = useTimePageData(search, {
+		now,
+		names: myWorkspaceNames,
+		scope,
+	});
 	const {
 		overview,
 		overviewQuery,
-		approverMode,
 		canLog,
 		zone,
 		week,
@@ -255,6 +301,44 @@ export function TimePage({
 	const currentWorkspaceId = workspacesLoading
 		? undefined
 		: (workspace?.id ?? null);
+	// This workspace's waiting rows, admin items and agreement cards.
+	const rowFilter = useCallback(
+		(row: Parameters<typeof waitingInScope>[0]) => waitingInScope(row, scope),
+		[scope],
+	);
+	const hereAdmins = useMemo(
+		() =>
+			(overview?.workspace_time_admin ?? []).filter(
+				(item) =>
+					!scope.current ||
+					item.workspace_id.toLowerCase() === scope.current.toLowerCase(),
+			),
+		[overview?.workspace_time_admin, scope],
+	);
+	const needsConfirm = unconfirmedAdmins(hereAdmins).length > 0;
+	// The tab: Approvals only for someone who can approve here.
+	const canApprove = timeScope.waitingHere > 0 || hereAdmins.length > 0;
+	const hasOwnTime =
+		(overview?.contexts ?? []).some((context) =>
+			contextInScope(context, scope),
+		) || data.entries.length > 0;
+	const tab: TimeTab = resolveTimeTab({
+		requested: search.tab ?? null,
+		canApprove,
+		hasOwnTime,
+		waitingHere: timeScope.waitingHere,
+		hash,
+	});
+	const setTab = (next: TimeTab) =>
+		onSearchChange({ tab: next }, { replace: true });
+	const workspaceSheets = useMemo(
+		() => data.sheets.filter((sheet) => !isPersonalSheet(sheet)),
+		[data.sheets],
+	);
+	const personalSheets = useMemo(
+		() => data.sheets.filter((sheet) => isPersonalSheet(sheet)),
+		[data.sheets],
+	);
 
 	const fixQuery = useQuery({
 		...timeQueries.timesheet(fixSheet?.id ?? null),
@@ -292,10 +376,7 @@ export function TimePage({
 
 	const governed = Boolean(forRef && forRef.kind !== "personal");
 	const personal = usePersonalWhy(
-		approverMode === false &&
-			canLog === true &&
-			!governed &&
-			onlyPersonal(overview),
+		canLog === true && !governed && onlyPersonal(overview),
 	);
 
 	// The hour-limit indicator, while one governed context is in view.
@@ -305,7 +386,7 @@ export function TimePage({
 			: null;
 	const limitPolicy = useQuery({
 		...timeQueries.projectPolicy(limitProjectId, forRequest),
-		enabled: Boolean(limitProjectId) && approverMode === false,
+		enabled: Boolean(limitProjectId),
 		retry: false,
 	});
 	const limitReadings = limitPolicy.data
@@ -336,8 +417,7 @@ export function TimePage({
 		null;
 	// P1's plan notice is for an owner who tracks time on this workspace's
 	// projects; read only when it could apply (same cached A9 list).
-	const planNoticeCandidate =
-		approverMode === false && canLog === true && workspace?.my_role === "owner";
+	const planNoticeCandidate = canLog === true && workspace?.my_role === "owner";
 	const planProjects = useQuery({
 		...timeQueries.myProjects(data.userId),
 		enabled: planNoticeCandidate,
@@ -405,8 +485,7 @@ export function TimePage({
 	const waitingRef = useRef<HTMLDivElement>(null);
 	const scrolledTo = useRef<string | null>(null);
 	const aboveLoaded =
-		approverMode === true ||
-		(!data.entriesQuery.isPending && !data.sheetsQuery.isPending);
+		!data.entriesQuery.isPending && !data.sheetsQuery.isPending;
 	const scrollToWaiting = useCallback(() => {
 		const el =
 			waitingRef.current ??
@@ -456,7 +535,18 @@ export function TimePage({
 			),
 		[stoppingId, changeTask.pendingId],
 	);
+	// No project to log on in this workspace: nothing to start or add.
+	const loggableHere = useLoggableProjects({ scope });
+	const noProjects = loggableHere.isEmpty;
 	const loggable = canLog === true;
+	const canCreateEntries = loggable && !noProjects;
+	// Any workspace member can start a project (the sidebar's +), on web and
+	// in the app alike.
+	const canAddProject =
+		Boolean(workspace) && isVisibleInApp("/project/new", isNativeApp());
+	const noProjectsWhy = noProjects
+		? TIME_EMPTY_COPY.noProjects(workspace?.name ?? "this workspace")
+		: undefined;
 
 	// ── Render ──
 	const overviewError = overviewQuery.isError ? (
@@ -477,19 +567,20 @@ export function TimePage({
 		/>
 	) : null;
 
+	// One slim banner, only when something needs doing: the policy to
+	// confirm, else the plan notice.
 	const oneTimeCards = (
 		<>
-			<PolicyConfirmCard admins={overview?.workspace_time_admin} />
-			{approverMode === false ? (
-				<>
-					<LegacyGroupingBanner />
-					<TimePlanBanner
-						workspace={workspace}
-						downgraded={planDowngradeApplies(data.weekSheets, workspace?.id)}
-						logsHere={logsHere}
-					/>
-				</>
-			) : null}
+			{needsConfirm ? (
+				<PolicyConfirmCard admins={hereAdmins} />
+			) : (
+				<TimePlanBanner
+					workspace={workspace}
+					downgraded={planDowngradeApplies(data.weekSheets, workspace?.id)}
+					logsHere={logsHere}
+				/>
+			)}
+			<LegacyGroupingBanner />
 		</>
 	);
 
@@ -597,8 +688,8 @@ export function TimePage({
 		</>
 	);
 
-	// Overview still loading: the mode is unknown, so no week flashes for an approver.
-	if (approverMode === null && !overviewQuery.isError) {
+	// Overview still loading: the workspace's Time gate is unknown.
+	if (!overview && !overviewQuery.isError) {
 		return (
 			<div className={PAGE} aria-busy="true">
 				<TimePageHeader />
@@ -613,45 +704,39 @@ export function TimePage({
 		);
 	}
 
-	// ── Approver mode ──
-	if (approverMode === true && overview) {
+	// ── Not set up in this workspace ──
+	if (timeScope.visible === false && overview) {
 		return (
 			<div className={PAGE}>
-				<TimePageHeader
-					action={
-						canLog === false ? null : (
-							<TimerBar
-								variant="pill"
-								onStartTimer={openPicker}
-								onChangeFor={(entry) => setChangingFor([entry])}
-							/>
-						)
-					}
-				/>
-				{overviewError}
-				{oneTimeCards}
-				<ApproverModeView
-					overview={overview}
-					currentWorkspaceId={currentWorkspaceId}
-					floatingBar={!isPhone}
-					now={now}
-					userTimezone={userTimezone}
+				<TimePageHeader />
+				<div className="contents">
+					<TimerBar
+						variant="full"
+						stickyOnMobile={false}
+						onChangeFor={(entry) => setChangingFor([entry])}
+					/>
+				</div>
+				<TimeNotSetUp
+					workspaceName={timeScope.workspaceName}
+					workspaceSlug={workspace?.slug ?? null}
 				/>
 				{modals}
 			</div>
 		);
 	}
 
-	// ── Normal mode ──
-	const waitingCount = overview?.approvals_waiting ?? 0;
+	// ── The page ──
+	const waitingCount = timeScope.waitingHere;
 	return (
 		<div className={cn(PAGE, "pb-28 sm:pb-8")}>
 			<TimePageHeader
-				waitingCount={waitingCount}
-				onShowWaiting={() => {
-					scrollToWaiting();
-				}}
+				action={
+					hereAdmins[0] ? <TimePolicyButton admin={hereAdmins[0]} /> : null
+				}
 			/>
+			{canApprove ? (
+				<TimeTabs value={tab} approvalsCount={waitingCount} onChange={setTab} />
+			) : null}
 			{overviewError}
 			{oneTimeCards}
 
@@ -671,237 +756,362 @@ export function TimePage({
 				<TimerStopBridge stopRef={stopRef} onStopping={setStoppingId} />
 			) : null}
 
-			<div
-				className="flex flex-wrap items-center gap-2"
-				data-testid="time-toolbar"
-			>
-				{loggable ? (
-					<div className="hidden items-center gap-2 sm:flex">
-						<button type="button" className={PRIMARY} onClick={openPicker}>
-							<Play className="h-3.5 w-3.5 fill-current" aria-hidden="true" />
-							{TIME_PAGE_COPY.startTimer}
-						</button>
-						<button
-							type="button"
-							className={SECONDARY}
-							onClick={() => openManual()}
-						>
-							<Plus className="h-3.5 w-3.5" aria-hidden="true" />
-							{TIME_PAGE_COPY.addTime}
-						</button>
-					</div>
-				) : null}
-				<div className="ml-auto flex flex-wrap items-center gap-2">
-					{search.project ? (
-						<span
-							className="inline-flex max-w-[16rem] items-center gap-1 rounded-full bg-muted px-2.5 py-1 text-xs text-foreground"
-							data-testid="project-filter"
-						>
-							<span className="text-muted-foreground">
-								{TIME_PAGE_COPY.project}:
-							</span>
-							<span className="truncate font-semibold">
-								{projectLabel ?? "…"}
-							</span>
-							<button
-								type="button"
-								aria-label={TIME_PAGE_COPY.allProjects}
-								title={TIME_PAGE_COPY.allProjects}
-								onClick={() =>
-									onSearchChange({ project: undefined }, { replace: true })
-								}
-								className="ml-0.5 rounded px-1 text-muted-foreground hover:bg-background hover:text-foreground"
-							>
-								×
-							</button>
-						</span>
-					) : null}
-					<ForFilter
-						value={search.for}
-						options={data.forOptions}
-						onChange={setFor}
-						personal={personal}
-					/>
-					<TimeViewToggle
-						value={listView ? "list" : "month"}
-						onChange={(mode) => {
-							setWeekLinked(false);
-							setStoredView(mode);
-							// Month goes in the URL so a reload keeps it (D86); List is
-							// the default reading, so its URL stays clean.
-							onSearchChange(
-								{ view: mode === "month" ? "month" : undefined },
-								{ replace: true },
-							);
-						}}
-					/>
-				</div>
-			</div>
-
-			{loggable && listView ? (
-				<div className="hidden sm:block">
-					<QuickAddBar projectId={search.project ?? null} day={selectedDay} />
-				</div>
-			) : null}
-
-			{listView ? (
-				<>
-					<div className="space-y-3 rounded-2xl border border-border bg-card p-3 sm:p-4">
-						<WeekNavigator
-							week={week}
-							isCurrentWeek={isCurrentWeek}
-							onPrevious={() => goWeek(-1)}
-							onNext={() => goWeek(1)}
-							onThisWeek={goThisWeek}
-							zoneText={data.zoneText}
-							settings={<TimePrefsMenu />}
-						/>
-						<DayStrip
-							entries={data.entries}
-							week={week}
-							timeZone={zone.timezone}
-							today={today}
-							selectedDay={selectedDay}
-							onSelectDay={(day) => {
-								setFixSheet(null);
-								setSelectedDay(day);
-							}}
-							loading={data.entriesQuery.isPending}
-							zoneText={data.zoneText}
-							nowMs={now ? now.getTime() : undefined}
-						/>
-					</div>
-
-					<LimitBanner readings={limitReadings} />
-
-					<TimesheetCardsSection
-						sheets={data.sheets}
-						loading={data.sheetsQuery.isPending}
-						error={data.sheetsQuery.isError ? data.sheetsQuery.error : null}
-						onRetry={() => void data.sheetsQuery.refetch()}
-						onSubmit={setSubmitting}
-						onFix={(sheet) => {
-							setSelectedDay(null);
-							setFixSheet(sheet);
-						}}
-						onWithdraw={(sheet) => void sheetActions.withdraw(sheet)}
-						isBusy={(id) => sheetActions.isPending(undefined, id)}
-						names={data.sheetNames}
-						events={sheetEvents}
-						workspaceNames={workspaceNames}
-						fixingId={fixSheet?.id ?? null}
-						reminderDays={data.sheetReminders}
+			{tab === "approvals" ? (
+				<div className="space-y-6" role="tabpanel" data-testid="time-approvals">
+					<WaitingSection
+						ref={waitingRef}
+						approverMode
+						count={waitingCount}
+						emptyText={TIME_EMPTY_COPY.caughtUp}
+						rowFilter={rowFilter}
+						currentWorkspaceId={currentWorkspaceId}
+						floatingBar={!isPhone}
 						now={now}
 						userTimezone={userTimezone}
 					/>
-
-					<EntriesSection
-						entries={listEntries}
-						loading={
-							fixSheet ? fixQuery.isPending : data.entriesQuery.isPending
-						}
-						error={
-							fixSheet
-								? fixQuery.isError
-									? fixQuery.error
-									: null
-								: data.entriesQuery.isError
-									? data.entriesQuery.error
-									: null
-						}
-						onRetry={() =>
-							void (fixSheet ? fixQuery.refetch() : data.entriesQuery.refetch())
-						}
-						timeZone={zone.timezone}
-						sheets={tableSheets}
-						day={
-							selectedDay && !fixSheet
-								? {
-										date: selectedDay,
-										label: formatLocalDay(selectedDay, { weekday: true, now }),
-									}
-								: null
-						}
-						onClearDay={() => setSelectedDay(null)}
-						fixing={fixing}
-						onClearFix={() => setFixSheet(null)}
-						empty={
-							<TimeEmptyState {...pickTimeEmptyState(overview, { filtered })} />
-						}
-						pendingIds={pendingIds}
-						selectedIds={selected}
-						onSelectionChange={setSelected}
-						onOpenEntry={(entry, options) =>
-							openDetail(entry, { focus: options?.focus })
-						}
-						// Stop only the row's own timer. A row still showing a timer
-						// that stopped or switched elsewhere is stale: refresh it,
-						// never stop a timer the person didn't click.
-						onStop={(entry) => {
-							if (running?.id === entry.id) stopRef.current?.();
-							else void invalidateTime(queryClient, "entry");
-						}}
-						onEdit={setEditing}
-						onChangeTask={setChangingTask}
-						onChangeFor={setChangingFor}
-						onDelete={setDeleting}
-						onOpenTask={onOpenTask}
-						canOpenTask={(entry) =>
-							Boolean(
-								onOpenTask &&
-									entry.task_id &&
-									entry.project_id &&
-									entry.content !== "hidden",
-							)
-						}
+					<DecidedList
+						rowFilter={rowFilter}
+						currentWorkspaceId={currentWorkspaceId}
+						now={now}
+						userTimezone={userTimezone}
 					/>
-				</>
+				</div>
 			) : (
-				<TimeMonthView
-					timeZone={zone.timezone}
-					weekStart={zone.weekStart}
-					month={search.week ?? today}
-					// The month's ‹ › pass its 1st and keep `?view=month`, so a
-					// reload stays in Month (D86). Back in this month the week
-					// drops, so List opens on this week.
-					onMonthChange={(date) =>
-						onSearchChange(
-							{
-								week: date.slice(0, 7) === today.slice(0, 7) ? undefined : date,
-								view: "month",
-							},
-							{ replace: true },
-						)
-					}
-					forRef={forRequest}
-					projectId={search.project ?? null}
-					timesheets={data.weekSheets}
-					onOpenEntry={(entry, ctx) =>
-						openDetail(entry, { focus: ctx.focus, zIndex: ctx.zIndex })
-					}
-					onAddTimeForDay={
-						loggable ? (date) => openManual({ day: date }) : undefined
-					}
-					onStartTimer={loggable ? openPicker : undefined}
-				/>
+				<>
+					<div
+						className="flex flex-wrap items-center gap-2"
+						data-testid="time-toolbar"
+					>
+						{loggable ? (
+							<div className="hidden items-center gap-2 sm:flex">
+								<button
+									type="button"
+									className={PRIMARY}
+									onClick={openPicker}
+									disabled={noProjects}
+									title={noProjectsWhy}
+								>
+									<Play
+										className="h-3.5 w-3.5 fill-current"
+										aria-hidden="true"
+									/>
+									{TIME_PAGE_COPY.startTimer}
+								</button>
+								<button
+									type="button"
+									className={SECONDARY}
+									onClick={() => openManual()}
+									disabled={noProjects}
+									title={noProjectsWhy}
+								>
+									<Plus className="h-3.5 w-3.5" aria-hidden="true" />
+									{TIME_PAGE_COPY.addTime}
+								</button>
+							</div>
+						) : null}
+						<div className="ml-auto flex flex-wrap items-center gap-2">
+							{search.project ? (
+								<span
+									className="inline-flex max-w-[16rem] items-center gap-1 rounded-full bg-muted px-2.5 py-1 text-xs text-foreground"
+									data-testid="project-filter"
+								>
+									<span className="text-muted-foreground">
+										{TIME_PAGE_COPY.project}:
+									</span>
+									<span className="truncate font-semibold">
+										{projectLabel ?? "…"}
+									</span>
+									<button
+										type="button"
+										aria-label={TIME_PAGE_COPY.allProjects}
+										title={TIME_PAGE_COPY.allProjects}
+										onClick={() =>
+											onSearchChange({ project: undefined }, { replace: true })
+										}
+										className="ml-0.5 rounded px-1 text-muted-foreground hover:bg-background hover:text-foreground"
+									>
+										×
+									</button>
+								</span>
+							) : null}
+							<ForFilter
+								value={search.for}
+								options={data.forOptions}
+								onChange={setFor}
+								personal={personal}
+							/>
+							<TimeViewToggle
+								value={listView ? "list" : "month"}
+								onChange={(mode) => {
+									setWeekLinked(false);
+									setStoredView(mode);
+									// Month goes in the URL so a reload keeps it (D86); List is
+									// the default reading, so its URL stays clean.
+									onSearchChange(
+										{ view: mode === "month" ? "month" : undefined },
+										{ replace: true },
+									);
+								}}
+							/>
+						</div>
+					</div>
+
+					{listView ? (
+						<>
+							<div className="space-y-3 rounded-2xl border border-border bg-card p-3 sm:p-4">
+								<WeekNavigator
+									week={week}
+									isCurrentWeek={isCurrentWeek}
+									onPrevious={() => goWeek(-1)}
+									onNext={() => goWeek(1)}
+									onThisWeek={goThisWeek}
+									zoneText={data.zoneText}
+									settings={<TimePrefsMenu />}
+								/>
+								<DayStrip
+									entries={data.entries}
+									week={week}
+									timeZone={zone.timezone}
+									today={today}
+									selectedDay={selectedDay}
+									onSelectDay={(day) => {
+										setFixSheet(null);
+										setSelectedDay(day);
+									}}
+									loading={data.entriesQuery.isPending}
+									zoneText={data.zoneText}
+									nowMs={now ? now.getTime() : undefined}
+								/>
+							</div>
+
+							<LimitBanner readings={limitReadings} />
+
+							<TimesheetCardsSection
+								sheets={workspaceSheets}
+								loading={data.sheetsQuery.isPending}
+								error={data.sheetsQuery.isError ? data.sheetsQuery.error : null}
+								onRetry={() => void data.sheetsQuery.refetch()}
+								onSubmit={setSubmitting}
+								onFix={(sheet) => {
+									setSelectedDay(null);
+									setFixSheet(sheet);
+								}}
+								onWithdraw={(sheet) => void sheetActions.withdraw(sheet)}
+								isBusy={(id) => sheetActions.isPending(undefined, id)}
+								names={data.sheetNames}
+								events={sheetEvents}
+								workspaceNames={workspaceNames}
+								fixingId={fixSheet?.id ?? null}
+								reminderDays={data.sheetReminders}
+								now={now}
+								userTimezone={userTimezone}
+							/>
+
+							{scope.isDefault && personalSheets.length > 0 ? (
+								<section
+									data-testid="time-personal-section"
+									aria-label={WORKSPACE_GROUPS_COPY.personal}
+									className="space-y-2"
+								>
+									<h2 className="text-sm font-semibold text-foreground">
+										{WORKSPACE_GROUPS_COPY.personal}
+									</h2>
+									<TimesheetCardsSection
+										sheets={personalSheets}
+										onSubmit={setSubmitting}
+										onFix={(sheet) => {
+											setSelectedDay(null);
+											setFixSheet(sheet);
+										}}
+										onWithdraw={(sheet) => void sheetActions.withdraw(sheet)}
+										isBusy={(id) => sheetActions.isPending(undefined, id)}
+										names={data.sheetNames}
+										events={sheetEvents}
+										workspaceNames={workspaceNames}
+										fixingId={fixSheet?.id ?? null}
+										reminderDays={data.sheetReminders}
+										now={now}
+										userTimezone={userTimezone}
+									/>
+								</section>
+							) : null}
+
+							<EntriesSection
+								entries={listEntries}
+								loading={
+									fixSheet ? fixQuery.isPending : data.entriesQuery.isPending
+								}
+								error={
+									fixSheet
+										? fixQuery.isError
+											? fixQuery.error
+											: null
+										: data.entriesQuery.isError
+											? data.entriesQuery.error
+											: null
+								}
+								onRetry={() =>
+									void (fixSheet
+										? fixQuery.refetch()
+										: data.entriesQuery.refetch())
+								}
+								timeZone={zone.timezone}
+								sheets={tableSheets}
+								day={
+									selectedDay && !fixSheet
+										? {
+												date: selectedDay,
+												label: formatLocalDay(selectedDay, {
+													weekday: true,
+													now,
+												}),
+											}
+										: null
+								}
+								onClearDay={() => setSelectedDay(null)}
+								fixing={fixing}
+								onClearFix={() => setFixSheet(null)}
+								empty={
+									noProjects && !filtered && loggable ? (
+										<TimeEmptyState
+											kind="no_projects"
+											label={workspace?.name ?? undefined}
+											action={
+												canAddProject ? (
+													<Link
+														to="/project/new"
+														search={{ roadmapId: undefined }}
+														className={PRIMARY}
+													>
+														{TIME_EMPTY_COPY.createProject}
+													</Link>
+												) : (
+													<span>{TIME_EMPTY_COPY.askOwner}</span>
+												)
+											}
+										/>
+									) : (
+										<TimeEmptyState
+											{...pickTimeEmptyState(overview, { filtered })}
+											onStartTimer={canCreateEntries ? openPicker : undefined}
+											onAddTime={
+												canCreateEntries ? () => openManual() : undefined
+											}
+										/>
+									)
+								}
+								pendingIds={pendingIds}
+								selectedIds={selected}
+								onSelectionChange={setSelected}
+								onOpenEntry={(entry, options) =>
+									openDetail(entry, { focus: options?.focus })
+								}
+								// Stop only the row's own timer. A row still showing a timer
+								// that stopped or switched elsewhere is stale: refresh it,
+								// never stop a timer the person didn't click.
+								onStop={(entry) => {
+									if (running?.id === entry.id) stopRef.current?.();
+									else void invalidateTime(queryClient, "entry");
+								}}
+								onEdit={setEditing}
+								onChangeTask={setChangingTask}
+								onChangeFor={setChangingFor}
+								onDelete={setDeleting}
+								onOpenTask={onOpenTask}
+								canOpenTask={(entry) =>
+									Boolean(
+										onOpenTask &&
+											entry.task_id &&
+											entry.project_id &&
+											entry.content !== "hidden",
+									)
+								}
+							/>
+						</>
+					) : (
+						<TimeMonthView
+							timeZone={zone.timezone}
+							weekStart={zone.weekStart}
+							month={search.week ?? today}
+							// The month's ‹ › pass its 1st and keep `?view=month`, so a
+							// reload stays in Month (D86). Back in this month the week
+							// drops, so List opens on this week.
+							onMonthChange={(date) =>
+								onSearchChange(
+									{
+										week:
+											date.slice(0, 7) === today.slice(0, 7) ? undefined : date,
+										view: "month",
+									},
+									{ replace: true },
+								)
+							}
+							forRef={forRequest}
+							projectId={search.project ?? null}
+							timesheets={data.weekSheets}
+							onOpenEntry={(entry, ctx) =>
+								openDetail(entry, { focus: ctx.focus, zIndex: ctx.zIndex })
+							}
+							onAddTimeForDay={
+								canCreateEntries
+									? (date) => openManual({ day: date })
+									: undefined
+							}
+							onStartTimer={canCreateEntries ? openPicker : undefined}
+						/>
+					)}
+
+					{canCreateEntries ? (
+						<TimeMobileFab
+							onStartTimer={openPicker}
+							onAddTime={() => openManual()}
+						/>
+					) : null}
+				</>
 			)}
-
-			<WaitingSection
-				ref={waitingRef}
-				count={waitingCount}
-				currentWorkspaceId={currentWorkspaceId}
-				floatingBar={!isPhone}
-				now={now}
-				userTimezone={userTimezone}
-			/>
-
-			{loggable ? (
-				<TimeMobileFab
-					onStartTimer={openPicker}
-					onAddTime={() => openManual()}
-				/>
-			) : null}
 			{modals}
+		</div>
+	);
+}
+
+/** A workspace where the person has no time: a calm line, not a 404. */
+function TimeNotSetUp({
+	workspaceName,
+	workspaceSlug,
+}: {
+	workspaceName: string | null;
+	workspaceSlug: string | null;
+}) {
+	const name = workspaceName?.trim() || "this workspace";
+	return (
+		<div
+			role="status"
+			data-testid="time-not-set-up"
+			className="rounded-2xl border border-dashed border-border bg-card px-6 py-10 text-center text-card-foreground"
+		>
+			<div
+				aria-hidden="true"
+				className="mx-auto mb-3 inline-flex h-11 w-11 items-center justify-center rounded-full bg-muted text-muted-foreground"
+			>
+				<Clock className="h-5 w-5" />
+			</div>
+			<p className="mx-auto max-w-md text-sm font-medium text-foreground">
+				{nativeSafe(WORKSPACE_GROUPS_COPY.notSetUp(name))}
+			</p>
+			<p className="mx-auto mt-1 max-w-md text-sm text-muted-foreground">
+				{WORKSPACE_GROUPS_COPY.notSetUpDetail}
+			</p>
+			{workspaceSlug ? (
+				<div className="mt-5 flex justify-center">
+					<Link
+						to="/w/$workspaceSlug/dashboard"
+						params={{ workspaceSlug }}
+						className={SECONDARY}
+					>
+						{WORKSPACE_GROUPS_COPY.dashboard}
+					</Link>
+				</div>
+			) : null}
 		</div>
 	);
 }
