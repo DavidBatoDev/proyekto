@@ -16,8 +16,8 @@ export const Route = createFileRoute("/w/$workspaceSlug/settings")({
 function WorkspaceSettingsRouteLayout() {
 	return (
 		<ProtectedRoute loadingFallback={null}>
-			<div className="app-shell-bg flex min-h-screen bg-background pt-app-header text-foreground">
-				<div className="min-w-0 flex-1">
+			<div className="app-shell-bg flex h-dvh overflow-hidden bg-background pt-app-header text-foreground">
+				<div className="min-h-0 min-w-0 flex-1">
 					<WorkspaceSettingsLayout>
 						<Outlet />
 					</WorkspaceSettingsLayout>

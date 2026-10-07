@@ -68,7 +68,7 @@ export function WorkspaceSettingsLayout({
 
 	return (
 		<div className="flex h-full min-h-0 overflow-hidden">
-			<aside className="hidden h-full w-[248px] shrink-0 border-r border-border md:flex">
+			<aside className="hidden h-full w-[248px] shrink-0 border-r border-border bg-sidebar md:flex">
 				<div className="flex w-full flex-col overflow-y-auto px-3 pb-6 pt-7">
 					<WorkspaceIdentity
 						name={workspaceName}
