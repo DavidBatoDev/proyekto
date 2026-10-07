@@ -580,7 +580,14 @@ export const DOC_ARTICLES: DocArticle[] = [
 		description:
 			"A full calendar inside Proyekto — day, week, month and year views, click a slot to create, and a scheduler that handles timezones, video links and guests.",
 		updated: UPDATED,
-		keywords: ["calendar", "schedule", "call", "jitsi", "zoom", "timezone"],
+		keywords: [
+			"calendar",
+			"schedule",
+			"call",
+			"google meet",
+			"zoom",
+			"timezone",
+		],
 		related: ["recurring-meetings", "google-calendar", "notifications"],
 	},
 	{

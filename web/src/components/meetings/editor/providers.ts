@@ -1,7 +1,8 @@
 /**
- * Video-conferencing provider identity. We keep the backend storing only
- * none/jitsi/external_link, and *derive* the brand of a pasted link from its URL
- * host purely for display (logo + label) — no enum change needed.
+ * Video-conferencing provider identity. The backend stores only how a link was
+ * made (none / external_link / google_meet); the brand of a pasted link is
+ * *derived* from its URL host purely for display (logo + label). Jitsi stays
+ * recognisable because meetings created before 2026-10-07 carry Jitsi rooms.
  */
 export type ProviderId = "jitsi" | "google_meet" | "zoom" | "teams" | "other";
 

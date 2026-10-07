@@ -1,8 +1,9 @@
 /**
- * Video-conferencing selector: auto-generate a Jitsi room, paste an external
- * link (Google Meet / Zoom / Teams / other — brand auto-detected from the URL
- * and shown with its logo), or no video. Stores a VideoOption + meeting_url;
- * the brand is display-only (see providers.ts).
+ * Video-conferencing selector: a Google Meet link created on the organizer's
+ * Google Calendar (when the integration is enabled), a pasted external link
+ * (Google Meet / Zoom / Teams / other — brand auto-detected from the URL and
+ * shown with its logo), or no video. Stores a VideoOption + meeting_url; the
+ * brand is display-only (see providers.ts).
  */
 import { isNativeApp } from "@/lib/platform";
 import type {
@@ -11,7 +12,6 @@ import type {
 } from "@/services/meetings.service";
 import {
 	GoogleMeetLogo,
-	JitsiLogo,
 	OtherProviderLogo,
 	ProviderLogo,
 	TeamsLogo,
@@ -44,14 +44,6 @@ export function VideoProviderPicker({
 
 	return (
 		<div className="space-y-2">
-			<OptionCard
-				selected={option === "jitsi"}
-				onSelect={() => onOptionChange("jitsi")}
-				icon={<JitsiLogo className="h-6 w-6" />}
-				label="Generate a video room"
-				hint="A private Jitsi link is created automatically — no account needed."
-			/>
-
 			{googleStatus?.enabled && (
 				<OptionCard
 					selected={option === "google_meet"}

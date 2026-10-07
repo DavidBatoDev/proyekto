@@ -38,11 +38,15 @@ export const MEETING_STATUSES = [
 ] as const;
 export type MeetingStatus = (typeof MEETING_STATUSES)[number];
 
-// How the join link is produced. 'jitsi' auto-generates a no-auth room,
-// 'external_link' stores an organizer-pasted URL, 'none' has no video,
-// 'google_meet' provisions a real Meet link via the organizer's connected
-// Google account (runtime-gated: rejected unless GOOGLE_OAUTH is enabled AND the
-// organizer is connected — see MeetingsService.provisionVideo).
+// How the join link is produced. 'external_link' stores an organizer-pasted
+// URL, 'none' has no video, 'google_meet' provisions a real Meet link via the
+// organizer's connected Google account (runtime-gated: rejected unless
+// GOOGLE_OAUTH is enabled AND the organizer is connected — see
+// MeetingsService.provisionVideo).
+//
+// 'jitsi' is legacy: meetings created before 2026-10-07 got an auto-generated
+// Jitsi room and keep it. It is still accepted as input so a stale client can
+// re-save such a meeting without losing its link, but it never creates a room.
 export const VIDEO_OPTIONS = [
   'none',
   'jitsi',

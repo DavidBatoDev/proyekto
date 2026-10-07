@@ -18,11 +18,13 @@ export type MeetingType =
 	| "consultant_freelancer"
 	| "consultation";
 
+// "jitsi" only appears on meetings created before 2026-10-07 (rooms are no
+// longer generated); the editor shows those as a pasted link.
 export type VideoProvider = "none" | "external_link" | "jitsi" | "google_meet";
 
 // Editor-selectable options. 'google_meet' is only offered when Google OAuth is
 // enabled AND the organizer has connected their account (see googleCalendar).
-export type VideoOption = "none" | "jitsi" | "external_link" | "google_meet";
+export type VideoOption = "none" | "external_link" | "google_meet";
 
 export type ParticipantResponse =
 	| "pending"

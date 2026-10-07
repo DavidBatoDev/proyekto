@@ -119,7 +119,7 @@ describe('MeetingsService', () => {
     );
   });
 
-  it('auto-generates a Jitsi room when no video option or url is given', async () => {
+  it('creates no video link when no video option or url is given', async () => {
     repo.create.mockResolvedValue(baseMeeting());
     repo.findById.mockResolvedValue(baseMeeting());
 
@@ -131,10 +131,8 @@ describe('MeetingsService', () => {
     });
 
     const createArg = repo.create.mock.calls[0][0];
-    expect(createArg.video_provider).toBe('jitsi');
-    expect(createArg.meeting_url).toMatch(
-      /^https:\/\/meet\.jit\.si\/proyekto-/,
-    );
+    expect(createArg.video_provider).toBe('none');
+    expect(createArg.meeting_url).toBeNull();
     expect(createArg.ends_at).toBe('2026-07-10T10:30:00.000Z');
 
     // Host + exactly one deduped invitee (creator not re-added as attendee).
@@ -289,6 +287,59 @@ describe('MeetingsService', () => {
         type_name: 'meeting_invited',
       }),
     );
+  });
+
+  it('treats legacy jitsi input on create as no video (no room is generated)', async () => {
+    repo.create.mockResolvedValue(baseMeeting());
+    repo.findById.mockResolvedValue(baseMeeting());
+
+    await service.create('user-1', {
+      title: 'Sync',
+      type: 'status_sync',
+      scheduled_at: '2026-07-10T10:00:00.000Z',
+      video_option: 'jitsi',
+    });
+
+    const createArg = repo.create.mock.calls[0][0];
+    expect(createArg.video_provider).toBe('none');
+    expect(createArg.meeting_url).toBeNull();
+  });
+
+  it('keeps an existing Jitsi link when a meeting is re-saved with it', async () => {
+    const legacy = baseMeeting({
+      video_provider: 'jitsi',
+      meeting_url: 'https://meet.jit.si/proyekto-old',
+    });
+    repo.findById.mockResolvedValue(legacy);
+    repo.update.mockResolvedValue(legacy);
+
+    await service.updateDetails('user-1', 'm1', {
+      title: 'Renamed',
+      video_option: 'jitsi',
+    });
+
+    const patch = repo.update.mock.calls[0][1];
+    expect(patch).not.toHaveProperty('video_provider');
+    expect(patch).not.toHaveProperty('meeting_url');
+  });
+
+  it('keeps an existing Jitsi URL as a pasted link when switched to external_link', async () => {
+    const legacy = baseMeeting({
+      video_provider: 'jitsi',
+      meeting_url: 'https://meet.jit.si/proyekto-old',
+    });
+    repo.findById.mockResolvedValue(legacy);
+    repo.update.mockResolvedValue(legacy);
+
+    await service.updateDetails('user-1', 'm1', {
+      video_option: 'external_link',
+      meeting_url: 'https://meet.jit.si/proyekto-old',
+    });
+
+    expect(repo.update.mock.calls[0][1]).toMatchObject({
+      video_provider: 'external_link',
+      meeting_url: 'https://meet.jit.si/proyekto-old',
+    });
   });
 
   it('updateDetails refuses a non-manager', async () => {

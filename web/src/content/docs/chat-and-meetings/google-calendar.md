@@ -43,8 +43,9 @@ Two things, both in the same direction — out of Proyekto, into Google:
 - **Google Meet links can be created at the moment you schedule.** Choose Meet
   as the video provider in the editor and the room is generated with the
   meeting, and carried on the meeting record. It is one of the video options
-  described in [Meetings](/docs/chat-and-meetings/meetings), alongside a room
-  Proyekto creates itself and pasting a link you already have.
+  described in [Meetings](/docs/chat-and-meetings/meetings), alongside pasting
+  a link you already have, and new meetings start on it while you are
+  connected.
 
 Later changes you make in Proyekto — a new time, a new title, a cancellation —
 are reflected on the Google event.
@@ -114,8 +115,8 @@ You can disconnect at any time, and it is a clean operation:
   Google.
 - **Meet links already created keep working.** They are Google's rooms, and they
   are unaffected by whether Proyekto is still connected.
-- **New meetings fall back to the other video options** — a room Proyekto
-  creates, a link you paste, or none.
+- **New meetings fall back to the other video options** — a link you paste,
+  or none.
 - **Your Google events disappear from Meetings.** Proyekto stops reading your
   calendar the moment you disconnect.
 

@@ -1,6 +1,6 @@
 /**
  * Google-Calendar-style event editor (create + edit). Replaces the basic
- * BookMeetingModal: separate start-date / start-time / end-time, an IANA
+ * old booking modal: separate start-date / start-time / end-time, an IANA
  * timezone picker (DST-correct wall-clock → UTC via lib/datetime), a branded
  * video-provider picker, member + external-email guests, location, description,
  * and a reminder. Recurrence lands in a later phase.
@@ -132,14 +132,13 @@ function initialState(
 			startTime: start.time,
 			endTime: end.time,
 			timezone: tz,
+			// A legacy Jitsi room (or any other link) is edited as a pasted link.
 			videoOption:
-				meeting.video_provider === "none"
-					? "none"
-					: meeting.video_provider === "jitsi"
-						? "jitsi"
-						: meeting.video_provider === "google_meet"
-							? "google_meet"
-							: "external_link",
+				meeting.video_provider === "google_meet"
+					? "google_meet"
+					: meeting.meeting_url
+						? "external_link"
+						: "none",
 			meetingUrl: meeting.meeting_url ?? "",
 			selectedMembers: (meeting.participants ?? [])
 				.filter((p) => p.user_id && p.role !== "host")
@@ -161,7 +160,8 @@ function initialState(
 		startTime: format(start, "HH:mm"),
 		endTime: format(addMinutes(start, 30), "HH:mm"),
 		timezone: localTimeZone(),
-		videoOption: "jitsi",
+		// Upgraded to Google Meet once we know the organizer is connected.
+		videoOption: "none",
 		meetingUrl: "",
 		selectedMembers: [],
 		guestEmails: [],
@@ -198,6 +198,8 @@ export function MeetingEditorModal({
 	// Only query Google status while the editor is open; drives the Meet option.
 	const { data: googleStatus } = useGoogleCalendarStatus(open);
 	const googleConnect = useConnectGoogleCalendar("/meetings");
+	// Whether the organizer picked a video option themselves on this open.
+	const videoTouched = useRef(false);
 
 	// Re-seed the form whenever the modal opens (or its target changes).
 	// biome-ignore lint/correctness/useExhaustiveDependencies: re-seed on open/target only.
@@ -206,8 +208,20 @@ export function MeetingEditorModal({
 			setForm(initialState(meeting, defaultType, defaultStart));
 			setEmailDraft("");
 			setErrorMessage(null);
+			videoTouched.current = false;
 		}
 	}, [open, meeting?.id]);
+
+	// New meetings default to Google Meet when the organizer has Google Calendar
+	// connected (status loads after the modal opens), unless they already chose.
+	const googleReady = Boolean(googleStatus?.enabled && googleStatus.connected);
+	useEffect(() => {
+		if (open && !meeting && googleReady && !videoTouched.current) {
+			setForm((f) =>
+				f.videoOption === "none" ? { ...f, videoOption: "google_meet" } : f,
+			);
+		}
+	}, [open, meeting?.id, googleReady]);
 
 	const set = <K extends keyof FormState>(key: K, value: FormState[K]) =>
 		setForm((f) => ({ ...f, [key]: value }));
@@ -455,7 +469,10 @@ export function MeetingEditorModal({
 							<VideoProviderPicker
 								option={form.videoOption}
 								meetingUrl={form.meetingUrl}
-								onOptionChange={(o) => set("videoOption", o)}
+								onOptionChange={(o) => {
+									videoTouched.current = true;
+									set("videoOption", o);
+								}}
 								onUrlChange={(u) => set("meetingUrl", u)}
 								googleStatus={googleStatus}
 								googleConnecting={googleConnect.connecting}

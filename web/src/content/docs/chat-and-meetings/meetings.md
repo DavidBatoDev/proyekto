@@ -49,18 +49,19 @@ before, an hour, a day, or none.
 
 Pick a provider in the editor and the meeting carries a joinable link:
 
-- **A room created by Proyekto** — choose this and a video room is generated
-  when the meeting is created. Nothing to set up, no account needed, and the
-  link goes out with the meeting.
+- **Google Meet** — if you have connected Google Calendar, Proyekto creates a
+  Meet link for the meeting on your Google Calendar and emails your guests a
+  calendar invite. New meetings start on this option when you are connected.
+  See [Google Calendar and Meet](/docs/chat-and-meetings/google-calendar).
 - **An existing link** — paste a Google Meet, Zoom or Teams URL you already
   have. Proyekto stores it and shows it on the meeting; it does not manage that
   call for you.
-- **None** — for anything happening in a room, or by phone.
+- **None** — for anything happening in a room, or by phone. New meetings start
+  here when Google Calendar isn't connected.
 
-If the optional Google integration is switched on for your workspace *and* you
-have connected your account, Proyekto can also create a Meet link for you at the
-same moment. That integration may simply not be enabled — see [Google Calendar
-and Meet](/docs/chat-and-meetings/google-calendar) before planning around it.
+Meetings scheduled before October 2026 may carry a video room Proyekto used to
+create automatically. Those links keep working, and the editor shows them as an
+existing link.
 
 ## Guests
 

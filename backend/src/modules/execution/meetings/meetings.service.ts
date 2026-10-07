@@ -1,4 +1,3 @@
-import { randomUUID } from 'node:crypto';
 import {
   BadGatewayException,
   BadRequestException,
@@ -992,9 +991,9 @@ export class MeetingsService {
       timeChanged = true;
     }
 
-    // Video option change. Keep an existing Jitsi room / Google Meet event when
-    // the provider is unchanged; switching to google_meet creates a fresh event,
-    // switching away best-effort deletes the old one.
+    // Video option change. Keep an existing (legacy) Jitsi room / Google Meet
+    // event when the provider is unchanged; switching to google_meet creates a
+    // fresh event, switching away best-effort deletes the old one.
     if (dto.video_option !== undefined) {
       const effectiveStart = patch.scheduled_at ?? meeting.scheduled_at;
       const effectiveEnd = patch.ends_at ?? meeting.ends_at ?? effectiveStart;
@@ -1071,8 +1070,10 @@ export class MeetingsService {
     videoProvider: VideoOption;
     meetingUrl: string | null;
   } {
+    // No option and no link means no video. 'jitsi' is legacy input from a
+    // stale client: rooms are no longer generated, so it also means no video.
     const option: VideoOption =
-      input.video_option ?? (input.meeting_url ? 'external_link' : 'jitsi');
+      input.video_option ?? (input.meeting_url ? 'external_link' : 'none');
 
     if (option === 'external_link') {
       if (!input.meeting_url) {
@@ -1082,17 +1083,7 @@ export class MeetingsService {
       }
       return { videoProvider: 'external_link', meetingUrl: input.meeting_url };
     }
-    if (option === 'none') {
-      return { videoProvider: 'none', meetingUrl: null };
-    }
-    return { videoProvider: 'jitsi', meetingUrl: this.generateJitsiRoom() };
-  }
-
-  private generateJitsiRoom(): string {
-    const base = this.config
-      .get<string>('JITSI_BASE_URL', 'https://meet.jit.si')
-      .replace(/\/+$/, '');
-    return `${base}/proyekto-${randomUUID()}`;
+    return { videoProvider: 'none', meetingUrl: null };
   }
 
   // ── Google Calendar integration ─────────────────────────────────────────────
@@ -1161,7 +1152,7 @@ export class MeetingsService {
 
   /**
    * Resolve video fields when the option changes on edit. Returns null to leave
-   * the video untouched (unchanged Jitsi room / Google event). Switching to
+   * the video untouched (unchanged legacy Jitsi room / Google event). Switching to
    * google_meet creates a fresh event; switching away best-effort deletes the
    * previous one.
    */
@@ -1215,7 +1206,8 @@ export class MeetingsService {
       );
     }
 
-    // jitsi / external_link / none — resolve synchronously; drop any old event.
+    // external_link / none (or legacy jitsi) — resolve synchronously; drop any
+    // old event.
     const resolved = this.resolveVideo({
       video_option: dto.video_option,
       meeting_url: dto.meeting_url,

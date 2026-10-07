@@ -302,13 +302,6 @@ class EnvironmentVariables {
   @IsString()
   OTA_PUBLISH_TOKEN?: string;
 
-  // Base URL for auto-generated no-auth video rooms (meeting scheduling). Each
-  // Jitsi meeting gets a unique room under this host. Unset = the public
-  // meet.jit.si instance, so the feature works with no secrets or config.
-  @IsOptional()
-  @IsString()
-  JITSI_BASE_URL: string = 'https://meet.jit.si';
-
   // Shared secret guarding the scheduler-triggered meeting reminder endpoint
   // (POST /api/meetings/cron/reminders, sent as the `x-cron-secret` header).
   // Unset = the endpoint denies all callers (reminders simply aren't delivered).
