@@ -198,6 +198,10 @@ export class TimeMeService {
       });
     }
 
+    const names = await this.workspaceNames(
+      listed.map(({ row }) => row.workspace_id),
+    );
+
     const projects: LoggableProject[] = [];
     listed.forEach(({ row, last }, i) => {
       const r = resolved[i];
@@ -207,6 +211,9 @@ export class TimeMeService {
         id: row.id,
         title: row.title ?? 'Untitled project',
         workspace_id: row.workspace_id ?? null,
+        workspace_name: row.workspace_id
+          ? (names.get(row.workspace_id) ?? null)
+          : null,
         options: r.options.length,
         default_kind: pick?.kind ?? null,
         status: row.status ?? null,
@@ -284,6 +291,36 @@ export class TimeMeService {
       }
     }
     return [...logs];
+  }
+
+  /** Workspace names for the listed projects. Best effort: a failed read logs and leaves the names out, since
+   *  the label only decorates "Shared with you" projects and must never cost the caller the picker. */
+  private async workspaceNames(
+    ids: (string | null)[],
+  ): Promise<Map<string, string>> {
+    const names = new Map<string, string>();
+    const unique = [...new Set(ids.filter((id): id is string => !!id))];
+    if (unique.length === 0) return names;
+    try {
+      for (const part of chunks(unique)) {
+        const { data, error } = await this.sb
+          .from('workspaces')
+          .select('id, name')
+          .in('id', part);
+        if (error) throw new Error(error.message);
+        for (const row of (data ?? []) as {
+          id: string;
+          name: string | null;
+        }[]) {
+          if (row.name) names.set(row.id, row.name);
+        }
+      }
+    } catch (error) {
+      this.logger.warn(
+        `time_me_projects_workspace_names_failed: ${error instanceof Error ? error.message : String(error)}`,
+      );
+    }
+    return names;
   }
 
   private async loadProjects(ids: string[]): Promise<ProjectRow[]> {

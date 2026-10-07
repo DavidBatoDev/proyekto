@@ -124,6 +124,9 @@ export interface LoggableProject {
   id: string;
   title: string;
   workspace_id: string | null;
+  /** Additive: the project's workspace name, so a project shared from a workspace the caller isn't in can be
+   *  labelled ("Website · Acme Inc."). Null when there is no workspace or the name lookup failed. */
+  workspace_name?: string | null;
   /** How many For options the picker offers (the resolver's `options.length`, always ≥ 1). */
   options: number;
   /** The option a new entry uses without asking (the single option), else the remembered prefill awaiting one

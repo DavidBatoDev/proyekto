@@ -346,6 +346,7 @@ describe('TimeMeService.projects (A9)', () => {
           id: P_EDITOR,
           title: 'Website',
           workspace_id: WS,
+          workspace_name: null,
           options: 1,
           default_kind: 'team',
           status: 'active',
@@ -355,6 +356,7 @@ describe('TimeMeService.projects (A9)', () => {
           id: P_CAP,
           title: 'Capability',
           workspace_id: WS,
+          workspace_name: null,
           options: 2,
           // Several options: the remembered prefill, one tap away.
           default_kind: 'assignment',
@@ -365,6 +367,7 @@ describe('TimeMeService.projects (A9)', () => {
           id: P_OWNED,
           title: 'Mine',
           workspace_id: null,
+          workspace_name: null,
           options: 1,
           default_kind: 'personal',
           status: 'archived',
@@ -372,6 +375,31 @@ describe('TimeMeService.projects (A9)', () => {
         },
       ],
     });
+  });
+
+  it('labels each project with its workspace name, for projects shared from other workspaces', async () => {
+    const t = await setup({
+      tables: { ...baseTables(), workspaces: [{ id: WS, name: 'Acme Inc.' }] },
+    });
+    const result = await t.service.projects(ME);
+    const byId = new Map(result.projects.map((p) => [p.id, p]));
+    expect(byId.get(P_EDITOR)?.workspace_name).toBe('Acme Inc.');
+    expect(byId.get(P_CAP)?.workspace_name).toBe('Acme Inc.');
+    // No workspace, no name.
+    expect(byId.get(P_OWNED)?.workspace_name).toBeNull();
+  });
+
+  it('still answers when the workspace name read fails, without names', async () => {
+    const t = await setup({
+      tables: { ...baseTables(), workspaces: [{ id: WS, name: 'Acme Inc.' }] },
+      errors: { workspaces: { message: 'boom' } },
+    });
+    const result = await t.service.projects(ME);
+    expect(result.projects).toHaveLength(3);
+    expect(result.projects.every((p) => p.workspace_name === null)).toBe(true);
+    expect(warn).toHaveBeenCalledWith(
+      expect.stringContaining('time_me_projects_workspace_names_failed'),
+    );
   });
 
   it('never resolves a project the share rows say the caller cannot log on', async () => {
