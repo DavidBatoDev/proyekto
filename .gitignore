@@ -29,6 +29,9 @@ mcp.json
 /seed-images/
 /.stock-staging/
 
+# App store listing assets stay local.
+/store-assets/
+
 # Downloaded Google OAuth client JSON — carries the client secret in plaintext.
 # Use it with `node scripts/gmail_auth.mjs --secrets <file>` and then delete it.
 # Renaming the download is common, so cover the names people actually use:
