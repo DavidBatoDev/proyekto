@@ -53,7 +53,7 @@ const FAQ = [
 	},
 	{
 		q: "What currency are these prices in?",
-		a: "US dollars, and they exclude any tax that applies where you are. VAT or GST is calculated at checkout and shown before you pay.",
+		a: "US dollars. Checkout shows the total for your plan and seats before you pay.",
 	},
 ];
 

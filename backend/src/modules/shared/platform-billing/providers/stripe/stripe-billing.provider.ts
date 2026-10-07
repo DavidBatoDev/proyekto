@@ -4,6 +4,7 @@ import {
   ServiceUnavailableException,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import { createHash } from 'node:crypto';
 import type Stripe from 'stripe';
 import type { BillingStatus } from '../../repositories/platform-billing.repository.interface';
 import {
@@ -233,15 +234,41 @@ export class StripeBillingProvider implements BillingProvider {
         `Stripe subscription ${input.subscriptionId} has no seat item to update.`,
       );
     }
+    const item = await this.stripe.subscriptionItems.retrieve(input.seatItemId);
+    // A lost response may have hidden a successful update. Reading the item
+    // before retrying avoids a second proration even after Stripe expires keys.
+    if (item.quantity === input.quantity) return;
+    if (item.quantity !== input.expectedQuantity) {
+      throw new Error(
+        `Stripe subscription ${input.subscriptionId} changed during seat sync; retry from its current quantity.`,
+      );
+    }
+
+    // Persist the transition marker in the SAME Stripe mutation as quantity.
+    // Concurrent attempts read the same marker and use the same key. A later
+    // 3 -> 4 -> 3 -> 4 cycle reads a new marker each time, so Stripe's retained
+    // idempotency response cannot turn the final increase into a silent no-op.
+    const revision = createHash('sha256')
+      .update(
+        JSON.stringify([
+          item.metadata.proyekto_seat_revision ?? null,
+          item.id,
+          item.price.id,
+          item.current_period_start,
+          item.quantity,
+          input.quantity,
+          input.proration,
+        ]),
+      )
+      .digest('hex');
     await this.stripe.subscriptionItems.update(
       input.seatItemId,
       {
         quantity: input.quantity,
         proration_behavior: STRIPE_PRORATION[input.proration],
+        metadata: { proyekto_seat_revision: revision },
       },
-      // Keyed on the target state, not the attempt, so a double-fire is a
-      // no-op instead of a second proration.
-      { idempotencyKey: `seat-sync:${input.seatItemId}:${input.quantity}` },
+      { idempotencyKey: `seat-sync:${input.seatItemId}:${revision}` },
     );
   }
 
@@ -301,7 +328,9 @@ export function translateStripeEvent(event: Stripe.Event): ProviderEvent {
     ? typeof object.id === 'string'
       ? object.id
       : null
-    : idOf(object.subscription as never);
+    : event.type.startsWith('invoice.')
+      ? invoiceSubscriptionId(object)
+      : idOf(object.subscription as never);
 
   return {
     id: event.id,
@@ -313,6 +342,16 @@ export function translateStripeEvent(event: Stripe.Event): ProviderEvent {
     payload: event as unknown as Record<string, unknown>,
     meaning: meaningOf(event, customerId, subscriptionId),
   };
+}
+
+/** Basil and later moved Invoice.subscription into parent.subscription_details. */
+function invoiceSubscriptionId(object: Record<string, unknown>): string | null {
+  const invoice = object as unknown as Stripe.Invoice;
+  return (
+    idOf(invoice.parent?.subscription_details?.subscription) ??
+    // Stored events or an endpoint still using the older API remain replayable.
+    idOf(object.subscription as string | { id: string } | null | undefined)
+  );
 }
 
 function meaningOf(

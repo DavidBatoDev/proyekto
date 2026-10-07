@@ -176,6 +176,8 @@ export interface CheckoutResult {
 export interface SeatUpdateInput {
   subscriptionId: string;
   seatItemId: string | null;
+  /** Quantity read when choosing proration; reject stale transitions. */
+  expectedQuantity: number;
   quantity: number;
   proration: SeatProration;
 }
@@ -203,8 +205,9 @@ export interface BillingProvider {
   getSubscription(subscriptionId: string): Promise<ProviderSubscription>;
   getBillingDetails(subscriptionId: string): Promise<ProviderBillingDetails>;
   /**
-   * Must be idempotent on the TARGET quantity, so a double-fire — two
-   * instances, or a retry after a timeout — never prorates twice.
+   * Must be idempotent on the transition, so concurrent attempts or a timeout
+   * retry never prorate twice, while a later return to a previous quantity
+   * remains a new change.
    */
   updateSeatQuantity(input: SeatUpdateInput): Promise<void>;
   cancelSubscription(subscriptionId: string): Promise<void>;

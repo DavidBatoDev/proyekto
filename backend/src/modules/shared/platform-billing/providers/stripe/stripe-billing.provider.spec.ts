@@ -56,7 +56,16 @@ function buildStripe() {
       retrieve: jest.fn().mockResolvedValue(buildStripeSubscription()),
       cancel: jest.fn().mockResolvedValue({}),
     },
-    subscriptionItems: { update: jest.fn().mockResolvedValue({}) },
+    subscriptionItems: {
+      retrieve: jest.fn().mockResolvedValue({
+        id: 'si_1',
+        quantity: 3,
+        metadata: {},
+        price: { id: 'price_pro_year' },
+        current_period_start: 1_760_000_000,
+      }),
+      update: jest.fn().mockResolvedValue({}),
+    },
     invoices: { createPreview: jest.fn() },
     webhooks: { constructEvent: jest.fn() },
   };
@@ -104,32 +113,143 @@ describe('StripeBillingProvider — seat proration', () => {
       await provider.updateSeatQuantity({
         subscriptionId: 'sub_1',
         seatItemId: 'si_1',
+        expectedQuantity: 3,
         quantity: 6,
         proration: proration as keyof typeof STRIPE_PRORATION,
       });
 
       expect(stripe.subscriptionItems.update).toHaveBeenCalledWith(
         'si_1',
-        { quantity: 6, proration_behavior: behaviour },
-        { idempotencyKey: 'seat-sync:si_1:6' },
+        expect.objectContaining({ quantity: 6, proration_behavior: behaviour }),
+        { idempotencyKey: expect.stringMatching(/^seat-sync:si_1:/) },
       );
     },
   );
 
-  it('keys idempotency on the target quantity, so a double-fire cannot double-prorate', async () => {
+  it('reuses the transition key when an unapplied update is retried', async () => {
     const { provider, stripe } = buildProvider();
     const input = {
       subscriptionId: 'sub_1',
       seatItemId: 'si_1',
+      expectedQuantity: 3,
       quantity: 6,
       proration: 'charge_now' as const,
     };
 
-    await provider.updateSeatQuantity(input);
+    stripe.subscriptionItems.update.mockRejectedValueOnce(
+      new Error('connection reset'),
+    );
+    await expect(provider.updateSeatQuantity(input)).rejects.toThrow(
+      'connection reset',
+    );
     await provider.updateSeatQuantity(input);
 
     const [first, second] = stripe.subscriptionItems.update.mock.calls;
     expect(first[2]).toEqual(second[2]);
+  });
+
+  it('applies every change when the quantity returns to a previous target', async () => {
+    const { provider, stripe } = buildProvider();
+    let item = {
+      id: 'si_1',
+      quantity: 3,
+      metadata: {} as Record<string, string>,
+      price: { id: 'price_pro_year' },
+      current_period_start: 1_760_000_000,
+    };
+    const appliedKeys = new Set<string>();
+    stripe.subscriptionItems.retrieve.mockImplementation(() =>
+      Promise.resolve({ ...item }),
+    );
+    stripe.subscriptionItems.update.mockImplementation(
+      (
+        _id: string,
+        params: typeof item,
+        options: { idempotencyKey: string },
+      ) => {
+        // Stripe returns the previous result for a retained idempotency key.
+        if (!appliedKeys.has(options.idempotencyKey)) {
+          appliedKeys.add(options.idempotencyKey);
+          item = {
+            ...item,
+            quantity: params.quantity,
+            metadata: params.metadata,
+          };
+        }
+        return Promise.resolve({});
+      },
+    );
+
+    for (const target of [4, 3, 4, 3]) {
+      await provider.updateSeatQuantity({
+        subscriptionId: 'sub_1',
+        seatItemId: 'si_1',
+        expectedQuantity: item.quantity,
+        quantity: target,
+        proration:
+          target > item.quantity ? 'charge_now' : 'credit_next_invoice',
+      });
+      expect(item.quantity).toBe(target);
+    }
+    expect(appliedKeys.size).toBe(4);
+  });
+
+  it('does not prorate again when an update applied but its response was lost', async () => {
+    const { provider, stripe } = buildProvider();
+    const input = {
+      subscriptionId: 'sub_1',
+      seatItemId: 'si_1',
+      expectedQuantity: 3,
+      quantity: 4,
+      proration: 'charge_now' as const,
+    };
+    stripe.subscriptionItems.update.mockImplementationOnce(() => {
+      stripe.subscriptionItems.retrieve.mockResolvedValue({
+        id: 'si_1',
+        quantity: 4,
+        metadata: {},
+        price: { id: 'price_pro_year' },
+        current_period_start: 1_760_000_000,
+      });
+      return Promise.reject(new Error('response lost'));
+    });
+
+    await expect(provider.updateSeatQuantity(input)).rejects.toThrow(
+      'response lost',
+    );
+    await provider.updateSeatQuantity(input);
+    expect(stripe.subscriptionItems.update).toHaveBeenCalledTimes(1);
+  });
+
+  it('shares one idempotency key when two syncs observe the same transition', async () => {
+    const { provider, stripe } = buildProvider();
+    const input = {
+      subscriptionId: 'sub_1',
+      seatItemId: 'si_1',
+      expectedQuantity: 3,
+      quantity: 4,
+      proration: 'charge_now' as const,
+    };
+    await Promise.all([
+      provider.updateSeatQuantity(input),
+      provider.updateSeatQuantity(input),
+    ]);
+    const [first, second] = stripe.subscriptionItems.update.mock.calls;
+    expect(first[2].idempotencyKey).toBe(second[2].idempotencyKey);
+  });
+
+  it('refuses a stale quantity snapshot so it cannot use the wrong proration', async () => {
+    const { provider, stripe } = buildProvider();
+    await expect(
+      provider.updateSeatQuantity({
+        subscriptionId: 'sub_1',
+        seatItemId: 'si_1',
+        expectedQuantity: 2,
+        quantity: 4,
+        proration: 'charge_now',
+      }),
+    ).rejects.toThrow(/changed during seat sync/);
+    expect(stripe.subscriptionItems.update).not.toHaveBeenCalled();
   });
 
   it('refuses to update without a seat item rather than guessing one', async () => {
@@ -139,6 +259,7 @@ describe('StripeBillingProvider — seat proration', () => {
       provider.updateSeatQuantity({
         subscriptionId: 'sub_1',
         seatItemId: null,
+        expectedQuantity: 3,
         quantity: 6,
         proration: 'next_invoice',
       }),
@@ -303,6 +424,32 @@ describe('translateStripeEvent', () => {
       invoiceUrl: 'https://invoice.test/in_1',
     });
   });
+
+  it.each([
+    ['invoice.payment_failed', 'sub_current'],
+    ['invoice.payment_failed', { id: 'sub_current' }],
+    ['invoice.payment_succeeded', 'sub_current'],
+    ['invoice.payment_succeeded', { id: 'sub_current' }],
+  ] as const)(
+    'resolves %s from the current Invoice parent subscription details (%j)',
+    (type, subscription) => {
+      const event = translateStripeEvent(
+        stripeEvent(type, {
+          id: 'in_1',
+          customer: 'cus_1',
+          parent: {
+            type: 'subscription_details',
+            subscription_details: { subscription },
+          },
+          subscription: 'sub_legacy',
+        }),
+      );
+      expect(event.subscriptionId).toBe('sub_current');
+      expect(event.meaning).toEqual(
+        expect.objectContaining({ subscriptionId: 'sub_current' }),
+      );
+    },
+  );
 
   it('marks an event type it does not act on as unhandled', () => {
     expect(

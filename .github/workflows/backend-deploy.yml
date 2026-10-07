@@ -191,12 +191,25 @@ jobs:
           #
           # Price ids are NOT secrets and ride ENV_VARS. The reconcile cron
           # authenticates with MEETINGS_CRON_SECRET, so that must already be set.
-          if [[ -n "${STRIPE_PRICE_PRO_MONTHLY:-}" ]]; then
+          STRIPE_PRICES_CONFIGURED=0
+          for STRIPE_PRICE_VAR in STRIPE_PRICE_PRO_MONTHLY STRIPE_PRICE_PRO_YEARLY STRIPE_PRICE_BUSINESS_MONTHLY STRIPE_PRICE_BUSINESS_YEARLY; do
+            if [[ -n "${!STRIPE_PRICE_VAR:-}" ]]; then
+              STRIPE_PRICES_CONFIGURED=$((STRIPE_PRICES_CONFIGURED + 1))
+            fi
+          done
+          if [[ "$STRIPE_PRICES_CONFIGURED" -gt 0 && "$STRIPE_PRICES_CONFIGURED" -ne 4 ]]; then
+            echo "::error::Stripe requires all four STRIPE_PRICE_* repo vars before deploying."
+            exit 1
+          fi
+          if [[ "$STRIPE_PRICES_CONFIGURED" -eq 4 ]]; then
             ENV_VARS="${ENV_VARS},STRIPE_PRICE_PRO_MONTHLY=${STRIPE_PRICE_PRO_MONTHLY}"
             ENV_VARS="${ENV_VARS},STRIPE_PRICE_PRO_YEARLY=${STRIPE_PRICE_PRO_YEARLY}"
             ENV_VARS="${ENV_VARS},STRIPE_PRICE_BUSINESS_MONTHLY=${STRIPE_PRICE_BUSINESS_MONTHLY}"
             ENV_VARS="${ENV_VARS},STRIPE_PRICE_BUSINESS_YEARLY=${STRIPE_PRICE_BUSINESS_YEARLY}"
             SECRETS="${SECRETS},STRIPE_SECRET_KEY=STRIPE_SECRET_KEY:latest,STRIPE_WEBHOOK_SECRET=STRIPE_WEBHOOK_SECRET:latest"
+            if [[ -z "${MEETINGS_REMINDERS_ENABLED:-}" ]]; then
+              SECRETS="${SECRETS},MEETINGS_CRON_SECRET=MEETINGS_CRON_SECRET:latest"
+            fi
             echo "Stripe configured for this deploy."
           else
             echo "Stripe not configured (create STRIPE_SECRET_KEY + STRIPE_WEBHOOK_SECRET in Secret Manager, then set the four STRIPE_PRICE_* repo vars)."

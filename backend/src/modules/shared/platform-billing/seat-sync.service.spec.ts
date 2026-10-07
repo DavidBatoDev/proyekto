@@ -84,6 +84,7 @@ describe('SeatSyncService.syncSeats', () => {
       expect(provider.updateSeatQuantity).toHaveBeenCalledWith({
         subscriptionId: 'sub_1',
         seatItemId: null,
+        expectedQuantity: billed,
         quantity: seats,
         proration,
       });

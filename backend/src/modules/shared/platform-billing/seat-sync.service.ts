@@ -89,11 +89,12 @@ export class SeatSyncService {
       billed,
     );
 
-    // Adapters make this idempotent on the target quantity, so a double-fire —
-    // two instances, or a retry after a timeout — never prorates twice.
+    // Adapters make this idempotent on the transition and reject a stale billed
+    // quantity, so retries cannot double-prorate or use the wrong seat policy.
     await provider.updateSeatQuantity({
       subscriptionId: live.id,
       seatItemId: live.seatItemId ?? subscription.provider_subscription_item_id,
+      expectedQuantity: billed,
       quantity: seats,
       proration,
     });
