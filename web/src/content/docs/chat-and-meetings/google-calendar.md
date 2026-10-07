@@ -8,8 +8,8 @@ you connect.
 ## Connecting your account
 
 Go to **Settings → Integrations** and choose **Connect Google Calendar**. You can
-also connect from the Meetings toolbar, or from the meeting editor when you pick
-Google Meet as the video option.
+also connect from **My calendars** on the Meetings page, or from the meeting
+editor when you pick Google Meet as the video option.
 
 The connection is per person, not per workspace. You connect your own Google
 account, and it affects your own calendar and the meetings you organise. Your
@@ -54,9 +54,9 @@ are reflected on the Google event.
 
 Once you are connected, the Meetings calendar also shows the events on your
 primary Google calendar: the dentist, the flight, the meeting someone booked in
-Google. They sit alongside your Proyekto meetings, drawn lighter so the two are
-easy to tell apart, and they appear in the day agenda under **From Google
-Calendar**.
+Google. They sit alongside your Proyekto meetings, the way calendars sit side
+by side in Google Calendar: each calendar has its own color, so you can tell
+your Proyekto meetings from the rest of your day at a glance.
 
 - **They are read-only.** Open one to see its time and place, join its Google
   Meet call, or jump to it in Google Calendar to change it there.
@@ -65,8 +65,9 @@ Calendar**.
   you open the calendar.
 - **No duplicates.** A Proyekto meeting that is already on your Google Calendar
   shows once, as the Proyekto meeting.
-- **You can hide them.** The **Google Calendar** button in the Meetings toolbar
-  turns them off and on, and your choice is remembered on that device.
+- **You can hide them.** Untick **Google Calendar** under **My calendars** (on a
+  phone, use the **Google** button above the calendar) to turn them off and on.
+  Your choice is remembered on that device.
 
 Only your primary Google calendar is shown, and the year view shows Proyekto
 meetings only.

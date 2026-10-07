@@ -8,7 +8,6 @@
  * meeting instant regardless.
  */
 import type { Meeting } from "@/services/meetings.service";
-import { type LayoutEvent, minutesFromMidnight } from "./overlap/layout";
 
 export const DEFAULT_DURATION_MIN = 30;
 
@@ -58,39 +57,4 @@ export function groupByDay(meetings: Meeting[]): Map<string, Meeting[]> {
 		);
 	}
 	return map;
-}
-
-/** Active meetings that start on `day`, sorted by start time. */
-export function meetingsOnDay(meetings: Meeting[], day: Date): Meeting[] {
-	return meetings
-		.filter(isActive)
-		.filter((m) => sameLocalDay(new Date(m.scheduled_at), day))
-		.sort((a, b) => Date.parse(a.scheduled_at) - Date.parse(b.scheduled_at));
-}
-
-export interface TimedMeeting {
-	meeting: Meeting;
-	startMin: number;
-	endMin: number;
-}
-
-/** Meetings on `day` with their minute spans, for a time-grid layout. */
-export function timedMeetingsOnDay(
-	meetings: Meeting[],
-	day: Date,
-): TimedMeeting[] {
-	return meetingsOnDay(meetings, day).map((m) => {
-		const startMin = minutesFromMidnight(new Date(m.scheduled_at));
-		const endMin = Math.min(24 * 60, startMin + durationMinutesOf(m));
-		return { meeting: m, startMin, endMin };
-	});
-}
-
-/** Adapt timed meetings to the overlap layout's event shape. */
-export function toLayoutEvents(timed: TimedMeeting[]): LayoutEvent[] {
-	return timed.map((t) => ({
-		id: t.meeting.id,
-		start: t.startMin,
-		end: t.endMin,
-	}));
 }

@@ -4,7 +4,8 @@
 
 Per‑user Google Calendar / Meet OAuth (meetings **Phase 5**), Proyekto's calendar
 integration. A user connects their own Google account once (Settings →
-Integrations, the Meetings toolbar, or the editor); thereafter:
+Integrations, the Meetings calendar's sidebar or small‑screen toolbar, or the
+editor); thereafter:
 
 - choosing **Google Meet** in the event editor makes the backend create a real
   **Google Calendar event with a Meet conference link** on the organizer's
@@ -187,17 +188,25 @@ Key files:
 - **Meetings calendar**
   ([`CalendarShell.tsx`](../../../web/src/components/meetings/calendar/CalendarShell.tsx)):
   when connected, `useGoogleCalendarEvents(range)` fetches the overlay for the
-  same window as the meetings query (skipped in the year view). Its loading and
-  error state never gate the meetings. A toolbar **Google Calendar** button
-  shows or hides the overlay (`localStorage` `meetings.showGoogleCalendar`,
-  try/catch); when not connected the toolbar offers **Connect Google Calendar**
-  instead. Placement lives in
-  [`googleEvents.ts`](../../../web/src/components/meetings/calendar/googleEvents.ts)
-  (all‑day, overnight clipping, `gcal:`‑namespaced layout ids so Google and
-  meeting blocks share one overlap layout). `GoogleEventBlock`/`GoogleEventChip`
-  draw them outlined and muted; `GoogleEventDetails` shows time, place, **Join
-  Google Meet** and **Open in Google Calendar**. The agenda lists them under
-  "From Google Calendar".
+  same window as the meetings query (skipped in the year view and while the
+  Google calendar is hidden). Its loading and error state never gate the
+  meetings. Google is a second calendar beside "Proyekto meetings": on `lg+`
+  the sidebar's **My calendars** has a **Google Calendar** checkbox (with the
+  account email, a spinner while fetching, "Couldn't load events" on error);
+  below `lg` a toolbar **Google** button does the same. The choice is kept per
+  browser in `localStorage` `meetings.showGoogleCalendar` (try/catch). When
+  enabled but not connected, the sidebar (or, below `lg`, the toolbar) offers
+  **Connect Google Calendar** instead; never on the native app.
+  [`items.ts`](../../../web/src/components/meetings/calendar/items.ts) turns
+  meetings and Google events into one `CalendarItem` list (`gcal:`‑namespaced
+  keys so both share one overlap layout; all‑day and 24h+ events become bars;
+  overnight events clip to each day), using `googleEventBounds` from
+  [`googleEvents.ts`](../../../web/src/components/meetings/calendar/googleEvents.ts).
+  Google events draw in Tailwind sky (`calendarStyles.ts`), filled like
+  meetings, outlined when Google marks them free. Clicking one opens
+  `EventPopover` with the time, **Join** (its Meet link), location, and **Open in
+  Google Calendar**; Proyekto never edits them. See
+  [frontend.md](./frontend.md#calendar).
 - **Editor:** the [`VideoProviderPicker`](../../../web/src/components/meetings/editor/VideoProviderPicker.tsx)
   **Google Meet** option renders only when `status.enabled`; disconnected, it
   offers Connect (`returnTo=/meetings`), connected it shows "Connected as
@@ -268,7 +277,8 @@ in `ENV_VARS` (not a secret).
   persisted, orphan cleanup, cancel `all`/`this`, best‑effort swallow, overlay
   dedupe).
 - **Web** (`cd web && npx vitest run src/components/meetings src/routes/settings`):
-  `googleEvents.test.ts` (placement, all‑day, overnight, grouping, layout ids) and
+  `calendar/items.test.ts` (merging, bars vs grid, lanes, week clipping,
+  overnight, exclusive all‑day end) and
   `integrations.test.tsx` (connect, confirm‑then‑disconnect, disabled, native).
 - **End‑to‑end** (OAuth consent is interactive): deploy dark → flip the flag +
   secrets → `GET /google/status` returns `{enabled:true,connected:false}` →

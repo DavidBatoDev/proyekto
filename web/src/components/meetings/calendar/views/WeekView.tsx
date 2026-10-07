@@ -1,28 +1,20 @@
 import { eachDayOfInterval, endOfWeek, startOfWeek } from "date-fns";
 import { useMemo } from "react";
-import type { GoogleCalendarEvent, Meeting } from "@/services/meetings.service";
+import type { OpenItem } from "../ItemViews";
+import type { CalendarItem } from "../items";
 import { TimeGrid } from "../TimeGrid";
 
 interface WeekViewProps {
 	anchor: Date;
-	meetings: Meeting[];
+	items: CalendarItem[];
 	now: Date;
-	onSelectMeeting?: (meeting: Meeting) => void;
+	timeZoneLabel?: string;
+	onOpenItem?: OpenItem;
 	onCreateAt?: (at: Date) => void;
-	/** Read-only events from the user's Google Calendar (overlay). */
-	googleEvents?: GoogleCalendarEvent[];
-	onSelectGoogleEvent?: (event: GoogleCalendarEvent) => void;
+	onOpenDay?: (day: Date) => void;
 }
 
-export function WeekView({
-	anchor,
-	meetings,
-	now,
-	onSelectMeeting,
-	onCreateAt,
-	googleEvents,
-	onSelectGoogleEvent,
-}: WeekViewProps) {
+export function WeekView({ anchor, ...rest }: WeekViewProps) {
 	const days = useMemo(
 		() =>
 			eachDayOfInterval({
@@ -31,15 +23,5 @@ export function WeekView({
 			}),
 		[anchor],
 	);
-	return (
-		<TimeGrid
-			days={days}
-			meetings={meetings}
-			now={now}
-			onSelectMeeting={onSelectMeeting}
-			onCreateAt={onCreateAt}
-			googleEvents={googleEvents}
-			onSelectGoogleEvent={onSelectGoogleEvent}
-		/>
-	);
+	return <TimeGrid days={days} {...rest} />;
 }

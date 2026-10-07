@@ -119,18 +119,34 @@ fresh auth session. It:
 Artifacts land in `C:/tmp/meetings-qa/` (per‑step PNGs, a `.webm`, and
 `summary.md`). Prints a PASS/FAIL table; exits non‑zero on any failure.
 
+> **⚠️ The driver predates the 2026‑10‑07 calendar redesign** and has not been
+> updated. Verified against its source: it still expects Day / Week / Month /
+> Year as buttons (now a `<select>`), agenda rows (the agenda is gone), month
+> chips nested inside day‑cell buttons (no longer nested), and an event click
+> that opens the editor (it now opens `EventPopover`; Edit is inside it). Expect
+> those steps to fail until the driver is reworked.
+
 Selector notes for future edits (there are **no `data-testid`s** in the meetings
-tree): toolbar "Create" needs `exact:true` (else it matches the time‑grid slot
-buttons); the `TimePicker` input is `getByRole('textbox', {name})` (the popover
-shares the aria‑label); the `DatePickerField` trigger has no aria‑label (target its
-`svg.lucide-calendar`); tz option labels keep the slash (`Australia/Sydney`); a
-month chip is a `button button` nested inside the day‑cell button.
+tree): "Create" needs `exact:true` (else it matches the "Create meeting at ‹H›"
+time‑grid slots and the "Create meeting on ‹Month d›" month cells). There are
+two Create buttons, the sidebar's (`lg+`) and the toolbar's (below `lg`), but
+only one is displayed at any width, so the exact match still resolves to one
+visible button. The view picker is a `<select>` inside a label with
+screen‑reader text "View" (drive it with `selectOption`); Prev/Next are
+`aria-label` "Previous" / "Next". An event (time‑grid block, all‑day bar, or
+month line) is a button whose accessible name contains its title alongside the
+time text, so match it with a regex; clicking it opens `getByRole('dialog',
+{name: title})`, whose icon buttons are "Edit meeting" and "Cancel meeting". Month
+lines are siblings of the cell's create button, not nested in it. The
+`TimePicker` input is `getByRole('textbox', {name})` (the popover shares the
+aria‑label); the `DatePickerField` trigger has no aria‑label (target its
+`svg.lucide-calendar`); tz option labels keep the slash (`Australia/Sydney`).
 
 ## Unit tests
 
 ```bash
-cd backend && npx jest src/modules/meetings/          # service (12) + recurrence (7)
-cd web     && npm test                                # recurrence, datetime, overlap/layout
+cd backend && npx jest src/modules/execution/meetings/   # service (28) + recurrence (7) + google/ (4 specs)
+cd web     && npx vitest run src/components/meetings src/lib   # calendar items, overlap/layout, recurrence, datetime
 ```
 
 ## Troubleshooting

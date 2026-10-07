@@ -36,11 +36,11 @@ export function MiniMonth({ month, meetings, now, onOpenDay }: MiniMonthProps) {
 	const monthIdx = month.getMonth();
 
 	return (
-		<div className="rounded-xl border border-gray-100 bg-white p-3">
-			<p className="mb-2 text-sm font-semibold text-gray-800">
+		<div className="rounded-xl border border-border bg-card p-3">
+			<p className="mb-2 text-sm font-semibold text-foreground">
 				{format(month, "MMMM")}
 			</p>
-			<div className="grid grid-cols-7 text-center text-[9px] font-medium text-gray-400">
+			<div className="grid grid-cols-7 text-center text-[9px] font-medium text-muted-foreground">
 				{DOW.map((d) => (
 					<div key={d}>{d[0]}</div>
 				))}
@@ -60,10 +60,10 @@ export function MiniMonth({ month, meetings, now, onOpenDay }: MiniMonthProps) {
 							<span
 								className={`flex h-5 w-5 items-center justify-center rounded-full text-[10px] ${
 									isToday
-										? "bg-primary font-semibold text-white"
+										? "bg-primary font-semibold text-primary-foreground"
 										: inMonth
-											? "text-gray-700 hover:bg-gray-100"
-											: "text-gray-300"
+											? "text-foreground hover:bg-muted"
+											: "text-muted-foreground/50"
 								}`}
 							>
 								{day.getDate()}

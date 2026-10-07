@@ -1,35 +1,32 @@
 /**
- * The hour-by-hour time grid shared by Day and Week views: a left time gutter,
- * a day-header row, and one relative column per day holding absolutely-
- * positioned event blocks (packed by the overlap layout), hour slots that
- * create a meeting on click, and a red current-time line on today's column.
- * The optional Google Calendar overlay shares the overlap layout with meetings
- * (so nothing is drawn on top of anything else) and adds an all-day strip.
+ * The hour-by-hour time grid shared by Day and Week views, laid out like Google
+ * Calendar: weekday label over a large date number (today in a filled circle),
+ * an all-day row whose bars span the days they cover (with the timezone in its
+ * gutter), then the scrollable hours with full-width hour lines, filled event
+ * blocks packed side by side by the overlap layout, click-to-create hour slots,
+ * and the red current-time line on today's column.
  */
 import { format } from "date-fns";
 import { useEffect, useRef } from "react";
-import type { GoogleCalendarEvent, Meeting } from "@/services/meetings.service";
 import { CurrentTimeLine } from "./CurrentTimeLine";
-import { EventBlock } from "./EventBlock";
-import { GoogleEventBlock, GoogleEventChip } from "./GoogleEventBlock";
+import { BarItem, type OpenItem, TimedBlock } from "./ItemViews";
 import {
-	allDayGoogleEventsOnDay,
-	googleLayoutId,
-	googleToLayoutEvents,
-	timedGoogleEventsOnDay,
-} from "./googleEvents";
-import {
-	dayKey,
-	sameLocalDay,
-	timedMeetingsOnDay,
-	toLayoutEvents,
-} from "./model";
+	barSegments,
+	type CalendarItem,
+	timedItemsOnDay,
+	toLayout,
+} from "./items";
+import { dayKey, sameLocalDay } from "./model";
 import { layoutDay } from "./overlap/layout";
 
 const HOUR_HEIGHT = 48; // px per hour
 const DAY_HEIGHT = HOUR_HEIGHT * 24;
 const GUTTER = "w-16";
 const HOURS = Array.from({ length: 24 }, (_, h) => h);
+const MAX_BAR_LANES = 3;
+// Header rows reserve the same scrollbar space as the scrolling body so the
+// day columns line up exactly.
+const ALIGN = "overflow-y-hidden [scrollbar-gutter:stable]";
 
 function hourLabel(h: number): string {
 	const period = h < 12 ? "AM" : "PM";
@@ -37,33 +34,40 @@ function hourLabel(h: number): string {
 	return `${h12} ${period}`;
 }
 
-const NO_GOOGLE_EVENTS: GoogleCalendarEvent[] = [];
-
 interface TimeGridProps {
 	days: Date[];
-	meetings: Meeting[];
+	items: CalendarItem[];
 	now: Date;
-	onSelectMeeting?: (meeting: Meeting) => void;
+	/** Short timezone label for the all-day gutter, e.g. "GMT+08". */
+	timeZoneLabel?: string;
+	onOpenItem?: OpenItem;
 	onCreateAt?: (at: Date) => void;
-	/** Read-only events from the user's Google Calendar (overlay). */
-	googleEvents?: GoogleCalendarEvent[];
-	onSelectGoogleEvent?: (event: GoogleCalendarEvent) => void;
+	/** Clicking a date number opens that day. */
+	onOpenDay?: (day: Date) => void;
 }
 
 export function TimeGrid({
 	days,
-	meetings,
+	items,
 	now,
-	onSelectMeeting,
+	timeZoneLabel,
+	onOpenItem,
 	onCreateAt,
-	googleEvents = NO_GOOGLE_EVENTS,
-	onSelectGoogleEvent,
+	onOpenDay,
 }: TimeGridProps) {
 	const scrollRef = useRef<HTMLDivElement>(null);
-	const allDayByDay = days.map((day) =>
-		allDayGoogleEventsOnDay(googleEvents, day),
+	const segments = barSegments(items, days);
+	const laneCount = segments.reduce((n, s) => Math.max(n, s.lane + 1), 0);
+	const visibleLanes = Math.min(laneCount, MAX_BAR_LANES);
+	const hiddenByDay = days.map(
+		(_, col) =>
+			segments.filter(
+				(s) =>
+					s.lane >= MAX_BAR_LANES &&
+					col >= s.startCol &&
+					col < s.startCol + s.span,
+			).length,
 	);
-	const hasAllDay = allDayByDay.some((list) => list.length > 0);
 
 	// Open scrolled near the working day rather than midnight.
 	useEffect(() => {
@@ -73,93 +77,122 @@ export function TimeGrid({
 	}, [days, now]);
 
 	return (
-		<div className="flex h-full min-h-0 flex-col overflow-hidden rounded-2xl border border-gray-200 bg-white">
+		<div className="flex h-full min-h-0 flex-col overflow-hidden">
 			{/* Day headers */}
-			<div className="flex shrink-0 border-b border-gray-100">
+			<div className={`flex shrink-0 ${ALIGN}`}>
 				<div className={`${GUTTER} shrink-0`} />
 				{days.map((day) => {
 					const isToday = sameLocalDay(day, now);
 					return (
 						<div
 							key={dayKey(day)}
-							className="flex flex-1 flex-col items-center gap-0.5 border-l border-gray-100 py-2"
+							className="flex min-w-0 flex-1 flex-col items-center pb-2 pt-1"
 						>
-							<span className="text-[11px] font-medium uppercase text-gray-400">
+							<span
+								className={`text-[11px] font-medium uppercase tracking-wide ${
+									isToday ? "text-primary" : "text-muted-foreground"
+								}`}
+							>
 								{format(day, "EEE")}
 							</span>
-							<span
-								className={`flex h-7 w-7 items-center justify-center rounded-full text-sm ${
+							<button
+								type="button"
+								onClick={() => onOpenDay?.(new Date(day))}
+								className={`mt-0.5 flex h-8 w-8 items-center justify-center rounded-full text-base transition-colors sm:h-11 sm:w-11 sm:text-2xl ${
 									isToday
-										? "bg-primary font-semibold text-white"
-										: "text-gray-800"
+										? "bg-primary text-primary-foreground"
+										: "text-foreground hover:bg-muted"
 								}`}
 							>
 								{day.getDate()}
-							</span>
+							</button>
 						</div>
 					);
 				})}
 			</div>
 
-			{/* All-day Google events, one stack per day column. */}
-			{hasAllDay && (
-				<div className="flex shrink-0 border-b border-gray-100">
-					<div
-						className={`${GUTTER} shrink-0 py-1 pr-2 text-right text-[10px] text-gray-400`}
-					>
-						All day
-					</div>
-					{days.map((day, i) => (
-						<div
-							key={dayKey(day)}
-							className="thin-scrollbar max-h-20 flex-1 space-y-0.5 overflow-y-auto border-l border-gray-100 p-1"
-						>
-							{allDayByDay[i].map((event) => (
-								<GoogleEventChip
-									key={event.id}
-									event={event}
-									onClick={onSelectGoogleEvent}
-								/>
-							))}
-						</div>
-					))}
+			{/* All-day row: bars span the days they cover. */}
+			<div className={`flex shrink-0 border-b border-border ${ALIGN}`}>
+				<div
+					className={`${GUTTER} shrink-0 self-end pb-1 pr-2 text-right text-[10px] text-muted-foreground`}
+				>
+					{timeZoneLabel}
 				</div>
-			)}
+				<div className="relative min-h-[14px] flex-1 border-l border-border pb-1">
+					<div
+						className="grid gap-y-0.5"
+						style={{
+							gridTemplateColumns: `repeat(${days.length}, minmax(0, 1fr))`,
+						}}
+					>
+						{segments
+							.filter((s) => s.lane < MAX_BAR_LANES)
+							.map((s) => (
+								<div
+									key={`${s.item.key}:${s.startCol}`}
+									className="px-0.5"
+									style={{
+										gridColumn: `${s.startCol + 1} / span ${s.span}`,
+										gridRow: s.lane + 1,
+									}}
+								>
+									<BarItem
+										item={s.item}
+										onOpen={onOpenItem}
+										clippedStart={s.clippedStart}
+										clippedEnd={s.clippedEnd}
+									/>
+								</div>
+							))}
+						{hiddenByDay.map((hidden, col) =>
+							hidden > 0 ? (
+								<button
+									key={dayKey(days[col])}
+									type="button"
+									onClick={() => onOpenDay?.(new Date(days[col]))}
+									className="px-2 text-left text-[11px] font-medium text-muted-foreground hover:text-foreground"
+									style={{ gridColumn: col + 1, gridRow: visibleLanes + 1 }}
+								>
+									{hidden} more
+								</button>
+							) : null,
+						)}
+					</div>
+				</div>
+			</div>
 
-			{/* Scrollable grid body — fills the available height (desktop) with a
-			    viewport-height floor so it stays usable when the page flows (mobile). */}
+			{/* Scrollable hours — fills the available height on desktop; capped on
+			    small screens (where the page flows) so it still scrolls inside
+			    itself and opens near the current time. */}
 			<div
 				ref={scrollRef}
-				className="thin-scrollbar flex min-h-[60vh] flex-1 overflow-y-auto lg:min-h-0"
+				className="thin-scrollbar flex max-h-[65vh] min-h-0 flex-1 overflow-y-auto [scrollbar-gutter:stable] lg:max-h-none"
 			>
-				<div className={`${GUTTER} shrink-0`}>
-					{HOURS.map((h) => (
-						<div
+				<div
+					className={`${GUTTER} relative shrink-0`}
+					style={{ height: DAY_HEIGHT }}
+				>
+					{HOURS.slice(1).map((h) => (
+						<span
 							key={h}
-							className="relative border-t border-transparent pr-2 text-right text-[10px] text-gray-400"
-							style={{ height: HOUR_HEIGHT }}
+							className="absolute right-2 -translate-y-1/2 text-[10px] text-muted-foreground"
+							style={{ top: h * HOUR_HEIGHT }}
 						>
-							<span className="absolute -top-1.5 right-2">
-								{h === 0 ? "" : hourLabel(h)}
-							</span>
-						</div>
+							{hourLabel(h)}
+						</span>
 					))}
 				</div>
 
 				<div className="flex flex-1">
 					{days.map((day) => {
-						const timed = timedMeetingsOnDay(meetings, day);
-						const timedGoogle = timedGoogleEventsOnDay(googleEvents, day);
-						const boxes = layoutDay([
-							...toLayoutEvents(timed),
-							...googleToLayoutEvents(timedGoogle),
-						]);
+						const placements = timedItemsOnDay(items, day);
+						const boxes = layoutDay(toLayout(placements));
 						const boxById = new Map(boxes.map((b) => [b.id, b]));
 						const isToday = sameLocalDay(day, now);
 						return (
 							<div
 								key={dayKey(day)}
-								className="relative flex-1 border-l border-gray-100"
+								className="relative flex-1 border-l border-border"
 								style={{ height: DAY_HEIGHT }}
 							>
 								{HOURS.map((h) => (
@@ -177,29 +210,20 @@ export function TimeGrid({
 												),
 											)
 										}
-										className="block w-full border-t border-gray-100 transition-colors hover:bg-primary/5"
+										className={`block w-full transition-colors hover:bg-muted/60 ${
+											h === 0 ? "" : "border-t border-border"
+										}`}
 										style={{ height: HOUR_HEIGHT }}
 									/>
 								))}
-								{timed.map((t) => {
-									const box = boxById.get(t.meeting.id);
+								{placements.map((p) => {
+									const box = boxById.get(p.item.key);
 									return box ? (
-										<EventBlock
-											key={t.meeting.id}
-											meeting={t.meeting}
+										<TimedBlock
+											key={p.item.key}
+											item={p.item}
 											box={box}
-											onClick={onSelectMeeting}
-										/>
-									) : null;
-								})}
-								{timedGoogle.map((t) => {
-									const box = boxById.get(googleLayoutId(t.event));
-									return box ? (
-										<GoogleEventBlock
-											key={googleLayoutId(t.event)}
-											event={t.event}
-											box={box}
-											onClick={onSelectGoogleEvent}
+											onOpen={onOpenItem}
 										/>
 									) : null;
 								})}

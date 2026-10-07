@@ -11,8 +11,10 @@ only read one page, read [architecture.md](./architecture.md).
 
 ## What it does
 
-- **Calendar** — Day / Week / Month / Year views with a Google‑style time grid,
-  a day agenda, and click‑a‑slot‑to‑create.
+- **Calendar** — a Google‑Calendar‑style layout: Day / Week / Month / Year
+  views, a desktop sidebar (Create, mini month, "My calendars" toggles for
+  Proyekto meetings and Google Calendar), all‑day and multi‑day bars, an event
+  details card with Join / RSVP / Edit / Cancel, and click‑a‑slot‑to‑create.
 - **Event editor** — title, type, separate start **date / start time / end time**,
   an **IANA timezone** picker, a **Repeat** rule builder, a branded video‑provider
   picker (Google Meet on the organizer's connected Google Calendar, a pasted

@@ -53,11 +53,11 @@ The meetings feature spans three runtimes plus one external scheduler:
 | Area | Files |
 | --- | --- |
 | Route | [`routes/_execution/meetings.tsx`](../../../web/src/routes/_execution/meetings.tsx) — owns editor open/close state |
-| Calendar shell | [`components/meetings/calendar/CalendarShell.tsx`](../../../web/src/components/meetings/calendar/CalendarShell.tsx) — toolbar, view state, fetch window |
-| Views | `calendar/views/{Day,Week,Month,Year}View.tsx`, `TimeGrid.tsx`, `CurrentTimeLine.tsx`, `MiniMonth.tsx`, `AgendaPanel.tsx` |
-| Event render | `calendar/EventBlock.tsx` (time grid), `calendar/EventChip.tsx` (month) |
+| Calendar shell | [`components/meetings/calendar/CalendarShell.tsx`](../../../web/src/components/meetings/calendar/CalendarShell.tsx) — toolbar, view state, per‑calendar visibility, fetch window (meetings + Google events); `CalendarSidebar.tsx` — desktop rail (Create, mini month, "My calendars") |
+| Views | `calendar/views/{Day,Week,Month,Year}View.tsx`, `TimeGrid.tsx`, `CurrentTimeLine.tsx`, `MiniMonth.tsx` (year view) |
+| Event render | `calendar/items.ts` (+ `.test.ts`) — `CalendarItem` merging meetings and Google events, bar segments, time labels; `calendar/ItemViews.tsx` — `TimedBlock` / `BarItem` / `MonthLine`; `calendar/calendarStyles.ts` — per‑calendar colors; `calendar/EventPopover.tsx` — event details card; `calendar/googleEvents.ts` — Google event bounds |
 | Layout math | `calendar/overlap/layout.ts` (+ `.test.ts`) — greedy column packing |
-| Range | `calendar/useCalendarRange.ts`, `calendar/model.ts` (group/filter by local day) |
+| Range | `calendar/useCalendarRange.ts`, `calendar/model.ts` (active filter, durations, local‑day helpers) |
 | Editor | [`components/meetings/editor/MeetingEditorModal.tsx`](../../../web/src/components/meetings/editor/MeetingEditorModal.tsx) + `DatePickerField`, `TimePicker`, `TimezoneSelect`, `RepeatDropdown`, `RecurrenceBuilderDialog`, `ScopeDialog`, `VideoProviderPicker`, `ProviderLogos`, `providers.ts` |
 | Pure libs | [`lib/recurrence.ts`](../../../web/src/lib/recurrence.ts), [`lib/datetime.ts`](../../../web/src/lib/datetime.ts) (+ tests) |
 | Data layer | [`services/meetings.service.ts`](../../../web/src/services/meetings.service.ts), [`hooks/useMeetings.ts`](../../../web/src/hooks/useMeetings.ts), `queries/meetings.ts` |

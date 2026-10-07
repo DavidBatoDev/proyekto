@@ -8,14 +8,19 @@ seriously, and video links that are either created for you or pasted in.
 | View | Best for |
 | --- | --- |
 | **Day** | A single crowded day, hour by hour |
-| **Week** | The default working picture |
+| **Week** | The default working picture (phones open on Day) |
 | **Month** | Spotting the shape of a month — reviews, kickoffs, gaps |
 | **Year** | Planning far out, and finding a quiet week |
 
 The fastest way to create anything is to **click an empty slot**. The editor
 opens with that date and time already filled in, so a meeting usually costs you
-a title and a guest list. You can also open the editor empty and type the times
-yourself.
+a title and a guest list. You can also press **Create** and type the times
+yourself. The small month on the left jumps the calendar to any date, and **My
+calendars** shows or hides your Proyekto meetings and, if you've connected it,
+your Google Calendar.
+
+**Click a meeting** to open its details: join the call, answer the invitation
+(Yes, No or Maybe), or — if you organised it — edit or cancel it.
 
 ## The editor, field by field
 
