@@ -138,7 +138,8 @@ stored as plaintext with a one‑time warning — **set the key in production.**
 
 ## Sync matrix (`MeetingsService` ↔ Google)
 
-`resolveVideo` stays synchronous for `none`/`jitsi`/`external_link`. A new
+`resolveVideo` stays synchronous for `none`/`external_link` (legacy `jitsi`
+input resolves to `none` — see [backend-api.md](./backend-api.md)).
 `provisionVideo` handles `google_meet`: it validates the organizer is connected,
 resolves attendee emails, and creates the Google event **before** the DB insert
 (orphan‑cleaned if the insert fails).
@@ -156,7 +157,7 @@ resolves attendee emails, and creates the Google event **before** the DB insert
 | `reschedule()` | one‑off → `patchEvent(master, {start,end})`; series instance → `patchInstance` | Best‑effort |
 
 **Why the split:** create is fail‑loud (the user explicitly picked Google Meet —
-silently falling back to Jitsi would change the contract). Edit/cancel/reschedule
+silently saving the meeting with no video link would change the contract). Edit/cancel/reschedule
 propagation is best‑effort — the DB is the source of truth, so a stale Google
 event never blocks a cancel; failures are swallowed and logged (mirrors
 `notifyMany`).

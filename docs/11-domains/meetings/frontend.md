@@ -96,12 +96,22 @@ Submit derives `duration_minutes = end − start`, validates (`title` present,
 
 ### Video provider picker
 
-Options: **Generate a video room** (jitsi, auto), **Google Meet** (only when the
-integration is enabled — see below), **Paste a meeting link** (`external_link`),
-**No video link** (`none`). When a link is pasted, `providers.ts#detectProvider`
-derives the brand from the URL host and shows `Detected: Zoom / Google Meet /
-Microsoft Teams / …` with an inline SVG logo (`ProviderLogos.tsx`) — that brand is
-**display‑only**.
+Options: **Google Meet** (only when the integration is enabled — see below),
+**Paste a meeting link** (`external_link`), **No video link** (`none`). When a link
+is pasted, `providers.ts#detectProvider` derives the brand from the URL host and
+shows `Detected: Zoom / Google Meet / Microsoft Teams / …` with an inline SVG logo
+(`ProviderLogos.tsx`) — that brand is **display‑only**.
+
+**Defaults.** A new meeting starts on `none` and is upgraded to `google_meet` once
+`useGoogleCalendarStatus()` reports the organizer `enabled` *and* `connected` —
+unless the organizer has already picked an option on this open (`videoTouched`).
+
+**Legacy Jitsi meetings.** Until 2026‑10‑07 the picker offered **Generate a video
+room**, which made the backend create a `meet.jit.si` room (`video_provider =
+'jitsi'`). That option (and the unused `BookMeetingModal`) was removed. Editing
+such a meeting seeds the form as `external_link` with its existing URL, so saving
+keeps the link (the row becomes `external_link`); `detectProvider` still
+recognises `jit.si` hosts so the link shows the Jitsi Meet logo and label.
 
 The **Google Meet** option is rendered only when `useGoogleCalendarStatus()`
 reports `enabled`. If the organizer isn't connected it shows an inline **Connect

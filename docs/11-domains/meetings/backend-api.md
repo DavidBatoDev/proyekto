@@ -51,7 +51,8 @@ Validated with `class-validator`. Highlights:
 CreateMeetingDto {
   project_id?, title, description?, type,
   scheduled_at: ISO8601, duration_minutes? (5–1440), timezone? (≤64),
-  video_option?: 'none'|'jitsi'|'external_link', meeting_url?: URL,
+  video_option?: 'none'|'jitsi'|'external_link'|'google_meet',  // 'jitsi' = legacy
+  meeting_url?: URL,   // required when video_option = 'external_link'
   participant_ids?: uuid[], guest_emails?: email[],
   location? (≤300), reminder_minutes? (0–40320),
   recurrence?: string   // RFC-5545 body → creates a series
@@ -63,16 +64,36 @@ CancelMeetingDto  { scope?: 'this'|'following'|'all' }
 
 `MAX_REMINDER_MINUTES = 40320` (4 weeks). `MEETING_EDIT_SCOPES = ['this','following','all']`.
 
+`VIDEO_OPTIONS = ['none','jitsi','external_link','google_meet']`. `'jitsi'` is
+**legacy**: until 2026‑10‑07 the backend generated a `meet.jit.si` room for it (and
+for a create with no option and no link). It is still accepted so a stale client
+can re‑save an old Jitsi meeting without losing its link, but it never creates a
+room.
+
+### Video resolution
+
+| Input | Result |
+| --- | --- |
+| no `video_option`, no `meeting_url` | `none` (was an auto Jitsi room until 2026‑10‑07) |
+| no `video_option`, `meeting_url` set | `external_link` with that URL |
+| `external_link` | the pasted URL; `400` if `meeting_url` is missing |
+| `google_meet` | `provisionVideo` creates a Google Calendar event + Meet link (see [google-integration.md](./google-integration.md#sync-matrix-meetingsservice--google)) |
+| `jitsi` on create | `none` — no room is generated |
+| `jitsi` on edit of a meeting/series already `jitsi` with a URL | unchanged — the existing link is kept (`resolveVideoForEdit` returns `null`; `resolveSeriesVideo` returns the series' URL) |
+| `jitsi` on edit of anything else | `none` (a series moving off Google Meet is still rejected with `400`, as for any option) |
+| `none` | no link |
+
 ## Service (`meetings.service.ts`)
 
 Injects the repository (`MEETINGS_REPOSITORY`), `ProjectAuthorizationService`,
-`NotificationsService`, `ConfigService`.
+`NotificationsService`, `ConfigService`, `GoogleCalendarService`.
 
 ### Create paths
 
 - **`create(userId, dto)`** — if `dto.recurrence`, delegates to `createSeries`.
-  Otherwise: authorize (project role `viewer` if `project_id`), `resolveVideo`,
+  Otherwise: authorize (project role `viewer` if `project_id`),
   `assertHostFree` (overlap guard → `ConflictException` on collision),
+  `provisionVideo` (see [Video resolution](#video-resolution)),
   `repo.create`, add participants (host `accepted` + invitees/guests `pending`),
   `notifyMany('meeting_invited')`.
 - **`createSeries(userId, dto)`** — build the template (`rrule`, `dtstart_wall` via
@@ -111,7 +132,10 @@ Injects the repository (`MEETINGS_REPOSITORY`), `ProjectAuthorizationService`,
 
 ### Helpers
 
-`resolveVideo` (jitsi room via `JITSI_BASE_URL` / pasted link / none),
+`resolveVideo` (synchronous: pasted link / none — see
+[Video resolution](#video-resolution)), `provisionVideo` (Google Meet, async),
+`resolveVideoForEdit` / `resolveSeriesVideo` (edit‑time variants that keep an
+unchanged Jitsi or Google link),
 `assertHostFree` (`findOverlappingForHost`), `uniqueInvitees` / `uniqueGuestEmails`,
 `meetingContent` / `linkFor` (notification payload + deep link), `notifyMany`
 (per‑recipient, **best‑effort** — swallows errors so notifications never block a
@@ -148,7 +172,8 @@ joined select) lives in the Supabase impl; keep it in sync when adding columns.
 
 ## Tests
 
-`meetings.service.spec.ts` (12) — video resolution, participant fan‑out,
-double‑book guard, reschedule chaining, scoped cancel, series create/materialize,
-and the 3 reminder cases. `recurrence.spec.ts` (7) — expansion incl. a DST‑crossing
-weekly rule. Run a single spec: `npx jest src/modules/meetings/…` (from `backend/`).
+`meetings.service.spec.ts` (28) — covers, among others, video resolution
+(including the legacy‑Jitsi cases), participant fan‑out, double‑book guard,
+reschedule chaining, scoped cancel, series create/materialize, and reminders.
+`recurrence.spec.ts` (7) — expansion incl. a DST‑crossing weekly rule. Run a
+single spec: `npx jest src/modules/execution/meetings/…` (from `backend/`).

@@ -1,6 +1,6 @@
 # Meetings & Scheduling
 
-> **Last updated:** 2026-08-11 · **Status:** current
+> **Last updated:** 2026-10-07 · **Status:** current
 
 Native meeting scheduling for Proyekto — a Google‑Calendar‑style calendar with a
 rich event editor, **recurring RRULE series**, **DST‑correct timezones**, branded
@@ -15,8 +15,11 @@ only read one page, read [architecture.md](./architecture.md).
   a day agenda, and click‑a‑slot‑to‑create.
 - **Event editor** — title, type, separate start **date / start time / end time**,
   an **IANA timezone** picker, a **Repeat** rule builder, a branded video‑provider
-  picker (Jitsi auto‑room, or paste a Meet/Zoom/Teams link), member + external‑email
-  guests, location, description, and a reminder offset.
+  picker (Google Meet on the organizer's connected Google Calendar, a pasted
+  Meet/Zoom/Teams link, or no video), member + external‑email guests, location,
+  description, and a reminder offset. Proyekto no longer generates video rooms
+  itself: until 2026‑10‑07 a meeting could get an auto‑created Jitsi room; those
+  legacy meetings keep their `meet.jit.si` link.
 - **Recurring series** — full RRULE semantics with **edit / cancel scoped to
   _this_ / _this‑and‑following_ / _all_**, detached overrides, and cancelled‑as‑EXDATE.
 - **Reminders** — a `meeting_reminder` notification to every participant, once,

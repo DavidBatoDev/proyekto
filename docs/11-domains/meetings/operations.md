@@ -1,6 +1,6 @@
 # Operations & runbook
 
-> **Last updated:** 2026-07-09 · **Status:** current
+> **Last updated:** 2026-10-07 · **Status:** current
 
 Migrations, deploy, secrets, QA, and troubleshooting for the meetings feature.
 
@@ -61,14 +61,15 @@ Push to `main` → GitHub Actions:
 | Secret | Where | Notes |
 | --- | --- | --- |
 | `MEETINGS_CRON_SECRET` | Secret Manager + Cloud Run + `backend/.env` | reminder cron auth; see [reminders.md](./reminders.md#provisioning-gcp) |
-| `JITSI_BASE_URL` | env (default `https://meet.jit.si`) | auto‑generated video rooms |
 | `GOOGLE_OAUTH_CLIENT_ID` / `_SECRET` / `GOOGLE_TOKEN_ENC_KEY` | Secret Manager (gated on `GOOGLE_OAUTH_ENABLED`) | Google Calendar OAuth (Phase 5); see [google-integration.md](./google-integration.md) |
 | `SUPABASE_*`, `GMAIL_*`, `R2_*`, … | Secret Manager | general backend |
 
 `MEETINGS_CRON_SECRET`, `MEETINGS_REMINDERS_ENABLED`, and the `GOOGLE_OAUTH_*` /
 `GOOGLE_TOKEN_ENC_KEY` vars are all validated (optional) in
 [`env.validation.ts`](../../../backend/src/config/env.validation.ts). Reuse of the
-Gmail‑sender `GOOGLE_CLIENT_*` names is deliberately avoided.
+Gmail‑sender `GOOGLE_CLIENT_*` names is deliberately avoided. `JITSI_BASE_URL`
+was removed on 2026‑10‑07 along with auto‑generated Jitsi rooms; drop it from any
+`.env` or Cloud Run config that still sets it (it is no longer read).
 
 ## Reminder cron runbook
 

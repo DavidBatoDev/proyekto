@@ -1,6 +1,6 @@
 # Architecture
 
-> **Last updated:** 2026-08-11 · **Status:** current
+> **Last updated:** 2026-10-07 · **Status:** current
 
 The meetings feature spans three runtimes plus one external scheduler:
 
@@ -84,8 +84,8 @@ editor submit
   → wallTimeToUtcISO(date, startTime, tz)  → startISO (UTC)     [web, lib/datetime]
   → POST /api/meetings { scheduled_at: startISO, timezone, … }  [web service]
   → assert project role (if project)                            [backend authz]
-  → resolve video (jitsi room / pasted link / none)
   → assertHostFree(host, start, end)  → 409 on overlap          [backend overlap guard]
+  → resolve video (Google Meet event / pasted link / none)      [provisionVideo]
   → repo.create(row) + addParticipants(host + invitees + guests)
   → notifyMany(invitees, 'meeting_invited')                     [best-effort]
   → 201 { data: Meeting }

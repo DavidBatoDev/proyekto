@@ -1,6 +1,6 @@
 # Store readiness — Google Play & App Store
 
-> **Last updated:** 2026-10-06 · **Status:** partly built — items 1-3 are done, 4-7 are open
+> **Last updated:** 2026-10-07 · **Status:** partly built — items 1-3 are done, 4-7 are open
 
 What the two stores will want before Proyekto can ship, checked against the repo on
 2026-09-28. Four things are now **done**: the commerce/marketplace gate (see
@@ -70,8 +70,10 @@ when there is one. The Play developer account name and address should match.
 
 **Still needs a human:** these are drafts written from the code, not reviewed by a lawyer.
 Before submission, have the Queensland governing-law clause and the Australian Consumer Law
-carve-out reviewed, and confirm the subprocessor list is complete (possibly missing: the
-public `meet.jit.si` used for auto-created video rooms). The privacy page's "no analytics or
+carve-out reviewed, and confirm the subprocessor list is complete. (The public `meet.jit.si`
+is no longer a candidate: Proyekto stopped auto-creating Jitsi rooms on 2026-10-07. Meetings
+created before then keep their `meet.jit.si` link, which only opens when a user clicks it.)
+The privacy page's "no analytics or
 tracking SDKs" claim is true today — adding one means changing that page in the same commit.
 
 ### 2. ~~In-app account deletion~~ — **DONE 2026-09-23**

@@ -1,6 +1,6 @@
 # Schema Overview
 
-> **Last updated:** 2026-10-06 · **Status:** current
+> **Last updated:** 2026-10-07 · **Status:** current
 
 The database is **Supabase Postgres 15**, and its source of truth is
 [`supabase/migrations/`](../../supabase/migrations/) — **370 migration files** spanning
@@ -203,7 +203,7 @@ The status/type language of the app is Postgres enums. The load-bearing ones:
 | `task_status` | todo, in_progress, in_review, done, blocked |
 | `share_role` | viewer, commenter, editor, admin, owner |
 | `meeting_status` | scheduled, cancelled, completed, rescheduled, no_show |
-| `meeting_video_provider` | none, external_link, jitsi, google_meet |
+| `meeting_video_provider` | none, external_link, jitsi (legacy: no new Jitsi rooms since 2026-10-07; old meetings keep their link), google_meet |
 | `application_status` | draft, submitted, under_review, approved, rejected |
 | `admin_access_level` | support, moderator, super_admin |
 

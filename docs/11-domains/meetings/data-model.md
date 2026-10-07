@@ -1,6 +1,6 @@
 # Data model
 
-> **Last updated:** 2026-07-09 · **Status:** current
+> **Last updated:** 2026-10-07 · **Status:** current
 
 All schema lives in [`supabase/migrations/`](../../../supabase/migrations/). The
 meetings tables were introduced/extended by:
@@ -51,6 +51,14 @@ organizer picking Google Meet — see
 stores `external_link` for a *pasted* Meet/Zoom/Teams URL and derives the brand
 from the host (display‑only — see
 [frontend.md](./frontend.md#video-provider-picker)).
+
+`jitsi` is a **legacy** value: until 2026‑10‑07 the backend auto‑generated a
+`meet.jit.si` room (for the editor's "Generate a video room" option, and for a
+create with no video choice), and those rows keep `video_provider = 'jitsi'` and
+their URL. Nothing creates a new Jitsi room now. The only `jitsi` rows still
+written are instances re‑materialized when a legacy Jitsi series is edited
+(scope `all` / `following`), and they reuse the series' existing URL. The enum
+value stays so these rows remain valid.
 
 ## `meetings`
 

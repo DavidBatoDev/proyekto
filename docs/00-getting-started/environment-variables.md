@@ -1,6 +1,6 @@
 # Environment Variables
 
-> **Last updated:** 2026-09-16 · **Status:** current
+> **Last updated:** 2026-10-07 · **Status:** current
 
 A cross-service map of the environment variables each unit needs. The **full,
 authoritative reference per service** lives in that service's docs (linked below) —
@@ -26,7 +26,7 @@ Validated at boot by `validateEnv`. Categories:
 | Email (required) | `GMAIL_CLIENT_ID`, `GMAIL_CLIENT_SECRET`, `GMAIL_REFRESH_TOKEN` |
 | AI | `OPENAI_API_KEY` |
 | Server/CORS | `PORT`, `NODE_ENV`, `CORS_ORIGINS`, `CLIENT_URL`, `PUBLIC_API_URL` |
-| Optional/gated | `CLOUDFLARE_*`, `REALTIME_*`, `FIREBASE_*`, `OTA_PUBLISH_TOKEN`, `MEETINGS_CRON_SECRET`, `JITSI_BASE_URL` |
+| Optional/gated | `CLOUDFLARE_*`, `REALTIME_*`, `FIREBASE_*`, `OTA_PUBLISH_TOKEN`, `MEETINGS_CRON_SECRET` |
 | MCP (optional, ship-dark) | `MCP_ENABLED`, `MCP_MAX_PAGE_SIZE`, `MCP_OAUTH_ENABLED`, `MCP_OAUTH_JWT_SECRET`, `MCP_OAUTH_ISSUER`, `MCP_OAUTH_RESOURCE`, `MCP_OAUTH_ACCESS_TTL_SECONDS` |
 
 Full table: [Backend → configuration](../03-backend/configuration.md#environment-variables).

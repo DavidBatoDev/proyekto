@@ -1,6 +1,6 @@
 # Configuration
 
-> **Last updated:** 2026-08-13 · **Status:** current
+> **Last updated:** 2026-10-07 · **Status:** current
 
 All environment variables are **validated at boot** by `validateEnv`
 ([`config/env.validation.ts`](../../backend/src/config/env.validation.ts)) using
@@ -98,10 +98,13 @@ derived from `CLIENT_URL`. See [MCP Server](./mcp.md).
 | `OPENAI_API_KEY` | Roadmap-AI title/metadata generation (backend side) |
 | `GMAIL_CLIENT_ID` / `_SECRET` / `_REFRESH_TOKEN` / `GMAIL_FROM_EMAIL` | Transactional email (required) |
 | `ROADMAP_AI_AUTO_TITLE_ENABLED` | Auto-title AI sessions |
-| `JITSI_BASE_URL` | Default `https://meet.jit.si` (meetings video) |
 | `MEETINGS_CRON_SECRET` | Shared secret for the reminder cron endpoint |
 | `OTA_PUBLISH_TOKEN` | Guards the mobile OTA bundle-registration endpoints |
 | `ENABLE_CLOUD_TRACE`, `CLOUD_TRACE_SAMPLE_RATIO`, `OTEL_SERVICE_NAME` | Tracing |
+
+`JITSI_BASE_URL` was removed on 2026-10-07 with auto-generated Jitsi meeting rooms
+(see [Meetings → backend API](../11-domains/meetings/backend-api.md#video-resolution));
+nothing reads it any more.
 
 ## Shared clients
 
