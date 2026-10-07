@@ -120,6 +120,7 @@ import { WAITING_SECTION_ID, WaitingSection } from "./WaitingSection";
 import { WeekNavigator } from "./WeekNavigator";
 import {
 	contextInScope,
+	isOutsideSheet,
 	isPersonalSheet,
 	WORKSPACE_GROUPS_COPY,
 	waitingInScope,
@@ -331,9 +332,18 @@ function TimePageBody({
 	});
 	const setTab = (next: TimeTab) =>
 		onSearchChange({ tab: next }, { replace: true });
+	// Cards: this workspace's; agreements ("Personal & agreements") and
+	// sheets of workspaces the person isn't in ("Shared with you") apart.
 	const workspaceSheets = useMemo(
-		() => data.sheets.filter((sheet) => !isPersonalSheet(sheet)),
-		[data.sheets],
+		() =>
+			data.sheets.filter(
+				(sheet) => !isPersonalSheet(sheet) && !isOutsideSheet(sheet, scope),
+			),
+		[data.sheets, scope],
+	);
+	const sharedSheets = useMemo(
+		() => data.sheets.filter((sheet) => isOutsideSheet(sheet, scope)),
+		[data.sheets, scope],
 	);
 	const personalSheets = useMemo(
 		() => data.sheets.filter((sheet) => isPersonalSheet(sheet)),
@@ -918,6 +928,34 @@ function TimePageBody({
 									</h2>
 									<TimesheetCardsSection
 										sheets={personalSheets}
+										onSubmit={setSubmitting}
+										onFix={(sheet) => {
+											setSelectedDay(null);
+											setFixSheet(sheet);
+										}}
+										onWithdraw={(sheet) => void sheetActions.withdraw(sheet)}
+										isBusy={(id) => sheetActions.isPending(undefined, id)}
+										names={data.sheetNames}
+										events={sheetEvents}
+										workspaceNames={workspaceNames}
+										fixingId={fixSheet?.id ?? null}
+										reminderDays={data.sheetReminders}
+										now={now}
+										userTimezone={userTimezone}
+									/>
+								</section>
+							) : null}
+							{scope.isDefault && sharedSheets.length > 0 ? (
+								<section
+									data-testid="time-shared-section"
+									aria-label={WORKSPACE_GROUPS_COPY.shared}
+									className="space-y-2"
+								>
+									<h2 className="text-sm font-semibold text-foreground">
+										{WORKSPACE_GROUPS_COPY.shared}
+									</h2>
+									<TimesheetCardsSection
+										sheets={sharedSheets}
 										onSubmit={setSubmitting}
 										onFix={(sheet) => {
 											setSelectedDay(null);

@@ -2,11 +2,15 @@ import { describe, expect, it } from "vitest";
 import {
 	contextInScope,
 	forOptionInScope,
+	isOutsideProject,
+	isOutsideSheet,
 	isPersonalSheet,
 	projectInScope,
 	scopeLoggingFor,
+	sharedProjectLabel,
 	sheetInScope,
 	timeVisibleInWorkspace,
+	WORKSPACE_GROUPS_COPY,
 	type WorkspaceScope,
 	waitingElsewhere,
 	waitingHereCount,
@@ -78,7 +82,7 @@ describe("sheets and waiting rows", () => {
 		expect(rows.filter((r) => waitingInScope(r, inA))).toHaveLength(2);
 		expect(waitingHereCount(rows, inA)).toBe(2);
 		expect(waitingHereCount(rows, inD)).toBe(2);
-		expect(waitingElsewhere(rows, "a", { d: "David's Workspace" })).toEqual([
+		expect(waitingElsewhere(rows, inA, { d: "David's Workspace" })).toEqual([
 			{ workspaceId: "d", name: "David's Workspace", count: 2 },
 			{ workspaceId: "t", name: "Test", count: 1 },
 		]);
@@ -163,5 +167,67 @@ describe("logging scope", () => {
 		expect(scoped.selected).toBe(here);
 		const untouched = { options: [here], selected: null, prefill: null };
 		expect(scopeLoggingFor(untouched, null)).toBe(untouched);
+	});
+});
+
+describe("outside workspaces (shared with you)", () => {
+	const members = ["a", "d"];
+	const def: WorkspaceScope = {
+		current: "a",
+		isDefault: true,
+		members,
+		defaultId: "a",
+		teams: { tout: "x", tm: "a" },
+	};
+	const other: WorkspaceScope = { ...def, current: "d", isDefault: false };
+
+	it("puts an outside project in the default workspace only", () => {
+		expect(projectInScope({ workspace_id: "x" }, def)).toBe(true);
+		expect(projectInScope({ workspace_id: "x" }, other)).toBe(false);
+		expect(isOutsideProject({ workspace_id: "x" }, def)).toBe(true);
+		// A member workspace is unaffected.
+		expect(projectInScope({ workspace_id: "d" }, other)).toBe(true);
+		expect(projectInScope({ workspace_id: "d" }, def)).toBe(false);
+		expect(isOutsideProject({ workspace_id: "d" }, def)).toBe(false);
+	});
+
+	it("puts an outside team's context and sheets in the default workspace", () => {
+		expect(contextInScope({ kind: "team", id: "tout" }, def)).toBe(true);
+		expect(contextInScope({ kind: "team", id: "tout" }, other)).toBe(false);
+		expect(sheetInScope(sheet("team", "tout"), def)).toBe(true);
+		expect(isOutsideSheet(sheet("team", "tout"), def)).toBe(true);
+		expect(isOutsideSheet(sheet("team", "tm"), def)).toBe(false);
+	});
+
+	it("counts outside waiting rows in the default workspace", () => {
+		const rows = [row("x", "Acme"), row("d", "David's")];
+		expect(waitingHereCount(rows, def)).toBe(1);
+		expect(waitingHereCount(rows, other)).toBe(1);
+		expect(waitingElsewhere(rows, other, { a: "August's" })).toEqual([
+			{ workspaceId: "a", name: "August's", count: 1 },
+		]);
+		expect(waitingElsewhere(rows, def, { d: "David's" })).toEqual([
+			{ workspaceId: "d", name: "David's", count: 1 },
+		]);
+	});
+
+	it("opens Time in the default workspace for an outside project", () => {
+		expect(
+			timeVisibleInWorkspace({ scope: def, projects: [{ workspace_id: "x" }] }),
+		).toBe(true);
+		expect(
+			timeVisibleInWorkspace({
+				scope: other,
+				projects: [{ workspace_id: "x" }],
+			}),
+		).toBe(false);
+	});
+
+	it("labels shared projects with their workspace when known", () => {
+		expect(sharedProjectLabel("Portal", "Acme")).toBe("Portal · Acme");
+		expect(sharedProjectLabel("Portal", null)).toBe("Portal");
+		expect(WORKSPACE_GROUPS_COPY.sharedJustMe(null)).toContain(
+			"the project's workspace",
+		);
 	});
 });

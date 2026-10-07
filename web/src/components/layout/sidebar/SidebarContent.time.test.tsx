@@ -58,7 +58,10 @@ vi.mock("@/hooks/useDashboardProjectsQuery", () => ({
 vi.mock("@/hooks/useWorkspaceQueries", () => ({
 	useCurrentWorkspace: () => ({
 		workspace: { id: "w1", slug: "acme", my_role: "member" },
-		workspaces: [{ id: "w1", slug: "acme" }],
+		workspaces: [
+			{ id: "w1", slug: "acme" },
+			{ id: "w2", slug: "other" },
+		],
 		isLoading: false,
 	}),
 }));

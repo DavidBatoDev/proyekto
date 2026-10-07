@@ -76,7 +76,8 @@ const WS = {
 vi.mock("@/hooks/useWorkspaceQueries", () => ({
 	useCurrentWorkspace: () => ({
 		workspace: WS,
-		workspaces: [WS],
+		// A second workspace the person is in (not current, not outside).
+		workspaces: [WS, { ...WS, id: "w-other", name: "Other", slug: "other" }],
 		isLoading: false,
 	}),
 	useMyWorkspacesQuery: () => ({ data: [WS] }),

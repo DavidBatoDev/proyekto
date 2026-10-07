@@ -29,6 +29,10 @@ import { AppDialog } from "@/components/common/AppDialog";
 import { DateTimeField } from "@/components/common/DateTimeField";
 import { Dropdown } from "@/components/common/Dropdown";
 import {
+	sharedProjectLabel,
+	WORKSPACE_GROUPS_COPY,
+} from "@/components/time/page/workspaceGroups";
+import {
 	deviceTimeZone,
 	formatDurationText,
 	workItemLabel,
@@ -485,10 +489,18 @@ function ManualEntryForm({
 						) : null}
 						<Dropdown
 							value={projectId ?? ""}
-							options={projects.projects.map((project) => ({
-								value: project.id,
-								label: projectTitle(project),
-							}))}
+							options={projects.projects.map((project) =>
+								projects.sharedIds.has(project.id)
+									? {
+											value: project.id,
+											label: sharedProjectLabel(
+												projectTitle(project),
+												project.workspace_name,
+											),
+											group: WORKSPACE_GROUPS_COPY.shared,
+										}
+									: { value: project.id, label: projectTitle(project) },
+							)}
 							onChange={changeProject}
 							disabled={busy}
 							placeholder={MANUAL_ENTRY_COPY.pickProject}

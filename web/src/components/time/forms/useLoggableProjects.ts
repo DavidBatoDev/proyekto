@@ -19,7 +19,11 @@ import type {
 	MyTimeProjectsResult,
 } from "@/services/time.types";
 import { useAuthStore } from "@/stores/authStore";
-import { projectInScope, type WorkspaceScope } from "../page/workspaceGroups";
+import {
+	isOutsideProject,
+	projectInScope,
+	type WorkspaceScope,
+} from "../page/workspaceGroups";
 import { useLoggingScope } from "./loggingScope";
 
 /** Statuses the pickers sink below the rest (still loggable: the resolver allows them). */
@@ -80,6 +84,8 @@ export interface LoggableProjects {
 	/** Ordered: most recently logged first, archived last. */
 	projects: MyTimeProject[];
 	byId: ReadonlyMap<string, MyTimeProject>;
+	/** Projects shared from a workspace the person isn't in ("Shared with you"); listed last. */
+	sharedIds: ReadonlySet<string>;
 	defaultProjectId: string | null;
 	/** More than 200 loggable projects: the least recently logged were left out. */
 	truncated: boolean;
@@ -102,13 +108,23 @@ export function useLoggableProjects(
 	const data = query.data;
 	const provided = useLoggingScope();
 	const scope = options.scope === undefined ? provided : options.scope;
-	const projects = useMemo(
-		() =>
-			orderLoggableProjects(data?.projects).filter(
-				(project) => !scope || projectInScope(project, scope),
-			),
-		[data, scope],
-	);
+	const { projects, sharedIds } = useMemo(() => {
+		const inView = orderLoggableProjects(data?.projects).filter(
+			(project) => !scope || projectInScope(project, scope),
+		);
+		const shared = new Set(
+			inView
+				.filter((project) => isOutsideProject(project, scope))
+				.map((project) => project.id),
+		);
+		return {
+			projects: [
+				...inView.filter((project) => !shared.has(project.id)),
+				...inView.filter((project) => shared.has(project.id)),
+			],
+			sharedIds: shared as ReadonlySet<string>,
+		};
+	}, [data, scope]);
 	const byId = useMemo(
 		() => new Map(projects.map((project) => [project.id, project] as const)),
 		[projects],
@@ -120,6 +136,7 @@ export function useLoggableProjects(
 	return {
 		projects,
 		byId,
+		sharedIds,
 		defaultProjectId,
 		truncated: data?.truncated === true,
 		isLoading: query.isPending && query.fetchStatus !== "idle",

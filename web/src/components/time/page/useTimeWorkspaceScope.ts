@@ -75,14 +75,27 @@ export function useTimeWorkspaceScope(): TimeWorkspaceScope {
 		[workspaces],
 	);
 	const current = isLoading ? undefined : (workspace?.id ?? null);
+	// Only once the list has loaded may anything count as "outside".
+	const members = useMemo(
+		() => (isLoading ? undefined : workspaces.map((item) => item.id)),
+		[isLoading, workspaces],
+	);
 	const scope = useMemo<WorkspaceScope>(
 		() => ({
 			current,
 			isDefault: Boolean(current) && current === defaultId,
 			teams,
+			members,
+			defaultId,
 		}),
-		[current, defaultId, teams],
+		[current, defaultId, teams, members],
 	);
+	// A9's cached list: a project shared from outside opens the default
+	// workspace's Time.
+	const projectsQuery = useQuery({
+		...timeQueries.myProjects(userId),
+		enabled: Boolean(userId),
+	});
 	const names = useMemo(() => {
 		const out: Record<string, string> = {};
 		for (const item of workspaces) out[item.id] = item.name;
@@ -107,6 +120,7 @@ export function useTimeWorkspaceScope(): TimeWorkspaceScope {
 							contexts: overview.contexts,
 							admins: overview.workspace_time_admin,
 							waiting: waitingRows,
+							projects: projectsQuery.data?.projects,
 							canLog: overview.can_log,
 						});
 		return {
@@ -115,8 +129,16 @@ export function useTimeWorkspaceScope(): TimeWorkspaceScope {
 			names,
 			waitingRows,
 			waitingHere: waitingHereCount(waitingRows, scope),
-			elsewhere: waitingElsewhere(waitingRows, current, names),
+			elsewhere: waitingElsewhere(waitingRows, scope, names),
 			visible,
 		};
-	}, [overview, current, scope, workspace?.name, names, waitingRows]);
+	}, [
+		overview,
+		current,
+		scope,
+		workspace?.name,
+		names,
+		waitingRows,
+		projectsQuery.data,
+	]);
 }

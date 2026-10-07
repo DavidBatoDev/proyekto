@@ -448,6 +448,11 @@ export interface MyTimeProject {
 	status?: string | null;
 	/** A9 (additive): when the caller last logged here; null when never. The list is ordered by it. */
 	last_logged_at?: string | null;
+	/**
+	 * The project's workspace name, when the server sends it (a project shared
+	 * from a workspace the caller isn't in: "Shared with you" labels). Optional.
+	 */
+	workspace_name?: string | null;
 }
 
 export interface MyTimeProjectsResult {

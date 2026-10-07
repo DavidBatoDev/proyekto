@@ -39,6 +39,7 @@ import {
 	X,
 } from "lucide-react";
 import {
+	Fragment,
 	type ReactNode,
 	type RefObject,
 	useEffect,
@@ -49,7 +50,7 @@ import {
 import { AnchoredPopover } from "@/components/common/AnchoredPopover";
 import { AppDialog } from "@/components/common/AppDialog";
 import { SidePanel } from "@/components/roadmap/panels/SidePanel";
-import { timeErrorMessage } from "@/lib/timeErrors";
+import { nativeSafe, timeErrorMessage } from "@/lib/timeErrors";
 import { CHIP_LABEL_MAX, truncateLabel, workItemLabel } from "@/lib/timeFormat";
 import { cn } from "@/lib/utils";
 import { timeQueries } from "@/queries/time";
@@ -74,6 +75,10 @@ import {
 	sameApproverNote,
 	TRY_AGAIN_BUTTON,
 } from "../for/forCopy";
+import {
+	sharedProjectLabel,
+	WORKSPACE_GROUPS_COPY,
+} from "../page/workspaceGroups";
 import { TimeReasonCard } from "../shared/TimeReasonCard";
 import { StartTimerPrompts } from "../timer/SwitchTimerDialog";
 import { useStartTimer } from "../timer/useStartTimer";
@@ -560,8 +565,27 @@ export function ForField({
 		anchorRef,
 		'input[type="radio"]:checked:not([disabled])',
 	);
+	const loggable = useLoggableProjects();
 	if (!projectId) return null;
 	const { result, option, mode: forMode } = forChoice;
+	// An outside project whose only option is "Just me": say why, quietly.
+	const sharedProject = loggable.sharedIds.has(projectId)
+		? (loggable.byId.get(projectId) ?? null)
+		: null;
+	const sharedHint =
+		sharedProject &&
+		result &&
+		result.options.length > 0 &&
+		result.options.every((item) => item.kind === "personal") ? (
+			<p
+				className="text-xs text-muted-foreground"
+				data-testid="for-shared-hint"
+			>
+				{nativeSafe(
+					WORKSPACE_GROUPS_COPY.sharedJustMe(sharedProject.workspace_name),
+				)}
+			</p>
+		) : null;
 
 	if (forChoice.isLoading || (!result && !forChoice.error)) {
 		return (
@@ -585,7 +609,7 @@ export function ForField({
 		);
 	}
 	if (forMode === "single" && option) {
-		return (
+		const chipEl = (
 			<ForChip
 				option={option}
 				variant="readonly"
@@ -599,6 +623,14 @@ export function ForField({
 				popoverZIndex={zIndex}
 				className={className}
 			/>
+		);
+		return sharedHint ? (
+			<span className="inline-flex flex-col gap-1">
+				{chipEl}
+				{sharedHint}
+			</span>
+		) : (
+			chipEl
 		);
 	}
 
@@ -898,7 +930,9 @@ function TaskPicker({
 	const listed = lockProject
 		? projects.projects.filter((p) => p.id === initialProjectId)
 		: projects.projects;
-	const projectRows: Array<Pick<MyTimeProject, "id" | "title" | "status">> =
+	const projectRows: Array<
+		Pick<MyTimeProject, "id" | "title" | "status" | "workspace_name">
+	> =
 		lockProject && initialProjectId && listed.length === 0
 			? [
 					{
@@ -1141,21 +1175,41 @@ function TaskPicker({
 							) : projectRows.length === 0 ? (
 								<Empty>{TASK_PICKER_COPY.noProjects}</Empty>
 							) : (
-								projectRows.map((project) => (
-									<Row
-										key={project.id}
-										selected={project.id === projectId}
-										onClick={() => changeProject(project.id)}
-										muted={isArchivedProject(project)}
-										meta={
-											isArchivedProject(project)
-												? TASK_PICKER_COPY.archived
-												: undefined
-										}
-									>
-										{projectTitle(project)}
-									</Row>
-								))
+								projectRows.map((project, index) => {
+									const shared = projects.sharedIds.has(project.id);
+									const firstShared =
+										shared &&
+										!projects.sharedIds.has(projectRows[index - 1]?.id ?? "");
+									return (
+										<Fragment key={project.id}>
+											{firstShared ? (
+												<p
+													className="px-2 pt-2 pb-1 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground"
+													data-testid="picker-shared-heading"
+												>
+													{WORKSPACE_GROUPS_COPY.shared}
+												</p>
+											) : null}
+											<Row
+												selected={project.id === projectId}
+												onClick={() => changeProject(project.id)}
+												muted={isArchivedProject(project)}
+												meta={
+													isArchivedProject(project)
+														? TASK_PICKER_COPY.archived
+														: undefined
+												}
+											>
+												{shared
+													? sharedProjectLabel(
+															projectTitle(project),
+															project.workspace_name,
+														)
+													: projectTitle(project)}
+											</Row>
+										</Fragment>
+									);
+								})
 							)}
 						</Column>
 

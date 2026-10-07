@@ -35,6 +35,7 @@ import type {
 	TimeEntryView,
 } from "@/services/time.types";
 import { useAuthStore } from "@/stores/authStore";
+import { LoggingScopeProvider } from "./loggingScope";
 import {
 	buildTaskTree,
 	filterTaskTree,
@@ -528,5 +529,49 @@ describe("TaskPickerModal (start)", () => {
 		const calls = list.mock.calls.length;
 		fireEvent.click(within(alert).getByRole("button", { name: "Try again" }));
 		await waitFor(() => expect(list.mock.calls.length).toBe(calls + 1));
+	});
+});
+
+describe("TaskPickerModal (shared with you)", () => {
+	const scope = {
+		current: "w1",
+		isDefault: true,
+		members: ["w1"],
+		defaultId: "w1",
+	};
+
+	it("lists outside projects under Shared with you, named with their workspace, and explains Just me", async () => {
+		vi.spyOn(timeService, "listMyProjects").mockResolvedValue({
+			projects: [
+				project("p2", "Internal ops"),
+				{
+					...project("p1", "Acme Website"),
+					workspace_id: "w-outside",
+					workspace_name: "Acme Inc.",
+				},
+			],
+		});
+		const personal = option("personal", null, "Just me");
+		vi.spyOn(timeService, "getLoggingFor").mockResolvedValue(
+			forResult({ options: [personal], selected: personal }),
+		);
+		renderWithClient(
+			<LoggingScopeProvider scope={scope}>
+				<TaskPickerModal open onClose={() => {}} />
+			</LoggingScopeProvider>,
+		);
+		const heading = await screen.findByTestId("picker-shared-heading");
+		expect(heading.textContent).toBe("Shared with you");
+		const shared = await screen.findByRole("button", {
+			name: /Acme Website · Acme Inc\./,
+		});
+		fireEvent.click(shared);
+		const taskColumn = await screen.findByRole("region", { name: "Task" });
+		fireEvent.click(
+			await within(taskColumn).findByRole("button", { name: /Fix login bug/ }),
+		);
+		expect((await screen.findByTestId("for-shared-hint")).textContent).toBe(
+			"This time stays yours. To have Acme Inc. approve it, ask them to add you to their workspace or set up an agreement.",
+		);
 	});
 });

@@ -5,6 +5,8 @@ import { useEffect, useId, useRef, useState } from "react";
 export interface DropdownOption {
 	value: string;
 	label: string;
+	/** A heading shown above the first option of each new group. */
+	group?: string;
 }
 
 interface DropdownProps {
@@ -142,8 +144,20 @@ export function Dropdown({
 						{options.map((option, index) => {
 							const isSelected = option.value === value;
 							const isActive = index === activeIndex;
+							const heading =
+								option.group && option.group !== options[index - 1]?.group
+									? option.group
+									: null;
 							return (
 								<li key={option.value}>
+									{heading ? (
+										<p
+											className="px-2.5 pt-2 pb-1 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground"
+											data-testid="dropdown-group"
+										>
+											{heading}
+										</p>
+									) : null}
 									<button
 										type="button"
 										id={`${listId}-opt-${index}`}

@@ -9,6 +9,11 @@
 //   policy card (admins)      → its workspace
 //   personal, agreement       → no workspace: shown in the person's DEFAULT
 //                               workspace only, as "Personal & agreements"
+//   outside                   → a project, team, sheet or waiting row whose
+//                               workspace is known but isn't one of the
+//                               person's (a project shared with them through
+//                               project access): also the DEFAULT workspace's,
+//                               as "Shared with you"
 //
 // The default workspace is the earliest one the person owns (the server's
 // `joined_at` order, `pickDefaultWorkspace`). A team whose workspace isn't
@@ -24,6 +29,10 @@ import type {
 
 export const WORKSPACE_GROUPS_COPY = {
 	personal: "Personal & agreements",
+	shared: "Shared with you",
+	/** Under the For chip when an outside project leaves only "Just me". */
+	sharedJustMe: (workspace: string | null | undefined) =>
+		`This time stays yours. To have ${workspace?.trim() || "the project's workspace"} approve it, ask them to add you to their workspace or set up an agreement.`,
 	unnamed: "another workspace",
 	notSetUp: (name: string) => `Time isn't set up for you in ${name}.`,
 	notSetUpDetail:
@@ -43,6 +52,33 @@ export interface WorkspaceScope {
 	/** The current workspace is the person's default one. */
 	isDefault: boolean;
 	teams?: TeamWorkspaces;
+	/**
+	 * The person's own workspaces (ids). Known: anything owned by another
+	 * workspace is "outside" and belongs to the default workspace. Omitted:
+	 * nothing is outside.
+	 */
+	members?: readonly string[];
+	/** The default workspace's id (where outside rows are counted). */
+	defaultId?: string | null;
+}
+
+/** A workspace that is known and not one of the person's. */
+export function isOutsideWorkspace(
+	workspaceId: string | null | undefined,
+	scope: Pick<WorkspaceScope, "members">,
+): boolean {
+	if (!workspaceId || !scope.members) return false;
+	return !scope.members.some((id) => same(id, workspaceId));
+}
+
+/** Where a workspace's items show: itself, or the default one when outside. */
+function effectiveWorkspace(
+	workspaceId: string,
+	scope: WorkspaceScope,
+): string | null {
+	return isOutsideWorkspace(workspaceId, scope)
+		? (scope.defaultId ?? null)
+		: workspaceId;
 }
 
 type ScopeSheet = Pick<
@@ -105,6 +141,7 @@ function inScope(owner: Owner, scope: WorkspaceScope): boolean {
 	if (!scope.current) return true;
 	if (owner === "unknown") return true;
 	if (owner === "personal") return scope.isDefault;
+	if (isOutsideWorkspace(owner, scope)) return scope.isDefault;
 	return same(owner, scope.current);
 }
 
@@ -127,6 +164,19 @@ export function sheetInScope(
 	scope: WorkspaceScope,
 ): boolean {
 	return inScope(sheetOwner(sheet, scope.teams), scope);
+}
+
+/** A sheet owned by a workspace the person isn't in ("Shared with you"). */
+export function isOutsideSheet(
+	sheet: ScopeSheet,
+	scope: WorkspaceScope,
+): boolean {
+	const owner = sheetOwner(sheet, scope.teams);
+	return (
+		owner !== "personal" &&
+		owner !== "unknown" &&
+		isOutsideWorkspace(owner, scope)
+	);
 }
 
 /** A sheet no workspace owns (an agreement's). */
@@ -155,12 +205,16 @@ export interface ElsewhereWaiting {
  */
 export function waitingElsewhere(
 	rows: readonly ScopeWaiting[],
-	current: string | null | undefined,
+	scope: WorkspaceScope,
 	names: Readonly<Record<string, string>> = {},
 ): ElsewhereWaiting[] {
+	const current = scope.current;
 	const out = new Map<string, ElsewhereWaiting>();
 	for (const row of rows) {
-		const id = waitingWorkspaceId(row);
+		const raw = waitingWorkspaceId(row);
+		// An outside workspace's rows wait in the default workspace.
+		const outside = isOutsideWorkspace(raw, scope);
+		const id = raw ? effectiveWorkspace(raw, scope) : null;
 		if (!id || (current && same(id, current))) continue;
 		const key = id.toLowerCase();
 		const known = out.get(key);
@@ -172,7 +226,7 @@ export function waitingElsewhere(
 			workspaceId: id,
 			name:
 				names[id]?.trim() ||
-				row.policy_workspace?.name?.trim() ||
+				(outside ? "" : row.policy_workspace?.name?.trim()) ||
 				WORKSPACE_GROUPS_COPY.unnamed,
 			count: 1,
 		});
@@ -202,6 +256,8 @@ export function timeVisibleInWorkspace(input: {
 	sheets?: readonly ScopeSheet[];
 	/** The overview's `can_log`: "Just me" is always loggable in the default workspace. */
 	canLog?: boolean | null;
+	/** Loggable projects: an outside one opens the default workspace. */
+	projects?: readonly { workspace_id: string | null }[];
 }): boolean {
 	const { scope } = input;
 	const current = scope.current;
@@ -214,14 +270,22 @@ export function timeVisibleInWorkspace(input: {
 		// A team whose workspace isn't known yet counts here: never hide on a guess.
 		if (contextInScope(context, scope)) return true;
 	}
+	const here = (id: string | null) =>
+		Boolean(id) && same(effectiveWorkspace(id as string, scope), current);
+	if ((input.waiting ?? []).some((row) => here(waitingWorkspaceId(row)))) {
+		return true;
+	}
 	if (
-		(input.waiting ?? []).some((row) => same(waitingWorkspaceId(row), current))
+		scope.isDefault &&
+		(input.projects ?? []).some((project) =>
+			isOutsideWorkspace(project.workspace_id, scope),
+		)
 	) {
 		return true;
 	}
 	return (input.sheets ?? []).some((sheet) => {
 		const owner = sheetOwner(sheet, scope.teams);
-		return owner !== "personal" && owner !== "unknown" && same(owner, current);
+		return owner !== "personal" && owner !== "unknown" && here(owner);
 	});
 }
 
@@ -239,9 +303,28 @@ export function projectInScope(
 	scope: WorkspaceScope,
 ): boolean {
 	if (!scope.current) return true;
-	return project.workspace_id
-		? same(project.workspace_id, scope.current)
-		: scope.isDefault;
+	if (!project.workspace_id) return scope.isDefault;
+	if (isOutsideWorkspace(project.workspace_id, scope)) return scope.isDefault;
+	return same(project.workspace_id, scope.current);
+}
+
+/** A project shared with the person from a workspace they aren't in. */
+export function isOutsideProject(
+	project: { workspace_id: string | null },
+	scope: WorkspaceScope | null | undefined,
+): boolean {
+	return (
+		Boolean(scope) && isOutsideWorkspace(project.workspace_id, scope ?? {})
+	);
+}
+
+/** "<Project> · <their workspace>" when the project names its workspace. */
+export function sharedProjectLabel(
+	title: string,
+	workspaceName?: string | null,
+): string {
+	const name = workspaceName?.trim();
+	return name ? `${title} · ${name}` : title;
 }
 
 /** A For option offered here (on a project already in scope). */
@@ -256,8 +339,17 @@ export function forOptionInScope(
 	if (!scope.current) return true;
 	if (option.kind === "personal") return scope.isDefault;
 	if (option.kind === "assignment") return true;
-	// Governed by another workspace (L57's tag), or a team that lives there.
-	if (option.workspace_tag) return false;
+	// Governed by another workspace (L57's tag): only when that workspace is
+	// an outside one (its time shows in the default workspace).
+	if (option.workspace_tag) {
+		const owner = contextOwner(option.kind, option.id, scope.teams);
+		return (
+			scope.isDefault &&
+			owner !== "personal" &&
+			owner !== "unknown" &&
+			isOutsideWorkspace(owner, scope)
+		);
+	}
 	return contextInScope(option, scope);
 }
 
