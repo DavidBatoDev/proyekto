@@ -1,6 +1,6 @@
 # Stripe Billing Setup
 
-> **Last updated:** 2026-10-07 · **Status:** current
+> **Last updated:** 2026-10-13 · **Status:** current
 
 Configure Stripe for Proyekto's existing workspace subscriptions: the backend creates hosted Checkout and customer portal sessions, projects signed webhook events into subscription state, and synchronizes billable seats from workspace membership. This runbook describes the configuration procedure; account activation and a successful production rollout require separate verification.
 
@@ -23,7 +23,11 @@ Create two products, **Proyekto Pro** and **Proyekto Business**, with these four
 
 The [price catalog](../../backend/src/modules/shared/platform-billing/plan-catalog.ts) defines these amounts. The yearly price is the full annual charge: the displayed USD 10 or USD 20 per month is the annual equivalent. Free has no recurring price; Enterprise is quoted separately.
 
+Set `tax_code` on **both Stripe Products** to `txcd_10103001` (**Software as a service (SaaS) - business use**) for Proyekto's professional workspace collaboration software. Verify each of the four prices points to the intended Product and that its Product has this code. Managed Payments requires an eligible tax code on every Product; setting price IDs alone is insufficient. This classification applies to the software subscriptions, not marketplace labor or consulting services. See Stripe's [product tax code requirements](https://docs.stripe.com/payments/managed-payments/eligibility#product-tax-code-requirements).
+
 [Checkout](../../backend/src/modules/shared/platform-billing/providers/stripe/stripe-billing.provider.ts) supplies quantity from the backend and disables adjustable quantity. The [web client](../../web/src/services/billing.service.ts) sends a plan and interval, receives a hosted URL, and redirects to it. This implementation requires no frontend publishable key.
+
+The Checkout request inherits the account's Managed Payments setting, verified on for the live account on 2026-10-13. The adapter does not override it. Do not add `automatic_tax` to these requests while Managed Payments is enabled: Stripe manages tax for these payments and lists `automatic_tax` among the [unsupported Checkout parameters](https://docs.stripe.com/payments/managed-payments/update-checkout#remove-unsupported-parameters).
 
 ## 2. Register the Webhook
 
@@ -100,7 +104,7 @@ Complete payment and membership-change checks in a sandbox/test environment back
 
 | Check | Expected result |
 | --- | --- |
-| Owner opens Checkout for each plan/interval | Correct USD amount and membership-derived quantity |
+| Create an unpaid Checkout session for each of the four prices | Session creation succeeds with the correct USD amount and membership-derived quantity; expire each session without completing payment |
 | Successful test checkout | Webhook succeeds; workspace records the correct plan, interval, customer, and subscription |
 | Owner opens the portal | Both plans are available; quantities cannot be edited; payment methods and invoices are visible |
 | Test cancellation | `cancel_at_period_end` is reflected in Proyekto |
@@ -109,7 +113,9 @@ Complete payment and membership-change checks in a sandbox/test environment back
 
 The [workspace controller](../../backend/src/modules/shared/platform-billing/workspace-billing.controller.ts) makes Checkout and portal actions owner-only; owners and admins can read the billing summary. Confirm the return page receives the webhook-backed state rather than treating `?checkout=success` as proof of payment.
 
-For production verification, inspect active prices, secret bindings, portal settings, webhook delivery results, scheduler configuration, and the billing summary. A live purchase, annual seat increase, or reconciliation of live seat drift can create a charge; do not use those operations as a smoke test.
+For production verification, inspect active prices and Product tax codes, secret bindings, portal settings, webhook delivery results, scheduler configuration, and the billing summary. Create an unpaid Checkout session for each of the four configured live prices using the application's subscription payload and pinned API version. Inspect each hosted page, then [expire the session](https://docs.stripe.com/api/checkout/sessions/expire) without completing payment; verify that its status is `expired`, its payment status remains `unpaid`, and it has no subscription. A successful webhook smoke test alone does not establish that Checkout session creation works.
+
+A live purchase, annual seat increase, or reconciliation of live seat drift can create a charge; do not use those operations as a smoke test.
 
 ## Troubleshooting
 
@@ -117,6 +123,7 @@ For production verification, inspect active prices, secret bindings, portal sett
 | --- | --- |
 | Purchases are unavailable | Backend key binding and all four price IDs; the provider is inert without `STRIPE_SECRET_KEY` |
 | One interval fails Checkout | Matching `STRIPE_PRICE_*` value, active price, currency, and environment |
+| Checkout returns 400 for a missing Product tax code | With Managed Payments enabled, check the Product behind the selected price: both subscription Products require `tax_code=txcd_10103001`; keep `automatic_tax` unset |
 | Webhook returns a signature error | Registered URL, its signing secret, and snapshot payload version |
 | Portal lacks plan changes | The default portal configuration and its allowed product/price list |
 | Reconcile returns 401 | Backend `MEETINGS_CRON_SECRET` binding and Scheduler `x-cron-secret` value |
