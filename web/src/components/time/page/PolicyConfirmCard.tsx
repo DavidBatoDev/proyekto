@@ -4,7 +4,7 @@
 // L28, CHANGE-11). Workspace owners and admins see it, above the timer bar,
 // for each `workspace_time_admin[]` item with `policy_unconfirmed: true`:
 //
-//   Tracking on:  "Acme tracks time weekly from Monday in Asia/Manila.
+//   Tracking on:  "Acme tracks time weekly in Asia/Manila.
 //                  [Looks right] [Change]"
 //   Tracking off: "Prodigitality Workspace has workspace time off. People who
 //                  aren't on a team can only track time for themselves.
@@ -24,7 +24,6 @@ import { Link } from "@tanstack/react-router";
 import { CalendarClock, Loader2 } from "lucide-react";
 import { useState } from "react";
 import { nativeSafe, timeErrorMessage } from "@/lib/timeErrors";
-import { weekdayName } from "@/lib/timeFormat";
 import { isValidTimezone } from "@/lib/timePeriods";
 import { cn } from "@/lib/utils";
 import { invalidateTime, timeKeys, timeQueries } from "@/queries/time";
@@ -44,7 +43,7 @@ export const POLICY_CONFIRM_COPY = {
 
 type PolicyFacts = Pick<
 	ResolvedTimePolicy,
-	"tracking_enabled" | "period_kind" | "week_start" | "timezone"
+	"tracking_enabled" | "period_kind" | "timezone"
 > & { plan?: ResolvedTimePolicy["plan"] | null };
 
 /** Workspace time is on: the policy switch is on and the plan has timesheets. */
@@ -52,20 +51,19 @@ export function workspaceTrackingOn(policy: PolicyFacts): boolean {
 	return policy.tracking_enabled && policy.plan?.time_tracking !== false;
 }
 
-/** "weekly from Monday", "every two weeks from Monday", "twice a month (1–15, 16–end)", "monthly". */
+/** "weekly", "every two weeks", "twice a month (1–15, 16–end)", "monthly" (weeks always start Monday). */
 export function policyPeriodPhrase(
-	policy: Pick<ResolvedTimePolicy, "period_kind" | "week_start">,
+	policy: Pick<ResolvedTimePolicy, "period_kind">,
 ): string {
-	const day = weekdayName(policy.week_start) || "Monday";
 	switch (policy.period_kind) {
 		case "biweekly":
-			return `every two weeks from ${day}`;
+			return "every two weeks";
 		case "semi_monthly":
 			return "twice a month (1–15, 16–end)";
 		case "monthly":
 			return "monthly";
 		default:
-			return `weekly from ${day}`;
+			return "weekly";
 	}
 }
 
@@ -109,7 +107,6 @@ export function policyConfirmBody(
 		confirm: true,
 		tracking_enabled: true,
 		period_kind: policy.period_kind,
-		week_start: policy.week_start,
 		timezone: timeZone,
 	};
 }

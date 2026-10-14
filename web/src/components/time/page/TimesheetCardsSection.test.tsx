@@ -132,7 +132,7 @@ describe("TimesheetCardsSection", () => {
 			/>,
 		);
 		expect(
-			screen.getByRole("heading", { name: "Timesheets in this week" }),
+			screen.getByRole("heading", { name: "Timesheets in this period" }),
 		).toBeTruthy();
 		expect(screen.getAllByTestId("timesheet-card")).toHaveLength(3);
 		expect(screen.getByText("Acme Corp · agreement")).toBeTruthy();
@@ -236,7 +236,7 @@ describe("TimesheetCardsSection", () => {
 	it("shows a skeleton while loading and a reason card with Try again on failure", () => {
 		const { rerender } = render(<TimesheetCardsSection sheets={[]} loading />);
 		expect(
-			screen.getByRole("heading", { name: "Timesheets in this week" }),
+			screen.getByRole("heading", { name: "Timesheets in this period" }),
 		).toBeTruthy();
 		const onRetry = vi.fn();
 		rerender(

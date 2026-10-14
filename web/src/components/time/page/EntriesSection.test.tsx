@@ -155,24 +155,58 @@ describe("EntriesSection", () => {
 		expect(onOpenEntry.mock.calls[0][0].id).toBe("e1");
 	});
 
-	it("shows the picked day and the way back to the week", () => {
-		const onClearDay = vi.fn();
+	it("closes each day with a muted subtotal of its hours", () => {
 		render(
 			<EntriesSection
-				entries={[]}
+				entries={[
+					entry(),
+					entry({
+						id: "e2",
+						started_at: "2026-10-05T03:00:00.000Z",
+						ended_at: "2026-10-05T04:00:00.000Z",
+						duration_seconds: 3600,
+					}),
+					entry({
+						id: "e3",
+						started_at: "2026-10-07T01:00:00.000Z",
+						ended_at: "2026-10-07T01:30:00.000Z",
+						duration_seconds: 1800,
+					}),
+				]}
 				timeZone={MANILA}
-				day={{ date: "2026-10-05", label: "Mon Oct 5" }}
-				onClearDay={onClearDay}
-				empty={<p>No time entries match this view.</p>}
 			/>,
 			{ wrapper },
 		);
-		expect(screen.getByTestId("day-filter").textContent).toContain("Mon Oct 5");
-		fireEvent.click(
-			screen.getByRole("button", { name: "Show the whole week" }),
+		const subtotals = screen.getAllByTestId("entries-day-subtotal");
+		expect(subtotals.map((row) => row.getAttribute("data-day"))).toEqual([
+			"2026-10-05",
+			"2026-10-07",
+		]);
+		expect(
+			screen
+				.getAllByTestId("entries-day-subtotal-hours")
+				.map((cell) => cell.textContent),
+		).toEqual(["2.50", "0.50"]);
+		expect(subtotals[0].textContent).toContain("Subtotal · Mon, Oct 5, 2026");
+		// The bottom total stays.
+		expect(screen.getByTestId("entries-total-hours").textContent).toBe("3.00");
+		// A subtotal follows its day's last row.
+		const rowsAndSubtotals = Array.from(
+			document.querySelectorAll(
+				"[data-entry-id], [data-testid='entries-day-subtotal']",
+			),
+		).map(
+			(el) =>
+				el.getAttribute("data-entry-id") ??
+				`sub:${el.getAttribute("data-day")}`,
 		);
-		expect(onClearDay).toHaveBeenCalled();
-		expect(screen.getByText("No time entries match this view.")).toBeTruthy();
+		expect(rowsAndSubtotals).toEqual([
+			"e1",
+			"e2",
+			"sub:2026-10-05",
+			"e3",
+			"sub:2026-10-07",
+		]);
 	});
 
 	it("explains Fix and offers every entry back", () => {

@@ -4,7 +4,7 @@
 // When nothing waits, a workspace admin who never logs sees one card per
 // `workspace_time_admin[]` item, under "You're all caught up.":
 //
-//   ┌ Acme · Weekly · starts Monday · Asia/Manila · Approval required ─────┐
+//   ┌ Acme · Weekly · Asia/Manila · Approval required ───────────────────┐
 //   │                                              [Edit time policy]      │
 //   └──────────────────────────────────────────────────────────────────────┘
 //
@@ -24,7 +24,7 @@ import {
 import { useEntitlements } from "@/hooks/useEntitlements";
 import { useMyWorkspacesQuery } from "@/hooks/useWorkspaceQueries";
 import { nativeSafe, timePlanCopy } from "@/lib/timeErrors";
-import { capitalize, periodKindLabel, weekdayName } from "@/lib/timeFormat";
+import { capitalize, periodKindLabel } from "@/lib/timeFormat";
 import { cn } from "@/lib/utils";
 import { timeQueries } from "@/queries/time";
 import { browserTimeZone } from "@/services/time.service";
@@ -43,18 +43,14 @@ export const POLICY_SUMMARY_COPY = {
 
 /**
  * The card's line, as parts joined with " · ":
- * `["Acme", "Weekly", "starts Monday", "Asia/Manila", "Approval required"]`.
- * Week start only shows for weekly and two-weekly periods.
+ * `["Acme", "Weekly", "Asia/Manila", "Approval required"]`. Weeks always
+ * start on Monday, so the week start is never named.
  */
 export function policySummaryParts(
 	name: string,
 	policy: Pick<
 		ResolvedTimePolicy,
-		| "tracking_enabled"
-		| "period_kind"
-		| "week_start"
-		| "timezone"
-		| "approval_required"
+		"tracking_enabled" | "period_kind" | "timezone" | "approval_required"
 	> & { plan?: ResolvedTimePolicy["plan"] | null },
 ): string[] {
 	const parts = [name.trim() || "This workspace"];
@@ -63,10 +59,6 @@ export function policySummaryParts(
 		return parts;
 	}
 	parts.push(capitalize(periodKindLabel(policy.period_kind)));
-	if (policy.period_kind === "weekly" || policy.period_kind === "biweekly") {
-		const day = weekdayName(policy.week_start);
-		if (day) parts.push(`starts ${day}`);
-	}
 	if (policy.timezone) parts.push(policy.timezone);
 	parts.push(
 		policy.approval_required

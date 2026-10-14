@@ -1,7 +1,7 @@
 // web/src/components/time/page/TimesheetCardsSection.tsx
 //
-// "Timesheets in this week" (ux.md › The Time Page › Timesheet cards): one
-// card per sheet that overlaps the view week, labelled by sheet scope. The
+// "Timesheets in this period" (ux.md › The Time Page › Timesheet cards): one
+// card per sheet that overlaps the view range, labelled by sheet scope. The
 // card itself is W1-4's presentational `TimesheetCard`; this section lays
 // them out and wires Submit, Fix and Withdraw to the page.
 //
@@ -18,7 +18,7 @@ import { TimeReasonCard } from "../shared/TimeReasonCard";
 import { TimesheetCard } from "../sheets/TimesheetCard";
 
 export const TIMESHEET_CARDS_COPY = {
-	title: "Timesheets in this week",
+	title: "Timesheets in this period",
 	retry: "Try again",
 } as const;
 

@@ -5,6 +5,7 @@ import type { PeriodKind } from "@/services/time.types";
 import {
 	addDays,
 	autoSubmitDate,
+	capRange,
 	daysBetween,
 	eachDay,
 	isLocalDate,
@@ -12,13 +13,19 @@ import {
 	isValidTimezone,
 	localDate,
 	localRangeToUtc,
+	MAX_VIEW_RANGE_DAYS,
+	matchRangePreset,
 	monthWindow,
 	periodFor,
+	presetRange,
 	rangeContains,
 	rangesOverlap,
+	rangeUnitOf,
 	retroactiveFloor,
 	safeTimezone,
+	shiftMonth,
 	shiftWeek,
+	stepRange,
 	todayIn,
 	weekWindow,
 } from "./timePeriods";
@@ -415,5 +422,126 @@ describe("web helpers", () => {
 		expect(autoSubmitDate("2026-10-05", 0)).toBe("2026-10-06");
 		expect(autoSubmitDate("2026-10-05", null)).toBe("2026-10-06");
 		expect(autoSubmitDate("2026-12-31", 3)).toBe("2027-01-03");
+	});
+});
+
+describe("view ranges (the /time date filter)", () => {
+	// Tue Oct 6, 2026.
+	const TODAY = "2026-10-06";
+
+	it("reads each preset around today, weeks from Monday", () => {
+		expect(presetRange("this_week", TODAY)).toEqual({
+			start: "2026-10-05",
+			end: "2026-10-11",
+		});
+		expect(presetRange("last_week", TODAY)).toEqual({
+			start: "2026-09-28",
+			end: "2026-10-04",
+		});
+		expect(presetRange("this_month", TODAY)).toEqual({
+			start: "2026-10-01",
+			end: "2026-10-31",
+		});
+		expect(presetRange("last_month", TODAY)).toEqual({
+			start: "2026-09-01",
+			end: "2026-09-30",
+		});
+		expect(presetRange("today", TODAY)).toEqual({
+			start: TODAY,
+			end: TODAY,
+		});
+		expect(presetRange("yesterday", TODAY)).toEqual({
+			start: "2026-10-05",
+			end: "2026-10-05",
+		});
+		expect(presetRange("last_30_days", TODAY)).toEqual({
+			start: "2026-09-07",
+			end: TODAY,
+		});
+		expect(matchRangePreset({ start: TODAY, end: TODAY }, TODAY)).toBe("today");
+		// A Sunday still belongs to the week that started on Monday.
+		expect(presetRange("this_week", "2026-10-11")).toEqual({
+			start: "2026-10-05",
+			end: "2026-10-11",
+		});
+		// January's last month is December.
+		expect(presetRange("last_month", "2026-01-15")).toEqual({
+			start: "2025-12-01",
+			end: "2025-12-31",
+		});
+	});
+
+	it("matches a range to its preset", () => {
+		expect(
+			matchRangePreset({ start: "2026-10-05", end: "2026-10-11" }, TODAY),
+		).toBe("this_week");
+		expect(
+			matchRangePreset({ start: "2026-09-01", end: "2026-09-30" }, TODAY),
+		).toBe("last_month");
+		expect(
+			matchRangePreset({ start: "2026-10-01", end: "2026-10-10" }, TODAY),
+		).toBeNull();
+	});
+
+	it("tells a Monday week and a whole month from a custom range", () => {
+		expect(rangeUnitOf({ start: "2026-10-05", end: "2026-10-11" })).toBe(
+			"week",
+		);
+		// Sunday to Saturday is no week here.
+		expect(rangeUnitOf({ start: "2026-10-04", end: "2026-10-10" })).toBe(
+			"custom",
+		);
+		expect(rangeUnitOf({ start: "2026-02-01", end: "2026-02-28" })).toBe(
+			"month",
+		);
+		expect(rangeUnitOf({ start: "2026-10-01", end: "2026-10-10" })).toBe(
+			"custom",
+		);
+	});
+
+	it("steps by the active period", () => {
+		const week = { start: "2026-10-05", end: "2026-10-11" };
+		expect(stepRange(week, "week", -1)).toEqual({
+			start: "2026-09-28",
+			end: "2026-10-04",
+		});
+		expect(stepRange(week, "week", 2)).toEqual({
+			start: "2026-10-19",
+			end: "2026-10-25",
+		});
+		// Months keep their own lengths (31 → 30 → 28).
+		const october = { start: "2026-10-01", end: "2026-10-31" };
+		expect(stepRange(october, "month", -1)).toEqual({
+			start: "2026-09-01",
+			end: "2026-09-30",
+		});
+		expect(stepRange(october, "month", 4)).toEqual({
+			start: "2027-02-01",
+			end: "2027-02-28",
+		});
+		expect(shiftMonth("2026-01-31", -1)).toEqual({
+			start: "2025-12-01",
+			end: "2025-12-31",
+		});
+		// A custom range moves by its own length (10 days).
+		const custom = { start: "2026-10-01", end: "2026-10-10" };
+		expect(stepRange(custom, "custom", 1)).toEqual({
+			start: "2026-10-11",
+			end: "2026-10-20",
+		});
+		expect(stepRange(custom, "custom", -1)).toEqual({
+			start: "2026-09-21",
+			end: "2026-09-30",
+		});
+	});
+
+	it("caps a long range at about three months from its start", () => {
+		expect(MAX_VIEW_RANGE_DAYS).toBe(93);
+		const quarter = { start: "2026-07-01", end: "2026-09-30" };
+		expect(capRange(quarter)).toEqual({ range: quarter, capped: false });
+		expect(capRange({ start: "2026-01-01", end: "2026-12-31" })).toEqual({
+			range: { start: "2026-01-01", end: "2026-04-03" },
+			capped: true,
+		});
 	});
 });

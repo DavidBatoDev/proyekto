@@ -24,8 +24,6 @@ import {
 	formatLocalDay,
 	periodKindLabel,
 	periodKindTitle,
-	weekdayName,
-	weekdayShort,
 } from "@/lib/timeFormat";
 import { addDays, periodFor, safeTimezone } from "@/lib/timePeriods";
 import { cn } from "@/lib/utils";
@@ -71,7 +69,6 @@ export const TEAM_RULES_COPY = {
 	approversWorkspace: "Workspace owners and admins",
 	approversTeam: "This team's owners and admins",
 	period: "Timesheet period",
-	weekStartsOn: "Week starts on",
 	timezone: "Timezone",
 	manual: "Manual time",
 	allowed: "Allowed",
@@ -115,10 +112,13 @@ export type TeamRuleRow =
 	| "rounding"
 	| "approval";
 
-/** Every field a team override stores (null = inherit). */
+/**
+ * Every field a team override stores (null = inherit). The retired
+ * `week_start` is left out: weeks always start Monday and the backend
+ * ignores it, so a stale value never keeps a row alive.
+ */
 export const TEAM_RULE_FIELDS = [
 	"period_kind",
-	"week_start",
 	"timezone",
 	"period_anchor",
 	"approval_required",
@@ -149,7 +149,6 @@ export const ROUNDING_OPTIONS = [0, 5, 6, 10, 15, 30] as const;
 
 export interface PeriodValue {
 	period_kind: PeriodKind;
-	week_start: number;
 	timezone: string;
 }
 
@@ -157,17 +156,9 @@ function isSet(value: unknown): boolean {
 	return value !== null && value !== undefined;
 }
 
-function usesWeekStart(kind: PeriodKind): boolean {
-	return kind === "weekly" || kind === "biweekly";
-}
-
-/** "Weekly · Mon · Asia/Manila", "Twice a month · Asia/Manila". */
+/** "Weekly · Asia/Manila", "Twice a month · Asia/Manila" (weeks always start Monday). */
 export function periodSummary(value: PeriodValue): string {
 	const parts = [capitalize(periodKindLabel(value.period_kind))];
-	if (usesWeekStart(value.period_kind)) {
-		const day = weekdayShort(value.week_start);
-		if (day) parts.push(day);
-	}
 	if (value.timezone) parts.push(value.timezone);
 	return parts.join(" · ");
 }
@@ -216,31 +207,23 @@ export function storedPeriod(
 	override: TeamPolicyOverride | null | undefined,
 	effective: ResolvedTimePolicy,
 ): PeriodValue | null {
-	if (
-		!override ||
-		!(
-			isSet(override.period_kind) ||
-			isSet(override.week_start) ||
-			isSet(override.timezone)
-		)
-	) {
+	if (!override || !(isSet(override.period_kind) || isSet(override.timezone))) {
 		return null;
 	}
 	return {
 		period_kind: override.period_kind ?? effective.period_kind,
-		week_start: override.week_start ?? effective.week_start,
 		timezone: override.timezone ?? effective.timezone,
 	};
 }
 
 /**
  * The first day the team's next period starts under today's rules: a new
- * period, timezone or week start applies from there (L40).
+ * period or timezone applies from there (L40). Weeks start on Monday.
  */
 export function nextPeriodStart(
 	effective: Pick<
 		ResolvedTimePolicy,
-		"period_kind" | "week_start" | "timezone" | "period_anchor"
+		"period_kind" | "timezone" | "period_anchor"
 	>,
 	now: Date = new Date(),
 ): string | null {
@@ -249,7 +232,7 @@ export function nextPeriodStart(
 			{
 				kind: effective.period_kind,
 				timezone: safeTimezone(effective.timezone),
-				weekStart: effective.week_start,
+				weekStart: 1,
 				anchor: effective.period_anchor,
 			},
 			now,
@@ -330,26 +313,6 @@ function PeriodEditor({
 				))}
 			</div>
 			<div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:gap-x-6">
-				{usesWeekStart(value.period_kind) ? (
-					<label className="flex flex-wrap items-center gap-2 text-sm">
-						<span className="text-muted-foreground">
-							{TEAM_RULES_COPY.weekStartsOn}
-						</span>
-						<select
-							value={value.week_start}
-							onChange={(event) =>
-								onChange({ ...value, week_start: Number(event.target.value) })
-							}
-							className={selectClass}
-						>
-							{[1, 2, 3, 4, 5, 6, 7].map((day) => (
-								<option key={day} value={day}>
-									{weekdayName(day)}
-								</option>
-							))}
-						</select>
-					</label>
-				) : null}
 				<label className="flex min-w-0 flex-wrap items-center gap-2 text-sm">
 					<span className="text-muted-foreground">
 						{TEAM_RULES_COPY.timezone}
@@ -739,7 +702,6 @@ export function TeamRulesSection({
 	const period = storedPeriod(override, effective);
 	const inheritedPeriod: PeriodValue = {
 		period_kind: effective.period_kind,
-		week_start: effective.week_start,
 		timezone: effective.timezone,
 	};
 	const nextStart = nextPeriodStart(effective, now);
@@ -819,12 +781,10 @@ export function TeamRulesSection({
 					}
 					toPatch={(value) => ({
 						period_kind: value.period_kind,
-						week_start: value.week_start,
 						timezone: value.timezone,
 					})}
 					resetPatch={{
 						period_kind: null,
-						week_start: null,
 						timezone: null,
 						period_anchor: null,
 					}}

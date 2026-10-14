@@ -216,7 +216,8 @@ describe("goes to", () => {
 
 describe("policy lines", () => {
 	it("words the period, manual time, rounding and limits", () => {
-		expect(periodLine(policy())).toBe("weekly · starts Monday · Asia/Manila");
+		// Weeks always start Monday: the line never names a week start.
+		expect(periodLine(policy())).toBe("weekly · Asia/Manila");
 		expect(periodLine(policy({ period_kind: "monthly" }))).toBe(
 			"monthly · Asia/Manila",
 		);
@@ -266,7 +267,7 @@ describe("whoApprovesView", () => {
 		expect(view.title).toBe("Who approves this time");
 		expect(view.lines.map((l) => l.text)).toEqual([
 			"Goes to: Prodigitality Services Inc. Team's owners and admins",
-			"Timesheet: weekly · starts Monday · Asia/Manila",
+			"Timesheet: weekly · Asia/Manila",
 			"Rules: set by Prodigitality Services Inc. Team (team override)",
 			"Manual time up to 7 days back · No rounding",
 		]);

@@ -50,9 +50,10 @@ describe("ranges", () => {
 			from: "2026-10-05",
 			to: "2026-10-11",
 		});
+		// Weeks always start on Monday, whatever a policy still stores.
 		expect(presetRange("this_week", { ...CTX, weekStart: 7 })).toEqual({
-			from: "2026-10-04",
-			to: "2026-10-10",
+			from: "2026-10-05",
+			to: "2026-10-11",
 		});
 		expect(presetRange("this_year", CTX)).toEqual({
 			from: "2026-01-01",

@@ -75,6 +75,8 @@ export type EntrySheetInfo = Pick<TimesheetSummary, "id"> &
 // ── Copy (ux.md words; new sentences are listed in the W1-1 report) ────────
 
 export const ENTRY_COPY = {
+	/** The muted row under a day's entries on /time: "Subtotal · Mon, Oct 5, 2026". */
+	daySubtotal: (day: string) => `Subtotal · ${day}`,
 	hiddenContent: "A project you can't open",
 	untitledTask: "Untitled task",
 	noTask: "No task",

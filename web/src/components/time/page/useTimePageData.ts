@@ -4,34 +4,35 @@
 //
 //   overview    → normal or approver mode, the Waiting pill, the For filter's
 //                 contexts, the one-time cards
-//   view zone   → the day strip's timezone and week start (L29):
-//                   `?for=` a context → that context's policy timezone and
-//                                       week start (D85: the overview says;
-//                                       else its latest sheet)
+//   view zone   → the view's timezone (L29):
+//                   `?for=` a context → that context's policy timezone (D85:
+//                                       the overview says; else its latest
+//                                       sheet)
 //                   All (default)     → the person's preferences, falling back
-//                                       to the device and Monday
-//   view week   → `?week=` snapped to its week start, else this week
-//   entries     → `me/entries` for the view week (+ `for`, `project`)
-//   sheets      → `me/timesheets` overlapping the view week (the cards)
+//                                       to the device
+//                 Weeks always start on Monday: the week start is no longer a
+//                 setting, so a stored `week_start` is read but never used.
+//   view range  → the date filter (`viewRangeFor`): `preset`, `from`/`to`,
+//                 `?week=` snapped to its Monday, else this week; at most
+//                 MAX_VIEW_RANGE_DAYS
+//   entries     → `me/entries` for the view range (+ `for`, `project`), paged
+//   sheets      → `me/timesheets` overlapping the view range (the cards)
 //
 // The pure helpers are exported for tests; the hook only wires queries.
 //
-// A context's zone is its resolved policy's timezone and week start, which the
-// overview carries per context (D85). The server reads `me/entries?for=` in
+// A context's zone is its resolved policy's timezone, which the overview
+// carries per context (D85). The server reads `me/entries?for=` in
 // that same timezone, so the day cuts here match its range. Two fallbacks, for
 // a server without D85 and for a `?for=` the overview doesn't list (no entry
 // in 30 days and no open sheet): the context's latest sheet, which carries the
 // timezone and week start its period was cut in; and with no sheet in the
 // last two months, the person's own zone, with the zone label hidden.
+//
+// `me/entries` takes any from/to (no server cap) and pages at 200; the page
+// reads every page up to RANGE_MAX_ENTRIES, and caps the range itself.
 
 import { useQuery } from "@tanstack/react-query";
 import { useMemo } from "react";
-import {
-	DAY_WARNING_SECONDS,
-	entryDayKey,
-	entryWorkSeconds,
-} from "@/components/time/entries/entryRules";
-import { serverNow } from "@/lib/serverClock";
 import { nativeSafe } from "@/lib/timeErrors";
 import {
 	capitalize,
@@ -41,14 +42,19 @@ import {
 } from "@/lib/timeFormat";
 import {
 	addDays,
-	eachDay,
+	capRange,
 	isLocalDate,
 	isValidTimezone,
 	type LocalRange,
+	MONDAY,
+	matchRangePreset,
+	presetRange,
 	rangeContains,
 	rangesOverlap,
+	rangeUnitOf,
 	safeTimezone,
 	todayIn,
+	type ViewRangeUnit,
 	weekWindow,
 } from "@/lib/timePeriods";
 import {
@@ -56,6 +62,8 @@ import {
 	type TimeForParam,
 	type TimeForRef,
 	type TimePageSearch,
+	type TimeRangePreset,
+	type TimeReportStatus,
 	timeForParam,
 } from "@/lib/timeSearch";
 import { teamKeys } from "@/queries/teams";
@@ -90,17 +98,14 @@ import {
 /** How far back the context-zone lookup reads sheets (a monthly period plus a month). */
 export const CONTEXT_SHEETS_LOOKBACK_DAYS = 62;
 
-/** Entries read for one view week (a week of real work is far below this). */
-export const WEEK_MAX_ENTRIES = 1000;
-
-/** ux.md › Day strip: a day over 8 h shows ⚠ (strictly greater, as the live day total). */
-export const DAY_OVER_SECONDS = DAY_WARNING_SECONDS;
+/** Entries read for one view range (three months of real work is far below this). */
+export const RANGE_MAX_ENTRIES = 5000;
 
 // ── View zone ───────────────────────────────────────────────────────────────
 
 export interface ViewZone {
 	timezone: string;
-	/** ISO weekday, 1 = Monday. */
+	/** ISO weekday: always 1 (Monday). Kept for the month grid's prop. */
 	weekStart: number;
 	/**
 	 * `preferences`: All (the person's own zone). `context`: the `?for=`
@@ -133,7 +138,6 @@ export function validReminderDays(value: unknown): number | null {
  */
 export function overviewContextZone(
 	context: OverviewContext | null | undefined,
-	prefs?: Pick<PrefsZone, "weekStart">,
 ): ViewZone | null {
 	if (!context || context.kind === "personal") return null;
 	const timezone =
@@ -142,24 +146,12 @@ export function overviewContextZone(
 	if (!timezone || !isValidTimezone(timezone)) return null;
 	return {
 		timezone,
-		weekStart:
-			validWeekStart(context.week_start) ??
-			validWeekStart(prefs?.weekStart) ??
-			1,
+		weekStart: MONDAY,
 		source: "context",
 		periodKind: context.period_kind ?? null,
 		periodAnchor: context.period_anchor ?? null,
 		reminderDays: validReminderDays(context.reminder_days),
 	};
-}
-
-function validWeekStart(value: unknown): number | null {
-	return typeof value === "number" &&
-		Number.isInteger(value) &&
-		value >= 1 &&
-		value <= 7
-		? value
-		: null;
 }
 
 /** The overview context a `?for=` names, if the overview lists it. */
@@ -237,18 +229,18 @@ export function resolveViewZone(options: {
 	/** The person's recent sheets (any scope). */
 	sheets?: readonly Pick<
 		TimesheetSummary,
-		"scope_kind" | "scope_ref" | "timezone" | "week_start" | "period_start"
+		"scope_kind" | "scope_ref" | "timezone" | "period_start"
 	>[];
 }): ViewZone {
 	const prefs: ViewZone = {
 		timezone: safeTimezone(options.prefs.timezone),
-		weekStart: validWeekStart(options.prefs.weekStart) ?? 1,
+		weekStart: MONDAY,
 		source: "preferences",
 	};
 	const { forRef } = options;
 	if (!forRef || forRef.kind === "personal") return prefs;
 	const context = findOverviewContext(options.overview, forRef);
-	const fromOverview = overviewContextZone(context, prefs);
+	const fromOverview = overviewContextZone(context);
 	if (fromOverview) return fromOverview;
 	const scope = contextSheetScope(forRef, context);
 	if (scope) {
@@ -258,7 +250,7 @@ export function resolveViewZone(options: {
 		if (latest) {
 			return {
 				timezone: safeTimezone(latest.timezone),
-				weekStart: validWeekStart(latest.week_start) ?? prefs.weekStart,
+				weekStart: MONDAY,
 				source: "context",
 			};
 		}
@@ -266,85 +258,181 @@ export function resolveViewZone(options: {
 	return { ...prefs, source: "fallback" };
 }
 
-// ── View week ───────────────────────────────────────────────────────────────
+// ── View range ──────────────────────────────────────────────────────────────
 
-/** The view week: `?week=` (any day) snapped to its week start, else this week. */
+/** The week holding `?week=` (any day, snapped to its Monday), else this week. */
 export function viewWeekFor(
 	week: string | null | undefined,
-	zone: Pick<ViewZone, "timezone" | "weekStart">,
+	zone: Pick<ViewZone, "timezone">,
 	now: Date = new Date(),
 ): LocalRange {
 	const anchor = week && isLocalDate(week) ? week : todayIn(zone.timezone, now);
-	return weekWindow(anchor, zone.weekStart);
+	return weekWindow(anchor, MONDAY);
 }
 
-/** `?week=` for a week: omitted for the current week, so "This week" keeps a clean URL. */
-export function weekParam(week: LocalRange, today: string): string | undefined {
-	return rangeContains(week, today) ? undefined : week.start;
+export interface ViewRange extends LocalRange {
+	/** What ‹ › step by. */
+	unit: ViewRangeUnit;
+	/**
+	 * The date filter's choice: the preset the range is exactly, `custom`
+	 * while the custom inputs are open (or for a range that is neither a week
+	 * nor a month), else null (a stepped week or month).
+	 */
+	preset: TimeRangePreset | null;
+	/** True when the asked range was longer than MAX_VIEW_RANGE_DAYS and was cut. */
+	capped: boolean;
+	/** True for this week (the default range). */
+	isDefault: boolean;
 }
 
-// ── Day totals ──────────────────────────────────────────────────────────────
-
-export interface DayTotal {
-	date: string;
-	/** Live while a timer runs. */
-	seconds: number;
-	over: boolean;
-	isToday: boolean;
-}
-
-/** Per-day totals of the view week in the view zone, plus the week. */
-export function dayTotals(
-	entries: readonly TimeEntryView[],
-	week: LocalRange,
-	options: { timeZone: string; today: string; nowMs?: number },
-): { days: DayTotal[]; weekSeconds: number } {
-	const nowMs = options.nowMs ?? serverNow();
-	const totals = new Map<string, number>();
-	for (const entry of entries) {
-		const day = entryDayKey(entry, options.timeZone);
-		if (!day || !rangeContains(week, day)) continue;
-		totals.set(day, (totals.get(day) ?? 0) + entryWorkSeconds(entry, nowMs));
+/**
+ * The view range from the URL, in this order: `preset=custom` with
+ * `from`/`to`; a relative `preset`; `from`/`to`; `?week=` (its Monday week);
+ * else this week. Over MAX_VIEW_RANGE_DAYS it is cut from its start.
+ */
+export function viewRangeFor(
+	search: Pick<TimePageSearch, "week" | "preset" | "from" | "to">,
+	today: string,
+): ViewRange {
+	const explicit =
+		search.from &&
+		search.to &&
+		isLocalDate(search.from) &&
+		isLocalDate(search.to)
+			? search.from <= search.to
+				? { start: search.from, end: search.to }
+				: { start: search.to, end: search.from }
+			: null;
+	let asked: LocalRange;
+	let custom = false;
+	if (search.preset === "custom") {
+		custom = true;
+		asked = explicit ?? presetRange("this_week", today);
+	} else if (search.preset) {
+		asked = presetRange(search.preset, today);
+	} else if (explicit) {
+		asked = explicit;
+	} else {
+		asked = weekWindow(
+			search.week && isLocalDate(search.week) ? search.week : today,
+			MONDAY,
+		);
 	}
-	let weekSeconds = 0;
-	const days = eachDay(week).map((date) => {
-		const seconds = totals.get(date) ?? 0;
-		weekSeconds += seconds;
-		return {
-			date,
-			seconds,
-			over: seconds > DAY_OVER_SECONDS,
-			isToday: date === options.today,
-		};
-	});
-	return { days, weekSeconds };
+	const { range, capped } = capRange(asked);
+	const unit: ViewRangeUnit = custom ? "custom" : rangeUnitOf(range);
+	const matched = custom ? null : matchRangePreset(range, today);
+	const preset: TimeRangePreset | null = custom
+		? "custom"
+		: (matched ?? (unit === "custom" ? "custom" : null));
+	return {
+		...range,
+		unit,
+		preset,
+		capped,
+		isDefault: matched === "this_week",
+	};
 }
 
-/** The entries whose start falls on `day` in the view zone. */
-export function entriesOnDay(
+/** The URL patch for a range: a Monday week as `?week=` (none for this week), anything else as `from`/`to`. */
+export function rangeSearch(
+	range: LocalRange,
+	unit: ViewRangeUnit,
+	today: string,
+): Pick<TimePageSearch, "week" | "preset" | "from" | "to"> {
+	if (unit === "week") {
+		return {
+			week: rangeContains(range, today) ? undefined : range.start,
+			preset: undefined,
+			from: undefined,
+			to: undefined,
+		};
+	}
+	return {
+		week: undefined,
+		preset: undefined,
+		from: range.start,
+		to: range.end,
+	};
+}
+
+/** The URL patch for a preset picked in the date filter (`custom` starts from `current`). */
+export function presetSearch(
+	preset: TimeRangePreset,
+	current: LocalRange,
+): Pick<TimePageSearch, "week" | "preset" | "from" | "to"> {
+	if (preset === "custom") {
+		return {
+			week: undefined,
+			preset: "custom",
+			from: current.start,
+			to: current.end,
+		};
+	}
+	return {
+		week: undefined,
+		preset: preset === "this_week" ? undefined : preset,
+		from: undefined,
+		to: undefined,
+	};
+}
+
+// ── Client-side filters ─────────────────────────────────────────────────────
+
+/** True when an entry's task title or note contains `q` (case-insensitive). */
+export function entryMatchesQuery(
+	entry: Pick<TimeEntryView, "task" | "note">,
+	q: string,
+): boolean {
+	const needle = q.trim().toLowerCase();
+	if (!needle) return true;
+	const haystack = [entry.task?.title, entry.note]
+		.filter((value): value is string => typeof value === "string")
+		.join("\n")
+		.toLowerCase();
+	return haystack.includes(needle);
+}
+
+/** The search box and the status filter, over the loaded entries. */
+export function filterEntries(
 	entries: readonly TimeEntryView[],
-	day: string | null,
-	timeZone: string,
+	filters: { q?: string | null; status?: TimeReportStatus | null },
 ): TimeEntryView[] {
-	if (!day) return [...entries];
-	return entries.filter((entry) => entryDayKey(entry, timeZone) === day);
+	const q = filters.q?.trim() ?? "";
+	const status = filters.status ?? null;
+	if (!q && !status) return [...entries];
+	return entries.filter(
+		(entry) =>
+			(!q || entryMatchesQuery(entry, q)) &&
+			(!status || entry.timesheet?.status === status),
+	);
+}
+
+/** True for a sheet someone has to approve (not an auto- or self-approving one). */
+export function sheetNeedsApproval(
+	sheet: Pick<TimesheetSummary, "approver_scope" | "routing_preview">,
+): boolean {
+	const scope = sheet.approver_scope ?? sheet.routing_preview?.approver_scope;
+	return Boolean(scope) && scope !== "auto" && scope !== "self";
 }
 
 // ── Sheets ──────────────────────────────────────────────────────────────────
 
 /**
- * The cards in view: sheets overlapping the view week, narrowed to the
+ * The cards in view: sheets overlapping the view range, narrowed to the
  * `?for=` context's sheet scope when there is one ("Just me" has no sheets).
  */
 export function sheetsInView(
 	sheets: readonly TimesheetSummary[],
-	week: LocalRange,
+	range: LocalRange,
 	options: { forRef?: TimeForRef | null; scope?: SheetScopeRef | null } = {},
 ): TimesheetSummary[] {
 	if (options.forRef?.kind === "personal") return [];
 	return sheets
 		.filter((sheet) =>
-			rangesOverlap({ start: sheet.period_start, end: sheet.period_end }, week),
+			rangesOverlap(
+				{ start: sheet.period_start, end: sheet.period_end },
+				range,
+			),
 		)
 		.filter((sheet) => (options.scope ? sameScope(sheet, options.scope) : true))
 		.sort(
@@ -603,15 +691,16 @@ export interface TimePageData {
 	zone: ViewZone;
 	/** False while the zone is still being worked out (no entry read yet). */
 	zoneReady: boolean;
-	week: LocalRange;
+	/** The date filter's range (Monday weeks, months, custom). */
+	range: ViewRange;
 	today: string;
-	isCurrentWeek: boolean;
 	entriesQuery: {
 		isPending: boolean;
 		isError: boolean;
 		error: unknown;
 		refetch: () => unknown;
 	};
+	/** Every entry loaded for the range in this workspace (before the search and status filters). */
 	entries: TimeEntryView[];
 	sheetsQuery: {
 		isPending: boolean;
@@ -619,7 +708,7 @@ export interface TimePageData {
 		error: unknown;
 		refetch: () => unknown;
 	};
-	/** Every sheet overlapping the view week. */
+	/** Every sheet overlapping the view range. */
 	weekSheets: TimesheetSummary[];
 	/** The cards: `weekSheets` narrowed to the `?for=` context. */
 	sheets: TimesheetSummary[];
@@ -686,37 +775,46 @@ export function useTimePageData(
 			(!overviewQuery.isPending &&
 				(knownZone || !recentSheetsQuery.isPending)));
 
-	const week = useMemo(
-		() => viewWeekFor(search.week, zone, now),
-		[search.week, zone, now],
-	);
 	const today = todayIn(zone.timezone, now);
-	const isCurrentWeek = rangeContains(week, today);
+	const range = useMemo(
+		() =>
+			viewRangeFor(
+				{
+					week: search.week,
+					preset: search.preset,
+					from: search.from,
+					to: search.to,
+				},
+				today,
+			),
+		[search.week, search.preset, search.from, search.to, today],
+	);
 	const forRequest = useMemo(() => forRequestOf(forRef), [forRef]);
 
-	// Entries and sheets of the view week.
-	// One layout for everyone: the week is always read (approver_mode no
+	// Entries and sheets of the view range.
+	// One layout for everyone: the range is always read (approver_mode no
 	// longer switches the page).
 	const listEnabled = Boolean(userId) && zoneReady;
 	const entriesParams: Omit<MyEntriesQuery, "page" | "limit"> = {
-		from: week.start,
-		to: week.end,
+		from: range.start,
+		to: range.end,
 		project_id: search.project,
 		for: forRequest,
 	};
 	const entriesQuery = useQuery({
-		queryKey: [...timeKeys.myEntries(userId, entriesParams), "week"] as const,
+		queryKey: [...timeKeys.myEntries(userId, entriesParams), "range"] as const,
+		// `me/entries` has no range cap and pages at 200: read every page.
 		queryFn: () =>
-			listAllMyEntries(entriesParams, { maxItems: WEEK_MAX_ENTRIES }),
+			listAllMyEntries(entriesParams, { maxItems: RANGE_MAX_ENTRIES }),
 		enabled: listEnabled,
 		refetchOnMount: true,
 		retry: retryTimeQuery,
 	});
-	// No placeholder data on either read: a new week, For or project shows its
-	// skeleton instead of the previous week's rows under the new heading (the
-	// day strip, the list and the limit would disagree).
+	// No placeholder data on either read: a new range, For or project shows
+	// its skeleton instead of the previous range's rows under the new heading
+	// (the summary, the list and the limit would disagree).
 	const sheetsQuery = useQuery({
-		...timeQueries.myTimesheets(userId, { from: week.start, to: week.end }),
+		...timeQueries.myTimesheets(userId, { from: range.start, to: range.end }),
 		enabled: listEnabled,
 	});
 
@@ -734,8 +832,8 @@ export function useTimePageData(
 	}, [entriesQuery.data, scopeRule, forRef]);
 
 	const weekSheets = useMemo(
-		() => sheetsInView(sheetsQuery.data ?? [], week),
-		[sheetsQuery.data, week],
+		() => sheetsInView(sheetsQuery.data ?? [], range),
+		[sheetsQuery.data, range],
 	);
 	const scope = useMemo(
 		() => cardSheetScope(forRef, context, weekSheets, entries),
@@ -743,10 +841,10 @@ export function useTimePageData(
 	);
 	const sheets = useMemo(
 		() =>
-			sheetsInView(weekSheets, week, { forRef, scope }).filter(
+			sheetsInView(weekSheets, range, { forRef, scope }).filter(
 				(sheet) => !scopeRule || sheetInScope(sheet, scopeRule),
 			),
-		[weekSheets, week, forRef, scope, scopeRule],
+		[weekSheets, range, forRef, scope, scopeRule],
 	);
 	const sheetNames = useMemo(() => sheetPeopleNames(weekSheets), [weekSheets]);
 	const sheetReminders = useMemo(
@@ -809,9 +907,8 @@ export function useTimePageData(
 		forName,
 		zone,
 		zoneReady,
-		week,
+		range,
 		today,
-		isCurrentWeek,
 		entriesQuery: {
 			isPending: !listEnabled || entriesQuery.isPending,
 			isError: entriesQuery.isError,

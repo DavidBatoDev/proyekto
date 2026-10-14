@@ -7,15 +7,20 @@
 //
 //   Time ……………………………………………………………………………… [⏳ Waiting for you · 3]
 //   ● 01:12:44  Fix login bug · Acme Website   For: [Prodigitality… ▾] [❚❚][■]   timer bar (while running)
-//   [▶ Start timer]  [+ Add time]                For: [All ▾]   [List | Month]
-//   [ Task or preset ▾ ] [ 1:30 ] [ Yesterday ▾ ] [For ▾] [Add]  More options →  quick add
-//   ‹  Sep 29 – Oct 5, 2026  ›   This week          Your time (Asia/Manila) ⓘ ⚙
-//   Mon 6:30 · Tue 8:10 · … · Week 34:45                                       day strip
-//   TIMESHEETS IN THIS WEEK                                                     cards
-//   (entries table: Needs review, day groups, For column)
-//   WAITING FOR YOU (3)                                   [Approve selected]
+//   [▶ Start timer]  [+ Add time]                                [List | Month]
+//   [‹] Oct 19 – 25, 2026 [›] [This week ▾] [Project ▾] [For ▾] [🔍 Search] ⟲ Clear   ⓘ ⚙   filters
+//   ┌ Total hours ┐ ┌ Entries ┐ ┌ Days logged ┐ ┌ Avg / day ┐ ┌ Amount ┐             summary
+//   TIMESHEETS IN THIS PERIOD                                                   cards
+//   (entries table: Needs review, rows with a subtotal per day, the total)
 //
-// Two tabs under the title: My time (the toolbar, quick add, week strip and
+// The filters (TimeFilterBar) live in the URL: the date range (`preset`,
+// `from`/`to`, or `?week=` for a Monday week), `project`, `for`, `q` (task
+// titles and notes, matched over the loaded entries) and `status` (offered
+// only where this workspace approves time). The summary cards, the table and
+// its subtotals follow every filter; the cards are the sheets overlapping
+// the range.
+//
+// Two tabs under the title: My time (the toolbar, filters, summary and
 // entries) and Approvals (N) (this workspace's Waiting for you, then Decided),
 // shown only to someone who can approve here. `?tab=approvals` opens it;
 // without a tab, someone with no time of their own here who can approve
@@ -34,9 +39,10 @@
 // One-time cards sit above the timer bar: the policy confirm card (owners and
 // admins), the legacy grouping banner and the owner-only plan notice.
 //
-// Below 640 px: the running timer bar sticks under the app header; the day
-// strip scrolls sideways; the table folds to Task + Dur; a FAB opens Start
-// timer / Add time; Waiting for you keeps bulk approve in its header.
+// Below 640 px: the running timer bar sticks under the app header; the
+// filters fold behind one "Filters" button; the summary is a two-column
+// grid; the table folds to Task + Dur; a FAB opens Start timer / Add time;
+// Waiting for you keeps bulk approve in its header.
 //
 // The page is router-agnostic: the route passes the parsed search, a setter
 // and the hash. Every write in the kits invalidates through `invalidateTime`,
@@ -52,8 +58,7 @@ import { useCurrentWorkspace } from "@/hooks/useWorkspaceQueries";
 import { isNativeApp } from "@/lib/platform";
 import { isVisibleInApp } from "@/lib/platformSurfaces";
 import { nativeSafe, timeErrorMessage } from "@/lib/timeErrors";
-import { formatLocalDay, formatPeriodRange } from "@/lib/timeFormat";
-import { shiftWeek } from "@/lib/timePeriods";
+import { formatPeriodRange } from "@/lib/timeFormat";
 import type { TimeForParam, TimePageSearch } from "@/lib/timeSearch";
 import { cn } from "@/lib/utils";
 import { invalidateTime, TIME_PREFIX, timeQueries } from "@/queries/time";
@@ -82,7 +87,6 @@ import { timesheetCardLabel } from "../sheets/TimesheetCard";
 import { useTimesheetActions } from "../sheets/useTimesheetActions";
 import { TimerBar } from "../timer/TimerBar";
 import { useActiveTimer, useRunningEntry } from "../timer/useActiveTimer";
-import { DayStrip } from "./DayStrip";
 import {
 	ENTRIES_SECTION_COPY,
 	EntriesSection,
@@ -103,21 +107,22 @@ import {
 	TIME_EMPTY_COPY,
 	TimeEmptyState,
 } from "./TimeEmptyStates";
+import { TimeFilterBar, type TimeFilterProject } from "./TimeFilterBar";
 import { TimeMobileFab } from "./TimeMobileFab";
 import { TimePageHeader } from "./TimePageHeader";
 import { TimePolicyButton } from "./TimePolicyButton";
 import { TimePrefsMenu } from "./TimePrefsMenu";
+import { TimeSummaryCards } from "./TimeSummaryCards";
 import { TimesheetCardsSection } from "./TimesheetCardsSection";
 import { resolveTimeTab, type TimeTab, TimeTabs } from "./TimeTabs";
 import {
-	entriesOnDay,
+	filterEntries,
 	onlyPersonal,
+	sheetNeedsApproval,
 	useTimePageData,
-	weekParam,
 } from "./useTimePageData";
 import { useTimeWorkspaceScope } from "./useTimeWorkspaceScope";
 import { WAITING_SECTION_ID, WaitingSection } from "./WaitingSection";
-import { WeekNavigator } from "./WeekNavigator";
 import {
 	contextInScope,
 	isOutsideSheet,
@@ -129,8 +134,6 @@ import {
 export const TIME_PAGE_COPY = {
 	startTimer: "Start timer",
 	addTime: "Add time",
-	project: "Project",
-	allProjects: "Show every project",
 	retry: "Try again",
 	loading: "Loading your time",
 } as const;
@@ -204,9 +207,8 @@ function TimePageBody({
 		overviewQuery,
 		canLog,
 		zone,
-		week,
+		range,
 		today,
-		isCurrentWeek,
 		forRef,
 		forRequest,
 	} = data;
@@ -262,7 +264,6 @@ function TimePageBody({
 	const userTimezone = data.prefs.timezone;
 
 	// ── Page state ──
-	const [selectedDay, setSelectedDay] = useState<string | null>(null);
 	const [fixSheet, setFixSheet] = useState<TimesheetSummary | null>(null);
 	const [selected, setSelected] = useState<Set<string>>(() => new Set());
 	const [pickerOpen, setPickerOpen] = useState(false);
@@ -282,11 +283,17 @@ function TimePageBody({
 	const sheetActions = useTimesheetActions({ toastOnError: true });
 	const changeTask = useChangeEntryTask();
 
-	// A new week, For or project starts with no day picked, nothing selected
-	// and no sheet being fixed.
-	const filterKey = `${week.start}|${search.for ?? ""}|${search.project ?? ""}`;
+	// A new range, For, project, search or status starts with nothing
+	// selected and no sheet being fixed.
+	const filterKey = [
+		range.start,
+		range.end,
+		search.for ?? "",
+		search.project ?? "",
+		search.q ?? "",
+		search.status ?? "",
+	].join("|");
 	useEffect(() => {
-		setSelectedDay(null);
 		setSelected(new Set());
 		setFixSheet(null);
 	}, [filterKey]);
@@ -364,10 +371,16 @@ function TimePageBody({
 		if (Date.parse(sheet.updated_at) < Date.parse(fixSheet.updated_at)) return;
 		setFixSheet(null);
 	}, [fixQuery.data, fixSheet]);
+	// The search box and the status filter run over the loaded range; the
+	// summary cards read the same rows.
+	const filteredEntries = useMemo(
+		() => filterEntries(data.entries, { q: search.q, status: search.status }),
+		[data.entries, search.q, search.status],
+	);
 	const listEntries = useMemo(() => {
 		if (fixSheet) return fixQuery.data?.entries ?? [];
-		return entriesOnDay(data.entries, selectedDay, zone.timezone);
-	}, [fixSheet, fixQuery.data, data.entries, selectedDay, zone.timezone]);
+		return filteredEntries;
+	}, [fixSheet, fixQuery.data, filteredEntries]);
 	const tableSheets = useMemo(
 		() =>
 			fixQuery.data?.sheet
@@ -388,10 +401,15 @@ function TimePageBody({
 	const personal = usePersonalWhy(
 		canLog === true && !governed && onlyPersonal(overview),
 	);
+	// For: only with more than one choice here (or one set in the URL, so it
+	// can be undone); "Just me" with Why? stays as the explanation.
+	const showForFilter =
+		data.forOptions.length > 1 || Boolean(search.for) || Boolean(personal);
 
-	// The hour-limit indicator, while one governed context is in view.
+	// The hour-limit indicator, while one governed context's week is in view
+	// (the limit is weekly).
 	const limitProjectId =
-		governed && !search.project && !fixSheet
+		governed && !search.project && !fixSheet && range.unit === "week"
 			? (data.entries.find((entry) => entry.project_id)?.project_id ?? null)
 			: null;
 	const limitPolicy = useQuery({
@@ -425,6 +443,36 @@ function TimePageBody({
 		myProjects.data?.projects.find((project) => project.id === search.project)
 			?.title ??
 		null;
+	// No project to log on in this workspace: nothing to start or add.
+	const loggableHere = useLoggableProjects({ scope });
+	// The Project filter: this workspace's loggable projects and the projects
+	// of the loaded entries, plus the one in the URL.
+	const projectOptions = useMemo(() => {
+		const out: TimeFilterProject[] = [];
+		const seen = new Set<string>();
+		const add = (id: string | null | undefined, title?: string | null) => {
+			if (!id || seen.has(id)) return;
+			seen.add(id);
+			out.push({ id, title: title?.trim() || "Untitled project" });
+		};
+		for (const project of loggableHere.projects) add(project.id, project.title);
+		for (const entry of data.entries) {
+			if (entry.content !== "hidden")
+				add(entry.project_id, entry.project?.title);
+		}
+		if (search.project) add(search.project, projectLabel ?? "…");
+		return out.sort((a, b) => a.title.localeCompare(b.title));
+	}, [loggableHere.projects, data.entries, search.project, projectLabel]);
+	// Status only where this workspace approves time: its policy asks for
+	// approval, or a sheet in view goes to an approver.
+	const policyQuery = useQuery({
+		...timeQueries.workspacePolicy(scope.current ?? null),
+		enabled: Boolean(scope.current),
+		retry: false,
+	});
+	const usesApprovals =
+		policyQuery.data?.policy?.approval_required === true ||
+		workspaceSheets.some(sheetNeedsApproval);
 	// P1's plan notice is for an owner who tracks time on this workspace's
 	// projects; read only when it could apply (same cached A9 list).
 	const planNoticeCandidate = canLog === true && workspace?.my_role === "owner";
@@ -465,16 +513,11 @@ function TimePageBody({
 	});
 
 	// ── Navigation ──
-	const goWeek = useCallback(
-		(step: number) => {
-			const next = shiftWeek(week.start, zone.weekStart, step);
-			onSearchChange({ week: weekParam(next, today) }, { replace: true });
-		},
-		[week.start, zone.weekStart, today, onSearchChange],
+	const setFilters = useCallback(
+		(patch: Partial<TimePageSearch>) =>
+			onSearchChange(patch, { replace: true }),
+		[onSearchChange],
 	);
-	const goThisWeek = useCallback(() => {
-		onSearchChange({ week: undefined }, { replace: true });
-	}, [onSearchChange]);
 	const setFor = (value: TimeForParam | undefined) => {
 		onSearchChange({ for: value }, { replace: true });
 	};
@@ -521,7 +564,6 @@ function TimePageBody({
 	const openManual = (draft: ManualEntryDraft = {}) =>
 		setManual({
 			projectId: search.project ?? null,
-			day: selectedDay,
 			...draft,
 		});
 
@@ -536,7 +578,7 @@ function TimePageBody({
 			}
 		: null;
 	const filtered = Boolean(
-		search.for || search.project || selectedDay || fixSheet,
+		search.for || search.project || search.q || search.status || fixSheet,
 	);
 	const pendingIds = useMemo(
 		() =>
@@ -545,8 +587,6 @@ function TimePageBody({
 			),
 		[stoppingId, changeTask.pendingId],
 	);
-	// No project to log on in this workspace: nothing to start or add.
-	const loggableHere = useLoggableProjects({ scope });
 	const noProjects = loggableHere.isEmpty;
 	const loggable = canLog === true;
 	const canCreateEntries = loggable && !noProjects;
@@ -820,36 +860,6 @@ function TimePageBody({
 							</div>
 						) : null}
 						<div className="ml-auto flex flex-wrap items-center gap-2">
-							{search.project ? (
-								<span
-									className="inline-flex max-w-[16rem] items-center gap-1 rounded-full bg-muted px-2.5 py-1 text-xs text-foreground"
-									data-testid="project-filter"
-								>
-									<span className="text-muted-foreground">
-										{TIME_PAGE_COPY.project}:
-									</span>
-									<span className="truncate font-semibold">
-										{projectLabel ?? "…"}
-									</span>
-									<button
-										type="button"
-										aria-label={TIME_PAGE_COPY.allProjects}
-										title={TIME_PAGE_COPY.allProjects}
-										onClick={() =>
-											onSearchChange({ project: undefined }, { replace: true })
-										}
-										className="ml-0.5 rounded px-1 text-muted-foreground hover:bg-background hover:text-foreground"
-									>
-										×
-									</button>
-								</span>
-							) : null}
-							<ForFilter
-								value={search.for}
-								options={data.forOptions}
-								onChange={setFor}
-								personal={personal}
-							/>
 							<TimeViewToggle
 								value={listView ? "list" : "month"}
 								onChange={(mode) => {
@@ -868,31 +878,37 @@ function TimePageBody({
 
 					{listView ? (
 						<>
-							<div className="space-y-3 rounded-2xl border border-border bg-card p-3 sm:p-4">
-								<WeekNavigator
-									week={week}
-									isCurrentWeek={isCurrentWeek}
-									onPrevious={() => goWeek(-1)}
-									onNext={() => goWeek(1)}
-									onThisWeek={goThisWeek}
+							<div className="rounded-2xl border border-border bg-card p-3 sm:p-4">
+								<TimeFilterBar
+									search={search}
+									onSearchChange={setFilters}
+									range={range}
+									today={today}
+									projects={projectOptions}
+									forFilter={
+										showForFilter ? (
+											<ForFilter
+												value={search.for}
+												options={data.forOptions}
+												onChange={setFor}
+												personal={personal}
+											/>
+										) : null
+									}
+									forActive={Boolean(search.for)}
+									showStatus={usesApprovals || Boolean(search.status)}
 									zoneText={data.zoneText}
 									settings={<TimePrefsMenu />}
-								/>
-								<DayStrip
-									entries={data.entries}
-									week={week}
-									timeZone={zone.timezone}
-									today={today}
-									selectedDay={selectedDay}
-									onSelectDay={(day) => {
-										setFixSheet(null);
-										setSelectedDay(day);
-									}}
-									loading={data.entriesQuery.isPending}
-									zoneText={data.zoneText}
-									nowMs={now ? now.getTime() : undefined}
+									compact={isPhone}
 								/>
 							</div>
+
+							<TimeSummaryCards
+								entries={filteredEntries}
+								timeZone={zone.timezone}
+								loading={data.entriesQuery.isPending}
+								nowMs={now ? now.getTime() : undefined}
+							/>
 
 							<LimitBanner readings={limitReadings} />
 
@@ -902,10 +918,7 @@ function TimePageBody({
 								error={data.sheetsQuery.isError ? data.sheetsQuery.error : null}
 								onRetry={() => void data.sheetsQuery.refetch()}
 								onSubmit={setSubmitting}
-								onFix={(sheet) => {
-									setSelectedDay(null);
-									setFixSheet(sheet);
-								}}
+								onFix={setFixSheet}
 								onWithdraw={(sheet) => void sheetActions.withdraw(sheet)}
 								isBusy={(id) => sheetActions.isPending(undefined, id)}
 								names={data.sheetNames}
@@ -929,10 +942,7 @@ function TimePageBody({
 									<TimesheetCardsSection
 										sheets={personalSheets}
 										onSubmit={setSubmitting}
-										onFix={(sheet) => {
-											setSelectedDay(null);
-											setFixSheet(sheet);
-										}}
+										onFix={setFixSheet}
 										onWithdraw={(sheet) => void sheetActions.withdraw(sheet)}
 										isBusy={(id) => sheetActions.isPending(undefined, id)}
 										names={data.sheetNames}
@@ -957,10 +967,7 @@ function TimePageBody({
 									<TimesheetCardsSection
 										sheets={sharedSheets}
 										onSubmit={setSubmitting}
-										onFix={(sheet) => {
-											setSelectedDay(null);
-											setFixSheet(sheet);
-										}}
+										onFix={setFixSheet}
 										onWithdraw={(sheet) => void sheetActions.withdraw(sheet)}
 										isBusy={(id) => sheetActions.isPending(undefined, id)}
 										names={data.sheetNames}
@@ -995,18 +1002,6 @@ function TimePageBody({
 								}
 								timeZone={zone.timezone}
 								sheets={tableSheets}
-								day={
-									selectedDay && !fixSheet
-										? {
-												date: selectedDay,
-												label: formatLocalDay(selectedDay, {
-													weekday: true,
-													now,
-												}),
-											}
-										: null
-								}
-								onClearDay={() => setSelectedDay(null)}
 								fixing={fixing}
 								onClearFix={() => setFixSheet(null)}
 								empty={

@@ -26,16 +26,17 @@ both are decided by the workspace's owners and admins.
 
 A timesheet covers one period: **weekly** (the default, starting Monday),
 **every two weeks**, **twice a month** (1–15 and 16–end), or **monthly**. The
-period, the day a week starts and the timezone come from the workspace's time
-policy, a team's own rules, or an agreement's terms —
+period and the timezone come from the workspace's time policy, a team's own
+rules, or an agreement's terms —
 [time policy and team rules](/docs/teams-time-and-rates/time-policy) explains
 which wins.
 
 > Timesheets count days in their own timezone. An entry belongs to the day it
 > started on in the timesheet's timezone, which is not always your day.
 
-When the period, timezone or week start changes, the change applies from the
-next period. Timesheets already open keep their dates.
+Weeks always start on Monday. When the period or timezone changes, the
+change applies from the next period. Timesheets already open keep their
+dates.
 
 ## The four states
 

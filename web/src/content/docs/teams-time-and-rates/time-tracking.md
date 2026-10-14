@@ -1,7 +1,7 @@
 Time in Proyekto lives on one page: **Time**, in the main sidebar. Whatever
 the time is for — your team, your workspace, an agreement with a client, or
 nobody but you — you start timers, add time you have already worked and see
-your week in the same place. A time entry says who worked, on which project
+what you logged in the same place. A time entry says who worked, on which project
 and task, and for how long. Its **For** tag says who, if anyone, approves it.
 
 Tracking time just for yourself works on every plan, Free included. Sending
@@ -101,24 +101,35 @@ On Free it is what everyone on a workspace project uses, and **Why?** says so:
 you." Time logged under an agreement is the exception — it is never limited
 by plan.
 
-## Your week on the Time page
+## Your time on the Time page
 
-The page shows one week at a time: **‹ ›** step through weeks and **This
-week** comes back (on a keyboard, `j`, `k` and `t` do the same). Under the
-week, a strip shows each day's total and marks any day over 8 hours with ⚠;
-click a day to show only that day.
+The **My time** tab opens on this week. Weeks always run Monday to Sunday.
+Above your entries sit the filters:
 
-Below it sit the **timesheets** that overlap the week, then your entries
-grouped by day — task, project, For, start, end and duration — with a
-**Needs review** group at the top for entries of 10 hours or more and timers
-Proyekto stopped for you. The
-toolbar filters by For (All, one team, workspace or agreement, or Just me)
-and switches between **List** and **Month**.
+| Filter | What it does |
+| --- | --- |
+| **Dates** | Opens a calendar: pick a start day and an end day across two months, then **Apply**, or pick Today, Yesterday, This week, Last week, This month, Last month or Last 30 days. **‹ ›** step by the period you picked — a week, a month, or the length of your range — and on a keyboard `j` and `k` do the same, with `t` back to this week. A range can cover up to 93 days |
+| **Project** | One of the workspace's projects, or all of them |
+| **For** | One team, workspace or agreement, or Just me — shown when you log for more than one here |
+| **Search** | Matches the task title or the note of each entry |
+| **Status** | Open, submitted, returned or approved — shown only when the workspace approves time |
+
+**Clear** puts every filter back, dates included. On a phone the calendar
+opens from the bottom of the screen with one month, and the other filters
+fold behind one **Filters** button, which shows how many are active.
+
+Under the filters, summary cards add up what the filters show: **Total
+hours**, **Entries**, **Days logged**, **Avg / day** (the total divided by
+the days logged) and, when you can see the money for that time, **Amount**.
+Then come the **timesheets** that overlap the dates, then your entries in
+date order — task, project, For, start, end and hours — with a subtotal under
+each day, the total at the bottom, and a **Needs review** group at the top for
+entries of 10 hours or more and timers Proyekto stopped for you. The toolbar
+switches between **List** and **Month**.
 
 Days are counted in a timezone. Under **All**, that is yours, set from the ⚙
-**Your time settings** menu along with the day your week starts. Under one
-For, it is that timesheet's own timezone, and the page labels it when it
-differs from yours.
+**Your time settings** menu. Under one For, it is that timesheet's own
+timezone, and the page labels it when it differs from yours.
 
 If you approve other people's time but have not logged any yourself in 30
 days, Time opens in approver mode instead: what is waiting for you, what you

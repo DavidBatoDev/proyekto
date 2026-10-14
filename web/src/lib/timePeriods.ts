@@ -16,6 +16,7 @@
  */
 
 import { formatInTimeZone, fromZonedTime } from "date-fns-tz";
+import type { TimeRangePreset } from "@/lib/timeSearch";
 import type { PeriodKind } from "@/services/time.types";
 
 export interface PeriodSpec {
@@ -260,4 +261,111 @@ export function autoSubmitDate(
 			? Math.max(Math.trunc(reminderDays), 1)
 			: 1;
 	return addDays(periodEnd, days);
+}
+
+// ── View ranges (the /time page's date filter) ──────────────────────────────
+//
+// The page's weeks always run Monday to Sunday: the week start is no longer a
+// setting (the backend keeps every policy and preference on Monday).
+
+/** ISO Monday: the only week start the web uses. */
+export const MONDAY = 1;
+
+/** The longest range the page loads at once (about three months). */
+export const MAX_VIEW_RANGE_DAYS = 93;
+
+/** How the ‹ › arrows step: a Monday week, a calendar month, or the range's own length. */
+export type ViewRangeUnit = "week" | "month" | "custom";
+
+/** The calendar month `n` months on from the month holding `d`. */
+export function shiftMonth(d: string, n: number): LocalRange {
+	const month = monthWindow(d);
+	const [y, m] = month.start.split("-").map(Number);
+	const target = new Date(Date.UTC(y, m - 1 + Math.trunc(n), 1));
+	return monthWindow(target.toISOString().slice(0, 10));
+}
+
+/** A preset's dates around `today` (Monday weeks, calendar months). */
+export function presetRange(
+	preset: Exclude<TimeRangePreset, "custom">,
+	today: string,
+): LocalRange {
+	switch (preset) {
+		case "today":
+			return { start: today, end: today };
+		case "yesterday": {
+			const day = addDays(today, -1);
+			return { start: day, end: day };
+		}
+		case "last_30_days":
+			return { start: addDays(today, -29), end: today };
+		case "last_week":
+			return shiftWeek(today, MONDAY, -1);
+		case "this_month":
+			return monthWindow(today);
+		case "last_month":
+			return shiftMonth(today, -1);
+		default:
+			return weekWindow(today, MONDAY);
+	}
+}
+
+/** The preset a range is exactly, if any (`custom` never matches). */
+export function matchRangePreset(
+	range: LocalRange,
+	today: string,
+): Exclude<TimeRangePreset, "custom"> | null {
+	for (const preset of [
+		"today",
+		"yesterday",
+		"this_week",
+		"last_week",
+		"this_month",
+		"last_month",
+		"last_30_days",
+	] as const) {
+		const candidate = presetRange(preset, today);
+		if (candidate.start === range.start && candidate.end === range.end) {
+			return preset;
+		}
+	}
+	return null;
+}
+
+/** `week` for a Monday–Sunday range, `month` for a whole calendar month, else `custom`. */
+export function rangeUnitOf(range: LocalRange): ViewRangeUnit {
+	const week = weekWindow(range.start, MONDAY);
+	if (week.start === range.start && week.end === range.end) return "week";
+	const month = monthWindow(range.start);
+	if (month.start === range.start && month.end === range.end) return "month";
+	return "custom";
+}
+
+/** The range `n` steps on: a week, a month, or the range's own length in days. */
+export function stepRange(
+	range: LocalRange,
+	unit: ViewRangeUnit,
+	n: number,
+): LocalRange {
+	if (unit === "week") return shiftWeek(range.start, MONDAY, n);
+	if (unit === "month") return shiftMonth(range.start, n);
+	const length = daysBetween(range.start, range.end) + 1;
+	return {
+		start: addDays(range.start, length * n),
+		end: addDays(range.end, length * n),
+	};
+}
+
+/** A range cut to `MAX_VIEW_RANGE_DAYS` from its start; `capped` says it was. */
+export function capRange(
+	range: LocalRange,
+	maxDays: number = MAX_VIEW_RANGE_DAYS,
+): { range: LocalRange; capped: boolean } {
+	if (daysBetween(range.start, range.end) + 1 <= maxDays) {
+		return { range, capped: false };
+	}
+	return {
+		range: { start: range.start, end: addDays(range.start, maxDays - 1) },
+		capped: true,
+	};
 }

@@ -606,19 +606,14 @@ export function periodKindTitle(kind: PeriodKind): string {
 }
 
 /**
- * "weekly · starts Monday · Asia/Manila" (the popover's Timesheet line). Week
- * start only matters for weekly and two-weekly periods.
+ * "weekly · Asia/Manila" (the popover's Timesheet line). Weeks always start
+ * on Monday, so the week start is never named.
  */
 export function timesheetRulesLine(policy: {
 	period_kind: PeriodKind;
-	week_start?: number | null;
 	timezone?: string | null;
 }): string {
 	const parts: string[] = [periodKindLabel(policy.period_kind)];
-	const weekly =
-		policy.period_kind === "weekly" || policy.period_kind === "biweekly";
-	const day = weekdayName(policy.week_start ?? 1);
-	if (weekly && day) parts.push(`starts ${day}`);
 	if (policy.timezone) parts.push(policy.timezone);
 	return parts.join(" · ");
 }

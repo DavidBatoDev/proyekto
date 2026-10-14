@@ -2,7 +2,7 @@
 //
 // "Time policy" at the top right of the Time page, for the open workspace's
 // owners and admins: a small popover with the policy's summary line
-// ("Weekly · starts Monday · Asia/Manila · Approval required") and Edit time
+// ("Weekly · Asia/Manila · Approval required") and Edit time
 // policy (`/w/<slug>/settings/time`). The page shows no policy cards; only a
 // policy that needs confirming gets a banner (PolicyConfirmCard).
 

@@ -1,11 +1,10 @@
 // web/src/components/time/page/EntriesSection.tsx
 //
 // The Time page's entry list (ux.md › The Time Page): W1-1's
-// `TimeEntriesTable` in `mine` mode, with the filters the page adds on top:
-//
-//   - a day picked in the strip ("Thu Oct 2 · Show the whole week");
-//   - Fix on a Returned card: the list shows that sheet's entries only, so
-//     its rows can be corrected before Resubmit.
+// `TimeEntriesTable` in `mine` mode, with a muted subtotal under each day
+// and the page's Fix filter on top: Fix on a Returned card shows that
+// sheet's entries only, so its rows can be corrected before Resubmit. The
+// date, project, For, search and status filters are applied by the page.
 //
 // Needs review, the For column, locks, selection (Change For…) and the row
 // menu all live in the table; this section supplies the callbacks.
@@ -35,7 +34,6 @@ import { TimeReasonCard } from "../shared/TimeReasonCard";
 
 export const ENTRIES_SECTION_COPY = {
 	title: "Time entries",
-	showWeek: "Show the whole week",
 	showAll: "Show all entries",
 	fixing: (label: string, period: string) =>
 		`Showing the ${label} timesheet for ${period}. Change what the note asks for, then Resubmit.`,
@@ -54,9 +52,6 @@ export interface EntriesSectionProps {
 	timeZone: string;
 	/** The person's sheets, for the submitted date on locked chips. */
 	sheets?: readonly EntrySheetInfo[];
-	/** The day picked in the strip (already applied to `entries`). */
-	day?: { date: string; label: string } | null;
-	onClearDay?: () => void;
 	/** Fix on a Returned card (already applied to `entries`). */
 	fixing?: { label: string; period: string } | null;
 	onClearFix?: () => void;
@@ -90,8 +85,6 @@ export function EntriesSection({
 	onRetry,
 	timeZone,
 	sheets,
-	day,
-	onClearDay,
 	fixing,
 	onClearFix,
 	empty,
@@ -137,23 +130,6 @@ export function EntriesSection({
 				</div>
 			) : null}
 
-			{day ? (
-				<div
-					className="flex flex-wrap items-center gap-2 text-xs"
-					data-testid="day-filter"
-				>
-					<span className="rounded-full bg-primary/10 px-2.5 py-1 font-semibold text-foreground">
-						{day.label}
-					</span>
-					{onClearDay ? (
-						<button type="button" className={CHIP_BUTTON} onClick={onClearDay}>
-							<X className="h-3.5 w-3.5" aria-hidden="true" />
-							{ENTRIES_SECTION_COPY.showWeek}
-						</button>
-					) : null}
-				</div>
-			) : null}
-
 			{error ? (
 				<TimeReasonCard
 					variant="inline"
@@ -182,6 +158,7 @@ export function EntriesSection({
 					loading={loading}
 					timeZone={timeZone}
 					sheets={sheets}
+					daySubtotals
 					pendingIds={pendingIds}
 					empty={empty}
 					onOpenEntry={onOpenEntry}

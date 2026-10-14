@@ -162,14 +162,11 @@ export function weekdayName(isoDay: number | null | undefined): string {
 	return WEEKDAYS[index >= 0 && index < 7 ? index : 0];
 }
 
-/** "weekly · starts Monday · Asia/Manila". */
+/** "weekly · Asia/Manila" (weeks always start Monday, so it isn't named). */
 export function periodLine(
-	policy: Pick<ResolvedTimePolicy, "period_kind" | "week_start" | "timezone">,
+	policy: Pick<ResolvedTimePolicy, "period_kind" | "timezone">,
 ): string {
 	const parts = [PERIOD_WORDS[policy.period_kind] ?? policy.period_kind];
-	if (policy.period_kind === "weekly" || policy.period_kind === "biweekly") {
-		parts.push(`starts ${weekdayName(policy.week_start)}`);
-	}
 	if (policy.timezone) parts.push(policy.timezone);
 	return parts.join(" · ");
 }

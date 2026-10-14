@@ -164,9 +164,7 @@ describe("WhoApprovesPopover", () => {
 		);
 		await waitFor(() =>
 			expect(
-				screen.getByText(
-					"Timesheet: weekly · starts Monday · America/New_York",
-				),
+				screen.getByText("Timesheet: weekly · America/New_York"),
 			).toBeTruthy(),
 		);
 		expect(getPolicy).toHaveBeenCalledWith("p1", {

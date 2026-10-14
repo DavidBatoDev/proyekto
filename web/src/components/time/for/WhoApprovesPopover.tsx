@@ -4,7 +4,7 @@
 //
 //   Who approves this time
 //   Goes to: Prodigitality Services Inc. Team's owners and admins
-//   Timesheet: weekly · starts Monday · Asia/Manila
+//   Timesheet: weekly · Asia/Manila
 //   Rules: set by Prodigitality Services Inc. Team (team override)
 //   Manual time up to 7 days back · No rounding
 //

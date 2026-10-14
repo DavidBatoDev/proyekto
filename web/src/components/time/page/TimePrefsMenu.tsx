@@ -1,24 +1,25 @@
 // web/src/components/time/page/TimePrefsMenu.tsx
 //
 // The Time page's ⚙ menu (ux.md › API Surface: "PUT /time/me/preferences
-// {timezone, week_start?} (self) edits it from the Time page's ⚙ menu ('Your
-// time: Asia/Manila · weeks start Monday')"). Under the "All" filter the day
-// strip and view week use these (L29); a filtered context uses its own policy.
+// {timezone} (self) edits it from the Time page's ⚙ menu ('Your time:
+// Asia/Manila')"). Under the "All" filter the page reads days in this
+// timezone (L29); a filtered context uses its own policy.
 //
 //   [⚙]
-//   ┌ Your time: Asia/Manila · weeks start Monday ─────────┐
+//   ┌ Your time: Asia/Manila ──────────────────────────────┐
 //   │ Timezone        [Asia/Manila                 ▾]      │
 //   │                 Use this device's timezone (UTC)     │
-//   │ Weeks start on  [Monday ▾]                           │
 //   │ Timesheets count days in their own timezone.         │
 //   │                                  [Cancel] [Save]     │
 //   └──────────────────────────────────────────────────────┘
 //
+// Weeks always start on Monday: the week start is no longer a setting, so
+// the menu neither shows nor sends it (the backend ignores a sent one).
 // Before a row exists (the overview seeds one from the browser), the person's
-// time reads in the device timezone with weeks from Monday.
+// time reads in the device timezone.
 //
 // `useTimePreferences()` is the same answer for the page: `{timezone,
-// weekStart}` with those fallbacks applied.
+// weekStart: 1}` with that fallback applied.
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Loader2, Settings2 } from "lucide-react";
@@ -26,7 +27,7 @@ import { useEffect, useId, useMemo, useRef, useState } from "react";
 import { AnchoredPopover } from "@/components/common/AnchoredPopover";
 import { listTimeZones } from "@/lib/datetime";
 import { timeErrorMessage } from "@/lib/timeErrors";
-import { deviceTimeZone, weekdayName } from "@/lib/timeFormat";
+import { deviceTimeZone } from "@/lib/timeFormat";
 import { isValidTimezone } from "@/lib/timePeriods";
 import { cn } from "@/lib/utils";
 import { invalidateTime, timeKeys, timeQueries } from "@/queries/time";
@@ -38,9 +39,8 @@ export const TIME_PREFS_COPY = {
 	/** The ⚙ button's accessible name. */
 	trigger: "Your time settings",
 	timezone: "Timezone",
-	weekStart: "Weeks start on",
 	useDevice: (tz: string) => `Use this device's timezone (${tz})`,
-	/** ux.md's day-strip tooltip, said here too. */
+	/** ux.md's zone tooltip (the ⓘ by the zone label), said here too. */
 	hint: "Timesheets count days in their own timezone.",
 	save: "Save",
 	cancel: "Cancel",
@@ -48,37 +48,29 @@ export const TIME_PREFS_COPY = {
 
 export interface ResolvedTimePreferences {
 	timezone: string;
-	/** ISO weekday, 1 = Monday. */
+	/** ISO weekday: always 1 (Monday); a stored `week_start` is not used. */
 	weekStart: number;
 	/** False while no preferences row exists (the fallbacks are in use). */
 	stored: boolean;
 }
 
-/** The stored preferences with ux.md's fallbacks: the device timezone and Monday. */
+/** The stored preferences with ux.md's fallback: the device timezone. Weeks start Monday. */
 export function resolveTimePreferences(
-	prefs:
-		| Pick<UserTimePreferences, "timezone" | "week_start">
-		| null
-		| undefined,
+	prefs: Pick<UserTimePreferences, "timezone"> | null | undefined,
 	deviceTz: string = deviceTimeZone(),
 ): ResolvedTimePreferences {
 	const timezone =
 		prefs?.timezone && isValidTimezone(prefs.timezone)
 			? prefs.timezone
 			: deviceTz;
-	const week = prefs?.week_start;
-	const weekStart =
-		typeof week === "number" && Number.isInteger(week) && week >= 1 && week <= 7
-			? week
-			: 1;
-	return { timezone, weekStart, stored: Boolean(prefs) };
+	return { timezone, weekStart: 1, stored: Boolean(prefs) };
 }
 
-/** "Your time: Asia/Manila · weeks start Monday". */
+/** "Your time: Asia/Manila". */
 export function prefsSummaryLine(
-	prefs: Pick<ResolvedTimePreferences, "timezone" | "weekStart">,
+	prefs: Pick<ResolvedTimePreferences, "timezone">,
 ): string {
-	return `Your time: ${prefs.timezone} · weeks start ${weekdayName(prefs.weekStart) || "Monday"}`;
+	return `Your time: ${prefs.timezone}`;
 }
 
 /** The signed-in person's Time preferences, with the fallbacks applied. */
@@ -107,8 +99,6 @@ function zoneOptions(current: string): string[] {
 	return out;
 }
 
-const WEEK_DAYS = [1, 2, 3, 4, 5, 6, 7] as const;
-
 const FIELD =
 	"w-full rounded-lg border border-input bg-background px-2.5 py-1.5 text-sm text-foreground focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20 disabled:opacity-60";
 
@@ -128,19 +118,14 @@ export function TimePrefsMenu({ zIndex, className }: TimePrefsMenuProps) {
 	const device = deviceTimeZone();
 	const [open, setOpen] = useState(false);
 	const [timezone, setTimezone] = useState(prefs.timezone);
-	const [weekStart, setWeekStart] = useState(prefs.weekStart);
 	const triggerRef = useRef<HTMLButtonElement>(null);
 	const fieldId = useId();
 	const timezoneId = `${fieldId}-timezone`;
-	const weekStartId = `${fieldId}-week-start`;
 
 	// Each opening starts from what is saved.
 	useEffect(() => {
-		if (open) {
-			setTimezone(prefs.timezone);
-			setWeekStart(prefs.weekStart);
-		}
-	}, [open, prefs.timezone, prefs.weekStart]);
+		if (open) setTimezone(prefs.timezone);
+	}, [open, prefs.timezone]);
 
 	// The popover is portaled to <body>, so Tab from the ⚙ never reaches it:
 	// move focus to the first field once it opens, and back to the ⚙ when it
@@ -161,8 +146,7 @@ export function TimePrefsMenu({ zIndex, className }: TimePrefsMenuProps) {
 	}, [open, timezoneId]);
 
 	const save = useMutation({
-		mutationFn: () =>
-			timeService.setPreferences({ timezone, week_start: weekStart }),
+		mutationFn: () => timeService.setPreferences({ timezone }),
 		onSuccess: (saved) => {
 			queryClient.setQueryData(timeKeys.preferences(userId), saved);
 			void invalidateTime(queryClient, "preferences");
@@ -172,10 +156,7 @@ export function TimePrefsMenu({ zIndex, className }: TimePrefsMenuProps) {
 
 	const zones = useMemo(() => zoneOptions(timezone), [timezone]);
 	const summary = prefsSummaryLine(prefs);
-	const changed =
-		timezone !== prefs.timezone ||
-		weekStart !== prefs.weekStart ||
-		!prefs.stored;
+	const changed = timezone !== prefs.timezone || !prefs.stored;
 	const error = save.error
 		? timeErrorMessage(save.error, { operation: "write" })
 		: null;
@@ -248,27 +229,6 @@ export function TimePrefsMenu({ zIndex, className }: TimePrefsMenuProps) {
 								{TIME_PREFS_COPY.useDevice(device)}
 							</button>
 						) : null}
-					</div>
-					<div className="space-y-1">
-						<label
-							htmlFor={weekStartId}
-							className="text-xs font-medium text-muted-foreground"
-						>
-							{TIME_PREFS_COPY.weekStart}
-						</label>
-						<select
-							id={weekStartId}
-							value={weekStart}
-							disabled={save.isPending}
-							onChange={(event) => setWeekStart(Number(event.target.value))}
-							className={FIELD}
-						>
-							{WEEK_DAYS.map((day) => (
-								<option key={day} value={day}>
-									{weekdayName(day)}
-								</option>
-							))}
-						</select>
 					</div>
 					<p className="text-xs text-muted-foreground">
 						{TIME_PREFS_COPY.hint}

@@ -31,7 +31,7 @@ owners and admins can change the time policy."
 
 The first time an owner or admin opens Time on a workspace with timesheets, a
 card asks them to confirm what Proyekto set up — "Acme tracks time weekly
-from Monday in Asia/Manila." — with **Looks right** and **Change**. It is a
+in Asia/Manila." — with **Looks right** and **Change**. It is a
 confirmation, not a setup step: time is tracked under those settings either
 way.
 
@@ -42,8 +42,7 @@ The policy has three parts.
 | Setting | What it does |
 | --- | --- |
 | **Time on workspace projects** | Whether people on the workspace's projects who are not on a team can log for the workspace. Off, they can only track time for themselves |
-| **Timesheet period** | Weekly, every two weeks, twice a month (1–15 and 16–end) or monthly |
-| **Week starts on** | The first day of a week, for weekly and two-weekly periods |
+| **Timesheet period** | Weekly, every two weeks, twice a month (1–15 and 16–end) or monthly. Weeks always start on Monday |
 | **Timezone** | The timezone days and periods are counted in |
 | **Reminder** | How many days after a period ends people are reminded to submit (1–14) |
 
@@ -62,7 +61,7 @@ The policy has three parts.
 | **Weekly limit** | Optional. People see a warning past it — "Acme has a 40h weekly limit. You've logged 41h this week." — but it never blocks or cuts time |
 | **Presets** | Which of Meeting, Review, Admin and Other are offered for work that is not on a task |
 
-> Changes to the period, timezone or week start apply from the next period —
+> Changes to the period or timezone apply from the next period —
 > "Applies from Mon Oct 12. Open timesheets keep their dates." A timesheet
 > never changes shape halfway through.
 
@@ -79,7 +78,7 @@ which comes with Business — see
 
 Free includes personal time, not timesheets, so most of the policy is shown
 but cannot be changed: "Everyone can still track time just for themselves."
-The timezone and the week start stay editable.
+The timezone stays editable.
 
 ## Team rules (Business)
 
@@ -89,14 +88,14 @@ off, nobody can log for the team: "Members can't log for this team while time
 is off. They can still track time just for themselves."
 
 Below it, **Team rules** let a team override the workspace on Business. Each
-row says what it inherits — "Use Acme's policy (Weekly · Mon · Asia/Manila)"
+row says what it inherits — "Use Acme's policy (Weekly · Asia/Manila)"
 — until someone presses **Override**, after which it reads "Override for this
 team" and can be reset back to the workspace's value.
 
 | Rule | What it controls |
 | --- | --- |
 | **Approvers** | The workspace's owners and admins, or **this team's owners and admins** |
-| **Timesheet period** | The period, week start and timezone for the team's timesheets |
+| **Timesheet period** | The period and timezone for the team's timesheets |
 | **Manual time** | Whether members can add time they already worked |
 | **Retroactive window** | How many days back that time can go |
 | **Rounding** | The rounding step at approval |

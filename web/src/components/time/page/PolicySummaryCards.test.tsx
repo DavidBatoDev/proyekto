@@ -135,11 +135,11 @@ const freePlan = {
 describe("policySummaryParts", () => {
 	it("reads like the ux.md card", () => {
 		expect(policySummaryParts("Acme", policy()).join(" · ")).toBe(
-			"Acme · Weekly · starts Monday · Asia/Manila · Approval required",
+			"Acme · Weekly · Asia/Manila · Approval required",
 		);
 	});
 
-	it("drops the week start for half-month and monthly periods", () => {
+	it("never names a week start, whatever the period or a stored value", () => {
 		expect(
 			policySummaryParts(
 				"Acme",
@@ -151,13 +151,7 @@ describe("policySummaryParts", () => {
 				"Acme",
 				policy({ period_kind: "biweekly", week_start: 7 }),
 			),
-		).toEqual([
-			"Acme",
-			"Every two weeks",
-			"starts Sunday",
-			"Asia/Manila",
-			"Approval required",
-		]);
+		).toEqual(["Acme", "Every two weeks", "Asia/Manila", "Approval required"]);
 	});
 
 	it("workspace time off, by switch or by plan", () => {
@@ -195,7 +189,7 @@ describe("PolicySummaryCards", () => {
 		);
 		expect(
 			await screen.findByText(
-				"Acme · Weekly · starts Monday · Asia/Manila · Approval required",
+				"Acme · Weekly · Asia/Manila · Approval required",
 			),
 		).toBeTruthy();
 		expect(

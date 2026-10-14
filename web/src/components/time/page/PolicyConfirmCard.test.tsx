@@ -117,23 +117,20 @@ afterEach(() => {
 
 describe("policy confirm copy", () => {
 	it("names the period the way ux.md does", () => {
-		expect(policyPeriodPhrase({ period_kind: "weekly", week_start: 1 })).toBe(
-			"weekly from Monday",
+		// Weeks always start on Monday, so no week start is named.
+		expect(policyPeriodPhrase({ period_kind: "weekly" })).toBe("weekly");
+		expect(policyPeriodPhrase({ period_kind: "biweekly" })).toBe(
+			"every two weeks",
 		);
-		expect(policyPeriodPhrase({ period_kind: "biweekly", week_start: 7 })).toBe(
-			"every two weeks from Sunday",
+		expect(policyPeriodPhrase({ period_kind: "semi_monthly" })).toBe(
+			"twice a month (1–15, 16–end)",
 		);
-		expect(
-			policyPeriodPhrase({ period_kind: "semi_monthly", week_start: 1 }),
-		).toBe("twice a month (1–15, 16–end)");
-		expect(policyPeriodPhrase({ period_kind: "monthly", week_start: 1 })).toBe(
-			"monthly",
-		);
+		expect(policyPeriodPhrase({ period_kind: "monthly" })).toBe("monthly");
 	});
 
 	it("tracking on and tracking off sentences", () => {
 		expect(policyConfirmSentence("Acme", policy(), "Asia/Manila")).toBe(
-			"Acme tracks time weekly from Monday in Asia/Manila.",
+			"Acme tracks time weekly in Asia/Manila.",
 		);
 		expect(
 			policyConfirmSentence(
@@ -159,10 +156,10 @@ describe("policy confirm copy", () => {
 				"Asia/Manila",
 			),
 		).toEqual({
+			// No week start: the backend keeps Monday and the card never sends it.
 			confirm: true,
 			tracking_enabled: true,
 			period_kind: "biweekly",
-			week_start: 3,
 			timezone: "Asia/Manila",
 		});
 		expect(
@@ -201,9 +198,7 @@ describe("PolicyConfirmCard", () => {
 		);
 		expect(screen.getByTestId("policy-confirm-loading")).toBeTruthy();
 		expect(
-			await screen.findByText(
-				"Acme tracks time weekly from Monday in Asia/Manila.",
-			),
+			await screen.findByText("Acme tracks time weekly in Asia/Manila."),
 		).toBeTruthy();
 		expect(get).toHaveBeenCalledWith("w1", { tz: "Asia/Manila" });
 		expect(
@@ -218,7 +213,6 @@ describe("PolicyConfirmCard", () => {
 			confirm: true,
 			tracking_enabled: true,
 			period_kind: "weekly",
-			week_start: 1,
 			timezone: "Asia/Manila",
 		});
 		expect(invalidate).toHaveBeenCalledWith({

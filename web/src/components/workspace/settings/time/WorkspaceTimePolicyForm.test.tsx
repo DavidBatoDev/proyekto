@@ -97,7 +97,6 @@ import {
 	presetsLine,
 	reminderSummary,
 	roundingValueLine,
-	shiftAnchor,
 	showsDetectedTimezone,
 	trackingDescription,
 	trackingPlanInfo,
@@ -227,33 +226,32 @@ describe("draft model", () => {
 		});
 	});
 
-	it("moves a stored biweekly anchor onto a new week start", () => {
-		// 2026-10-05 is a Monday; Sunday of that week is Oct 11.
-		expect(shiftAnchor("2026-10-05", 7)).toBe("2026-10-11");
-		expect(shiftAnchor("2026-10-05", 1)).toBe("2026-10-05");
-		expect(shiftAnchor("2026-10-07", 1)).toBe("2026-10-12");
-		const p = policy({ period_kind: "biweekly", period_anchor: "2026-10-05" });
+	it("never sends a week start (weeks always start Monday)", () => {
+		const p = policy({
+			period_kind: "biweekly",
+			period_anchor: "2026-10-05",
+			week_start: 7,
+		});
+		expect("week_start" in draftFromPolicy(p)).toBe(false);
 		expect(
-			policyPatch({ ...draftFromPolicy(p), week_start: 7 }, p, {
+			policyPatch({ ...draftFromPolicy(p), timezone: "UTC" }, p, {
 				planOk: true,
 			}),
-		).toEqual({ week_start: 7, period_anchor: "2026-10-11" });
+		).toEqual({ timezone: "UTC" });
 	});
 
-	it("without the plan sends only the timezone and the week start", () => {
+	it("without the plan sends only the timezone", () => {
 		const p = policy({
 			plan: { time_tracking: false, time_team_rules: false },
 		});
 		const draft = {
 			...draftFromPolicy(p),
 			timezone: "UTC",
-			week_start: 7,
 			rounding_minutes: 15,
 			tracking_enabled: false,
 		};
 		expect(policyPatch(draft, p, { planOk: false })).toEqual({
 			timezone: "UTC",
-			week_start: 7,
 		});
 	});
 
@@ -263,11 +261,9 @@ describe("draft model", () => {
 		expect(periodChanged(base, p)).toBe(false);
 		expect(periodChanged({ ...base, period_kind: "monthly" }, p)).toBe(true);
 		expect(periodChanged({ ...base, timezone: "UTC" }, p)).toBe(true);
-		expect(periodChanged({ ...base, week_start: 7 }, p)).toBe(true);
-		const monthly = policy({ period_kind: "monthly" });
-		expect(
-			periodChanged({ ...draftFromPolicy(monthly), week_start: 7 }, monthly),
-		).toBe(false);
+		// A stored week start other than Monday is no change the form makes.
+		const sunday = policy({ week_start: 7 });
+		expect(periodChanged(draftFromPolicy(sunday), sunday)).toBe(false);
 	});
 
 	it("says when a change applies (L40)", () => {
@@ -364,13 +360,9 @@ describe("WorkspaceTimePolicyForm (owners and admins)", () => {
 		expect(
 			within(period).getByLabelText("Twice a month (1–15, 16–end)"),
 		).toBeTruthy();
-		expect(
-			(
-				screen.getByLabelText(
-					POLICY_FORM_COPY.weekStartsOn,
-				) as HTMLSelectElement
-			).value,
-		).toBe("1");
+		// No week start control: weeks always start Monday.
+		expect(screen.queryByLabelText("Week starts on")).toBeNull();
+		expect(screen.queryByText("Week starts on")).toBeNull();
 		expect(
 			(screen.getByLabelText(POLICY_FORM_COPY.timezone) as HTMLSelectElement)
 				.value,
@@ -585,7 +577,7 @@ describe("WorkspaceTimePolicyForm without timesheets (Free)", () => {
 			}),
 		});
 
-	it("puts the controls behind the plan notice but keeps timezone and week start", async () => {
+	it("puts the controls behind the plan notice but keeps the timezone", async () => {
 		ents.features = { time_tracking: false };
 		const put = vi
 			.spyOn(timeService, "updateWorkspacePolicy")
@@ -619,14 +611,18 @@ describe("WorkspaceTimePolicyForm without timesheets (Free)", () => {
 		expect(
 			(screen.getByLabelText("Monthly") as HTMLInputElement).disabled,
 		).toBe(true);
-		const weekStart = screen.getByLabelText(
-			POLICY_FORM_COPY.weekStartsOn,
+		expect(screen.queryByLabelText("Week starts on")).toBeNull();
+		const timezone = screen.getByLabelText(
+			POLICY_FORM_COPY.timezone,
 		) as HTMLSelectElement;
-		expect(weekStart.disabled).toBe(false);
-		fireEvent.change(weekStart, { target: { value: "7" } });
+		expect(timezone.disabled).toBe(false);
+		const other = Array.from(timezone.options).find(
+			(option) => option.value && option.value !== timezone.value,
+		)?.value as string;
+		fireEvent.change(timezone, { target: { value: other } });
 		fireEvent.click(saveButton());
 		await waitFor(() =>
-			expect(put).toHaveBeenCalledWith("w1", { week_start: 7 }),
+			expect(put).toHaveBeenCalledWith("w1", { timezone: other }),
 		);
 	});
 
@@ -658,6 +654,7 @@ describe("WorkspaceTimePolicyForm for members (A4)", () => {
 			}),
 		);
 		expect(screen.getByTestId("time-policy-readonly")).toBeTruthy();
+		expect(screen.queryByText("Week starts on")).toBeNull();
 		expect(screen.getByText(POLICY_FORM_COPY.readOnly)).toBeTruthy();
 		expect(screen.queryByRole("switch")).toBeNull();
 		expect(screen.queryByRole("combobox")).toBeNull();
@@ -666,7 +663,6 @@ describe("WorkspaceTimePolicyForm for members (A4)", () => {
 		for (const text of [
 			"On",
 			"Weekly",
-			"Monday",
 			"Asia/Manila",
 			"1 day after a period ends",
 			"Required",

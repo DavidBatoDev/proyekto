@@ -20,8 +20,8 @@ function button(name: string) {
 describe("inheritedLine", () => {
 	it("names the workspace and the inherited value (ux.md › Team Override)", () => {
 		expect(
-			inheritedLine("Prodigitality Workspace", "Weekly · Mon · Asia/Manila"),
-		).toBe("Use Prodigitality Workspace's policy (Weekly · Mon · Asia/Manila)");
+			inheritedLine("Prodigitality Workspace", "Weekly · Asia/Manila"),
+		).toBe("Use Prodigitality Workspace's policy (Weekly · Asia/Manila)");
 	});
 
 	it("falls back to the short form without a workspace name", () => {
@@ -121,7 +121,7 @@ describe("OverrideRow", () => {
 				id="r"
 				label="Timesheet period"
 				workspaceName="Acme"
-				inheritedSummary="Weekly · Mon · UTC"
+				inheritedSummary="Weekly · UTC"
 				overridden
 				canEdit
 				onReset={onReset}

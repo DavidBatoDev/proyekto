@@ -226,27 +226,15 @@ function rowButton(id: string, name: string): HTMLButtonElement | null {
 // ── Pure helpers ────────────────────────────────────────────────────────────
 
 describe("summaries", () => {
-	it("periodSummary: weekday only for weekly kinds", () => {
+	it("periodSummary: the period and timezone, never a week start", () => {
 		expect(
-			periodSummary({
-				period_kind: "weekly",
-				week_start: 1,
-				timezone: "Asia/Manila",
-			}),
-		).toBe("Weekly · Mon · Asia/Manila");
+			periodSummary({ period_kind: "weekly", timezone: "Asia/Manila" }),
+		).toBe("Weekly · Asia/Manila");
+		expect(periodSummary({ period_kind: "biweekly", timezone: "UTC" })).toBe(
+			"Every two weeks · UTC",
+		);
 		expect(
-			periodSummary({
-				period_kind: "biweekly",
-				week_start: 7,
-				timezone: "UTC",
-			}),
-		).toBe("Every two weeks · Sun · UTC");
-		expect(
-			periodSummary({
-				period_kind: "semi_monthly",
-				week_start: 1,
-				timezone: "Asia/Manila",
-			}),
+			periodSummary({ period_kind: "semi_monthly", timezone: "Asia/Manila" }),
 		).toBe("Twice a month · Asia/Manila");
 	});
 
@@ -277,10 +265,16 @@ describe("override helpers", () => {
 		expect(
 			overrideIsEmptyAfter(stored, {
 				period_kind: null,
-				week_start: null,
 				timezone: null,
 				period_anchor: null,
 			}),
+		).toBe(true);
+		// A stale stored week start (no longer a setting) keeps no row alive.
+		expect(
+			overrideIsEmptyAfter(
+				override({ period_kind: "monthly", week_start: 7 }),
+				{ period_kind: null },
+			),
 		).toBe(true);
 		expect(overrideIsEmptyAfter(stored, { period_kind: null })).toBe(false);
 		// A field with no UI here (weekly limit) still counts as a rule.
@@ -304,9 +298,10 @@ describe("override helpers", () => {
 		expect(storedPeriod(override(), eff)).toBeNull();
 		expect(storedPeriod(override({ timezone: "UTC" }), eff)).toEqual({
 			period_kind: "weekly",
-			week_start: 1,
 			timezone: "UTC",
 		});
+		// A stored week start alone is no period override.
+		expect(storedPeriod(override({ week_start: 7 }), eff)).toBeNull();
 	});
 
 	it("nextPeriodStart is the day after the current period, in the policy timezone", () => {
@@ -368,7 +363,7 @@ describe("TeamRulesSection", () => {
 		expect(
 			within(row("team-rule-period")).getByTestId("override-row-state")
 				.textContent,
-		).toBe("Use Prodigitality Workspace's policy (Weekly · Mon · Asia/Manila)");
+		).toBe("Use Prodigitality Workspace's policy (Weekly · Asia/Manila)");
 		expect(
 			within(row("team-rule-manual")).getByTestId("override-row-state")
 				.textContent,
@@ -447,7 +442,7 @@ describe("TeamRulesSection", () => {
 		expect(put).not.toHaveBeenCalled();
 	});
 
-	it("a period change says when it applies, and saves kind, week start and timezone", async () => {
+	it("a period change says when it applies, and saves kind and timezone (no week start)", async () => {
 		vi.spyOn(timeService, "getTeamPolicy").mockResolvedValue(view());
 		const put = vi
 			.spyOn(timeService, "updateTeamPolicy")
@@ -456,6 +451,11 @@ describe("TeamRulesSection", () => {
 		await screen.findByTestId("team-rules");
 		fireEvent.click(rowButton("team-rule-period", "Override") as HTMLElement);
 		fireEvent.click(screen.getByRole("radio", { name: "Every two weeks" }));
+		// No week start control: weeks always start Monday.
+		expect(
+			within(row("team-rule-period")).queryByText("Week starts on"),
+		).toBeNull();
+		expect(row("team-rule-period").querySelectorAll("select")).toHaveLength(1);
 		expect(
 			within(row("team-rule-period")).getByTestId("override-row-hint")
 				.textContent,
@@ -464,7 +464,6 @@ describe("TeamRulesSection", () => {
 		await waitFor(() =>
 			expect(put).toHaveBeenCalledWith("t1", {
 				period_kind: "biweekly",
-				week_start: 1,
 				timezone: "Asia/Manila",
 			}),
 		);
@@ -610,7 +609,6 @@ describe("TeamRulesSection", () => {
 		await waitFor(() =>
 			expect(put).toHaveBeenCalledWith("t1", {
 				period_kind: null,
-				week_start: null,
 				timezone: null,
 				period_anchor: null,
 			}),

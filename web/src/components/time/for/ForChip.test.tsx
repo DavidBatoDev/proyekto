@@ -193,9 +193,7 @@ describe("ForChip", () => {
 		fireEvent.click(screen.getByRole("button"));
 		expect(await screen.findByText("Who approves this time")).toBeTruthy();
 		await waitFor(() =>
-			expect(
-				screen.getByText("Timesheet: weekly · starts Monday · Asia/Manila"),
-			).toBeTruthy(),
+			expect(screen.getByText("Timesheet: weekly · Asia/Manila")).toBeTruthy(),
 		);
 		expect(getPolicy).toHaveBeenCalledWith("p1", { kind: "team", id: "t1" });
 		expect(

@@ -198,22 +198,13 @@ export const REPORT_PRESETS: readonly ReportPreset[] = [
 export interface RangeContext {
 	/** The scope's policy timezone when known, else the reader's. */
 	timezone: string;
-	/** ISO week start (1 = Monday). */
+	/** Ignored: weeks always start on Monday (kept so callers can pass a policy's field). */
 	weekStart?: number | null;
 	now?: Date;
 }
 
 /** The first day "All time" reaches back to. */
 export const ALL_TIME_START = "2000-01-01";
-
-function normalWeekStart(weekStart: number | null | undefined): number {
-	return typeof weekStart === "number" &&
-		Number.isInteger(weekStart) &&
-		weekStart >= 1 &&
-		weekStart <= 7
-		? weekStart
-		: 1;
-}
 
 /** A preset's dates, in the scope's timezone and week. */
 export function presetRange(
@@ -223,7 +214,7 @@ export function presetRange(
 	const today = todayIn(safeTimezone(ctx.timezone), ctx.now);
 	switch (preset) {
 		case "this_week": {
-			const week = weekWindow(today, normalWeekStart(ctx.weekStart));
+			const week = weekWindow(today, 1);
 			return { from: week.start, to: week.end };
 		}
 		case "this_year": {

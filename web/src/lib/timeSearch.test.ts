@@ -144,6 +144,79 @@ describe("validateTimePageSearch", () => {
 	});
 });
 
+describe("validateTimePageSearch › filters", () => {
+	it("keeps the date preset, the range, the search and the status", () => {
+		expect(
+			validateTimePageSearch({
+				preset: "custom",
+				from: "2026-10-01",
+				to: "2026-10-10",
+				q: "  login bug ",
+				status: "submitted",
+			}),
+		).toEqual({
+			preset: "custom",
+			from: "2026-10-01",
+			to: "2026-10-10",
+			q: "login bug",
+			status: "submitted",
+		});
+		for (const preset of [
+			"today",
+			"yesterday",
+			"this_week",
+			"last_week",
+			"this_month",
+			"last_month",
+			"last_30_days",
+		]) {
+			expect(validateTimePageSearch({ preset })).toEqual({ preset });
+		}
+	});
+
+	it("keeps an old ?week= link next to the new params", () => {
+		expect(validateTimePageSearch({ week: "2026-09-30" })).toEqual({
+			week: "2026-09-30",
+		});
+	});
+
+	it("swaps an inverted range and drops bad values", () => {
+		expect(
+			validateTimePageSearch({ from: "2026-10-10", to: "2026-10-01" }),
+		).toEqual({ from: "2026-10-01", to: "2026-10-10" });
+		expect(
+			validateTimePageSearch({
+				preset: "fortnight",
+				from: "2026-02-30",
+				to: "soon",
+				q: "   ",
+				status: "paid",
+			}),
+		).toEqual({});
+		// A number search (the router JSON-decodes values) reads as text.
+		expect(validateTimePageSearch({ q: 42 })).toEqual({ q: "42" });
+		expect(validateTimePageSearch({ q: "x".repeat(150) }).q?.length).toBe(100);
+	});
+
+	it("writes the filters into a string link", () => {
+		const url = new URL(
+			timeHref({
+				preset: "custom",
+				from: "2026-10-01",
+				to: "2026-10-10",
+				q: "docs",
+				status: "approved",
+			}),
+			"https://proyekto.test",
+		);
+		expect(url.searchParams.get("preset")).toBe("custom");
+		expect(url.searchParams.get("from")).toBe("2026-10-01");
+		expect(url.searchParams.get("to")).toBe("2026-10-10");
+		expect(url.searchParams.get("q")).toBe("docs");
+		expect(url.searchParams.get("status")).toBe("approved");
+	});
+});
+
 describe("validateTimesheetReviewSearch", () => {
 	it("keeps only the entry", () => {
 		expect(

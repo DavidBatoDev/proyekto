@@ -491,27 +491,15 @@ describe("policy phrases", () => {
 		expect(periodKindTitle("weekly")).toBe("Weekly");
 	});
 
-	it("writes the popover's timesheet line", () => {
+	it("writes the popover's timesheet line, never naming a week start", () => {
 		expect(
-			timesheetRulesLine({
-				period_kind: "weekly",
-				week_start: 1,
-				timezone: MANILA,
-			}),
-		).toBe("weekly · starts Monday · Asia/Manila");
+			timesheetRulesLine({ period_kind: "weekly", timezone: MANILA }),
+		).toBe("weekly · Asia/Manila");
 		expect(
-			timesheetRulesLine({
-				period_kind: "biweekly",
-				week_start: 7,
-				timezone: "UTC",
-			}),
-		).toBe("every two weeks · starts Sunday · UTC");
+			timesheetRulesLine({ period_kind: "biweekly", timezone: "UTC" }),
+		).toBe("every two weeks · UTC");
 		expect(
-			timesheetRulesLine({
-				period_kind: "semi_monthly",
-				week_start: 1,
-				timezone: MANILA,
-			}),
+			timesheetRulesLine({ period_kind: "semi_monthly", timezone: MANILA }),
 		).toBe("twice a month · Asia/Manila");
 	});
 

@@ -6,7 +6,7 @@ import { cn } from "@/lib/utils";
 /**
  * One row of Team settings › Time › Team rules (ux.md › Team Override).
  *
- * A row either inherits ("Use Acme's policy (weekly · Mon · Asia/Manila)",
+ * A row either inherits ("Use Acme's policy (weekly · Asia/Manila)",
  * muted, with an [Override] button) or carries this team's own value
  * ("Override for this team", the editor, and "Use workspace policy" to drop
  * it). The row only lays things out: the parent owns the draft, the save and
@@ -47,7 +47,7 @@ export interface OverrideRowProps {
 	label: string;
 	/** The team's workspace, for "Use Acme's policy (…)". */
 	workspaceName?: string | null;
-	/** The inherited value in words ("weekly · Mon · Asia/Manila"); null when unknown. */
+	/** The inherited value in words ("weekly · Asia/Manila"); null when unknown. */
 	inheritedSummary?: string | null;
 	/** The team stores its own value for this row. */
 	overridden: boolean;

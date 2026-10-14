@@ -41,10 +41,8 @@ import {
 	formatLocalDay,
 	formatMinutesText,
 	periodKindTitle,
-	weekdayName,
 	workItemLabel,
 } from "@/lib/timeFormat";
-import { addDays, isLocalDate, isoDow } from "@/lib/timePeriods";
 import { featureNoteCopy } from "@/lib/usageCopy";
 import { cn } from "@/lib/utils";
 import { invalidateTime, timeKeys } from "@/queries/time";
@@ -64,10 +62,12 @@ import type { Workspace } from "@/services/workspaces.service";
  * Policy): how a workspace tracks, groups and approves time.
  *
  * - Owners and admins edit (`can_edit`); members read the same values (A4).
- * - Free (`plan.time_tracking: false`): every control but the timezone and
- *   the week start sits behind the `time_tracking` plan notice, which keeps
- *   "Everyone can still track time just for themselves."
- * - A new period, timezone or week start applies from the next period start:
+ * - Free (`plan.time_tracking: false`): every control but the timezone sits
+ *   behind the `time_tracking` plan notice, which keeps "Everyone can still
+ *   track time just for themselves."
+ * - Weeks always start on Monday: the week start is not a setting, and the
+ *   form never sends `week_start` (the backend ignores it).
+ * - A new period or timezone applies from the next period start:
  *   "Applies from Mon Oct 12. Open timesheets keep their dates." (L40)
  * - "Detected from your browser" shows only while the policy has never been
  *   saved by a person (`policy_unconfirmed`) and the timezone is the editor's
@@ -87,7 +87,6 @@ export const POLICY_FORM_COPY = {
 	on: "On",
 	off: "Off",
 	period: "Timesheet period",
-	weekStartsOn: "Week starts on",
 	timezone: "Timezone",
 	timezoneHint: "Days and periods are counted in this timezone",
 	detectedBrowser: "Detected from your browser",
@@ -167,7 +166,6 @@ export function presetsLine(shown: readonly PresetWorkItem[]): string {
 export interface PolicyDraft {
 	tracking_enabled: boolean;
 	period_kind: PeriodKind;
-	week_start: number;
 	timezone: string;
 	approval_required: boolean;
 	allow_manual_entries: boolean;
@@ -181,9 +179,9 @@ export interface PolicyDraft {
 	shown_presets: PresetWorkItem[];
 }
 
-/** Fields a Free workspace may still change (backend WORKSPACE_PLAN_FREE_FIELDS). */
+/** Fields a Free workspace may still change (backend WORKSPACE_PLAN_FREE_FIELDS, less the retired week start). */
 export const PLAN_FREE_FIELDS: ReadonlySet<keyof WorkspaceTimePolicyInput> =
-	new Set(["timezone", "week_start"]);
+	new Set(["timezone"]);
 
 export const REMINDER_MIN = 1;
 export const REMINDER_MAX = 14;
@@ -203,7 +201,6 @@ export function draftFromPolicy(policy: ResolvedTimePolicy): PolicyDraft {
 	return {
 		tracking_enabled: Boolean(policy.tracking_enabled),
 		period_kind: policy.period_kind,
-		week_start: policy.week_start,
 		timezone: policy.timezone,
 		approval_required: Boolean(policy.approval_required),
 		allow_manual_entries: Boolean(policy.allow_manual_entries),
@@ -218,16 +215,6 @@ export function draftFromPolicy(policy: ResolvedTimePolicy): PolicyDraft {
 function hiddenPresetsOf(shown: readonly PresetWorkItem[]): PresetWorkItem[] {
 	const keep = new Set(shown);
 	return PRESET_WORK_ITEMS.filter((item) => !keep.has(item));
-}
-
-/**
- * A biweekly anchor must fall on the week start (`trg_time_policies_guard`),
- * so a new week start moves a stored anchor to that weekday in the same week.
- */
-export function shiftAnchor(anchor: string, weekStart: number): string {
-	if (!isLocalDate(anchor)) return anchor;
-	const delta = (((weekStart - isoDow(anchor)) % 7) + 7) % 7;
-	return addDays(anchor, delta);
 }
 
 /**
@@ -247,13 +234,6 @@ export function policyPatch(
 	}
 	if (draft.period_kind !== base.period_kind) {
 		patch.period_kind = draft.period_kind;
-	}
-	if (draft.week_start !== base.week_start) {
-		patch.week_start = draft.week_start;
-		if (policy.period_anchor && options.planOk) {
-			const moved = shiftAnchor(policy.period_anchor, draft.week_start);
-			if (moved !== policy.period_anchor) patch.period_anchor = moved;
-		}
 	}
 	if (draft.timezone !== base.timezone) patch.timezone = draft.timezone;
 	if (draft.approval_required !== base.approval_required) {
@@ -290,10 +270,6 @@ export function policyPatch(
 	return free;
 }
 
-function usesWeekStart(kind: PeriodKind): boolean {
-	return kind === "weekly" || kind === "biweekly";
-}
-
 /** True when the draft moves period boundaries (L40: "Applies from …"). */
 export function periodChanged(
 	draft: PolicyDraft,
@@ -301,9 +277,7 @@ export function periodChanged(
 ): boolean {
 	return (
 		draft.period_kind !== policy.period_kind ||
-		draft.timezone !== policy.timezone ||
-		(draft.week_start !== policy.week_start &&
-			(usesWeekStart(draft.period_kind) || usesWeekStart(policy.period_kind)))
+		draft.timezone !== policy.timezone
 	);
 }
 
@@ -523,9 +497,6 @@ function ReadOnlyPolicy({
 					</SettingsRow>
 					<SettingsRow inline label={POLICY_FORM_COPY.period}>
 						{periodKindTitle(draft.period_kind)}
-					</SettingsRow>
-					<SettingsRow inline label={POLICY_FORM_COPY.weekStartsOn}>
-						{weekdayName(draft.week_start)}
 					</SettingsRow>
 					<SettingsRow
 						inline
@@ -814,30 +785,6 @@ function PolicyEditor({
 							</div>
 						}
 					/>
-
-					<SettingsRow
-						label={
-							<label htmlFor={idOf("week-start")}>
-								{POLICY_FORM_COPY.weekStartsOn}
-							</label>
-						}
-					>
-						<select
-							id={idOf("week-start")}
-							value={draft.week_start}
-							disabled={pending}
-							onChange={(event) =>
-								update({ week_start: Number(event.target.value) })
-							}
-							className={selectClass}
-						>
-							{[1, 2, 3, 4, 5, 6, 7].map((day) => (
-								<option key={day} value={day}>
-									{weekdayName(day)}
-								</option>
-							))}
-						</select>
-					</SettingsRow>
 
 					<SettingsRow
 						label={

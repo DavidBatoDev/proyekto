@@ -19,22 +19,25 @@ vi.mock("@/services/teams.service", () => teams);
 import {
 	cardSheetScope,
 	contextSheetScope,
-	dayTotals,
-	entriesOnDay,
+	entryMatchesQuery,
+	filterEntries,
 	findOverviewContext,
 	forFilterOptions,
 	forRefLabel,
 	forRequestOf,
 	onlyPersonal,
 	overviewContextZone,
+	presetSearch,
+	rangeSearch,
 	reminderDaysBySheet,
 	resolveViewZone,
+	sheetNeedsApproval,
 	sheetPeopleNames,
 	sheetReminderDays,
 	sheetsInView,
 	useTimePageData,
+	viewRangeFor,
 	viewWeekFor,
-	weekParam,
 	zoneLabel,
 } from "./useTimePageData";
 
@@ -158,7 +161,8 @@ describe("resolveViewZone", () => {
 				forRef: { kind: "personal", id: null },
 				prefs: { timezone: NY, weekStart: 7 },
 			}),
-		).toEqual({ timezone: NY, weekStart: 7, source: "preferences" });
+			// Weeks always start on Monday, whatever the preferences store.
+		).toEqual({ timezone: NY, weekStart: 1, source: "preferences" });
 	});
 
 	it("reads a context's zone from its latest sheet, via the overview's sheet scope", () => {
@@ -194,7 +198,7 @@ describe("resolveViewZone", () => {
 				sheet({ timezone: "UTC", week_start: 2 }),
 			],
 		});
-		expect(zone).toEqual({ timezone: NY, weekStart: 7, source: "context" });
+		expect(zone).toEqual({ timezone: NY, weekStart: 1, source: "context" });
 	});
 
 	it("guesses a team or workspace scope without the overview, and falls back when no sheet matches", () => {
@@ -204,7 +208,7 @@ describe("resolveViewZone", () => {
 				prefs: PREFS,
 				sheets: [sheet({ timezone: NY, week_start: 7 })],
 			}),
-		).toEqual({ timezone: NY, weekStart: 7, source: "context" });
+		).toEqual({ timezone: NY, weekStart: 1, source: "context" });
 		expect(
 			resolveViewZone({
 				forRef: { kind: "workspace", id: "w9" },
@@ -249,7 +253,7 @@ describe("resolveViewZone", () => {
 		});
 		expect(zone).toEqual({
 			timezone: NY,
-			weekStart: 7,
+			weekStart: 1,
 			source: "context",
 			periodKind: "monthly",
 			periodAnchor: null,
@@ -279,15 +283,10 @@ describe("resolveViewZone", () => {
 				timezone: NY,
 			}),
 		).toBeNull();
-		// A missing or odd week start falls back to the person's, then Monday.
+		// Any stored week start reads as Monday.
 		expect(
-			overviewContextZone(
-				{ ...base, timezone: NY, week_start: 9 },
-				{
-					weekStart: 7,
-				},
-			),
-		).toMatchObject({ timezone: NY, weekStart: 7, reminderDays: null });
+			overviewContextZone({ ...base, timezone: NY, week_start: 7 }),
+		).toMatchObject({ timezone: NY, weekStart: 1, reminderDays: null });
 		expect(
 			overviewContextZone({ ...base, timezone: NY, reminder_days: -2 }),
 		).toMatchObject({ weekStart: 1, reminderDays: null });
@@ -299,7 +298,7 @@ describe("resolveViewZone", () => {
 				overview: overview({ contexts: [base] }),
 				sheets: [sheet({ timezone: NY, week_start: 7 })],
 			}),
-		).toEqual({ timezone: NY, weekStart: 7, source: "context" });
+		).toEqual({ timezone: NY, weekStart: 1, source: "context" });
 	});
 
 	it("cleans an invalid zone and week start", () => {
@@ -312,99 +311,205 @@ describe("resolveViewZone", () => {
 	});
 });
 
-describe("view week", () => {
-	it("snaps ?week= to its week start and defaults to this week in the view zone", () => {
-		expect(
-			viewWeekFor("2026-10-08", { timezone: MANILA, weekStart: 1 }),
-		).toEqual(WEEK);
-		expect(
-			viewWeekFor(undefined, { timezone: MANILA, weekStart: 1 }, NOW),
-		).toEqual(WEEK);
-		// Sunday weeks.
-		expect(
-			viewWeekFor("2026-10-08", { timezone: MANILA, weekStart: 7 }),
-		).toEqual({
-			start: "2026-10-04",
-			end: "2026-10-10",
-		});
+describe("view range", () => {
+	const TODAY = "2026-10-06";
+
+	it("snaps ?week= to its Monday and defaults to this week in the view zone", () => {
+		expect(viewWeekFor("2026-10-08", { timezone: MANILA })).toEqual(WEEK);
+		expect(viewWeekFor(undefined, { timezone: MANILA }, NOW)).toEqual(WEEK);
 		// A malformed value is ignored.
-		expect(
-			viewWeekFor("2026-13-01", { timezone: MANILA, weekStart: 1 }, NOW),
-		).toEqual(WEEK);
+		expect(viewWeekFor("2026-13-01", { timezone: MANILA }, NOW)).toEqual(WEEK);
 	});
 
-	it("omits ?week= for the current week", () => {
-		expect(weekParam(WEEK, "2026-10-06")).toBeUndefined();
+	it("reads the presets around today (Monday weeks, calendar months)", () => {
+		expect(viewRangeFor({}, TODAY)).toMatchObject({
+			...WEEK,
+			unit: "week",
+			preset: "this_week",
+			isDefault: true,
+			capped: false,
+		});
+		expect(viewRangeFor({ preset: "last_week" }, TODAY)).toMatchObject({
+			start: "2026-09-28",
+			end: "2026-10-04",
+			unit: "week",
+			preset: "last_week",
+			isDefault: false,
+		});
+		expect(viewRangeFor({ preset: "this_month" }, TODAY)).toMatchObject({
+			start: "2026-10-01",
+			end: "2026-10-31",
+			unit: "month",
+			preset: "this_month",
+		});
+		expect(viewRangeFor({ preset: "last_month" }, TODAY)).toMatchObject({
+			start: "2026-09-01",
+			end: "2026-09-30",
+			unit: "month",
+			preset: "last_month",
+		});
+	});
+
+	it("keeps ?week= working as a Monday week, and lets presets and from/to win", () => {
+		expect(viewRangeFor({ week: "2026-09-30" }, TODAY)).toMatchObject({
+			start: "2026-09-28",
+			end: "2026-10-04",
+			unit: "week",
+			// Last week, as it happens.
+			preset: "last_week",
+		});
+		// A week that is no preset steps as a week and names no preset.
+		expect(viewRangeFor({ week: "2026-08-12" }, TODAY)).toMatchObject({
+			start: "2026-08-10",
+			end: "2026-08-16",
+			unit: "week",
+			preset: null,
+		});
 		expect(
-			weekParam({ start: "2026-09-28", end: "2026-10-04" }, "2026-10-06"),
-		).toBe("2026-09-28");
+			viewRangeFor({ week: "2026-09-30", preset: "this_month" }, TODAY),
+		).toMatchObject({ start: "2026-10-01", end: "2026-10-31" });
+		// A stepped month (from/to) is a month.
+		expect(
+			viewRangeFor({ from: "2026-07-01", to: "2026-07-31" }, TODAY),
+		).toMatchObject({ unit: "month", preset: null });
+	});
+
+	it("reads a custom range, swaps an inverted one, and caps it at about three months", () => {
+		expect(
+			viewRangeFor(
+				{ preset: "custom", from: "2026-10-01", to: "2026-10-10" },
+				TODAY,
+			),
+		).toMatchObject({
+			start: "2026-10-01",
+			end: "2026-10-10",
+			unit: "custom",
+			preset: "custom",
+			capped: false,
+		});
+		// Custom over this week's own dates stays custom (the inputs stay open).
+		expect(
+			viewRangeFor(
+				{ preset: "custom", ...{ from: WEEK.start, to: WEEK.end } },
+				TODAY,
+			),
+		).toMatchObject({ unit: "custom", preset: "custom", isDefault: false });
+		// Custom without dates starts from this week.
+		expect(viewRangeFor({ preset: "custom" }, TODAY)).toMatchObject(WEEK);
+		expect(
+			viewRangeFor({ from: "2026-10-10", to: "2026-10-01" }, TODAY),
+		).toMatchObject({ start: "2026-10-01", end: "2026-10-10", unit: "custom" });
+		expect(
+			viewRangeFor(
+				{ preset: "custom", from: "2026-01-01", to: "2026-12-31" },
+				TODAY,
+			),
+		).toMatchObject({ start: "2026-01-01", end: "2026-04-03", capped: true });
+	});
+
+	it("writes a stepped range back to the URL", () => {
+		// This week keeps a clean URL; another week is ?week=.
+		expect(rangeSearch(WEEK, "week", TODAY)).toEqual({
+			week: undefined,
+			preset: undefined,
+			from: undefined,
+			to: undefined,
+		});
+		expect(
+			rangeSearch({ start: "2026-09-28", end: "2026-10-04" }, "week", TODAY),
+		).toMatchObject({ week: "2026-09-28" });
+		expect(
+			rangeSearch({ start: "2026-09-01", end: "2026-09-30" }, "month", TODAY),
+		).toEqual({
+			week: undefined,
+			preset: undefined,
+			from: "2026-09-01",
+			to: "2026-09-30",
+		});
+		expect(
+			rangeSearch({ start: "2026-10-11", end: "2026-10-20" }, "custom", TODAY),
+		).toEqual({
+			week: undefined,
+			preset: undefined,
+			from: "2026-10-11",
+			to: "2026-10-20",
+		});
+	});
+
+	it("writes a picked preset (custom starts from the range in view)", () => {
+		expect(presetSearch("this_week", WEEK)).toEqual({
+			week: undefined,
+			preset: undefined,
+			from: undefined,
+			to: undefined,
+		});
+		expect(presetSearch("last_month", WEEK)).toMatchObject({
+			preset: "last_month",
+			from: undefined,
+		});
+		expect(presetSearch("custom", WEEK)).toEqual({
+			week: undefined,
+			preset: "custom",
+			from: WEEK.start,
+			to: WEEK.end,
+		});
 	});
 });
 
-describe("dayTotals", () => {
-	it("sums each day in the view zone, flags days over 8h and counts a running timer live", () => {
-		const entries = [
-			entry({ id: "a" }),
-			entry({
-				id: "b",
-				started_at: "2026-10-05T05:00:00.000Z",
-				ended_at: "2026-10-05T11:00:00.000Z",
-				duration_seconds: 6 * 3600,
-			}),
-			// 23:30 UTC on Oct 6 is Oct 7 in Manila.
-			entry({
-				id: "c",
-				started_at: "2026-10-06T23:30:00.000Z",
-				ended_at: "2026-10-07T00:30:00.000Z",
-				duration_seconds: 3600,
-			}),
-			entry({
-				id: "run",
-				started_at: "2026-10-06T02:00:00.000Z",
-				ended_at: null,
-				duration_seconds: null,
-			}),
-			// Outside the week.
-			entry({
-				id: "old",
-				started_at: "2026-09-30T01:00:00.000Z",
-				ended_at: "2026-09-30T02:00:00.000Z",
-				duration_seconds: 3600,
-			}),
-		];
-		const { days, weekSeconds } = dayTotals(entries, WEEK, {
-			timeZone: MANILA,
-			today: "2026-10-06",
-			nowMs: NOW.getTime(),
+describe("client-side filters", () => {
+	it("matches the search against task titles and notes, case-insensitively", () => {
+		const a = entry({ id: "a" });
+		const b = entry({
+			id: "b",
+			task: { id: "t2", title: "Write docs", work_type: null, status: null },
+			note: "Pairing with Ana",
 		});
-		expect(days.map((d) => d.date)).toEqual([
-			"2026-10-05",
-			"2026-10-06",
-			"2026-10-07",
-			"2026-10-08",
-			"2026-10-09",
-			"2026-10-10",
-			"2026-10-11",
+		expect(entryMatchesQuery(a, "LOGIN")).toBe(true);
+		expect(entryMatchesQuery(b, "ana")).toBe(true);
+		expect(entryMatchesQuery(a, "ana")).toBe(false);
+		expect(filterEntries([a, b], { q: "  docs " }).map((e) => e.id)).toEqual([
+			"b",
 		]);
-		expect(days[0]).toMatchObject({ seconds: 9.5 * 3600, over: true });
-		expect(days[1]).toMatchObject({
-			seconds: 3600,
-			over: false,
-			isToday: true,
-		});
-		expect(days[2]).toMatchObject({ seconds: 3600 });
-		expect(weekSeconds).toBe(11.5 * 3600);
+		expect(filterEntries([a, b], {})).toHaveLength(2);
 	});
 
-	it("picks one day's entries", () => {
-		const entries = [
-			entry({ id: "a" }),
-			entry({ id: "b", started_at: "2026-10-07T01:00:00.000Z" }),
-		];
+	it("filters by the entry's sheet status", () => {
+		const sheetRef = (status: "open" | "submitted") => ({
+			id: "s1",
+			status,
+			period_start: "2026-10-05",
+			period_end: "2026-10-11",
+			decision_kind: null,
+			decided_by: null,
+			decided_at: null,
+			decision_note: null,
+			scope_label_snapshot: "Team",
+		});
+		const open = entry({ id: "open", timesheet: sheetRef("open") });
+		const sent = entry({ id: "sent", timesheet: sheetRef("submitted") });
+		const none = entry({ id: "none", timesheet: null });
 		expect(
-			entriesOnDay(entries, "2026-10-07", MANILA).map((e) => e.id),
-		).toEqual(["b"]);
-		expect(entriesOnDay(entries, null, MANILA)).toHaveLength(2);
+			filterEntries([open, sent, none], { status: "submitted" }).map(
+				(e) => e.id,
+			),
+		).toEqual(["sent"]);
+	});
+
+	it("knows which sheets go to an approver", () => {
+		expect(sheetNeedsApproval({ approver_scope: "team" })).toBe(true);
+		expect(sheetNeedsApproval({ approver_scope: "auto" })).toBe(false);
+		expect(sheetNeedsApproval({ approver_scope: "self" })).toBe(false);
+		expect(
+			sheetNeedsApproval({
+				approver_scope: null,
+				routing_preview: {
+					approver_scope: "workspace",
+					cost_money: false,
+					deciders: [],
+				},
+			}),
+		).toBe(true);
+		expect(sheetNeedsApproval({ approver_scope: null })).toBe(false);
 	});
 });
 
@@ -833,8 +938,46 @@ describe("useTimePageData", () => {
 			to: "2026-10-11",
 		});
 		await waitFor(() => expect(result.current.sheets).toHaveLength(1));
-		expect(result.current.isCurrentWeek).toBe(true);
+		expect(result.current.range).toMatchObject({
+			start: "2026-10-05",
+			end: "2026-10-11",
+			isDefault: true,
+		});
 		expect(result.current.zone.source).toBe("preferences");
+	});
+
+	it("reads a whole month (every page) for This month", async () => {
+		vi.spyOn(timeService, "getOverview").mockResolvedValue(overview());
+		const page = (n: number, count: number) =>
+			Array.from({ length: count }, (_, i) => entry({ id: `p${n}-${i}` }));
+		const list = vi
+			.spyOn(timeService, "listMyEntries")
+			.mockImplementation(async (q) => ({
+				items: q.page === 1 ? page(1, 200) : page(2, 30),
+				total: 230,
+				page: q.page ?? 1,
+				limit: 200,
+			}));
+		const sheets = vi
+			.spyOn(timeService, "listMyTimesheets")
+			.mockResolvedValue([]);
+		const { result } = renderHook(
+			() => useTimePageData({ preset: "this_month" }, { now: NOW }),
+			{ wrapper },
+		);
+		await waitFor(() => expect(result.current.entries).toHaveLength(230));
+		expect(list).toHaveBeenCalledWith(
+			expect.objectContaining({
+				from: "2026-10-01",
+				to: "2026-10-31",
+				page: 2,
+			}),
+		);
+		expect(sheets).toHaveBeenCalledWith({
+			from: "2026-10-01",
+			to: "2026-10-31",
+		});
+		expect(result.current.range.unit).toBe("month");
 	});
 
 	it("waits for the context's sheets, then reads the week in its zone with ?for=", async () => {
@@ -874,17 +1017,18 @@ describe("useTimePageData", () => {
 			{ wrapper },
 		);
 		await waitFor(() => expect(list).toHaveBeenCalled());
-		// Every read used the context's Sunday week in New York (Oct 5 there).
+		// Every read used the context's zone, New York (Mon Oct 5 there), and a
+		// Monday week, whatever the context's sheets once stored.
 		for (const call of list.mock.calls) {
 			expect(call[0]).toMatchObject({
-				from: "2026-10-04",
-				to: "2026-10-10",
+				from: "2026-10-05",
+				to: "2026-10-11",
 				for: { kind: "assignment", id: A1 },
 			});
 		}
 		expect(result.current.zone).toEqual({
 			timezone: NY,
-			weekStart: 7,
+			weekStart: 1,
 			source: "context",
 		});
 		expect(result.current.zoneText).toBe("Acme Corp time (America/New_York)");
@@ -930,16 +1074,16 @@ describe("useTimePageData", () => {
 		);
 		await waitFor(() => expect(list).toHaveBeenCalled());
 		for (const call of list.mock.calls) {
-			expect(call[0]).toMatchObject({ from: "2026-10-04", to: "2026-10-10" });
+			expect(call[0]).toMatchObject({ from: "2026-10-05", to: "2026-10-11" });
 		}
 		await waitFor(() => expect(result.current.sheets).toHaveLength(1));
 		// Only the view week's sheets were read: no 62-day lookback.
 		for (const call of sheets.mock.calls) {
-			expect(call[0]).toEqual({ from: "2026-10-04", to: "2026-10-10" });
+			expect(call[0]).toEqual({ from: "2026-10-05", to: "2026-10-11" });
 		}
 		expect(result.current.zone).toMatchObject({
 			timezone: NY,
-			weekStart: 7,
+			weekStart: 1,
 			source: "context",
 		});
 		expect(result.current.zoneText).toBe("Acme Corp time (America/New_York)");

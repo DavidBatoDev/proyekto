@@ -833,7 +833,7 @@ export const timeService = {
 		return timeRequest("get", "/me/preferences");
 	},
 
-	/** An omitted `week_start` keeps the stored one. */
+	/** Weeks always start Monday: the web sends only the timezone (an omitted `week_start` keeps the stored one). */
 	setPreferences(
 		input: UpdateTimePreferencesInput,
 	): Promise<UserTimePreferences> {

@@ -33,9 +33,9 @@ test.describe("Pro owner (P2)", () => {
 		await gotoTime(page);
 		const card = page.getByTestId("policy-confirm-card");
 		await expect(card).toBeVisible();
-		// ux.md › One-time cards: "Acme tracks time weekly from Monday in Asia/Manila. [Looks right] [Change]".
+		// ux.md › One-time cards: "Acme tracks time weekly in Asia/Manila. [Looks right] [Change]" (weeks always start Monday).
 		await expect(card).toContainText(
-			`${ws.name} tracks time weekly from Monday in Asia/Manila.`,
+			`${ws.name} tracks time weekly in Asia/Manila.`,
 		);
 		// SELECTOR: Change may be a link or a button that navigates.
 		await expect(card.getByRole("link", { name: "Change" })).toHaveAttribute(

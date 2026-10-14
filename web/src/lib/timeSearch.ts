@@ -18,7 +18,7 @@
  *
  * | Route                                   | Params                                          |
  * |-----------------------------------------|-------------------------------------------------|
- * | `/time`                                 | `for`, `project`, `week`, `view`, `entry`, `tab` |
+ * | `/time`                                 | `for`, `project`, `week`, `preset`, `from`, `to`, `q`, `status`, `view`, `entry`, `tab` |
  * | `/time/timesheets/$timesheetId`         | `entry`                                         |
  * | `/w/$workspaceSlug/settings/time`       | `tab` (`policy` default, `report`)              |
  * | `/w/$workspaceSlug/teams/$teamId/time`  | `person`, `project`, `for`, `status`, `from`, `to`, `group` |
@@ -165,13 +165,47 @@ export type TimePageView = (typeof TIME_PAGE_VIEWS)[number];
 export const TIME_PAGE_TABS = ["mine", "approvals"] as const;
 export type TimePageTab = (typeof TIME_PAGE_TABS)[number];
 
+/**
+ * The My time tab's date presets (the date range picker's list).
+ * `this_week` is the default and normally stays out of the URL. `custom`
+ * (older links) reads `from`/`to` as they are; the picker's Apply writes
+ * `from`/`to` with no preset. Weeks always run Monday to Sunday.
+ */
+export const TIME_RANGE_PRESETS = [
+	"today",
+	"yesterday",
+	"this_week",
+	"last_week",
+	"this_month",
+	"last_month",
+	"last_30_days",
+	"custom",
+] as const;
+export type TimeRangePreset = (typeof TIME_RANGE_PRESETS)[number];
+
+/** The longest `?q=` kept (task title and note search). */
+export const TIME_SEARCH_MAX_LENGTH = 100;
+
 export interface TimePageSearch {
-	/** Filters to one context and sets the day strip's timezone and week start. */
+	/** Filters to one context and sets the view's timezone. */
 	for?: TimeForParam;
 	/** Filters to one project ("Your time on this project →"). */
 	project?: string;
-	/** Any day in the view week, `YYYY-MM-DD`; the page snaps it to the week start. */
+	/**
+	 * Any day in the view week, `YYYY-MM-DD`; the page snaps it to its Monday.
+	 * The dashboard's "Submit last week" and old links use it; `preset` and
+	 * `from`/`to` win over it.
+	 */
 	week?: string;
+	/** A relative date preset (see `TIME_RANGE_PRESETS`). */
+	preset?: TimeRangePreset;
+	/** An explicit inclusive range, `YYYY-MM-DD` (custom ranges and stepped months). */
+	from?: string;
+	to?: string;
+	/** Matches task titles and notes in the loaded entries. */
+	q?: string;
+	/** Sheet status of the entries shown (only offered where time is approved). */
+	status?: TimeReportStatus;
 	/**
 	 * D86: the view the link opens. Month's own navigation writes `month`, so a
 	 * reload stays in Month. Omitted, a `?week=` link opens List (the
@@ -188,10 +222,20 @@ export interface TimePageSearch {
 export function validateTimePageSearch(
 	search: Record<string, unknown>,
 ): TimePageSearch {
+	let from = dateParam(search.from);
+	let to = dateParam(search.to);
+	// An inverted range is someone's typo, not a request for nothing.
+	if (from && to && from > to) [from, to] = [to, from];
+	const q = text(search.q)?.slice(0, TIME_SEARCH_MAX_LENGTH).trim();
 	return compact({
 		for: forParam(search.for),
 		project: uuidParam(search.project),
 		week: dateParam(search.week),
+		preset: oneOf(search.preset, TIME_RANGE_PRESETS),
+		from,
+		to,
+		q: q || undefined,
+		status: oneOf(search.status, TIME_REPORT_STATUSES),
 		view: oneOf(search.view, TIME_PAGE_VIEWS),
 		entry: entryParam(search.entry),
 		tab: oneOf(search.tab, TIME_PAGE_TABS),
@@ -341,6 +385,11 @@ export function timeHref(
 	if (parsed.for) params.set("for", parsed.for);
 	if (parsed.project) params.set("project", parsed.project);
 	if (parsed.week) params.set("week", parsed.week);
+	if (parsed.preset) params.set("preset", parsed.preset);
+	if (parsed.from) params.set("from", parsed.from);
+	if (parsed.to) params.set("to", parsed.to);
+	if (parsed.q) params.set("q", parsed.q);
+	if (parsed.status) params.set("status", parsed.status);
 	if (parsed.view) params.set("view", parsed.view);
 	if (parsed.entry) params.set("entry", parsed.entry);
 	const query = params.toString();

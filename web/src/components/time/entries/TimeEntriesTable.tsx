@@ -40,6 +40,7 @@ import {
 import {
 	type ComponentType,
 	type CSSProperties,
+	Fragment,
 	memo,
 	type ReactNode,
 	useCallback,
@@ -82,6 +83,7 @@ import {
 	entryActions,
 	entryAmount,
 	entryBreakSeconds,
+	entryDayKey,
 	entryLockCopy,
 	entryProjectLabel,
 	entrySelection,
@@ -122,6 +124,11 @@ export interface TimeEntriesTableProps {
 	sheets?: readonly EntrySheetInfo[];
 	/** Adds the Amount column for cost viewers (never agreement time on native). Default false. */
 	showAmounts?: boolean;
+	/**
+	 * A muted subtotal row after each day's rows (hours, plus the amount when
+	 * the Amount column shows). Days are read in `timeZone`. Default false.
+	 */
+	daySubtotals?: boolean;
 	/** Rows with a write in flight: tinted, actions disabled. */
 	pendingIds?: ReadonlySet<string> | readonly string[];
 	/** Rendered instead of the table when there are no entries. */
@@ -334,6 +341,7 @@ export function TimeEntriesTable({
 	order = "newest",
 	sheets,
 	showAmounts = false,
+	daySubtotals = false,
 	pendingIds,
 	empty = null,
 	defaultReviewOpen,
@@ -580,42 +588,71 @@ export function TimeEntriesTable({
 								{!isCollapsed &&
 									group.entries.map((entry, rowIndex) => {
 										const lockOptions = lockOptionsFor(entry);
+										// The day's last row (sheet order is chronological) closes
+										// with its subtotal.
+										const day =
+											daySubtotals && !isReview ? entryDayKey(entry, tz) : null;
+										const next = group.entries[rowIndex + 1];
+										const closesDay =
+											day !== null && (!next || entryDayKey(next, tz) !== day);
+										const dayEntries = closesDay
+											? group.entries.filter(
+													(item) => entryDayKey(item, tz) === day,
+												)
+											: null;
 										return (
-											<EntryRow
-												key={entry.id}
-												entry={entry}
-												mode={mode}
-												staggerIndex={Math.min(rowIndex, MAX_STAGGER_STEPS)}
-												columns={columns}
-												timeZone={tz}
-												native={native}
-												lockText={
-													mode === "mine"
-														? entryLockCopy(entry, lockOptions)
-														: null
-												}
-												selectionRule={
-													selectionOn
-														? entrySelection(entry, mode, lockOptions)
-														: null
-												}
-												selected={Boolean(selection?.selectedIds.has(entry.id))}
-												onSelect={setSelected}
-												pending={pending.has(entry.id)}
-												canOpenTask={Boolean(canOpenTask?.(entry))}
-												openMenuRowId={openMenuRowId}
-												onSetOpenMenuRowId={setOpenMenuRowId}
-												onOpenEntry={onOpenEntry}
-												onStop={onStop}
-												onEdit={onEdit}
-												onChangeTask={onChangeTask}
-												onChangeFor={onChangeFor}
-												onDelete={onDelete}
-												onOpenTask={onOpenTask}
-												projectWorkspaceName={projectWorkspaceName}
-												menuZIndexClassName={menuZIndexClassName}
-												popoverZIndex={popoverZIndex}
-											/>
+											<Fragment key={entry.id}>
+												<EntryRow
+													entry={entry}
+													mode={mode}
+													staggerIndex={Math.min(rowIndex, MAX_STAGGER_STEPS)}
+													columns={columns}
+													timeZone={tz}
+													native={native}
+													lockText={
+														mode === "mine"
+															? entryLockCopy(entry, lockOptions)
+															: null
+													}
+													selectionRule={
+														selectionOn
+															? entrySelection(entry, mode, lockOptions)
+															: null
+													}
+													selected={Boolean(
+														selection?.selectedIds.has(entry.id),
+													)}
+													onSelect={setSelected}
+													pending={pending.has(entry.id)}
+													canOpenTask={Boolean(canOpenTask?.(entry))}
+													openMenuRowId={openMenuRowId}
+													onSetOpenMenuRowId={setOpenMenuRowId}
+													onOpenEntry={onOpenEntry}
+													onStop={onStop}
+													onEdit={onEdit}
+													onChangeTask={onChangeTask}
+													onChangeFor={onChangeFor}
+													onDelete={onDelete}
+													onOpenTask={onOpenTask}
+													projectWorkspaceName={projectWorkspaceName}
+													menuZIndexClassName={menuZIndexClassName}
+													popoverZIndex={popoverZIndex}
+												/>
+												{dayEntries && day ? (
+													<DaySubtotalRow
+														day={day}
+														label={formatSheetDate(entry.started_at, tz)}
+														entries={dayEntries}
+														running={dayEntries.some((item) => !item.ended_at)}
+														leadingSpan={leadingSpan}
+														showAmount={columns.amount}
+														trailingSpan={
+															trailingSpan - (columns.amount ? 1 : 0)
+														}
+														native={native}
+													/>
+												) : null}
+											</Fragment>
 										);
 									})}
 							</tbody>
@@ -801,6 +838,72 @@ const TotalsRow = memo(function TotalsRow({
 				) : null}
 			</tr>
 		</tfoot>
+	);
+});
+
+/** A day's subtotal, under its last row: muted, live while a timer runs. */
+const DaySubtotalRow = memo(function DaySubtotalRow({
+	day,
+	label,
+	entries,
+	running,
+	leadingSpan,
+	showAmount,
+	trailingSpan,
+	native,
+}: {
+	day: string;
+	label: string;
+	entries: readonly TimeEntryView[];
+	running: boolean;
+	leadingSpan: number;
+	trailingSpan: number;
+	showAmount: boolean;
+	native: boolean;
+}) {
+	const nowMs = useLiveNowMs(running);
+	const totals = entriesTotals(entries, { nowMs, amounts: showAmount });
+	const first = entries.find((e) =>
+		canShowAmounts({ cost: e.cost, kind: e.context_kind, native }),
+	);
+	return (
+		<tr
+			className="bg-muted/40 text-xs text-muted-foreground"
+			data-testid="entries-day-subtotal"
+			data-day={day}
+		>
+			<td colSpan={leadingSpan} className="border border-border px-2 py-1">
+				{ENTRY_COPY.daySubtotal(label)}
+			</td>
+			<td
+				className="border border-border px-2 py-1 text-right font-semibold tabular-nums"
+				data-testid="entries-day-subtotal-hours"
+			>
+				{formatDecimalHours(totals.seconds)}
+			</td>
+			{showAmount ? (
+				<td
+					className="border border-border px-2 py-1 text-right tabular-nums"
+					data-testid="entries-day-subtotal-amount"
+				>
+					{first ? (
+						<AmountLines
+							amounts={totals.amounts}
+							cost={first.cost}
+							kind={first.context_kind}
+							native={native}
+							empty="—"
+							tone="muted"
+						/>
+					) : (
+						"—"
+					)}
+				</td>
+			) : null}
+			{trailingSpan > 0 ? (
+				<td colSpan={trailingSpan} className="border border-border" />
+			) : null}
+		</tr>
 	);
 });
 

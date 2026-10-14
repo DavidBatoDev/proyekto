@@ -86,7 +86,7 @@ describe("pickTimeEmptyState", () => {
 describe("timeEmptyText", () => {
 	it("uses the ux.md sentences", () => {
 		expect(timeEmptyText({ kind: "start" })).toEqual({
-			title: "No time logged this week",
+			title: "No time logged in this period",
 			detail:
 				"Start a timer when you begin work, or add time you already spent.",
 		});

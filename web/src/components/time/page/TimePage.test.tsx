@@ -286,6 +286,8 @@ interface Setup {
 	sheets?: TimesheetSummary[];
 	search?: TimePageSearch;
 	hash?: string;
+	/** The workspace policy members read (the status filter's approval check). */
+	policy?: Record<string, unknown>;
 }
 
 let client: QueryClient;
@@ -312,6 +314,21 @@ function setup(options: Setup = {}) {
 			page: 1,
 			limit: 50,
 		}),
+		// A test that stubs the policy itself keeps its stub.
+		policy: vi.isMockFunction(timeService.getWorkspacePolicy)
+			? vi.mocked(timeService.getWorkspacePolicy)
+			: vi
+					.spyOn(timeService, "getWorkspacePolicy")
+					.mockImplementation(async () =>
+						options.policy === undefined
+							? Promise.reject(new Error("no policy"))
+							: ({
+									workspace_id: "w1",
+									policy_unconfirmed: false,
+									can_edit: false,
+									policy: options.policy,
+								} as never),
+					),
 	};
 	const onSearchChange = vi.fn();
 	const onOpenTask = vi.fn();
@@ -511,16 +528,30 @@ describe("TimePage › normal mode", () => {
 		expect(spies.entries).toHaveBeenCalledWith(
 			expect.objectContaining({ from: "2026-10-05", to: "2026-10-11" }),
 		);
-		expect(screen.getByTestId("time-week-range").textContent).toBe(
-			"Oct 5 – 11, 2026",
+		// The date range picker's trigger names the preset with its dates.
+		expect(screen.getByTestId("time-range-label").textContent).toBe(
+			"This week · Oct 5 – 11",
 		);
-		const totals = screen
-			.getAllByTestId("day-total")
-			.map((el) => el.textContent);
-		expect(totals).toEqual(["3:30", "–", "1:00", "–", "–", "–", "–"]);
+		// The week strip is gone: summary cards over the entries instead.
+		expect(screen.queryByTestId("day-total")).toBeNull();
+		const summary = (key: string) =>
+			screen.getByTestId(`time-summary-${key}-value`).textContent;
+		expect(summary("total")).toBe("4.50");
+		expect(summary("entries")).toBe("2");
+		expect(summary("days")).toBe("2");
+		expect(summary("avg")).toBe("2.25");
+		// Cost hidden: no Amount card at all.
+		expect(screen.queryByTestId("time-summary-amount")).toBeNull();
+		// Each day closes with a subtotal; the total stays.
+		expect(
+			screen
+				.getAllByTestId("entries-day-subtotal-hours")
+				.map((el) => el.textContent),
+		).toEqual(["3.50", "1.00"]);
+		expect(screen.getByTestId("entries-total-hours").textContent).toBe("4.50");
 		expect(await screen.findByTestId("timesheet-card")).toBeTruthy();
 		expect(
-			screen.getByRole("heading", { name: "Timesheets in this week" }),
+			screen.getByRole("heading", { name: "Timesheets in this period" }),
 		).toBeTruthy();
 		expect(screen.getByRole("button", { name: "Start timer" })).toBeTruthy();
 		expect(screen.getByRole("button", { name: "Add time" })).toBeTruthy();
@@ -534,19 +565,93 @@ describe("TimePage › normal mode", () => {
 
 	it("steps weeks into ?week= and back to this week", async () => {
 		const { onSearchChange } = setup();
-		await screen.findByTestId("time-week-range");
-		expect(
-			(screen.getByRole("button", { name: "This week" }) as HTMLButtonElement)
-				.disabled,
-		).toBe(true);
-		fireEvent.click(screen.getByRole("button", { name: "Previous week" }));
+		await screen.findByTestId("time-range-label");
+		fireEvent.click(screen.getByRole("button", { name: "Previous period" }));
 		expect(onSearchChange).toHaveBeenLastCalledWith(
-			{ week: "2026-09-28" },
+			{ week: "2026-09-28", preset: undefined, from: undefined, to: undefined },
 			{ replace: true },
 		);
 		fireEvent.keyDown(window, { key: "j" });
 		expect(onSearchChange).toHaveBeenLastCalledWith(
-			{ week: "2026-10-12" },
+			{ week: "2026-10-12", preset: undefined, from: undefined, to: undefined },
+			{ replace: true },
+		);
+	});
+
+	it("steps a month by a month and a custom range by its length", async () => {
+		const { onSearchChange, rerender } = setup({
+			search: { preset: "this_month" },
+		});
+		await waitFor(() =>
+			expect(screen.getByTestId("time-range-label").textContent).toBe(
+				"This month · Oct 1 – 31",
+			),
+		);
+		fireEvent.click(screen.getByRole("button", { name: "Previous period" }));
+		expect(onSearchChange).toHaveBeenLastCalledWith(
+			{
+				week: undefined,
+				preset: undefined,
+				from: "2026-09-01",
+				to: "2026-09-30",
+			},
+			{ replace: true },
+		);
+		rerender(
+			<QueryClientProvider client={client}>
+				<TimePage
+					search={{ preset: "custom", from: "2026-10-01", to: "2026-10-10" }}
+					onSearchChange={onSearchChange}
+					now={NOW}
+				/>
+			</QueryClientProvider>,
+		);
+		expect(screen.getByTestId("time-range-label").textContent).toBe(
+			"Oct 1 – 10, 2026",
+		);
+		fireEvent.click(screen.getByRole("button", { name: "Next period" }));
+		expect(onSearchChange).toHaveBeenLastCalledWith(
+			{
+				week: undefined,
+				preset: undefined,
+				from: "2026-10-11",
+				to: "2026-10-20",
+			},
+			{ replace: true },
+		);
+	});
+
+	it("reads entries for the whole range picked", async () => {
+		const { spies, onSearchChange } = setup({
+			search: { preset: "last_month" },
+		});
+		await waitFor(() =>
+			expect(spies.entries).toHaveBeenCalledWith(
+				expect.objectContaining({ from: "2026-09-01", to: "2026-09-30" }),
+			),
+		);
+		expect(spies.sheets).toHaveBeenCalledWith({
+			from: "2026-09-01",
+			to: "2026-09-30",
+		});
+		// Pick Sep 3 → Sep 12 in the picker and Apply: from/to, no preset.
+		fireEvent.click(screen.getByTestId("time-range-trigger"));
+		fireEvent.click(
+			await screen.findByRole("button", {
+				name: "Thursday, September 3, 2026",
+			}),
+		);
+		fireEvent.click(
+			screen.getByRole("button", { name: "Saturday, September 12, 2026" }),
+		);
+		fireEvent.click(screen.getByRole("button", { name: "Apply" }));
+		expect(onSearchChange).toHaveBeenLastCalledWith(
+			{
+				week: undefined,
+				preset: undefined,
+				from: "2026-09-03",
+				to: "2026-09-12",
+			},
 			{ replace: true },
 		);
 	});
@@ -560,31 +665,158 @@ describe("TimePage › normal mode", () => {
 				expect.objectContaining({ from: "2026-09-28", to: "2026-10-04" }),
 			),
 		);
-		fireEvent.click(screen.getByRole("button", { name: "This week" }));
+		fireEvent.click(screen.getByTestId("time-range-trigger"));
+		fireEvent.click(await screen.findByTestId("date-preset-this_week"));
 		expect(onSearchChange).toHaveBeenLastCalledWith(
-			{ week: undefined },
+			{ week: undefined, preset: undefined, from: undefined, to: undefined },
+			{ replace: true },
+		);
+		// `t` comes back too.
+		onSearchChange.mockClear();
+		fireEvent.keyDown(window, { key: "t" });
+		expect(onSearchChange).toHaveBeenLastCalledWith(
+			{ week: undefined, preset: undefined, from: undefined, to: undefined },
 			{ replace: true },
 		);
 	});
 
-	it("filters the list to a day picked in the strip", async () => {
-		const { container } = setup();
+	it("searches task titles and notes over the loaded entries", async () => {
+		const { container, onSearchChange, rerender } = setup();
 		await waitFor(() => expect(rows(container)).toHaveLength(2));
-		fireEvent.click(
-			within(screen.getByTestId("day-strip")).getByRole("button", {
-				name: /^Wed Oct 7/,
-			}),
+		fireEvent.change(screen.getByTestId("time-search"), {
+			target: { value: "docs" },
+		});
+		await waitFor(() =>
+			expect(onSearchChange).toHaveBeenLastCalledWith(
+				{ q: "docs" },
+				{ replace: true },
+			),
+		);
+		rerender(
+			<QueryClientProvider client={client}>
+				<TimePage
+					search={{ q: "docs" }}
+					onSearchChange={onSearchChange}
+					now={NOW}
+				/>
+			</QueryClientProvider>,
 		);
 		expect(rows(container)).toEqual(["e2"]);
-		expect(screen.getByTestId("day-filter").textContent).toContain("Wed Oct 7");
-		fireEvent.click(
-			screen.getByRole("button", { name: "Show the whole week" }),
+		// The summary follows the search.
+		expect(screen.getByTestId("time-summary-total-value").textContent).toBe(
+			"1.00",
 		);
-		expect(rows(container)).toHaveLength(2);
+		expect(screen.getByTestId("time-summary-entries-value").textContent).toBe(
+			"1",
+		);
+		// Clear resets every filter, the dates included.
+		fireEvent.click(screen.getByTestId("time-filters-clear"));
+		expect(onSearchChange).toHaveBeenLastCalledWith(
+			{
+				week: undefined,
+				preset: undefined,
+				from: undefined,
+				to: undefined,
+				project: undefined,
+				for: undefined,
+				q: undefined,
+				status: undefined,
+			},
+			{ replace: true },
+		);
+	});
+
+	it("matching nothing says so, with Clear", async () => {
+		const { container } = setup({ search: { q: "nothing like this" } });
+		expect(
+			await screen.findByText("No time entries match this view."),
+		).toBeTruthy();
+		expect(rows(container)).toEqual([]);
+		expect(screen.getByTestId("time-summary-entries-value").textContent).toBe(
+			"0",
+		);
+		expect(screen.getByTestId("time-summary-avg-value").textContent).toBe(
+			"0.00",
+		);
+	});
+
+	it("hides Status without approvals (an auto sheet, a policy without approval)", async () => {
+		setup({
+			sheets: [sheet({ approver_scope: "auto" })],
+			policy: { approval_required: false },
+		});
+		await screen.findByTestId("timesheet-card");
+		await waitFor(() =>
+			expect(timeService.getWorkspacePolicy).toHaveBeenCalledWith("w1", {
+				tz: undefined,
+			}),
+		);
+		await settle();
+		expect(screen.queryByTestId("time-status-filter")).toBeNull();
+	});
+
+	it("offers Status when the policy asks for approval", async () => {
+		const { container } = setup({
+			sheets: [sheet({ approver_scope: "auto" })],
+			policy: { approval_required: true },
+		});
+		const status = (await screen.findByTestId(
+			"time-status-filter",
+		)) as HTMLSelectElement;
+		expect(Array.from(status.options).map((o) => o.value)).toEqual([
+			"",
+			"open",
+			"submitted",
+			"returned",
+			"approved",
+		]);
+		await waitFor(() => expect(rows(container)).toHaveLength(2));
+	});
+
+	it("offers Status when a sheet in view goes to an approver, and filters by it", async () => {
+		const submitted = {
+			id: "s1",
+			status: "submitted" as const,
+			period_start: "2026-10-05",
+			period_end: "2026-10-11",
+			decision_kind: null,
+			decided_by: null,
+			decided_at: null,
+			decision_note: null,
+			scope_label_snapshot: "Prodigitality Services Inc. Team",
+		};
+		const { container } = setup({
+			entries: [MONDAY, { ...WEDNESDAY, timesheet: submitted }],
+			search: { status: "submitted" },
+		});
+		expect(await screen.findByTestId("time-status-filter")).toBeTruthy();
+		await waitFor(() => expect(rows(container)).toEqual(["e2"]));
+	});
+
+	it("hides For with a single choice here", async () => {
+		setup();
+		await screen.findByTestId("time-summary");
+		expect(screen.queryByLabelText("For:")).toBeNull();
 	});
 
 	it("writes the For filter to ?for=", async () => {
-		const { onSearchChange } = setup();
+		const { onSearchChange } = setup({
+			overview: overview({
+				contexts: [
+					...overview().contexts,
+					{
+						kind: "workspace",
+						id: "33333333-3333-4333-8333-333333333333",
+						label: "Prodigitality Workspace",
+						sheet_scope: {
+							kind: "workspace",
+							ref: "33333333-3333-4333-8333-333333333333",
+						},
+						current_sheet: null,
+					},
+				],
+			}),
+		});
 		const select = (await screen.findByLabelText("For:")) as HTMLSelectElement;
 		fireEvent.change(select, { target: { value: `team:${TEAM}` } });
 		expect(onSearchChange).toHaveBeenLastCalledWith(
@@ -631,22 +863,45 @@ describe("TimePage › normal mode", () => {
 		expect(
 			screen.getByTestId("manual-entry").getAttribute("data-project"),
 		).toBe("22222222-2222-4222-8222-222222222222");
-		expect(screen.getByTestId("project-filter")).toBeTruthy();
+		// The Project filter shows the URL's project among this workspace's.
+		const project = screen.getByTestId(
+			"time-project-filter",
+		) as HTMLSelectElement;
+		expect(project.value).toBe("22222222-2222-4222-8222-222222222222");
+		expect(Array.from(project.options).map((o) => o.textContent)).toEqual(
+			expect.arrayContaining(["All projects", "Here project"]),
+		);
 	});
 
-	it("offers the FAB's Add time on the day picked", async () => {
+	it("offers the FAB's Add time with no day picked", async () => {
 		const { container } = setup();
 		await waitFor(() => expect(rows(container)).toHaveLength(2));
-		fireEvent.click(
-			within(screen.getByTestId("day-strip")).getByRole("button", {
-				name: /^Wed Oct 7/,
-			}),
-		);
 		fireEvent.click(screen.getByRole("button", { name: "Track time" }));
 		fireEvent.click(screen.getByRole("menuitem", { name: "Add time" }));
 		expect(screen.getByTestId("manual-entry").getAttribute("data-day")).toBe(
-			"2026-10-07",
+			"",
 		);
+	});
+
+	it("folds the filters behind one Filters button on phones, with the active count", async () => {
+		stubViewport(390);
+		setup({ search: { q: "docs", preset: "last_week" } });
+		const button = await screen.findByTestId("time-filters-button");
+		// The dates stay outside the fold, so only the search counts.
+		expect(screen.getByTestId("time-filters-count").textContent).toBe("1");
+		expect(button.getAttribute("aria-label")).toBe("Filters, 1 active");
+		// The controls are folded away until it opens.
+		expect(screen.queryByTestId("time-search")).toBeNull();
+		// The range and its arrows stay on the page.
+		expect(screen.getByTestId("time-range-label").textContent).toBe(
+			"Last week · Sep 28 – Oct 4",
+		);
+		fireEvent.click(button);
+		const popover = await screen.findByTestId("time-filters-popover");
+		expect(
+			(within(popover).getByTestId("time-search") as HTMLInputElement).value,
+		).toBe("docs");
+		expect(within(popover).getByTestId("time-filters-clear")).toBeTruthy();
 	});
 
 	it("#waiting opens Approvals with this workspace's waiting sheets", async () => {
@@ -685,7 +940,7 @@ describe("TimePage › normal mode", () => {
 		const tab = await screen.findByRole("tab", { name: "Approvals (2)" });
 		await waitFor(() => expect(tab.getAttribute("aria-selected")).toBe("true"));
 		expect(await screen.findAllByTestId("waiting-row")).toHaveLength(2);
-		expect(screen.queryByTestId("day-strip")).toBeNull();
+		expect(screen.queryByTestId("time-summary")).toBeNull();
 		expect(document.querySelectorAll("#waiting")).toHaveLength(1);
 		await waitFor(() =>
 			expect(document.getElementById("waiting")).toBeTruthy(),
@@ -818,17 +1073,17 @@ describe("TimePage › normal mode", () => {
 
 	it("switches to the month", async () => {
 		setup();
-		await screen.findByTestId("day-strip");
+		await screen.findByTestId("time-summary");
 		fireEvent.click(screen.getByRole("button", { name: "Month" }));
 		const month = screen.getByTestId("month-view");
 		expect(month.getAttribute("data-month")).toBe("2026-10-06");
 		expect(month.getAttribute("data-tz")).toBe(MANILA);
-		expect(screen.queryByTestId("day-strip")).toBeNull();
+		expect(screen.queryByTestId("time-summary")).toBeNull();
 	});
 
 	it("keeps the URL clean when the month comes back to this month", async () => {
 		const { onSearchChange } = setup();
-		await screen.findByTestId("day-strip");
+		await screen.findByTestId("time-summary");
 		fireEvent.click(screen.getByRole("button", { name: "Month" }));
 		fireEvent.click(screen.getByRole("button", { name: "Go to September" }));
 		expect(onSearchChange).toHaveBeenLastCalledWith(
@@ -844,7 +1099,7 @@ describe("TimePage › normal mode", () => {
 
 	it("D86: picking a view writes it, Month into the URL and List out of it", async () => {
 		const { onSearchChange } = setup();
-		await screen.findByTestId("day-strip");
+		await screen.findByTestId("time-summary");
 		fireEvent.click(screen.getByRole("button", { name: "Month" }));
 		expect(onSearchChange).toHaveBeenLastCalledWith(
 			{ view: "month" },
@@ -857,7 +1112,7 @@ describe("TimePage › normal mode", () => {
 			{ replace: true },
 		);
 		expect(window.localStorage.getItem("timeView:me")).toBe("list");
-		expect(screen.getByTestId("day-strip")).toBeTruthy();
+		expect(screen.getByTestId("time-summary")).toBeTruthy();
 	});
 
 	it("D86: a Month URL reloads as Month on its month, whatever is remembered", async () => {
@@ -865,7 +1120,7 @@ describe("TimePage › normal mode", () => {
 		setup({ search: { week: "2026-09-01", view: "month" } });
 		const month = await screen.findByTestId("month-view");
 		expect(month.getAttribute("data-month")).toBe("2026-09-01");
-		expect(screen.queryByTestId("day-strip")).toBeNull();
+		expect(screen.queryByTestId("time-summary")).toBeNull();
 		expect(
 			screen
 				.getByRole("button", { name: "Month" })
@@ -876,7 +1131,7 @@ describe("TimePage › normal mode", () => {
 	it("D86: ?view=list opens List even when Month is remembered", async () => {
 		window.localStorage.setItem("timeView:me", "month");
 		setup({ search: { view: "list" } });
-		expect(await screen.findByTestId("day-strip")).toBeTruthy();
+		expect(await screen.findByTestId("time-summary")).toBeTruthy();
 		expect(screen.queryByTestId("month-view")).toBeNull();
 	});
 
@@ -885,14 +1140,14 @@ describe("TimePage › normal mode", () => {
 		const { rerender, onSearchChange } = setup({
 			search: { week: "2026-09-30" },
 		});
-		expect(await screen.findByTestId("day-strip")).toBeTruthy();
+		expect(await screen.findByTestId("time-summary")).toBeTruthy();
 		// "This week" drops ?week=; the visit started on a link, so List stays.
 		rerender(
 			<QueryClientProvider client={client}>
 				<TimePage search={{}} onSearchChange={onSearchChange} now={NOW} />
 			</QueryClientProvider>,
 		);
-		expect(await screen.findByTestId("day-strip")).toBeTruthy();
+		expect(await screen.findByTestId("time-summary")).toBeTruthy();
 		expect(screen.queryByTestId("month-view")).toBeNull();
 	});
 
@@ -904,7 +1159,7 @@ describe("TimePage › normal mode", () => {
 		});
 		setup({ search: { week: "2026-09-30" }, sheets: [last] });
 		// The dashboard's "Submit last week" lands on its card and Submit.
-		expect(await screen.findByTestId("day-strip")).toBeTruthy();
+		expect(await screen.findByTestId("time-summary")).toBeTruthy();
 		expect(screen.queryByTestId("month-view")).toBeNull();
 		expect(await screen.findByTestId("timesheet-card")).toBeTruthy();
 		expect(screen.getByRole("button", { name: "Submit" })).toBeTruthy();
@@ -918,7 +1173,7 @@ describe("TimePage › normal mode", () => {
 		window.localStorage.setItem("timeView:me", "month");
 		setup();
 		expect(await screen.findByTestId("month-view")).toBeTruthy();
-		expect(screen.queryByTestId("day-strip")).toBeNull();
+		expect(screen.queryByTestId("time-summary")).toBeNull();
 	});
 
 	it("never shows last week's rows under a new week while it loads", async () => {
@@ -940,8 +1195,8 @@ describe("TimePage › normal mode", () => {
 			</QueryClientProvider>,
 		);
 		await waitFor(() =>
-			expect(screen.getByTestId("time-week-range").textContent).toBe(
-				"Sep 28 – Oct 4, 2026",
+			expect(screen.getByTestId("time-range-label").textContent).toBe(
+				"Last week · Sep 28 – Oct 4",
 			),
 		);
 		expect(rows(container)).toEqual([]);
@@ -1012,7 +1267,7 @@ describe("TimePage › normal mode", () => {
 			sheets: [],
 		});
 		expect(await screen.findByTestId("for-filter-personal")).toBeTruthy();
-		expect(screen.getByText("No time logged this week")).toBeTruthy();
+		expect(screen.getByText("No time logged in this period")).toBeTruthy();
 	});
 
 	it("explains a failed overview read", async () => {
@@ -1071,7 +1326,7 @@ describe("TimePage › one layout", () => {
 		const popover = await screen.findByTestId("time-policy-popover");
 		await waitFor(() =>
 			expect(popover.textContent).toContain(
-				"Weekly · starts Monday · Asia/Manila · Approval required",
+				"Weekly · Asia/Manila · Approval required",
 			),
 		);
 		expect(screen.getByRole("link", { name: "Edit time policy" })).toBeTruthy();
@@ -1082,7 +1337,7 @@ describe("TimePage › one layout", () => {
 
 	it("gives members no Time policy button", async () => {
 		setup();
-		await screen.findByTestId("day-strip");
+		await screen.findByTestId("time-summary");
 		expect(screen.queryByTestId("time-policy-button")).toBeNull();
 	});
 
@@ -1131,13 +1386,13 @@ describe("TimePage › one layout", () => {
 
 	it("hides the Approvals tab, even from ?tab=approvals, without approvals here", async () => {
 		setup({ search: { tab: "approvals" } });
-		await screen.findByTestId("day-strip");
+		await screen.findByTestId("time-summary");
 		expect(screen.queryByTestId("time-tabs")).toBeNull();
 	});
 
 	it("an empty week offers Start timer and Add time", async () => {
 		setup({ entries: [], sheets: [] });
-		const empty = await screen.findByText("No time logged this week");
+		const empty = await screen.findByText("No time logged in this period");
 		const card = empty.closest("[data-empty]") as HTMLElement;
 		expect(card.textContent).toContain(
 			"Start a timer when you begin work, or add time you already spent.",
@@ -1188,10 +1443,12 @@ describe("TimePage › one layout", () => {
 			entries: [],
 			sheets: [],
 		});
-		expect(await screen.findByTestId("day-strip")).toBeTruthy();
+		expect(await screen.findByTestId("time-summary")).toBeTruthy();
 		expect(screen.getByTestId("time-toolbar")).toBeTruthy();
 		expect(screen.queryByTestId("approver-mode")).toBeNull();
 		expect(screen.queryByText(/You're all caught up/)).toBeNull();
-		expect(await screen.findByText("No time logged this week")).toBeTruthy();
+		expect(
+			await screen.findByText("No time logged in this period"),
+		).toBeTruthy();
 	});
 });

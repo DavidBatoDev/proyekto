@@ -302,9 +302,7 @@ describe("Time page pieces on native", () => {
 			),
 		);
 		expect(
-			await screen.findByText(
-				"Acme tracks time weekly from Monday in Asia/Manila.",
-			),
+			await screen.findByText("Acme tracks time weekly in Asia/Manila."),
 		).toBeTruthy();
 		expect(
 			await screen.findByText("Pixel Studio · Workspace time off"),

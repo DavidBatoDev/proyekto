@@ -57,7 +57,7 @@ afterEach(() => {
 });
 
 describe("preferences with fallbacks", () => {
-	it("falls back to the device timezone and Monday (ux.md › Day strip)", () => {
+	it("falls back to the device timezone; weeks always start Monday", () => {
 		expect(resolveTimePreferences(null, "Europe/Paris")).toEqual({
 			timezone: "Europe/Paris",
 			weekStart: 1,
@@ -69,20 +69,19 @@ describe("preferences with fallbacks", () => {
 				"UTC",
 			),
 		).toEqual({ timezone: "UTC", weekStart: 1, stored: true });
+		// A stored week start is read but never used.
 		expect(resolveTimePreferences(prefs({ week_start: 7 }), "UTC")).toEqual({
 			timezone: "Asia/Manila",
-			weekStart: 7,
+			weekStart: 1,
 			stored: true,
 		});
 	});
 
-	it("summary line", () => {
-		expect(prefsSummaryLine({ timezone: "Asia/Manila", weekStart: 1 })).toBe(
-			"Your time: Asia/Manila · weeks start Monday",
+	it("summary line names the timezone only", () => {
+		expect(prefsSummaryLine({ timezone: "Asia/Manila" })).toBe(
+			"Your time: Asia/Manila",
 		);
-		expect(prefsSummaryLine({ timezone: "UTC", weekStart: 7 })).toBe(
-			"Your time: UTC · weeks start Sunday",
-		);
+		expect(prefsSummaryLine({ timezone: "UTC" })).toBe("Your time: UTC");
 	});
 
 	it("useTimePreferences reads me/preferences", async () => {
@@ -95,13 +94,13 @@ describe("preferences with fallbacks", () => {
 		});
 		expect(result.current.timezone).toBe("America/New_York");
 		await waitFor(() => expect(result.current.timezone).toBe("Asia/Manila"));
-		expect(result.current.weekStart).toBe(3);
+		expect(result.current.weekStart).toBe(1);
 		expect(result.current.stored).toBe(true);
 	});
 });
 
 describe("TimePrefsMenu", () => {
-	it("edits the timezone and week start and saves them", async () => {
+	it("edits the timezone and saves only it; no week start control", async () => {
 		let stored = prefs();
 		vi.spyOn(timeService, "getPreferences").mockImplementation(
 			async () => stored,
@@ -121,17 +120,15 @@ describe("TimePrefsMenu", () => {
 
 		const trigger = screen.getByRole("button", { name: "Your time settings" });
 		await waitFor(() =>
-			expect(trigger.getAttribute("title")).toBe(
-				"Your time: Asia/Manila · weeks start Monday",
-			),
+			expect(trigger.getAttribute("title")).toBe("Your time: Asia/Manila"),
 		);
 		fireEvent.click(trigger);
 		const dialog = await screen.findByRole("dialog", {
 			name: "Your time settings",
 		});
-		expect(dialog.textContent).toContain(
-			"Your time: Asia/Manila · weeks start Monday",
-		);
+		expect(dialog.textContent).toContain("Your time: Asia/Manila");
+		expect(dialog.textContent).not.toMatch(/week/i);
+		expect(screen.queryByLabelText("Weeks start on")).toBeNull();
 		expect(dialog.textContent).toContain(
 			"Timesheets count days in their own timezone.",
 		);
@@ -141,22 +138,15 @@ describe("TimePrefsMenu", () => {
 		fireEvent.change(screen.getByLabelText("Timezone"), {
 			target: { value: "UTC" },
 		});
-		fireEvent.change(screen.getByLabelText("Weeks start on"), {
-			target: { value: "7" },
-		});
 		expect((save as HTMLButtonElement).disabled).toBe(false);
 		fireEvent.click(save);
 
-		await waitFor(() =>
-			expect(set).toHaveBeenCalledWith({ timezone: "UTC", week_start: 7 }),
-		);
+		await waitFor(() => expect(set).toHaveBeenCalledWith({ timezone: "UTC" }));
 		await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
 		expect(invalidate).toHaveBeenCalledWith({
 			queryKey: ["time", "me", "preferences"],
 		});
-		expect(trigger.getAttribute("title")).toBe(
-			"Your time: UTC · weeks start Sunday",
-		);
+		expect(trigger.getAttribute("title")).toBe("Your time: UTC");
 	});
 
 	it("takes keyboard focus into the menu and gives it back to ⚙", async () => {
@@ -207,10 +197,7 @@ describe("TimePrefsMenu", () => {
 		);
 		fireEvent.click(screen.getByRole("button", { name: "Save" }));
 		await waitFor(() =>
-			expect(set).toHaveBeenCalledWith({
-				timezone: "America/New_York",
-				week_start: 1,
-			}),
+			expect(set).toHaveBeenCalledWith({ timezone: "America/New_York" }),
 		);
 	});
 
@@ -225,8 +212,8 @@ describe("TimePrefsMenu", () => {
 			expect(trigger.getAttribute("title")).toContain("Asia/Manila"),
 		);
 		fireEvent.click(trigger);
-		fireEvent.change(await screen.findByLabelText("Weeks start on"), {
-			target: { value: "2" },
+		fireEvent.change(await screen.findByLabelText("Timezone"), {
+			target: { value: "UTC" },
 		});
 		fireEvent.click(screen.getByRole("button", { name: "Save" }));
 		expect(await screen.findByRole("alert")).toBeTruthy();

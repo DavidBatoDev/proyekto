@@ -6,7 +6,13 @@
 // Agreement time stays on the page (a talent's own hours are execution work).
 
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { cleanup, render, screen, waitFor } from "@testing-library/react";
+import {
+	cleanup,
+	fireEvent,
+	render,
+	screen,
+	waitFor,
+} from "@testing-library/react";
 import type { ReactNode } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { TimePageSearch } from "@/lib/timeSearch";
@@ -322,6 +328,8 @@ describe("TimePage on native", () => {
 
 	it("filters to the agreement with a native label", async () => {
 		renderPage(overview(), { for: `assignment:${ASSIGNMENT}` });
+		// A phone: the filters sit behind "Filters".
+		fireEvent.click(await screen.findByTestId("time-filters-button"));
 		const select = (await screen.findByLabelText("For:")) as HTMLSelectElement;
 		expect(Array.from(select.options).map((o) => o.textContent)).toEqual([
 			"All",

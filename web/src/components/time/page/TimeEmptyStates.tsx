@@ -1,11 +1,11 @@
 // web/src/components/time/page/TimeEmptyStates.tsx
 //
 // What the Time page says when there is nothing to list (ux.md › Personas,
-// "Empty state and notes"). The page never shows an empty week:
+// "Empty state and notes"). The page never shows an empty period:
 //
 // | Persona                          | Copy                                                                      |
 // |----------------------------------|---------------------------------------------------------------------------|
-// | P1 / P1b, any logger (default)   | "No time logged this week." + "Start a timer, or add time you've already worked." |
+// | P1 / P1b, any logger (default)   | "No time logged in this period" + "Start a timer, or add time you've already worked." |
 // | No project in this workspace     | "Nothing to log time on in <workspace> yet." + "Time is logged on this workspace's projects." |
 // | P5 / P7 approvers                | the same week and empty state (one layout; approver_mode is not read)      |
 // | P6 talent with nothing to log on | "When you're placed on a project, you'll be able to log time for it here." |
@@ -29,12 +29,12 @@ export type TimeEmptyKind =
 	| "caught_up"
 	/** Nobody can log yet (P6: talent not placed on a project). */
 	| "placed"
-	/** Filters (For, project, a day) leave nothing to show. */
+	/** Filters (For, project, search, status) leave nothing to show. */
 	| "filtered";
 
 /** Every sentence this file renders. */
 export const TIME_EMPTY_COPY = {
-	start: "No time logged this week",
+	start: "No time logged in this period",
 	startHint:
 		"Start a timer when you begin work, or add time you already spent.",
 	noProjects: (workspace: string) =>
@@ -46,7 +46,7 @@ export const TIME_EMPTY_COPY = {
 	caughtUpHint: "Timesheets sent to you will show up here.",
 	placed:
 		"When you're placed on a project, you'll be able to log time for it here.",
-	/** Not in ux.md: the For / project / day filters match nothing. */
+	/** Not in ux.md: the For / project / search / status filters match nothing. */
 	filtered: "No time entries match this view.",
 	startTimer: "Start timer",
 	addTime: "Add time",
@@ -68,7 +68,7 @@ export interface TimeEmptyPick {
  * - (The old P3 line, "You log time for <label>.", is gone: under the
  *   switcher it could name another workspace.)
  *   (a member with no recent time).
- * - Otherwise → "No time logged this week." with the Start timer / Add
+ * - Otherwise → "No time logged in this period" with the Start timer / Add
  *   time hint (P1, and approvers: the page has one layout).
  */
 export function pickTimeEmptyState(
