@@ -237,10 +237,11 @@ export async function loadMemberRateInForce(
 // ── Policy rows ─────────────────────────────────────────────────────────────────────────────────────────────
 
 /** Columns a workspace PUT may set (the DTO's fields minus `confirm`). */
+// Weeks always start on Monday: `week_start` is no longer a setting. The DTO still accepts it so older clients
+// don't 400, but a PUT never writes it (rows keep their default, 1).
 const WORKSPACE_FIELDS = [
   'tracking_enabled',
   'period_kind',
-  'week_start',
   'timezone',
   'period_anchor',
   'approval_required',
@@ -265,16 +266,12 @@ const WORKSPACE_NOT_NULL_FIELDS: ReadonlySet<string> = new Set([
   'hidden_presets',
 ]);
 
-/** Writable without `time_tracking` (backend.md: tz and week start always; tracking only to switch it off). */
-const WORKSPACE_PLAN_FREE_FIELDS: ReadonlySet<string> = new Set([
-  'timezone',
-  'week_start',
-]);
+/** Writable without `time_tracking` (backend.md: tz always; tracking only to switch it off). */
+const WORKSPACE_PLAN_FREE_FIELDS: ReadonlySet<string> = new Set(['timezone']);
 
 /** Columns a team override PUT may set. NULL = inherit. */
 const TEAM_FIELDS = [
   'period_kind',
-  'week_start',
   'timezone',
   'period_anchor',
   'approval_required',

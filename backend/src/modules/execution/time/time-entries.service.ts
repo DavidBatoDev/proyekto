@@ -1375,8 +1375,7 @@ export class TimeEntriesService {
       timezone: input.timezone,
       updated_at: new Date().toISOString(),
     };
-    // Omitted week_start keeps the stored one (merge on conflict); null clears it.
-    if (input.week_start !== undefined) payload.week_start = input.week_start;
+    // Weeks always start on Monday: a sent week_start is accepted (older clients) and ignored.
     const { data, error } = await this.sb
       .from('user_time_preferences')
       .upsert(payload, { onConflict: 'user_id' })

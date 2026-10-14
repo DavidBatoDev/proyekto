@@ -2560,7 +2560,7 @@ describe('comments and segments', () => {
 
 // ── preferences ─────────────────────────────────────────────────────────────────────────────────────────────
 describe('preferences', () => {
-  it('set upserts on user_id and keeps an omitted week start; seed never overwrites', async () => {
+  it('set upserts on user_id and ignores a sent week start (weeks start on Monday); seed never overwrites', async () => {
     const b = await build();
     expect(await b.service.getPreferences(USER)).toBeNull();
     await b.service.setPreferences(USER, {
@@ -2569,12 +2569,9 @@ describe('preferences', () => {
     });
     await b.service.setPreferences(USER, { timezone: 'Europe/Berlin' });
     expect(b.db.tables.user_time_preferences).toEqual([
-      expect.objectContaining({
-        user_id: USER,
-        timezone: 'Europe/Berlin',
-        week_start: 7,
-      }),
+      expect.objectContaining({ user_id: USER, timezone: 'Europe/Berlin' }),
     ]);
+    expect(b.db.tables.user_time_preferences[0].week_start ?? null).not.toBe(7);
 
     await b.service.seedPreferences(USER, 'America/New_York');
     expect(b.db.tables.user_time_preferences[0].timezone).toBe('Europe/Berlin');
