@@ -32,7 +32,9 @@ from app.core.runtime.entity_links import entity_link
 from app.core.runtime.handles import merged_handle_map
 from app.core.runtime.prompt import build_messages
 from app.core.runtime.results import PhaseOutcome
+from app.core.runtime.tools import PLANNING_TOOL_NAME, STAGE_EDITS_TOOL_NAME, is_read_tool
 from app.core.tools.dispatch import ToolDispatcher
+from app.core.uuid_utils import normalize_uuid
 
 logger = logging.getLogger(__name__)
 
@@ -40,6 +42,9 @@ _CREATE_OPS = {'add_epic', 'add_feature', 'add_task', 'add_milestone'}
 _MODIFY_OPS = {'update_node', 'move_node', 'mark_status', 'shift_dates'}
 NOTHING_TO_VERIFY_MESSAGE = 'Nothing was changed.'
 MAX_OUTCOME_ITEMS = 25
+# The backend caps the impacted items a commit returns; a list this long may
+# be truncated, so per-operation matching cannot prove the absence of a no-op.
+MAX_IMPACTED_ITEMS_TRUSTED = 50
 
 # Appended after the tool outputs of the continuation turn. The system prompt
 # itself is byte-identical to the staging turn (prompt cache hit); only this
@@ -509,6 +514,84 @@ def _loop_reply(ctx: Any, session: AgentSession, run_state: Any, report: VerifyR
     return PhaseOutcome(kind='verified', assistant_message=text, loop=result)
 
 
+_STAGE_TOOL_NAMES = frozenset({STAGE_EDITS_TOOL_NAME, PLANNING_TOOL_NAME})
+
+
+def _operations_all_changed(commit: RunCommit, batch: RunBatch) -> bool:
+    """Whether every staged operation demonstrably changed something, matched
+    per operation against the commit's impacted items (``impacted_summary``
+    counts diff rows, not operations, so one rename with a new description
+    could hide a "mark as done" on an already-done task). Adds need as many
+    created items; every other operation needs its target among the impacted
+    items with the matching impact. Anything unverifiable (a target that is a
+    temp ref, a possibly truncated item list) is not."""
+    items = list(commit.impacted_items or [])
+    if not items or len(items) >= MAX_IMPACTED_ITEMS_TRUSTED:
+        return False
+    touched = {(normalize_uuid(item.node_id), item.impact) for item in items}
+    adds = 0
+    for operation in batch.operations:
+        name = _op_name(operation)
+        if name in _CREATE_OPS:
+            adds += 1
+            continue
+        node_id = normalize_uuid(getattr(operation, 'node_id', None))
+        if node_id is None:
+            return False
+        impact = 'deleted' if name == 'delete_node' else 'modified'
+        if (node_id, impact) not in touched:
+            return False
+    return sum(1 for item in items if item.impact == 'created') >= adds
+
+
+def _fast_reply(ctx: Any, session: AgentSession, run_state: Any, report: VerifyReport) -> PhaseOutcome | None:
+    """The staged message as the reply, with no model turn, when the commit
+    outcome holds nothing the staging model has not already said: every
+    direct batch committed exactly as staged (all checks pass, every operation
+    changed something), each carries its own model-written message that
+    does not contradict the outcome, and the staging turn made no other
+    writes (comments, memories, projects) that the report turn would mention.
+    Anything else returns ``None`` and the model writes the report."""
+    if report.status != 'verified' or any(check.status != 'pass' for check in report.checks):
+        return None
+    if not run_state.batches or is_undo_run(run_state):
+        return None
+    for batch in run_state.batches:
+        if (
+            batch.source != 'stage_edits'
+            or batch.needs_materialize
+            or batch.dropped_operations
+            or not (batch.assistant_message or '').strip()
+        ):
+            return None
+        commit = runs.commit_for_batch(run_state, batch.batch_id)
+        if commit is None or commit.status != 'committed' or not _operations_all_changed(commit, batch):
+            return None
+        if report_contradicts_outcome(batch.assistant_message, run_state):
+            return None
+    transcript = ctx.get_transcript(getattr(run_state, 'staged_transcript_key', None))
+    if not transcript:
+        return None
+    batch_call_ids = {str(call_id) for batch in run_state.batches for call_id in (batch.call_ids or [])}
+    if any(call_id not in batch_call_ids for call_id in _pending_call_ids(transcript)):
+        return None  # a call issued beside the stage never ran: the model explains
+    for item in transcript:
+        if item.get('type') != 'function_call':
+            continue
+        name = str(item.get('name') or '')
+        if name not in _STAGE_TOOL_NAMES and not is_read_tool(name):
+            return None
+    _discard_transcript(ctx, run_state)
+    summary, _ = staged_summary(session, run_state)
+    report.summary = summary
+    # 'staged' (not a new literal): the mode is persisted in the session, and
+    # an older revision must still load it after a rollback. verify_completed
+    # carries fast_path=True to tell this apart from the staged fallback.
+    report.report_mode = 'staged'
+    ctx.verify_fast_path = True
+    return PhaseOutcome(kind='verified', assistant_message=summary)
+
+
 def _fallback_reply(session: AgentSession, run_state: Any, report: VerifyReport) -> PhaseOutcome:
     if is_undo_run(run_state):
         report.summary = undo_summary(session, run_state)
@@ -542,7 +625,7 @@ def run(ctx: Any, session: AgentSession, run_state: Any) -> PhaseOutcome:
                 run_state.run_id,
             )
         else:
-            outcome = _loop_reply(ctx, session, run_state, report)
+            outcome = _fast_reply(ctx, session, run_state, report) or _loop_reply(ctx, session, run_state, report)
         if outcome is None:
             outcome = _fallback_reply(session, run_state, report)
     run_state.verify = report
@@ -562,5 +645,6 @@ def run(ctx: Any, session: AgentSession, run_state: Any) -> PhaseOutcome:
         commits_total=len(run_state.commits),
         commits_committed=committed,
         report_mode=report.report_mode,
+        fast_path=bool(getattr(ctx, 'verify_fast_path', False)),
     )
     return outcome

@@ -344,6 +344,11 @@ class StageEditsSchemaParityTests(unittest.TestCase):
                 if key != 'revision_operations'
             }
             expected['operations'] = {**expected['operations'], 'minItems': 1}
+            # The message doubles as the post-commit reply (verify fast path).
+            expected['assistant_message'] = {
+                **expected['assistant_message'],
+                'description': tools_spec.STAGE_MESSAGE_DESCRIPTION,
+            }
             actual = {key: value for key, value in props.items() if key != 'roadmap_id'}
             self.assertEqual(actual, expected)
             # Roadmap scope: roadmap_id is optional (defaults to the focus).

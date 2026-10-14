@@ -21,6 +21,7 @@ from __future__ import annotations
 
 import json
 import logging
+import threading
 from dataclasses import dataclass, field
 from typing import Any, Callable
 
@@ -71,6 +72,68 @@ _ENCRYPTED_REASONING_INCLUDE = 'reasoning.encrypted_content'
 _EFFORT_FALLBACK = 'low'
 
 
+@dataclass
+class _HealState:
+    """Parameters a model rejected, remembered so the next call does not pay
+    the same failed round trip. Shared per model across every ``LLMClient``
+    built over the process-wide SDK client (each phase builds its own)."""
+
+    drop_reasoning: bool = False
+    drop_reasoning_summary: bool = False
+    drop_verbosity: bool = False
+    rejected_effort: str | None = None
+
+
+_shared_lock = threading.Lock()
+_shared_sdk_clients: dict[tuple[str | None, int], Any] = {}
+_shared_heal_states: dict[str, _HealState] = {}
+# Explicit (the SDK default) so the retry budget is visible next to the timeout.
+_SDK_MAX_RETRIES = 2
+
+
+def _shared_sdk_client(settings: Any) -> Any:
+    """One ``OpenAI`` client per (api key, timeout) for the process: its HTTP
+    pool keeps the TLS connection to the API warm across phases and requests.
+    The sync client is thread-safe."""
+    timeout = _model_timeout_seconds(settings)
+    key = (settings.openai_api_key, timeout)
+    with _shared_lock:
+        client = _shared_sdk_clients.get(key)
+        if client is None:
+            try:
+                from openai import OpenAI
+            except Exception as exc:  # pragma: no cover - import guard
+                raise RuntimeError(f'openai sdk unavailable: {exc}') from exc
+            client = OpenAI(api_key=settings.openai_api_key, timeout=timeout, max_retries=_SDK_MAX_RETRIES)
+            _shared_sdk_clients[key] = client
+        return client
+
+
+def _shared_heal_state(model: str) -> _HealState:
+    with _shared_lock:
+        state = _shared_heal_states.get(model)
+        if state is None:
+            state = _HealState()
+            _shared_heal_states[model] = state
+        return state
+
+
+def reset_shared_state_for_tests() -> None:
+    with _shared_lock:
+        _shared_sdk_clients.clear()
+        _shared_heal_states.clear()
+
+
+def _heal_flag(name: str) -> property:
+    def _get(self: 'LLMClient') -> Any:
+        return getattr(self._heal_state(), name)
+
+    def _set(self: 'LLMClient', value: Any) -> None:
+        setattr(self._heal_state(), name, value)
+
+    return property(_get, _set)
+
+
 def _model_timeout_seconds(settings: Any) -> int:
     """Per-request model timeout (``OPENAI_MODEL_TIMEOUT_SECONDS``), falling
     back to the historical 90s when the setting is absent or invalid."""
@@ -100,34 +163,39 @@ class LLMClient:
         # concurrency. OpenAI still auto-caches without it; this just pins it.
         self._prompt_cache_key = prompt_cache_key
         self._client: Any | None = None
-        # Defensive: if a model rejects the `reasoning` param, drop it once and
-        # remember for the rest of the process (no failed round-trip per turn).
-        self._drop_reasoning = False
-        # Same self-heal for streaming: if a stream fails to open or dies
-        # mid-iteration, fall back to plain calls for the rest of the process.
+        # Self-heal state (see _HealState). Bound to the shared per-model state
+        # when this client uses the process-wide SDK client; a client injected
+        # directly (tests, custom transports) heals on its own.
+        self._heal: _HealState | None = None
+        # Streaming self-heal stays per instance (one phase): any transient
+        # stream failure (429, 5xx, a dropped connection) trips it, so sharing
+        # it would turn one blip into no live previews for the whole process.
         self._drop_streaming = False
-        # And for reasoning summaries: unverified orgs get a 400 for
-        # reasoning.summary — drop just the summary request (keep effort) and
-        # remember for the rest of the process.
-        self._drop_reasoning_summary = False
-        # text.verbosity is a GPT-5.x-family param; a model that rejects it
-        # loses just that knob.
-        self._drop_verbosity = False
-        # A rejected effort VALUE (e.g. 'minimal' on GPT-5.6) retries at 'low'
-        # instead of disabling reasoning altogether; only that value is
-        # remapped, so a per-turn escalation to 'medium' still goes through.
-        self._rejected_effort: str | None = None
+
+    # Defensive: if a model rejects the `reasoning` param, drop it once and
+    # remember for the rest of the process (no failed round-trip per turn).
+    _drop_reasoning = _heal_flag('drop_reasoning')
+    # And for reasoning summaries: unverified orgs get a 400 for
+    # reasoning.summary — drop just the summary request (keep effort) and
+    # remember for the rest of the process.
+    _drop_reasoning_summary = _heal_flag('drop_reasoning_summary')
+    # text.verbosity is a GPT-5.x-family param; a model that rejects it
+    # loses just that knob.
+    _drop_verbosity = _heal_flag('drop_verbosity')
+    # A rejected effort VALUE (e.g. 'minimal' on GPT-5.6) retries at 'low'
+    # instead of disabling reasoning altogether; only that value is
+    # remapped, so a per-turn escalation to 'medium' still goes through.
+    _rejected_effort = _heal_flag('rejected_effort')
+
+    def _heal_state(self) -> _HealState:
+        if self._heal is None:
+            self._heal = _HealState()
+        return self._heal
 
     def _ensure_client(self) -> Any:
         if self._client is None:
-            try:
-                from openai import OpenAI
-            except Exception as exc:  # pragma: no cover - import guard
-                raise RuntimeError(f'openai sdk unavailable: {exc}') from exc
-            self._client = OpenAI(
-                api_key=self._settings.openai_api_key,
-                timeout=_model_timeout_seconds(self._settings),
-            )
+            self._client = _shared_sdk_client(self._settings)
+            self._heal = _shared_heal_state(self._model)
         return self._client
 
     def complete(

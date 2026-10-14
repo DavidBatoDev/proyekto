@@ -25,7 +25,7 @@ from fastapi import HTTPException
 
 from app.core import trace
 from app.core.contracts.runs import RunState
-from app.core.contracts.sessions import AgentSession, CommitSummary
+from app.core.contracts.sessions import AgentSession, CommitSummary, Message
 from app.core.engine import progress
 from app.core.logging_utils import log_event
 from app.core.memory.actor_context import (
@@ -435,13 +435,15 @@ def advance(ctx: StepContext, session: AgentSession, run: RunState) -> None:
             outcome=outcome.kind,
         )
         apply_transition(ctx, session, run, outcome)
-        ctx.persist(session)
+        # Every break below hands straight to finalize_step, which persists;
+        # only a run that moves on to its next phase checkpoints here.
         if run.status != 'running':
             break
         if run.next == 'continue' and outcome.kind == 'paused':
             break
         if run.next == 'continue' and not ctx.sync_mode and ctx.past_soft_budget():
             break
+        ctx.persist(session)
 
 
 def apply_transition(ctx: StepContext, session: AgentSession, run: RunState, outcome: PhaseOutcome) -> None:
@@ -673,13 +675,16 @@ def finalize_step(ctx: StepContext, session: AgentSession, run: RunState, *, sta
             runs.end_segment(run, ended_with=run.checkpoint or run.status)
             # The user turn (folded text) and the assistant turn land together
             # at segment end — never at run start, which would duplicate the
-            # user turn in the next step's prompt.
-            ctx.store.append_message(session, 'user', run.user_message)
-            ctx.store.append_message(session, 'assistant', assistant_message)
+            # user turn in the next step's prompt. Saved by the persist below.
+            session.messages.append(Message(role='user', content=run.user_message))
+            session.messages.append(Message(role='assistant', content=assistant_message))
         if runs.is_terminal(run):
             runs.archive_run(session, run)
     session.last_intent_type = intent_type  # type: ignore[assignment]
     session.metadata.run = run
+    # A staged transcript verify did not consume this step (a proposal awaiting
+    # confirmation, a paused execute) must outlive the request.
+    ctx.flush_pending_transcripts()
     ctx.persist(session)
 
     route_lane = f'run_{run.phase}_{ctx.last_outcome_kind or run.status}'

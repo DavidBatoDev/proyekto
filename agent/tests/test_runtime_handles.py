@@ -249,13 +249,56 @@ class InterpretStageEditsAcrossRoadmapsTests(unittest.TestCase):
         error = self._interpret(
             {
                 'assistant_message': 'x',
-                'roadmap_id': 'Beta',
+                'roadmap_id': 'Gamma',
                 'operations': [{'op': 'add_epic', 'data': {'title': 'New'}}],
             },
             None,
         )
         assert isinstance(error, tool_exec.PlanToolError)
         self.assertEqual(error.code, 'INVALID_ROADMAP_ID')
+
+    def test_loaded_roadmap_title_resolves_to_its_id(self) -> None:
+        # Saves the model a whole retry turn (seen live: the title passed as
+        # roadmap_id, rejected, then the identical call re-issued).
+        parsed = self._interpret(
+            {
+                'assistant_message': 'x',
+                'roadmap_id': ' beta ',
+                'operations': [{'op': 'add_epic', 'data': {'title': 'New'}}],
+            },
+            None,
+        )
+        assert isinstance(parsed, tool_exec.PlanToolParsed)
+        self.assertEqual(parsed.roadmap_id, BETA)
+
+    def test_handle_prefix_resolves_to_its_roadmap(self) -> None:
+        parsed = self._interpret(
+            {
+                'assistant_message': 'x',
+                'roadmap_id': 'R2',
+                'operations': [{'op': 'update_node', 'node_id': 'R2.E1', 'patch': {'title': 'Payments'}}],
+            },
+            None,
+        )
+        assert isinstance(parsed, tool_exec.PlanToolParsed)
+        self.assertEqual(parsed.roadmap_id, BETA)
+
+    def test_resolved_title_still_respects_the_expected_roadmap(self) -> None:
+        error = self._interpret(
+            {
+                'assistant_message': 'x',
+                'roadmap_id': 'Beta',
+                'operations': [{'op': 'add_epic', 'data': {'title': 'New'}}],
+            },
+            ALPHA,
+        )
+        assert isinstance(error, tool_exec.PlanToolError)
+        self.assertEqual(error.code, 'ROADMAP_MISMATCH')
+
+    def test_title_shared_by_two_roadmaps_is_not_guessed(self) -> None:
+        self.assertIsNone(
+            tool_exec.resolve_roadmap_reference('Same', {ALPHA: 'Same', BETA: 'same'}, {ALPHA: None, BETA: 'R2'})
+        )
 
 
 if __name__ == '__main__':

@@ -324,3 +324,44 @@ class EffortValidatorTests(unittest.TestCase):
 
 if __name__ == '__main__':
     unittest.main()
+
+
+class WorkspaceDeferredEscalationTests(unittest.TestCase):
+    """A workspace-scope turn starts at the base effort and escalates only
+    after its first tool round; the explicit hard triggers still start high."""
+
+    def _investigate(self, session, script):
+        from tests.runtime_fakes import FakeLLM, FakeNest, MemoryStore, make_service, patched_llm
+        from app.core.runtime import runs
+        from app.core.runtime.phases import investigate
+        from app.core.runtime.service import StepContext
+
+        store = MemoryStore()
+        service = make_service(store, FakeNest())
+        store.create(session)
+        ctx = StepContext(service=service, auth_header='Bearer x', trace_id='trace-1')
+        run = runs.new_run(session, trace_id='trace-1', user_message='hi')
+        runs.set_running(run, 'investigate')
+        with patched_llm(script):
+            investigate.run(ctx, session, run)
+        return list(FakeLLM.calls), run
+
+    def test_workspace_greeting_stays_at_low(self):
+        from tests.runtime_fakes import text_resp, workspace_session
+
+        calls, run = self._investigate(workspace_session(), [text_resp('Hi! What can I do?')])
+        self.assertEqual(len(calls), 1)
+        self.assertIn(calls[0]['kwargs'].get('reasoning_effort'), (None, 'low'))
+        self.assertEqual(run.reasoning_effort.get('investigate'), 'low')
+
+    def test_workspace_turn_escalates_after_a_tool_round(self):
+        from tests.runtime_fakes import text_resp, tool_resp, workspace_session
+
+        calls, run = self._investigate(
+            workspace_session(),
+            [tool_resp('list_roadmaps', {}), text_resp('You have two roadmaps.')],
+        )
+        self.assertEqual(len(calls), 2)
+        self.assertIn(calls[0]['kwargs'].get('reasoning_effort'), (None, 'low'))
+        self.assertEqual(calls[1]['kwargs'].get('reasoning_effort'), 'medium')
+        self.assertEqual(run.reasoning_effort.get('investigate'), 'medium')

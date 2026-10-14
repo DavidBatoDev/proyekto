@@ -1175,3 +1175,68 @@ class BudgetFinalizeTests(unittest.TestCase):
 
 if __name__ == '__main__':
     unittest.main()
+
+
+class _KwargsRecordingClient:
+    """Scripted client recording the per-call kwargs (reasoning effort)."""
+
+    def __init__(self, responses):
+        self._responses = list(responses)
+        self.kwargs = []
+
+    def complete(self, messages, tools, **kwargs):
+        self.kwargs.append(dict(kwargs))
+        return self._responses.pop(0)
+
+
+class EscalateAfterToolsTests(unittest.TestCase):
+    """A deferred escalation applies only after the loop's first tool round."""
+
+    def test_answer_without_tools_stays_at_the_start_effort(self):
+        client = _KwargsRecordingClient([_text_resp('Hi! How can I help?')])
+        escalations = []
+        result = _run(client, escalate_after_tools='medium', on_escalate=escalations.append)
+        self.assertEqual(result.kind, 'chat')
+        self.assertNotIn('reasoning_effort', client.kwargs[0])
+        self.assertEqual(escalations, [])
+
+    def test_calls_after_a_tool_round_escalate_once(self):
+        client = _KwargsRecordingClient([
+            _tool_resp('search_nodes', {'query': 'a'}),
+            _tool_resp('search_nodes', {'query': 'b'}, call_id='call_b'),
+            _text_resp('Found them.'),
+        ])
+        escalations = []
+        _run(client, escalate_after_tools='medium', on_escalate=escalations.append)
+        self.assertNotIn('reasoning_effort', client.kwargs[0])
+        self.assertEqual(client.kwargs[1].get('reasoning_effort'), 'medium')
+        self.assertEqual(client.kwargs[2].get('reasoning_effort'), 'medium')
+        self.assertEqual(escalations, ['medium'])
+
+    def test_a_resumed_transcript_that_used_tools_starts_escalated(self):
+        client = _KwargsRecordingClient([_text_resp('Done reading.')])
+        transcript = [
+            {'type': 'function_call', 'call_id': 'c1', 'name': 'search_nodes', 'arguments': '{}'},
+            {'type': 'function_call_output', 'call_id': 'c1', 'output': '{}'},
+        ]
+        run_loop(
+            client=client,
+            messages=[{'role': 'system', 'content': 'sys'}, {'role': 'user', 'content': 'hi'}, *transcript],
+            tools=[],
+            dispatcher=_FakeDispatcher(),
+            session_context={'roadmap_id': 'rm1'},
+            handle_map={},
+            settings=_settings(),
+            trace_id=None,
+            transcript=transcript,
+            escalate_after_tools='medium',
+        )
+        self.assertEqual(client.kwargs[0].get('reasoning_effort'), 'medium')
+
+    def test_without_the_option_the_effort_never_changes(self):
+        client = _KwargsRecordingClient([
+            _tool_resp('search_nodes', {'query': 'a'}),
+            _text_resp('Found it.'),
+        ])
+        _run(client, reasoning_effort='low')
+        self.assertEqual([k.get('reasoning_effort') for k in client.kwargs], ['low', 'low'])

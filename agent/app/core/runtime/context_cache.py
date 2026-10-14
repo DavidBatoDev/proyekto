@@ -470,6 +470,12 @@ def _resolve_context(session: AgentSession, roadmap_id: str | None) -> RoadmapCo
     return context
 
 
+def ensure_focus_context(session: AgentSession) -> RoadmapContext | None:
+    """Create the focus roadmap's context when missing (an outline fetch that
+    failed) so concurrent per-roadmap loaders never race to create it."""
+    return _resolve_context(session, None)
+
+
 def ensure_memory_notes(
     *,
     session: AgentSession,

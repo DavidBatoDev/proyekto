@@ -82,6 +82,13 @@ def interpret_stage_edits(
     """
     cleaned = _strip_null_plan_args(args)
     call_roadmap_id = cleaned.pop('roadmap_id', None)
+    if isinstance(call_roadmap_id, str) and call_roadmap_id.strip() and not is_uuid_like(call_roadmap_id.strip()):
+        # A loaded roadmap named by its title or its handle prefix ("R2") is
+        # unambiguous: resolve it instead of bouncing the call back to the
+        # model for a whole extra turn. Anything else still fails below.
+        call_roadmap_id = (
+            resolve_roadmap_reference(call_roadmap_id, roadmap_titles, roadmap_prefixes) or call_roadmap_id
+        )
     roadmap_id = (
         str(call_roadmap_id).strip()
         if isinstance(call_roadmap_id, str) and call_roadmap_id.strip()
@@ -140,6 +147,30 @@ def interpret_stage_edits(
         clarifier_options=parse_plan_tool_clarifier_options(cleaned),
         roadmap_id=roadmap_id,
     )
+
+
+def resolve_roadmap_reference(
+    value: Any,
+    roadmap_titles: dict[str, str | None] | None,
+    roadmap_prefixes: dict[str, str | None] | None,
+) -> str | None:
+    """The loaded roadmap a non-id ``roadmap_id`` value names: its handle
+    prefix ("R2", "r2.") or its exact title (case-insensitive). ``None`` when
+    nothing matches or the title is shared by several loaded roadmaps."""
+    if not isinstance(value, str) or not value.strip():
+        return None
+    wanted = value.strip()
+    prefix = wanted.rstrip('.').upper()
+    for candidate_id, candidate_prefix in (roadmap_prefixes or {}).items():
+        if isinstance(candidate_prefix, str) and candidate_prefix and candidate_prefix.upper() == prefix:
+            return candidate_id
+    folded = wanted.casefold()
+    matches = [
+        candidate_id
+        for candidate_id, title in (roadmap_titles or {}).items()
+        if isinstance(title, str) and title.strip().casefold() == folded
+    ]
+    return matches[0] if len(matches) == 1 else None
 
 
 def interpret_plan_tool(

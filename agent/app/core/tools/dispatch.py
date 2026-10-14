@@ -142,16 +142,13 @@ class ToolDispatcher:
     def _drive_handler_coroutine(self, coro: Awaitable[dict[str, Any]]) -> dict[str, Any]:
         """Run the async handler coroutine from the sync dispatcher boundary.
 
-        No event loop running in this thread -> `asyncio.run()` owns one.
-        Already inside a loop (dispatcher called from async context that
-        delegated through a thread adapter incorrectly, etc.) -> fall back to
-        the existing bridge. Either way, at most ONE thread spawn per tool
+        No event loop running in this thread -> this thread's persistent loop
+        runs it (its Nest connections stay pooled across calls). Already
+        inside a loop (dispatcher called from async context that delegated
+        through a thread adapter incorrectly, etc.) -> fall back to the
+        existing bridge. Either way, at most ONE thread spawn per tool
         dispatch.
         """
-        try:
-            asyncio.get_running_loop()
-        except RuntimeError:
-            return asyncio.run(coro)
         return run_async_call(coro, settings=self._settings, logger=self._logger)
 
     def execute(

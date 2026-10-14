@@ -98,7 +98,6 @@ class RoadmapScopeTests(_Base):
         store, nest, service = _bootstrap(roadmap_session())
         with patched_llm([
             tool_resp('stage_edits', stage_args([{'op': 'add_epic', 'data': {'title': 'Growth'}}], message='Added Growth.')),
-            text_resp('Added the Growth epic to Alpha.'),
         ]):
             ctx, result = _send(service, 'sess-alpha', 'add an epic called Growth')
         run = result.run
@@ -108,7 +107,11 @@ class RoadmapScopeTests(_Base):
         self.assertEqual(result.intent_type, 'roadmap_edit')
         self.assertTrue(result.commit_summary.committed)
         self.assertEqual(len(result.operations), 1)
-        self.assertEqual(result.assistant_message, 'Added the Growth epic to Alpha.')
+        # A clean commit: the staged message is the reply, no report turn.
+        self.assertEqual(result.assistant_message, 'Added Growth.')
+        self.assertEqual(len(FakeLLM.calls), 1)
+        self.assertEqual(run.verify.report_mode, 'staged')
+        self.assertTrue(ctx.verify_fast_path)
         self.assertEqual(run.verify.status, 'verified')
         # Direct focus-roadmap edit: no preview, one commit carrying the run ids.
         self.assertEqual(nest.preview_calls, [])
@@ -119,9 +122,27 @@ class RoadmapScopeTests(_Base):
         self.assertEqual([c.status for c in result.commits], ['committed'])
         self.assertEqual(len(result.commits[0].operations), 1)
         self.assertEqual(result.staged_operations_count, 1)
+        self.assertEqual(FakeLLM.calls[0]['prompt_cache_key'], f'roadmap:{ALPHA}')
+        # History persisted together at segment end.
+        persisted = store.get('sess-alpha')
+        self.assertEqual([m.role for m in persisted.messages], ['user', 'assistant'])
+        self.assertEqual(persisted.metadata.run.run_id, run.run_id)
+        self.assertEqual(persisted.metadata.run_history[0].committed_roadmap_ids, [ALPHA])
+        self.assertEqual(store.lock_events, ['acquired', 'released'])
+        self.assertEqual(len(persisted.metadata.change_history), 1)
+        self.assertEqual(persisted.metadata.change_history[0].run_id, run.run_id)
+
+    def test_edit_whose_message_needs_a_report_continues_the_staging_loop(self):
+        store, nest, service = _bootstrap(roadmap_session())
+        with patched_llm([
+            tool_resp('stage_edits', stage_args([{'op': 'add_epic', 'data': {'title': 'Growth'}}], message='No changes were made yet.')),
+            text_resp('Added the Growth epic to Alpha.'),
+        ]):
+            ctx, result = _send(service, 'sess-alpha', 'add an epic called Growth')
+        run = result.run
+        self.assertEqual(result.assistant_message, 'Added the Growth epic to Alpha.')
         # Investigate, then the same loop continues with the commit result as
         # the stage_edits output and no tools: that text is the reply.
-        self.assertEqual(FakeLLM.calls[0]['prompt_cache_key'], f'roadmap:{ALPHA}')
         self.assertEqual(FakeLLM.calls[1]['tools'], [])
         # Same static prefix (prompt cache); the state blocks may reflect the
         # commit (the outline now has the epic), and there is no verify block.
@@ -133,14 +154,6 @@ class RoadmapScopeTests(_Base):
         self.assertEqual(FakeLLM.calls[1]['messages'][-1]['role'], 'system')
         self.assertIn('Reply to the user now', FakeLLM.calls[1]['messages'][-1]['content'])
         self.assertEqual(run.verify.report_mode, 'loop')
-        # History persisted together at segment end.
-        persisted = store.get('sess-alpha')
-        self.assertEqual([m.role for m in persisted.messages], ['user', 'assistant'])
-        self.assertEqual(persisted.metadata.run.run_id, run.run_id)
-        self.assertEqual(persisted.metadata.run_history[0].committed_roadmap_ids, [ALPHA])
-        self.assertEqual(store.lock_events, ['acquired', 'released'])
-        self.assertEqual(len(persisted.metadata.change_history), 1)
-        self.assertEqual(persisted.metadata.change_history[0].run_id, run.run_id)
 
     def test_focus_delete_executes_immediately(self):
         store, nest, service = _bootstrap(roadmap_session())

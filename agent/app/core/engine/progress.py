@@ -119,7 +119,9 @@ class ThoughtEmitter:
         )
 
 
-def provider_attempt(settings: Any, trace_id: str | None, turn: int) -> None:
+def provider_attempt(
+    settings: Any, trace_id: str | None, turn: int, reasoning_effort: str | None = None
+) -> None:
     log_event(
         logger,
         'provider_attempt',
@@ -127,6 +129,9 @@ def provider_attempt(settings: Any, trace_id: str | None, turn: int) -> None:
         trace_id=trace_id,
         brain='v2',
         turn=turn,
+        # The effort this call runs at (the configured base when the loop
+        # passes no override) — per call, since a loop can escalate mid-turn.
+        reasoning_effort=reasoning_effort or getattr(settings, 'openai_v2_reasoning_effort', None),
     )
 
 

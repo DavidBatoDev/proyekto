@@ -421,6 +421,7 @@ def _interpret_stage_call(
                 assistant_message=parsed.assistant_message,
                 source='stage_edits',
                 call_ids=[str(tc.id)],
+                dropped_operations=len(dropped),
             )
         if dropped:
             return LoopResult(

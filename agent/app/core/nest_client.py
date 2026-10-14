@@ -102,11 +102,13 @@ class NestRoadmapClient:
         #
         # Instead, key clients by `id(loop)`. The main FastAPI event loop
         # keeps its client for the process lifetime (huge TLS keep-alive
-        # win for actor fetch, commit, preview). Short-lived worker-thread
-        # loops each get a fresh client — no keep-alive across runs for
-        # those, but also no crashes. We deliberately do not attempt to
-        # close stale clients; when their loop is closed the OS will
-        # reclaim the sockets on GC / process exit.
+        # win for actor fetch, commit, preview), and so does each worker
+        # thread: the run machine drives Nest calls through that thread's
+        # persistent loop (`async_bridge.run_on_thread_loop`), so its pool
+        # stays warm across calls and requests. A loop that does close
+        # (the bridge's one-off threads) leaves a zombie entry; we never
+        # aclose it (that would cross loops) — the OS reclaims the sockets
+        # on GC / process exit.
         self._clients_by_loop_id: dict[
             int, tuple[asyncio.AbstractEventLoop, httpx.AsyncClient]
         ] = {}

@@ -271,6 +271,10 @@ class RunBatch(BaseModel):
     needs_materialize: bool = False
     # Side key holding a paused materialize transcript (resumed on continue).
     materialize_transcript_key: str | None = None
+    # Operations the stage terminal dropped from the model's call (an add_epic
+    # re-creating a live epic): the model's message still names them, so
+    # verify must not reuse it as the reply verbatim.
+    dropped_operations: int = 0
 
     @model_validator(mode='after')
     def _fill_derived(self) -> 'RunBatch':

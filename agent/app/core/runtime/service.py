@@ -317,6 +317,11 @@ class StepContext:
     last_outcome_kind: str | None = None
     verify_reported: bool = False
     no_model_call: bool = False
+    # Staged-edit transcripts held in memory for verify within this same
+    # step; finalize_step writes the ones still unconsumed to Redis.
+    pending_transcripts: dict[str, list[dict[str, Any]]] = field(default_factory=dict)
+    # verify replied with the staged message and no model turn this step.
+    verify_fast_path: bool = False
 
     # -- deps ---------------------------------------------------------------
     @property
@@ -477,7 +482,24 @@ class StepContext:
         )
         return transcript
 
+    def stage_transcript(self, key: str | None, transcript: list[dict[str, Any]]) -> bool:
+        """Hold a transcript for a later phase of this step. A direct edit
+        runs investigate -> execute -> verify in one request, so the Redis
+        SET + GET + DEL round trip (up to AGENT_RUN_TRANSCRIPT_MAX_BYTES) is
+        only paid when the step ends first (``flush_pending_transcripts``)."""
+        if not key:
+            return False
+        self.pending_transcripts[key] = transcript
+        return True
+
+    def flush_pending_transcripts(self) -> None:
+        pending, self.pending_transcripts = self.pending_transcripts, {}
+        for key, transcript in pending.items():
+            self.put_transcript(key, transcript)
+
     def get_transcript(self, key: str | None) -> list[dict[str, Any]] | None:
+        if key and key in self.pending_transcripts:
+            return list(self.pending_transcripts[key])
         get = getattr(self.store, 'get_side_key', None)
         if not key or not callable(get):
             return None
@@ -490,6 +512,8 @@ class StepContext:
         return [item for item in payload if isinstance(item, dict)]
 
     def delete_transcript(self, key: str | None) -> None:
+        if key and self.pending_transcripts.pop(key, None) is not None:
+            return  # never written to Redis
         delete = getattr(self.store, 'delete_side_key', None)
         if not key or not callable(delete):
             return

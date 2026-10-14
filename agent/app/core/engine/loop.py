@@ -93,6 +93,8 @@ def run_loop(
     turns_used: int = 0,
     tool_calls_used: int = 0,
     finalize_on_budget: bool = False,
+    escalate_after_tools: str | None = None,
+    on_escalate: Callable[[str], None] | None = None,
 ) -> LoopResult:
     max_turns = max(1, int(settings.agent_v2_max_turns))
     # None → let the client use the configured effort. A resolved value
@@ -117,6 +119,29 @@ def run_loop(
     nudged_act = False
     tok_in = tok_out = tok_total = tok_cached = 0
     tok_cache_write = tok_reasoning = 0
+    # ``escalate_after_tools``: the effort for every call after the first tool
+    # round. A turn that answers straight from the prompt stays at the start
+    # effort; one that has to go and read (a real investigation) reasons
+    # harder from then on. A resumed transcript that already used tools
+    # starts escalated.
+    escalation_pending = escalate_after_tools
+
+    def _escalate() -> None:
+        nonlocal escalation_pending
+        if not escalation_pending:
+            return
+        effort, escalation_pending = escalation_pending, None
+        complete_kwargs['reasoning_effort'] = effort
+        if on_escalate is not None:
+            try:
+                on_escalate(effort)
+            except Exception:  # noqa: BLE001 — telemetry never breaks the loop
+                logger.debug('on_escalate callback failed', exc_info=True)
+
+    if escalation_pending and any(
+        isinstance(item, dict) and item.get('type') == 'function_call_output' for item in (transcript or [])
+    ):
+        _escalate()
     # Everything after this index is the turn's transcript (a resumed
     # transcript the caller already appended is included, so a second pause
     # carries the whole history forward).
@@ -148,7 +173,7 @@ def run_loop(
             )
         final_turn = turns_done + 1
         try:
-            progress.provider_attempt(settings, trace_id, final_turn)
+            progress.provider_attempt(settings, trace_id, final_turn, complete_kwargs.get('reasoning_effort'))
             if delta_emitter is not None:
                 delta_emitter.set_turn(final_turn)
             if thought_emitter is not None:
@@ -250,7 +275,7 @@ def run_loop(
                     tok_cache_write,
                     tok_reasoning,
                 )
-        progress.provider_attempt(settings, trace_id, turn)
+        progress.provider_attempt(settings, trace_id, turn, complete_kwargs.get('reasoning_effort'))
         if delta_emitter is not None:
             delta_emitter.set_turn(turn)
         if thought_emitter is not None:
@@ -407,6 +432,7 @@ def run_loop(
             )
 
         tool_calls_used += len(response.tool_calls)
+        _escalate()
         if tool_calls_used >= max_tool_calls:
             return _exhausted('max_tool_calls', turn)
 

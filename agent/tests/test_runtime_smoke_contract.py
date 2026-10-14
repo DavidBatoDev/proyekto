@@ -231,7 +231,6 @@ class RunContractTests(_SmokeBase):
         trace_id = str(uuid4())
         with patched_llm([
             tool_resp('stage_edits', stage_args([{'op': 'add_epic', 'data': {'title': 'Growth'}}], message='Added Growth.')),
-            text_resp('Added the Growth epic to Alpha.'),
         ]):
             response = self._send(session_id, 'add an epic called Growth', trace_id=trace_id)
         self.assertEqual(response.status_code, 200, response.text)
@@ -254,7 +253,8 @@ class RunContractTests(_SmokeBase):
         self.assertTrue(payload['commit_summary']['committed'])
         self.assertGreater(payload['staged_operations_count'], 0)
         self.assertEqual(payload['staged_operations_version'], 1)
-        self.assertEqual(payload['assistant_message'], 'Added the Growth epic to Alpha.')
+        # A clean commit: the staged message is the reply (no report turn).
+        self.assertEqual(payload['assistant_message'], 'Added Growth.')
         # The run's commits: one, committed, carrying this step's operations.
         self.assertEqual(len(payload['commits']), 1)
         commit = payload['commits'][0]
@@ -436,8 +436,7 @@ class RunContractTests(_SmokeBase):
     def test_legacy_client_without_capabilities_completes_in_one_request(self) -> None:
         session_id = self._create_roadmap_session()
         with patched_llm([
-            tool_resp('stage_edits', stage_args([{'op': 'add_epic', 'data': {'title': 'Legacy'}}], message='Staged.')),
-            text_resp('Added the Legacy epic.'),
+            tool_resp('stage_edits', stage_args([{'op': 'add_epic', 'data': {'title': 'Legacy'}}], message='Added the Legacy epic.')),
         ]):
             response = self._send(session_id, 'add an epic called Legacy', capabilities=None)
         self.assertEqual(response.status_code, 200, response.text)

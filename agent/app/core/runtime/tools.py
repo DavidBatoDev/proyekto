@@ -757,6 +757,15 @@ def update_project_tool() -> dict[str, Any]:
 # ---------------------------------------------------------------------------
 
 
+# The verify fast path shows this text as the reply, with no model turn, when
+# every operation lands cleanly (phases/verify.py _fast_reply).
+STAGE_MESSAGE_DESCRIPTION = (
+    'One sentence: the reply the user sees once these edits are applied, in past '
+    'tense, naming each item by its exact title (e.g. "Renamed Billing to '
+    'Payments and moved it under Checkout."). No links.'
+)
+
+
 def stage_edits_tool(scope: Any = None, *, pinned_roadmap_id: str | None = None) -> dict[str, Any]:
     """The registry planning tool renamed ``stage_edits``: ``revision_operations``
     (and the dual-target contract that introduces it) always stripped — plan
@@ -774,6 +783,9 @@ def stage_edits_tool(scope: Any = None, *, pinned_roadmap_id: str | None = None)
     operations['minItems'] = 1
     props['operations'] = operations
     props['roadmap_id'] = _roadmap_id_property(pinned_roadmap_id)
+    message = dict(props.get('assistant_message') or {'type': 'string', 'minLength': 1})
+    message['description'] = STAGE_MESSAGE_DESCRIPTION
+    props['assistant_message'] = message
     _with_required(tool, 'roadmap_id', _roadmap_id_required(scope, pinned_roadmap_id))
     description = _strip_dual_target_contract(fn.get('description', ''))
     description = _strip_clarifier_contract(description)

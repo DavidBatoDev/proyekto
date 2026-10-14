@@ -18,9 +18,12 @@ key) per batch persisted BEFORE any network call. Per batch, gated on
    operation. The idempotency key is reused only while the operations hash is
    unchanged (a repair / re-materialize mints a fresh key).
 
-Each batch's network sequence runs under one ``asyncio.run`` so the httpx
-client is reused within the batch. Progress is persisted after every commit;
-a failure never stops the next batch (verify reports partial).
+Each batch's network sequence runs on the worker thread's persistent event
+loop (``async_bridge.run_on_thread_loop``), so the pooled httpx client is
+reused across batches and requests. Progress is persisted after every commit
+that another commit follows (the last one is saved by the checkpoint right
+after this phase); a failure never stops the next batch (verify reports
+partial).
 """
 
 from __future__ import annotations
@@ -117,10 +120,12 @@ def run(ctx: Any, session: AgentSession, run_state: Any) -> PhaseOutcome:
             ctx.persist(session)
             return PhaseOutcome(kind='paused')
         run_state.execute_cursor = index + 1
-        # Progress after every commit.
-        ctx.persist(session)
+        if run_state.execute_cursor < total:
+            # Progress after every commit that has another one after it; the
+            # last one is saved by the advance() checkpoint (or finalize_step)
+            # right after this phase returns.
+            ctx.persist(session)
     finish_pending_plan(ctx, session, run_state)
-    ctx.persist(session)
     return PhaseOutcome(kind='executed', cancelled=cancelled)
 
 

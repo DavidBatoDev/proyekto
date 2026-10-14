@@ -14,7 +14,7 @@ from __future__ import annotations
 
 import logging
 import re
-from typing import Any
+from typing import Any, Callable
 
 from app.core.config import REASONING_EFFORT_LEVELS
 from app.core.contracts.sessions import AgentSession
@@ -23,6 +23,7 @@ from app.core.engine.loop import LoopResult, run_loop
 from app.core.engine.progress import AssistantDeltaEmitter, ThoughtEmitter
 from app.core.logging_utils import log_event
 from app.core.runtime import context_cache, refs as refs_module, terminal
+from app.core.runtime.async_bridge import run_concurrently
 from app.core.runtime.handles import merged_handle_map
 from app.core.runtime.entity_registry import make_entity_sink, register_workspace_overview
 from app.core.runtime.prompt import build_messages
@@ -199,6 +200,12 @@ def _hard_turn_trigger(
     return 'none'
 
 
+# Triggers whose escalation waits for the loop's first tool round. Every
+# workspace-scope turn used to start at medium (+~2.5s per call on simple
+# questions); the explicit hard signals above still escalate from turn 1.
+ESCALATE_AFTER_TOOLS_TRIGGERS = frozenset({'workspace_scope'})
+
+
 def _turn_reasoning_effort(settings: Any, trigger: str) -> str | None:
     """Direct edits/chat run at the configured base (``low`` by default); a hard
     turn (trigger != 'none') escalates to at least ``medium``. Never downgrades a
@@ -233,19 +240,28 @@ def escalated_effort(settings: Any, minimum: str = 'medium') -> str | None:
 def prepare_context(ctx: Any, session: AgentSession, run: Any) -> dict[str, Any]:
     """Load the caches the phase reads and build the turn context dict."""
     deps = ctx.cache_deps()
+    # The focus outline first: it creates the focus context the loaders below
+    # write into. They are independent Nest reads on separate fields (refs
+    # hydration is the only one that adds or evicts loaded roadmaps, and the
+    # focus is never evicted), so they run concurrently.
     context_cache.refresh_focus_for_run(session=session, run=run, **deps)
+    if deps.get('auth_header'):
+        context_cache.ensure_focus_context(session)
+    loaders: list[Callable[[], Any]] = []
+    previous_overview = session.metadata.workspace_context
     if session.scope.kind == 'roadmap':
-        context_cache.ensure_memory_notes(session=session, **deps)
-        context_cache.ensure_project_context(session=session, **deps)
+        loaders.append(lambda: context_cache.ensure_memory_notes(session=session, **deps))
+        loaders.append(lambda: context_cache.ensure_project_context(session=session, **deps))
     else:
-        previous_overview = session.metadata.workspace_context
-        context_cache.ensure_workspace_overview(session=session, **deps)
+        loaders.append(lambda: context_cache.ensure_workspace_overview(session=session, **deps))
+    if run.refs and not run.resolved_refs:
+        loaders.append(lambda: refs_module.hydrate_refs(session=session, run=run, **deps))
+    run_concurrently(loaders)
+    if session.scope.kind != 'roadmap':
         register_workspace_overview(
             run, session.metadata.workspace_context,
             replace_existing=session.metadata.workspace_context is not previous_overview,
         )
-    if run.refs and not run.resolved_refs:
-        refs_module.hydrate_refs(session=session, run=run, **deps)
     turn_context = ctx.service.build_turn_context(session, ctx.auth_header, ctx.trace_id, run=run)
     _apply_semantic_memory_retrieval(
         ctx=ctx, session=session, session_context=turn_context, user_message=run.user_message
@@ -319,14 +335,17 @@ def run(ctx: Any, session: AgentSession, run_state: Any) -> PhaseOutcome:
         session, user_message=run_state.user_message, handle_map=handle_map, run=run_state
     )
     resolved_effort = _turn_reasoning_effort(settings, effort_trigger)
+    base_effort = settings.openai_v2_reasoning_effort
+    # A deferred trigger escalates only once the loop has made a tool round:
+    # "hi" or an answer the prompt already holds stays at the base effort.
+    deferred = effort_trigger in ESCALATE_AFTER_TOOLS_TRIGGERS and resolved_effort != base_effort
+    start_effort = base_effort if deferred else resolved_effort
     # Only override the client's configured effort when this turn escalates it;
     # otherwise pass None so the client uses its default and the common path
     # stays byte-identical to the pre-escalation call.
-    reasoning_effort = (
-        resolved_effort if resolved_effort != settings.openai_v2_reasoning_effort else None
-    )
-    if resolved_effort:
-        run_state.reasoning_effort['investigate'] = resolved_effort
+    reasoning_effort = start_effort if start_effort != base_effort else None
+    if start_effort:
+        run_state.reasoning_effort['investigate'] = start_effort
     log_event(
         logger,
         'reasoning_effort_selected',
@@ -336,10 +355,27 @@ def run(ctx: Any, session: AgentSession, run_state: Any) -> PhaseOutcome:
         roadmap_id=session.scope.focus_roadmap_id,
         run_id=run_state.run_id,
         phase='investigate',
-        effort=resolved_effort,
+        effort=start_effort,
         escalated=reasoning_effort is not None,
         trigger=effort_trigger,
+        escalate_after_tools=resolved_effort if deferred else None,
     )
+
+    def _on_escalate(effort: str) -> None:
+        run_state.reasoning_effort['investigate'] = effort
+        log_event(
+            logger,
+            'reasoning_effort_selected',
+            settings=settings,
+            trace_id=ctx.trace_id,
+            session_id=session.session_id,
+            roadmap_id=session.scope.focus_roadmap_id,
+            run_id=run_state.run_id,
+            phase='investigate',
+            effort=effort,
+            escalated=True,
+            trigger=f'{effort_trigger}_after_tools',
+        )
 
     # Pin the prompt-cache to the scope: every session/turn on this scope
     # shares the same system-prompt + state prefix.
@@ -391,6 +427,8 @@ def run(ctx: Any, session: AgentSession, run_state: Any) -> PhaseOutcome:
             # A read-heavy turn that runs out of tool calls still answers
             # from what it read instead of the canned clarifier.
             finalize_on_budget=True,
+            escalate_after_tools=resolved_effort if deferred else None,
+            on_escalate=_on_escalate,
         )
     except Exception as exc:  # noqa: BLE001 — keep the endpoint resilient
         log_event(
@@ -471,7 +509,7 @@ def loop_result_to_outcome(
         # Keep this turn's transcript so verify can answer the staging call
         # with the commit outcome and let this same loop write the reply.
         key = ctx.transcript_key(session.session_id, run_state.run_id, 'staged')
-        if ctx.put_transcript(key, loop_result.transcript):
+        if ctx.stage_transcript(key, loop_result.transcript):
             run_state.staged_transcript_key = key
     if kind == 'batches':
         return PhaseOutcome(

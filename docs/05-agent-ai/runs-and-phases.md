@@ -1,6 +1,6 @@
 # Runs & Phases
 
-> **Last updated:** 2026-09-16 · **Status:** current
+> **Last updated:** 2026-10-14 · **Status:** current
 
 Every user message to the Proyekto agent is a **run**: a server-side state machine the
 Python agent owns, persisted in the Redis session and the durable snapshot, that moves
@@ -205,7 +205,15 @@ catalog until the model ends the turn with one terminal tool or plain text.
   least `medium` on a hard turn; the trigger (first match wins) is `pending_plan`,
   `ambiguous_title` (a mentioned title shared by several nodes in the merged handle
   map), `plan_request`, `multi_roadmap_refs` (two or more accessible referenced
-  roadmaps) or `workspace_scope`. Logged as `reasoning_effort_selected`.
+  roadmaps) or `workspace_scope`. `workspace_scope` is deferred
+  (`ESCALATE_AFTER_TOOLS_TRIGGERS`): the turn starts at the base effort and the loop
+  switches to `medium` only after its first tool round (`run_loop`
+  `escalate_after_tools`), so "hi" or an answer the overview already holds stays fast
+  while a real cross-roadmap investigation still reasons harder from turn 2. A
+  resumed transcript that already used tools starts escalated. Logged as
+  `reasoning_effort_selected` (the deferred switch with trigger
+  `workspace_scope_after_tools`); every `provider_attempt` trace event carries the
+  call's `reasoning_effort`.
 - **Entity links** - a link whose id is right but whose text is a shortened form
   of the entity's title ("Set up the sprint meeting cadence" for "Set up the
   twice-a-week sprint meeting cadence") is relabelled to the entity's own title
@@ -287,11 +295,31 @@ Deterministic checks over `run.commits` - `all_batches_committed`, per commit
 `history_recorded`, and `no_repairs_needed` - produce a `VerifyReport` with status
 `verified | partial | failed | nothing_to_verify`.
 
-**The reply is written by the loop that staged the edit.** There is no report model
+**A clean direct edit replies with its staged message, with no model turn**
+(`_fast_reply`: `report_mode = staged`, and `verify_completed` carries
+`fast_path: true` - no new persisted literal, so a rollback to an older revision
+still loads the session). `stage_edits.assistant_message` is
+written as the post-commit reply (past tense, items by exact title; plain titles
+become entity chips through the `finalize_step` auto-linker, which knows the commit's
+impacted items). The fast path applies only when every check passes and the report
+is `verified`, every batch is a direct `stage_edits` batch (no proposal, no
+materialize, no undo) with its own message that `report_contradicts_outcome` accepts,
+each operation is matched to the commit's `impacted_items` (an add needs a created
+item; any other operation needs its target id with the matching impact, so a
+"mark as done" on an already-done task is caught even when another operation's
+field changes produced extra diff rows; a temp-ref target or a possibly truncated
+item list does not qualify), the stage terminal dropped nothing (`RunBatch.dropped_operations`,
+duplicate `add_epic`s), and the staging turn called nothing but read tools besides
+the stage calls (a comment, memory or admin write, or a call that never ran, needs
+the report). It saves one model round trip per edit.
+
+**Otherwise the reply is written by the loop that staged the edit.** There is no report model
 and no template: when the investigate loop ends on `stage_edits` or `revert_changes`,
 the engine attaches the turn's echoed transcript (`LoopResult.transcript`) and
-`loop_result_to_outcome` stores it under the `:staged` side key
-(`run.staged_transcript_key`); each batch records the terminal call ids that staged
+`loop_result_to_outcome` holds it under the `:staged` key
+(`run.staged_transcript_key`) - in memory on the `StepContext` when verify runs in
+the same step (`stage_transcript`), written to Redis by `finalize_step` only when the
+step ends first (`flush_pending_transcripts`); each batch records the terminal call ids that staged
 it (`RunBatch.call_ids`, carried through `staging.stage_batch`). After execute, verify
 rebuilds the same messages (same system prompt, so the prefix stays cached), appends
 one `function_call_output` per unanswered call of that turn - the commit outcome from
@@ -313,7 +341,7 @@ batches' own model-written `assistant_message`s are the reply (`staged`), with a
 sentence appended for failed or skipped batches; an undo run without a transcript gets
 the deterministic restored-items confirmation; a batch with no message at all gets the
 templated status sentence (`deterministic`). Emits `verify_completed` with
-`report_mode` (`loop | staged | deterministic | rejected`); the `AI REQUEST` block prints
+`report_mode` (`loop | staged | deterministic | rejected`) and `fast_path`; the `AI REQUEST` block prints
 `verify report=<mode>`. `follow_up_plan_id` is always null now (verify no longer
 proposes).
 

@@ -28,6 +28,10 @@ from tests.runtime_fakes import (
 )
 
 
+EPIC_ID = '33333333-3333-4333-8333-333333333333'
+TASK_ID = '44444444-4444-4444-8444-444444444444'
+
+
 def _fixture():
     store = MemoryStore()
     nest = FakeNest()
@@ -69,6 +73,13 @@ def _failed(run, roadmap_id, title, status='failed', message='Added Growth.'):
     run.batches.append(batch)
     run.commits.append(RunCommit(batch_id=batch.batch_id, roadmap_id=roadmap_id, status=status, error_code='STALE_REVISION', error_message='stale'))
     return batch
+
+
+def _needs_report(run):
+    """No impacted items to match the operations against: the outcome may
+    hold a no-op, so the verify fast path steps aside and the staging loop
+    writes the report."""
+    run.commits[-1].impacted_items = []
 
 
 def _staged(ctx, session, run, batch, *, call_id='call_stage_1', extra_calls=()):
@@ -226,6 +237,7 @@ class LoopReplyTests(unittest.TestCase):
     def test_provider_failure_falls_back_to_the_staged_message(self):
         ctx, session, run, _nest = _fixture()
         batch = _committed(run, ALPHA, 'Alpha')
+        _needs_report(run)
         _staged(ctx, session, run, batch)
         with patched_llm([ProviderDown('down')]):
             outcome = verify.run(ctx, session, run)
@@ -248,6 +260,7 @@ class LoopReplyTests(unittest.TestCase):
     def test_a_reply_that_calls_a_tool_falls_back_to_the_staged_message(self):
         ctx, session, run, nest = _fixture()
         batch = _committed(run, ALPHA, 'Alpha')
+        _needs_report(run)
         _staged(ctx, session, run, batch)
         with patched_llm([tool_resp('stage_edits', {'assistant_message': 'again', 'operations': []})]):
             outcome = verify.run(ctx, session, run)
@@ -271,6 +284,163 @@ class LoopReplyTests(unittest.TestCase):
             outcome = verify.run(ctx, session, run)
         self.assertEqual(outcome.assistant_message, verify.NOTHING_TO_VERIFY_MESSAGE)
         self.assertEqual(FakeLLM.calls, [])
+
+
+class FastReplyTests(unittest.TestCase):
+    """A clean direct commit replies with the staged message and no model
+    turn; anything the staging model has not already said gets the report."""
+
+    def _clean(self, **kwargs):
+        ctx, session, run, nest = _fixture()
+        batch = _committed(run, ALPHA, 'Alpha', **kwargs)
+        key = _staged(ctx, session, run, batch)
+        return ctx, session, run, batch, key
+
+    def test_clean_single_edit_skips_the_report_turn(self):
+        ctx, session, run, _batch, key = self._clean()
+        with patched_llm([text_resp('never called')]):
+            outcome = verify.run(ctx, session, run)
+        self.assertEqual(FakeLLM.calls, [])
+        self.assertEqual(outcome.assistant_message, 'Added Growth.')
+        self.assertEqual(run.verify.report_mode, 'staged')
+        self.assertTrue(ctx.verify_fast_path)
+        self.assertEqual(run.verify.summary, 'Added Growth.')
+        self.assertIsNone(ctx.get_transcript(key))
+        self.assertIsNone(run.staged_transcript_key)
+
+    def test_answered_read_calls_beside_the_stage_still_qualify(self):
+        ctx, session, run, nest = _fixture()
+        batch = _committed(run, ALPHA, 'Alpha')
+        batch.call_ids = ['call_stage_1']
+        transcript = [
+            {'type': 'function_call', 'call_id': 'call_read_1', 'name': 'get_node_details', 'arguments': '{}'},
+            {'type': 'function_call_output', 'call_id': 'call_read_1', 'output': '{}'},
+            {'type': 'function_call', 'call_id': 'call_stage_1', 'name': 'stage_edits', 'arguments': '{}'},
+        ]
+        key = ctx.transcript_key(session.session_id, run.run_id, 'staged')
+        self.assertTrue(ctx.put_transcript(key, transcript))
+        run.staged_transcript_key = key
+        with patched_llm([]):
+            verify.run(ctx, session, run)
+        self.assertTrue(ctx.verify_fast_path)
+
+    def _assert_reports(self, ctx, session, run):
+        with patched_llm([text_resp('The model report.')]):
+            outcome = verify.run(ctx, session, run)
+        self.assertFalse(ctx.verify_fast_path)
+        self.assertEqual(len(FakeLLM.calls), 1)
+        self.assertEqual(outcome.assistant_message, 'The model report.')
+        self.assertEqual(run.verify.report_mode, 'loop')
+
+    def test_an_operation_that_changed_nothing_gets_the_report(self):
+        ctx, session, run, _nest = _fixture()
+        batch = _committed(
+            run, ALPHA, 'Alpha',
+            operations=[
+                RoadmapOperation(op='update_node', node_type='task', node_id='t1', patch={'status': 'done'}),
+                RoadmapOperation(op='update_node', node_type='task', node_id='t2', patch={'status': 'done'}),
+            ],
+        )
+        run.commits[0].impacted_summary = {'created': 0, 'modified': 1, 'deleted': 0}
+        _staged(ctx, session, run, batch)
+        self._assert_reports(ctx, session, run)
+
+    def _modify_run(self, impacted):
+        ctx, session, run, _nest = _fixture()
+        batch = _committed(
+            run, ALPHA, 'Alpha',
+            message='Renamed Billing to Payments and marked Login done.',
+            operations=[
+                RoadmapOperation(op='update_node', node_type='epic', node_id=EPIC_ID, patch={'title': 'Payments'}),
+                RoadmapOperation(op='update_node', node_type='task', node_id=TASK_ID, patch={'status': 'done'}),
+            ],
+        )
+        commit = run.commits[0]
+        commit.impacted_items = impacted
+        commit.impacted_summary = {'created': 0, 'modified': 2, 'deleted': 0}
+        _staged(ctx, session, run, batch)
+        return ctx, session, run
+
+    def test_every_modified_target_impacted_takes_the_fast_path(self):
+        ctx, session, run = self._modify_run([
+            CommitImpactedItem(node_id=EPIC_ID, node_type='epic', title='Payments', impact='modified'),
+            CommitImpactedItem(node_id=TASK_ID, node_type='task', title='Login', impact='modified'),
+        ])
+        with patched_llm([]):
+            verify.run(ctx, session, run)
+        self.assertTrue(ctx.verify_fast_path)
+
+    def test_a_no_op_hidden_by_another_rows_diff_gets_the_report(self):
+        # Two diff rows (title + description of one epic) for two operations,
+        # but the task was already done: per-operation matching catches it.
+        ctx, session, run = self._modify_run([
+            CommitImpactedItem(node_id=EPIC_ID, node_type='epic', title='Payments', impact='modified', change_type='TITLE_CHANGED'),
+            CommitImpactedItem(node_id=EPIC_ID, node_type='epic', title='Payments', impact='modified', change_type='DESCRIPTION_CHANGED'),
+        ])
+        self._assert_reports(ctx, session, run)
+
+    def test_dropped_duplicate_operations_get_the_report(self):
+        ctx, session, run, _nest = _fixture()
+        batch = _committed(run, ALPHA, 'Alpha', message='Added Growth and Billing.')
+        batch.dropped_operations = 1
+        _staged(ctx, session, run, batch)
+        self._assert_reports(ctx, session, run)
+
+    def test_a_retried_commit_gets_the_report(self):
+        ctx, session, run, _nest = _fixture()
+        batch = _committed(run, ALPHA, 'Alpha', attempts=2)
+        _staged(ctx, session, run, batch)
+        self._assert_reports(ctx, session, run)
+
+    def test_a_write_tool_in_the_staging_turn_gets_the_report(self):
+        ctx, session, run, _nest = _fixture()
+        batch = _committed(run, ALPHA, 'Alpha')
+        batch.call_ids = ['call_stage_1']
+        transcript = [
+            {'type': 'function_call', 'call_id': 'call_comment_1', 'name': 'add_task_comments', 'arguments': '{}'},
+            {'type': 'function_call_output', 'call_id': 'call_comment_1', 'output': '{}'},
+            {'type': 'function_call', 'call_id': 'call_stage_1', 'name': 'stage_edits', 'arguments': '{}'},
+        ]
+        key = ctx.transcript_key(session.session_id, run.run_id, 'staged')
+        self.assertTrue(ctx.put_transcript(key, transcript))
+        run.staged_transcript_key = key
+        self._assert_reports(ctx, session, run)
+
+    def test_a_contradicting_staged_message_gets_the_report(self):
+        ctx, session, run, _nest = _fixture()
+        batch = _committed(run, ALPHA, 'Alpha', message='No changes were made to Alpha.')
+        _staged(ctx, session, run, batch)
+        self._assert_reports(ctx, session, run)
+
+    def test_a_confirmed_proposal_batch_gets_the_report(self):
+        ctx, session, run, _nest = _fixture()
+        batch = _committed(run, ALPHA, 'Alpha')
+        batch.source = 'proposal'
+        _staged(ctx, session, run, batch)
+        self._assert_reports(ctx, session, run)
+
+
+class StagedTranscriptMemoryTests(unittest.TestCase):
+    """Within one step the staged transcript stays in memory; only a step
+    that ends before verify consumes it writes it to the store."""
+
+    def test_consumed_in_the_same_step_never_reaches_the_store(self):
+        ctx, session, run, _nest = _fixture()
+        key = ctx.transcript_key(session.session_id, run.run_id, 'staged')
+        self.assertTrue(ctx.stage_transcript(key, [{'type': 'function_call', 'call_id': 'c1'}]))
+        self.assertEqual(ctx.get_transcript(key), [{'type': 'function_call', 'call_id': 'c1'}])
+        ctx.delete_transcript(key)
+        ctx.flush_pending_transcripts()
+        self.assertNotIn(key, ctx.store.side)
+
+    def test_unconsumed_transcript_is_flushed_at_step_end(self):
+        ctx, session, run, _nest = _fixture()
+        key = ctx.transcript_key(session.session_id, run.run_id, 'staged')
+        ctx.stage_transcript(key, [{'type': 'function_call', 'call_id': 'c1'}])
+        self.assertNotIn(key, ctx.store.side)
+        ctx.flush_pending_transcripts()
+        self.assertIn(key, ctx.store.side)
+        self.assertEqual(ctx.pending_transcripts, {})
 
 
 class UndoRunReplyTests(unittest.TestCase):
@@ -344,6 +514,7 @@ class ReportContradictionTests(unittest.TestCase):
     def test_refusal_after_a_commit_is_rejected_for_the_staged_message(self):
         ctx, session, run, _nest = _fixture()
         batch = _committed(run, ALPHA, 'Alpha')
+        _needs_report(run)
         _staged(ctx, session, run, batch)
         with patched_llm([text_resp(PRODUCTION_REFUSAL)]):
             with self.assertLogs('app.core.runtime.phases.verify', level='WARNING') as logs:
@@ -367,6 +538,7 @@ class ReportContradictionTests(unittest.TestCase):
     def test_honest_text_and_failed_runs_are_untouched(self):
         ctx, session, run, _nest = _fixture()
         batch = _committed(run, ALPHA, 'Alpha')
+        _needs_report(run)
         _staged(ctx, session, run, batch)
         with patched_llm([text_resp('I moved every Alpha task to in progress.')]):
             outcome = verify.run(ctx, session, run)
@@ -390,6 +562,7 @@ class ReasoningTranscriptTests(unittest.TestCase):
     def test_reasoning_items_ride_ahead_of_the_commit_output(self):
         ctx, session, run, _nest = _fixture()
         batch = _committed(run, ALPHA, 'Alpha')
+        _needs_report(run)
         batch.call_ids = ['call_stage_1']
         transcript = [
             {'type': 'reasoning', 'id': 'rs_1', 'summary': [], 'encrypted_content': 'blob'},
