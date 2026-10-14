@@ -26,12 +26,9 @@
 import { useQuery } from "@tanstack/react-query";
 import {
 	Check,
-	CheckCircle2,
 	ChevronDown,
 	ChevronRight,
 	Folder,
-	Layers,
-	Layout,
 	Loader2,
 	Play,
 	Plus,
@@ -49,6 +46,11 @@ import {
 } from "react";
 import { AnchoredPopover } from "@/components/common/AnchoredPopover";
 import { AppDialog } from "@/components/common/AppDialog";
+import {
+	EpicGlyph,
+	FeatureGlyph,
+	TaskGlyph,
+} from "@/components/common/NodeGlyph";
 import { SidePanel } from "@/components/roadmap/panels/SidePanel";
 import { nativeSafe, timeErrorMessage } from "@/lib/timeErrors";
 import { CHIP_LABEL_MAX, truncateLabel, workItemLabel } from "@/lib/timeFormat";
@@ -100,8 +102,7 @@ import {
 
 export const TASK_PICKER_COPY = {
 	startTitle: "Start timer",
-	startDescription:
-		"Pick a project, then a task, or what you're doing if it isn't on a task.",
+	startDescription: "Pick a task, or what you're doing if it isn't on one.",
 	selectTitle: "Choose a task",
 	selectDescription: "Pick a project, then a task or a preset.",
 	choose: "Choose",
@@ -131,6 +132,7 @@ export const TASK_PICKER_COPY = {
 	untitledFeature: "Untitled feature",
 	pickFeatureFirst: "Select a feature before creating a task.",
 	forChoose: "Choose…",
+	startHint: "Pick a task or a 'Not on a task' option",
 	done: "Done",
 } as const;
 
@@ -271,18 +273,18 @@ function Column({
 	return (
 		<section
 			aria-label={title}
-			className="flex max-h-64 min-h-0 flex-col overflow-hidden rounded-xl border border-border bg-card md:max-h-none"
+			className="flex max-h-48 min-h-0 flex-col overflow-hidden rounded-lg border border-border bg-card md:max-h-none"
 		>
-			<div className="flex items-center justify-between gap-2 border-b border-border bg-muted/40 px-3 py-2">
-				<div className="flex items-center gap-2">
+			<div className="flex h-8 shrink-0 items-center justify-between gap-2 border-b border-border px-2.5">
+				<div className="flex min-w-0 items-center gap-1.5">
 					{icon}
-					<span className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground">
+					<span className="truncate text-xs font-medium uppercase tracking-wide text-muted-foreground">
 						{title}
 					</span>
 				</div>
 				{action}
 			</div>
-			<div className="min-h-0 flex-1 space-y-1 overflow-y-auto p-1.5 [scrollbar-width:thin]">
+			<div className="min-h-0 flex-1 space-y-px overflow-y-auto p-1 [scrollbar-width:thin]">
 				{children}
 			</div>
 		</section>
@@ -295,12 +297,15 @@ function Row({
 	children,
 	meta,
 	muted = false,
+	glyph,
 }: {
 	selected: boolean;
 	onClick: () => void;
 	children: ReactNode;
 	meta?: ReactNode;
 	muted?: boolean;
+	/** The roadmap glyph of the row's level (epic / feature / task), as on the roadmap. */
+	glyph?: ReactNode;
 }) {
 	return (
 		<button
@@ -308,7 +313,7 @@ function Row({
 			onClick={onClick}
 			aria-pressed={selected}
 			className={cn(
-				"group flex w-full items-center justify-between gap-2 rounded-lg px-2.5 py-2 text-left text-sm transition-colors",
+				"group flex h-8 w-full items-center justify-between gap-2 rounded-md px-2 text-left text-sm transition-colors",
 				selected
 					? "bg-primary/10 font-medium text-foreground"
 					: muted
@@ -316,47 +321,74 @@ function Row({
 						: "text-foreground hover:bg-muted",
 			)}
 		>
-			<span className="flex min-w-0 flex-col">
-				<span className="truncate">{children}</span>
+			<span className="flex min-w-0 items-center gap-2">
+				{glyph ? (
+					<span className="flex shrink-0" aria-hidden="true">
+						{glyph}
+					</span>
+				) : null}
+				<span className="min-w-0 truncate">{children}</span>
+			</span>
+			<span className="flex shrink-0 items-center gap-1.5">
 				{meta ? (
-					<span className="mt-0.5 text-[10px] text-muted-foreground">
+					<span className="text-[11px] font-normal text-muted-foreground">
 						{meta}
 					</span>
 				) : null}
+				{selected ? (
+					<Check className="h-3.5 w-3.5 text-primary" aria-hidden="true" />
+				) : (
+					<ChevronRight
+						className="h-3.5 w-3.5 text-muted-foreground opacity-0 transition-opacity group-hover:opacity-100"
+						aria-hidden="true"
+					/>
+				)}
 			</span>
-			{selected ? (
-				<CheckCircle2
-					className="h-4 w-4 shrink-0 text-primary"
-					aria-hidden="true"
-				/>
-			) : (
-				<ChevronRight
-					className="h-4 w-4 shrink-0 text-muted-foreground opacity-0 transition-opacity group-hover:opacity-100"
-					aria-hidden="true"
-				/>
-			)}
 		</button>
 	);
 }
 
 function Empty({ children }: { children: ReactNode }) {
 	return (
-		<p className="p-3 text-center text-xs text-muted-foreground">{children}</p>
+		<p className="p-2.5 text-center text-xs text-muted-foreground">
+			{children}
+		</p>
 	);
 }
 
 function Skeleton() {
 	return (
 		<div className="space-y-1.5 p-1" aria-hidden="true">
-			<div className="h-9 w-full animate-pulse rounded-lg bg-muted" />
-			<div className="h-9 w-5/6 animate-pulse rounded-lg bg-muted" />
-			<div className="h-9 w-4/6 animate-pulse rounded-lg bg-muted" />
+			<div className="h-7 w-full animate-pulse rounded-md bg-muted" />
+			<div className="h-7 w-5/6 animate-pulse rounded-md bg-muted" />
+			<div className="h-7 w-4/6 animate-pulse rounded-md bg-muted" />
 		</div>
 	);
 }
 
-const SMALL_BUTTON =
-	"inline-flex items-center gap-1 rounded-md border border-border bg-card px-2 py-1 text-[11px] font-semibold text-foreground transition-colors hover:bg-muted disabled:opacity-50";
+/** An icon-only "+" in a column header; its label is the name and the tooltip. */
+function AddButton({
+	label,
+	onClick,
+	disabled,
+}: {
+	label: string;
+	onClick: () => void;
+	disabled: boolean;
+}) {
+	return (
+		<button
+			type="button"
+			onClick={onClick}
+			disabled={disabled}
+			aria-label={label}
+			title={label}
+			className="inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground disabled:opacity-40"
+		>
+			<Plus className="h-3.5 w-3.5" aria-hidden="true" />
+		</button>
+	);
+}
 
 /** Names a new epic or feature in place (Enter confirms, Escape cancels). */
 function InlineCreateRow({
@@ -538,6 +570,8 @@ export interface ForFieldProps {
 	projectWorkspaceName?: string | null;
 	/** Above the dialog the field sits in. */
 	zIndex?: number;
+	/** The chip as plain text (the task picker's footer). */
+	plain?: boolean;
 	className?: string;
 }
 
@@ -555,6 +589,7 @@ export function ForField({
 	onPickerOpenChange,
 	projectWorkspaceName,
 	zIndex,
+	plain = false,
 	className,
 }: ForFieldProps) {
 	const anchorRef = useRef<HTMLSpanElement | null>(null);
@@ -620,6 +655,7 @@ export function ForField({
 				projectWorkspaceName={projectWorkspaceName}
 				personalReason={result.personal_reason ?? null}
 				showPrefix
+				plain={plain}
 				popoverZIndex={zIndex}
 				className={className}
 			/>
@@ -671,6 +707,7 @@ export function ForField({
 						onOpenMenu={toggle}
 						menuOpen={pickerOpen}
 						showPrefix
+						plain={plain}
 					/>
 				) : (
 					<span className="inline-flex items-center gap-1">
@@ -1077,44 +1114,96 @@ function TaskPicker({
 			? (confirmLabel ?? TASK_PICKER_COPY.choose)
 			: forActionLabel(forChoice, "start", START_TIMER_LABEL);
 
+	// 2+ options: the list is in the dialog body; the For control beside
+	// Start takes the person there.
+	const focusForList = () => {
+		const root = forSectionRef.current;
+		const target =
+			root?.querySelector<HTMLInputElement>(
+				'input[type="radio"]:checked:not([disabled])',
+			) ??
+			root?.querySelector<HTMLInputElement>(
+				'input[type="radio"]:not([disabled])',
+			);
+		target?.focus();
+		root?.scrollIntoView?.({ block: "nearest" });
+	};
+
+	const forControl =
+		mode !== "start" || !projectId ? null : inlineFor ? (
+			<span className="inline-flex min-w-0 items-center gap-1">
+				{forChoice.option ? (
+					<ForChip
+						option={forChoice.option}
+						variant="menu"
+						onOpenMenu={focusForList}
+						showPrefix
+						plain
+					/>
+				) : (
+					<>
+						<span className="text-xs text-muted-foreground">{FOR_LABEL}:</span>
+						<button
+							type="button"
+							onClick={focusForList}
+							disabled={busy}
+							className="inline-flex items-center gap-1 rounded-md px-1 py-0.5 text-xs font-medium text-muted-foreground transition-colors hover:bg-muted hover:text-foreground disabled:opacity-50"
+						>
+							{TASK_PICKER_COPY.forChoose}
+							<ChevronDown className="h-3 w-3" aria-hidden="true" />
+						</button>
+					</>
+				)}
+			</span>
+		) : (
+			<ForField
+				forChoice={forChoice}
+				projectId={projectId}
+				mode="start"
+				plain
+				onConfirm={confirm}
+				busy={busy}
+				pickerOpen={pickerOpen}
+				onPickerOpenChange={setPickerOpen}
+				zIndex={zIndex + 10}
+				className="min-w-0"
+			/>
+		);
+
 	const footer = (
-		<div className="flex w-full flex-wrap items-center gap-2">
-			{mode === "start" && projectId && !inlineFor ? (
-				<ForField
-					forChoice={forChoice}
-					projectId={projectId}
-					mode="start"
-					onConfirm={confirm}
-					busy={busy}
-					pickerOpen={pickerOpen}
-					onPickerOpenChange={setPickerOpen}
-					zIndex={zIndex + 10}
-					className="mr-auto"
-				/>
-			) : (
-				<span className="mr-auto" />
-			)}
+		<div
+			className="flex w-full flex-wrap items-center justify-end gap-2"
+			data-testid="picker-footer"
+		>
+			{forControl ? (
+				<span className="mr-1 inline-flex min-w-0">{forControl}</span>
+			) : null}
 			<button
 				type="button"
 				onClick={onClose}
 				disabled={busy}
-				className="rounded-lg border border-border px-3.5 py-2 text-xs font-semibold text-foreground transition-colors hover:bg-muted disabled:opacity-50"
+				className="h-8 rounded-lg border border-border px-3 text-xs font-semibold text-foreground transition-colors hover:bg-muted disabled:opacity-50"
 			>
 				{CANCEL_BUTTON}
 			</button>
-			<button
-				type="button"
-				onClick={confirm}
-				disabled={!canConfirm}
-				className="inline-flex items-center gap-1.5 rounded-lg bg-primary px-3.5 py-2 text-xs font-semibold text-primary-foreground transition-colors hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-50"
+			<span
+				className="inline-flex"
+				title={hasWork ? undefined : TASK_PICKER_COPY.startHint}
 			>
-				{busy ? (
-					<Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden="true" />
-				) : mode === "start" ? (
-					<Play className="h-3.5 w-3.5" aria-hidden="true" />
-				) : null}
-				{primaryLabel}
-			</button>
+				<button
+					type="button"
+					onClick={confirm}
+					disabled={!canConfirm}
+					className="inline-flex h-8 items-center gap-1.5 rounded-lg bg-primary px-3 text-xs font-semibold text-primary-foreground transition-colors hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-50"
+				>
+					{busy ? (
+						<Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden="true" />
+					) : mode === "start" ? (
+						<Play className="h-3.5 w-3.5" aria-hidden="true" />
+					) : null}
+					{primaryLabel}
+				</button>
+			</span>
 		</div>
 	);
 
@@ -1127,7 +1216,7 @@ function TaskPicker({
 				busy={busy || createTask !== null}
 				size="xl"
 				zIndex={zIndex}
-				className="lg:max-w-6xl"
+				className="sm:max-h-[70vh]"
 				title={
 					title ??
 					(mode === "start"
@@ -1142,7 +1231,7 @@ function TaskPicker({
 				}
 				footer={footer}
 			>
-				<div className="space-y-3">
+				<div className="space-y-2.5">
 					<div className="relative">
 						<Search
 							className="pointer-events-none absolute top-1/2 left-3 h-4 w-4 -translate-y-1/2 text-muted-foreground"
@@ -1154,11 +1243,11 @@ function TaskPicker({
 							onChange={(event) => setSearchText(event.target.value)}
 							placeholder={TASK_PICKER_COPY.search}
 							aria-label={TASK_PICKER_COPY.searchLabel}
-							className="w-full rounded-lg border border-input bg-background py-2 pr-3 pl-9 text-sm text-foreground outline-none placeholder:text-muted-foreground focus:border-primary focus:ring-2 focus:ring-primary/25"
+							className="h-9 w-full rounded-lg border border-input bg-background pr-3 pl-9 text-sm text-foreground outline-none placeholder:text-muted-foreground focus:border-primary focus:ring-2 focus:ring-primary/25"
 						/>
 					</div>
 
-					<div className="grid grid-cols-1 gap-3 md:h-[52vh] md:min-h-[360px] md:grid-cols-4">
+					<div className="grid grid-cols-1 gap-2 md:h-[calc(70vh-13rem)] md:min-h-[240px] md:grid-cols-4">
 						<Column
 							title={TASK_PICKER_COPY.project}
 							icon={
@@ -1191,6 +1280,9 @@ function TaskPicker({
 												</p>
 											) : null}
 											<Row
+												glyph={
+													<Folder className="h-3.5 w-3.5 text-muted-foreground" />
+												}
 												selected={project.id === projectId}
 												onClick={() => changeProject(project.id)}
 												muted={isArchivedProject(project)}
@@ -1215,15 +1307,9 @@ function TaskPicker({
 
 						<Column
 							title={TASK_PICKER_COPY.epic}
-							icon={
-								<Layers
-									className="h-4 w-4 text-muted-foreground"
-									aria-hidden="true"
-								/>
-							}
+							icon={<EpicGlyph size={16} />}
 							action={
-								<button
-									type="button"
+								<AddButton
 									onClick={() => setEpicDraft("")}
 									disabled={
 										!projectId ||
@@ -1232,11 +1318,8 @@ function TaskPicker({
 										creation.creatingEpic ||
 										epicDraft !== null
 									}
-									className={SMALL_BUTTON}
-								>
-									<Plus className="h-3 w-3" aria-hidden="true" />
-									{TASK_PICKER_COPY.addEpic}
-								</button>
+									label={TASK_PICKER_COPY.addEpic}
+								/>
 							}
 						>
 							{epicDraft !== null ? (
@@ -1265,6 +1348,7 @@ function TaskPicker({
 								visible.map((epic) => (
 									<Row
 										key={epic.epicTitle}
+										glyph={<EpicGlyph size={14} />}
 										selected={epic.epicTitle === activeEpic?.epicTitle}
 										onClick={() => {
 											setEpicTitle(epic.epicTitle);
@@ -1284,15 +1368,9 @@ function TaskPicker({
 
 						<Column
 							title={TASK_PICKER_COPY.feature}
-							icon={
-								<Layout
-									className="h-4 w-4 text-muted-foreground"
-									aria-hidden="true"
-								/>
-							}
+							icon={<FeatureGlyph size={16} />}
 							action={
-								<button
-									type="button"
+								<AddButton
 									onClick={() => setFeatureDraft("")}
 									disabled={
 										!projectId ||
@@ -1302,11 +1380,8 @@ function TaskPicker({
 										featureDraft !== null ||
 										!activeEpic
 									}
-									className={SMALL_BUTTON}
-								>
-									<Plus className="h-3 w-3" aria-hidden="true" />
-									{TASK_PICKER_COPY.addFeature}
-								</button>
+									label={TASK_PICKER_COPY.addFeature}
+								/>
 							}
 						>
 							{featureDraft !== null ? (
@@ -1335,6 +1410,7 @@ function TaskPicker({
 								activeEpic.features.map((feature) => (
 									<Row
 										key={feature.featureTitle}
+										glyph={<FeatureGlyph size={14} />}
 										selected={
 											feature.featureTitle === activeFeature?.featureTitle
 										}
@@ -1356,15 +1432,9 @@ function TaskPicker({
 
 						<Column
 							title={TASK_PICKER_COPY.task}
-							icon={
-								<CheckCircle2
-									className="h-4 w-4 text-muted-foreground"
-									aria-hidden="true"
-								/>
-							}
+							icon={<TaskGlyph size={16} />}
 							action={
-								<button
-									type="button"
+								<AddButton
 									onClick={openCreateTask}
 									disabled={
 										!projectId ||
@@ -1373,11 +1443,8 @@ function TaskPicker({
 										creation.creatingTask ||
 										!activeFeature
 									}
-									className={SMALL_BUTTON}
-								>
-									<Plus className="h-3 w-3" aria-hidden="true" />
-									{TASK_PICKER_COPY.addTask}
-								</button>
+									label={TASK_PICKER_COPY.addTask}
+								/>
 							}
 						>
 							{!projectId ? (
@@ -1387,29 +1454,37 @@ function TaskPicker({
 							) : (
 								<>
 									{presets.length ? (
-										<div className="mb-1 space-y-1">
-											<p className="px-2.5 pt-1 text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
+										<div className="mb-1 border-b border-border px-1 pt-0.5 pb-1.5">
+											<p className="pb-1 text-[11px] font-medium text-muted-foreground">
 												{TASK_PICKER_COPY.notOnTask}
 											</p>
-											{presets.map((preset) => (
-												<Row
-													key={preset}
-													selected={!taskId && workItem === preset}
-													onClick={() => {
-														setWorkItem(preset);
-														setTaskId(null);
-													}}
-												>
-													<span
-														aria-hidden="true"
-														className="mr-1.5 text-muted-foreground"
-													>
-														◦
-													</span>
-													{workItemLabel(preset)}
-												</Row>
-											))}
-											<div className="my-1.5 h-px w-full bg-border" />
+											<div className="flex flex-wrap gap-1">
+												{presets.map((preset) => {
+													const selected = !taskId && workItem === preset;
+													return (
+														<button
+															key={preset}
+															type="button"
+															aria-pressed={selected}
+															onClick={() => {
+																setWorkItem(preset);
+																setTaskId(null);
+															}}
+															className={cn(
+																"inline-flex h-6 items-center gap-1 rounded-full border px-2.5 text-xs font-medium transition-colors",
+																selected
+																	? "border-primary/40 bg-primary/10 text-primary"
+																	: "border-border text-foreground hover:bg-muted",
+															)}
+														>
+															{selected ? (
+																<Check className="h-3 w-3" aria-hidden="true" />
+															) : null}
+															{workItemLabel(preset)}
+														</button>
+													);
+												})}
+											</div>
 										</div>
 									) : null}
 									{workItems.isError ? (
@@ -1424,6 +1499,7 @@ function TaskPicker({
 										activeFeature.tasks.map((task) => (
 											<Row
 												key={task.id}
+												glyph={<TaskGlyph size={14} />}
 												selected={task.id === taskId}
 												onClick={() => {
 													setTaskId(task.id);
@@ -1443,7 +1519,7 @@ function TaskPicker({
 						<section
 							ref={forSectionRef}
 							aria-label={FOR_LABEL}
-							className="space-y-1.5 rounded-xl border border-border bg-card p-3"
+							className="space-y-1.5 rounded-lg border border-border bg-card p-2.5"
 						>
 							<p className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground">
 								{FOR_LABEL}

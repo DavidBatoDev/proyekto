@@ -35,6 +35,7 @@ import type {
 	TimeEntryView,
 } from "@/services/time.types";
 import { useAuthStore } from "@/stores/authStore";
+import { PICKER_TITLE } from "../for/forCopy";
 import { LoggingScopeProvider } from "./loggingScope";
 import {
 	buildTaskTree,
@@ -271,7 +272,7 @@ describe("TaskPickerModal (select)", () => {
 		expect(onClose).toHaveBeenCalled();
 	});
 
-	it("offers the presets the policy shows under 'Not on a task', marked ◦", async () => {
+	it("offers the presets the policy shows as chips under 'Not on a task'", async () => {
 		const onSelect = vi.fn();
 		renderWithClient(
 			<TaskPickerModal
@@ -287,15 +288,16 @@ describe("TaskPickerModal (select)", () => {
 			within(taskColumn).queryByRole("button", { name: /Admin/ }),
 		).toBeNull();
 		const meeting = within(taskColumn).getByRole("button", { name: /Meeting/ });
-		expect(meeting.textContent).toContain("◦");
+		expect(meeting.getAttribute("aria-pressed")).toBe("false");
 		fireEvent.click(meeting);
+		expect(meeting.getAttribute("aria-pressed")).toBe("true");
 		fireEvent.click(screen.getByRole("button", { name: "Choose" }));
 		expect(onSelect).toHaveBeenCalledWith(
 			expect.objectContaining({ taskId: null, workItem: "meeting" }),
 		);
 	});
 
-	it("needs a task or a preset", async () => {
+	it("needs a task or a preset, and says so on the disabled button", async () => {
 		renderWithClient(
 			<TaskPickerModal
 				open
@@ -305,10 +307,36 @@ describe("TaskPickerModal (select)", () => {
 			/>,
 		);
 		await screen.findByText("Not on a task");
-		expect(
-			(screen.getByRole("button", { name: "Choose" }) as HTMLButtonElement)
-				.disabled,
-		).toBe(true);
+		const choose = screen.getByRole("button", {
+			name: "Choose",
+		}) as HTMLButtonElement;
+		expect(choose.disabled).toBe(true);
+		expect(choose.parentElement?.getAttribute("title")).toBe(
+			"Pick a task or a 'Not on a task' option",
+		);
+		const taskColumn = screen.getByRole("region", { name: "Task" });
+		fireEvent.click(
+			await within(taskColumn).findByRole("button", { name: /Fix login bug/ }),
+		);
+		expect(choose.disabled).toBe(false);
+		expect(choose.parentElement?.getAttribute("title")).toBeNull();
+	});
+
+	it("the add buttons are icon-only, named and titled", async () => {
+		renderWithClient(
+			<TaskPickerModal
+				open
+				mode="select"
+				onSelect={vi.fn()}
+				onClose={vi.fn()}
+			/>,
+		);
+		await screen.findByText("Not on a task");
+		for (const label of ["Add epic", "Add feature", "Add task"]) {
+			const button = screen.getByRole("button", { name: label });
+			expect(button.getAttribute("title")).toBe(label);
+			expect(button.textContent).toBe("");
+		}
 	});
 
 	it("search narrows the epics", async () => {
@@ -391,7 +419,13 @@ describe("TaskPickerModal (start)", () => {
 		);
 		await pickFixLoginBug();
 		await screen.findByText("Only option on this project");
-		fireEvent.click(screen.getByRole("button", { name: "Start timer" }));
+		// One row: For, Cancel, Start timer.
+		const footer = screen.getByTestId("picker-footer");
+		expect(within(footer).getByText("For:")).toBeTruthy();
+		expect(within(footer).getByRole("button", { name: "Cancel" })).toBeTruthy();
+		fireEvent.click(
+			within(footer).getByRole("button", { name: "Start timer" }),
+		);
 		await waitFor(() => expect(start).toHaveBeenCalled());
 		expect(start.mock.calls[0][0]).toEqual({ project_id: "p1", task_id: "t1" });
 		await waitFor(() => expect(onStarted).toHaveBeenCalled());
@@ -437,8 +471,14 @@ describe("TaskPickerModal (start)", () => {
 		expect(
 			within(panel as HTMLElement).getByRole("button", { name: "Start timer" }),
 		).toBeTruthy();
-		// No popover chip in the footer.
-		expect(screen.queryByRole("button", { name: /Choose…/ })).toBeNull();
+		// The footer's For control takes you to the list (no popover).
+		const footer = screen.getByTestId("picker-footer");
+		const chooseFor = within(footer).getByRole("button", { name: /Choose…/ });
+		fireEvent.click(chooseFor);
+		expect(document.activeElement).toBe(
+			within(forList).getAllByRole("radio")[0],
+		);
+		expect(screen.queryByRole("dialog", { name: PICKER_TITLE })).toBeNull();
 
 		fireEvent.click(screen.getByRole("button", { name: "Start timer" }));
 		expect(start).not.toHaveBeenCalled();

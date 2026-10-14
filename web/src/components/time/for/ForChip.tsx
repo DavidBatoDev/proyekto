@@ -97,6 +97,8 @@ export interface ForChipProps {
 	menuOpen?: boolean;
 	/** Writes "For:" before the chip (the timer bar, quick add). */
 	showPrefix?: boolean;
+	/** Text without the chip's box (the task picker's footer). */
+	plain?: boolean;
 	/** Characters before "…" (chips 22, cards 32). */
 	maxLength?: number;
 	/** Above AppDialog when the chip sits in one. */
@@ -115,6 +117,7 @@ export function ForChip({
 	onOpenMenu,
 	menuOpen,
 	showPrefix = false,
+	plain = false,
 	maxLength = CHIP_LABEL_MAX,
 	popoverZIndex,
 	className,
@@ -148,7 +151,9 @@ export function ForChip({
 		</>
 	);
 	const chipClass = cn(
-		"inline-flex min-w-0 max-w-full items-center gap-1 rounded-md border border-border bg-muted/40 px-1.5 py-0.5 text-xs font-medium text-foreground",
+		plain
+			? "inline-flex min-w-0 max-w-full items-center gap-1 rounded-md px-1 py-0.5 text-xs font-medium text-foreground"
+			: "inline-flex min-w-0 max-w-full items-center gap-1 rounded-md border border-border bg-muted/40 px-1.5 py-0.5 text-xs font-medium text-foreground",
 		locked && "text-muted-foreground",
 	);
 	const srText = [note, locked ? lockedText : null]
