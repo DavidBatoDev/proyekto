@@ -214,6 +214,87 @@ class GuardFeedsBackIntoTheLoopTests(unittest.TestCase):
         self.assertIn('assignee_id', outputs[0]['output'])
 
 
+SECOND_FEATURE_ID = '55555555-5555-4555-8555-555555555555'
+PARENT_HANDLE_MAP = {
+    **HANDLE_MAP,
+    'E1.F2': {'id': SECOND_FEATURE_ID, 'type': 'feature', 'title': 'Brand direction'},
+    'E2': {'id': '66666666-6666-4666-8666-666666666666', 'type': 'epic', 'title': 'Empty epic'},
+}
+
+
+def _add_task(**fields):
+    return {'op': 'add_task', 'data': {'title': 'Upload branding', 'assignee_ids': [ANA_ID]}, **fields}
+
+
+class ParentTypeGuardTests(unittest.TestCase):
+    """Production run 3441024f staged `add_task` with the @-referenced EPIC
+    as parent; the backend rejected the whole commit ("add_task requires an
+    existing feature parent") after the turn had ended, though the epic had a
+    matching feature. The guard hands it back to the model with the choices."""
+
+    def test_a_task_under_an_epic_lists_the_epics_features(self):
+        result = tool_exec.interpret_plan_tool(
+            _stage([_add_task(parent_id=EPIC_ID, node_type='epic')]), PARENT_HANDLE_MAP
+        )
+        self.assertIsInstance(result, tool_exec.PlanToolError)
+        self.assertEqual(result.code, 'INVALID_PARENT_TYPE')
+        self.assertIn('its parent is an epic, and a task must sit under a feature', result.message)
+        self.assertIn('"Research" (E1.F1)', result.message)
+        self.assertIn('"Brand direction" (E1.F2)', result.message)
+        self.assertNotIn('Launch', result.message)
+
+    def test_a_handle_parent_is_checked_after_expansion(self):
+        result = tool_exec.interpret_plan_tool(_stage([_add_task(parent_id='E1')]), PARENT_HANDLE_MAP)
+        self.assertIsInstance(result, tool_exec.PlanToolError)
+        self.assertIn('"Brand direction" (E1.F2)', result.message)
+
+    def test_an_epic_without_features_says_so(self):
+        result = tool_exec.interpret_plan_tool(_stage([_add_task(parent_id='E2')]), PARENT_HANDLE_MAP)
+        self.assertIsInstance(result, tool_exec.PlanToolError)
+        self.assertIn('no features yet', result.message)
+
+    def test_a_task_under_a_feature_passes(self):
+        for parent in (FEATURE_ID, 'E1.F2'):
+            with self.subTest(parent=parent):
+                result = tool_exec.interpret_plan_tool(_stage([_add_task(parent_id=parent)]), PARENT_HANDLE_MAP)
+                self.assertIsInstance(result, tool_exec.PlanToolParsed)
+
+    def test_a_task_under_a_new_feature_in_the_same_batch_passes(self):
+        operations = [
+            {'op': 'add_feature', 'parent_id': EPIC_ID, 'temp_id': 'tmp_feature_1', 'data': {'title': 'Assets'}},
+            _add_task(parent_ref='tmp_feature_1'),
+        ]
+        result = tool_exec.interpret_plan_tool(_stage(operations), PARENT_HANDLE_MAP)
+        self.assertIsInstance(result, tool_exec.PlanToolParsed)
+
+    def test_a_task_under_a_new_epic_in_the_same_batch_is_rejected(self):
+        operations = [
+            {'op': 'add_epic', 'temp_id': 'tmp_epic_1', 'data': {'title': 'Assets'}},
+            _add_task(parent_ref='tmp_epic_1'),
+        ]
+        result = tool_exec.interpret_plan_tool(_stage(operations), PARENT_HANDLE_MAP)
+        self.assertIsInstance(result, tool_exec.PlanToolError)
+        self.assertIn('index 1', result.message)
+
+    def test_a_feature_under_a_feature_is_rejected(self):
+        operations = [{'op': 'add_feature', 'parent_id': FEATURE_ID, 'data': {'title': 'Nested'}}]
+        result = tool_exec.interpret_plan_tool(_stage(operations), PARENT_HANDLE_MAP)
+        self.assertIsInstance(result, tool_exec.PlanToolError)
+        self.assertIn('a feature must sit under an epic', result.message)
+
+    def test_an_unknown_parent_is_left_to_the_backend(self):
+        result = tool_exec.interpret_plan_tool(
+            _stage([_add_task(parent_id='77777777-7777-4777-8777-777777777777')]), PARENT_HANDLE_MAP
+        )
+        self.assertIsInstance(result, tool_exec.PlanToolParsed)
+
+    def test_moving_a_task_onto_an_epic_is_rejected(self):
+        operations = [{'op': 'move_node', 'node_type': 'task', 'node_id': TASK_ID, 'new_parent_id': EPIC_ID}]
+        result = tool_exec.interpret_plan_tool(_stage(operations), PARENT_HANDLE_MAP)
+        self.assertIsInstance(result, tool_exec.PlanToolError)
+        self.assertIn('"Research" (E1.F1)', result.message)
+
+
 def _plan_resp(call_id, args):
     return LLMResponse(
         content=None,

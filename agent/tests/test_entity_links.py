@@ -425,6 +425,27 @@ class AutolinkTests(unittest.TestCase):
         self.assertEqual(result.auto, 1)
         self.assertEqual(result.text, f'- [supply network baseline](proyekto://epic/{MILESTONE}) — planned')
 
+    def test_an_item_this_run_changed_links_in_bare_prose(self) -> None:
+        # Production run b98779c5: the staged reply named five edited epics
+        # mid-sentence and only the comma-bounded ones became chips.
+        from app.core.contracts.runs import CommitImpactedItem, RunCommit
+
+        title = PRODUCTION_TASK_TITLES[8]
+        text = f'Set {title} to start on 15 October.'
+        self.assertEqual(ground_entity_links(text, self.session, self.run).auto, 0)
+        commit = RunCommit(
+            batch_id='b1',
+            roadmap_id=ALPHA,
+            status='failed',
+            impacted_items=[CommitImpactedItem(node_id=_task_id(8), node_type='task', title=title)],
+        )
+        self.run.commits.append(commit)
+        self.assertEqual(ground_entity_links(text, self.session, self.run).auto, 0)
+        commit.status = 'committed'
+        result = ground_entity_links(text, self.session, self.run)
+        self.assertEqual(result.auto, 1)
+        self.assertEqual(result.text, f'Set {entity_link(title, "task", _task_id(8))} to start on 15 October.')
+
     def test_text_without_observed_titles_is_byte_identical(self) -> None:
         text = 'Nothing here mentions a task.\r\n\n- Something else entirely — todo\n'
         result = ground_entity_links(text, self.session, self.run)

@@ -286,6 +286,22 @@ class LoopReplyTests(unittest.TestCase):
         self.assertEqual(FakeLLM.calls, [])
 
 
+class FullStopTests(unittest.TestCase):
+    def test_a_sentence_ends_once(self):
+        # Production run 45e85b8a rendered `to “American English … direction.”.`
+        cases = {
+            'Renamed Billing to “Payments.”': 'Renamed Billing to “Payments.”',
+            'Marked it done (all three.)': 'Marked it done (all three.)',
+            'Added Growth': 'Added Growth.',
+            'Renamed Billing to “Payments”': 'Renamed Billing to “Payments”.',
+            'Added [Growth](proyekto://epic/E1)': 'Added [Growth](proyekto://epic/E1).',
+            'Done!': 'Done!',
+        }
+        for message, expected in cases.items():
+            with self.subTest(message=message):
+                self.assertEqual(verify._with_full_stop(message), expected)
+
+
 class FastReplyTests(unittest.TestCase):
     """A clean direct commit replies with the staged message and no model
     turn; anything the staging model has not already said gets the report."""

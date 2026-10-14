@@ -27,9 +27,11 @@ tools, referencing the handle outlines (E1 / E1.F2 / R2.E1).
 
 from __future__ import annotations
 
+from datetime import datetime, timezone, tzinfo
 from functools import lru_cache
 from pathlib import Path
 from typing import Any, Callable
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from app.core.contracts.sessions import AgentSession, RoadmapContext
 from app.core.runtime import scope as scope_helpers
@@ -1160,8 +1162,25 @@ def _actor_block(session: AgentSession, session_context: dict[str, Any]) -> str:
     if isinstance(actor, dict):
         display_name = _clean(actor.get('display_name'))
     who = display_name or 'the user'
+    today = _today_line(actor.get('timezone') if isinstance(actor, dict) else None)
     if session.scope.kind == 'workspace':
-        return f'{_ACTOR_HEADER}\nYou are assisting {who} (workspace member).'
+        return f'{_ACTOR_HEADER}\nYou are assisting {who} (workspace member).\n{today}'
     if isinstance(role, str) and role:
-        return f'{_ACTOR_HEADER}\nYou are assisting {who} ({role} of the focus roadmap).'
-    return f'{_ACTOR_HEADER}\nYou are assisting {who}.'
+        return f'{_ACTOR_HEADER}\nYou are assisting {who} ({role} of the focus roadmap).\n{today}'
+    return f'{_ACTOR_HEADER}\nYou are assisting {who}.\n{today}'
+
+
+def _today_line(timezone_name: Any, now: datetime | None = None) -> str:
+    """Today's date, so "today" / "next Friday" resolve to real dates instead
+    of the model's training-era guess. It changes once a day, so it can sit in
+    the cached prefix. The actor's own time zone when known, else UTC."""
+    zone: tzinfo = timezone.utc
+    label = 'UTC'
+    if isinstance(timezone_name, str) and timezone_name.strip():
+        try:
+            zone = ZoneInfo(timezone_name.strip())
+            label = timezone_name.strip()
+        except (ZoneInfoNotFoundError, ValueError):
+            pass
+    current = (now or datetime.now(timezone.utc)).astimezone(zone)
+    return f'Today is {current:%A}, {current:%Y-%m-%d} ({label}).'

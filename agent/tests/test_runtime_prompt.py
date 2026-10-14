@@ -153,8 +153,25 @@ class BlockOrderTests(unittest.TestCase):
         session = AgentSession(roadmap_id=FOCUS)
         system = prompt.build_system_prompt(session, None, _context(session), 'investigate')
         self.assertIn('# Focus roadmap\n(empty — no epics yet)', system)
-        self.assertTrue(system.rstrip().endswith('# Actor\nYou are assisting the user.'))
+        self.assertRegex(
+            system.rstrip(),
+            r'# Actor\nYou are assisting the user\.\nToday is \w+, \d{4}-\d{2}-\d{2} \(UTC\)\.$',
+        )
         self.assertNotIn('\n# Run', system)
+
+    def test_today_follows_the_actor_time_zone(self) -> None:
+        from datetime import datetime, timezone
+
+        now = datetime(2026, 10, 14, 20, 30, tzinfo=timezone.utc)
+        self.assertEqual(prompt._today_line(None, now), 'Today is Wednesday, 2026-10-14 (UTC).')
+        self.assertEqual(prompt._today_line('Not/AZone', now), 'Today is Wednesday, 2026-10-14 (UTC).')
+        try:
+            from zoneinfo import ZoneInfo
+
+            ZoneInfo('Asia/Manila')
+        except Exception:  # no tz database on this machine (Windows without tzdata)
+            return
+        self.assertEqual(prompt._today_line('Asia/Manila', now), 'Today is Thursday, 2026-10-15 (Asia/Manila).')
 
 
 class CacheInvariantTests(unittest.TestCase):
@@ -168,7 +185,8 @@ class CacheInvariantTests(unittest.TestCase):
         second = prompt.build_system_prompt(session, run_b, _context(session, run_b, relevant_memory_notes=[{'id': 'm-1', 'content': 'x'}]), 'verify')
         self.assertNotEqual(first, second)
         self.assertEqual(prompt.prompt_prefix(first), prompt.prompt_prefix(second))
-        self.assertTrue(prompt.prompt_prefix(first).endswith('(owner of the focus roadmap).'))
+        # The date changes once a day, so it may close the cached prefix.
+        self.assertRegex(prompt.prompt_prefix(first), r'\(owner of the focus roadmap\)\.\nToday is [^\n]+\.$')
         self.assertNotIn('\n# Referenced items', prompt.prompt_prefix(first))
         self.assertNotIn('\n# Run', prompt.prompt_prefix(second))
         # Semantic memory mode is a per-session setting: with it on for BOTH

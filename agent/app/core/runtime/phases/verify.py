@@ -206,7 +206,7 @@ def staged_summary(session: AgentSession, run_state: Any) -> tuple[str, bool]:
         message = (batch.assistant_message or '').strip() if batch is not None else ''
         if commit.status == 'committed' and message:
             model_text = True
-            parts.append(message if message[-1] in '.!?' else f'{message}.')
+            parts.append(_with_full_stop(message))
         elif commit.status == 'committed':
             label = _link(_label(session, commit, batch), commit.roadmap_id)
             count = len(batch.operations) if batch is not None else 0
@@ -214,6 +214,14 @@ def staged_summary(session: AgentSession, run_state: Any) -> tuple[str, bool]:
         else:
             parts.append(_failure_sentence(session, commit, batch) + '.')
     return ' '.join(parts), model_text
+
+
+def _with_full_stop(message: str) -> str:
+    """End a sentence once: a period inside closing quotes or brackets
+    (`to “Payments.”`, `(done.)`) already ends it."""
+    if message.rstrip('"\'”’)]*_')[-1:] in ('.', '!', '?'):
+        return message
+    return f'{message}.'
 
 
 _IMPACT_VERB = {'created': 'removed', 'deleted': 'brought back', 'modified': 'restored'}

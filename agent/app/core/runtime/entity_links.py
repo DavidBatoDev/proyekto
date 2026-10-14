@@ -254,8 +254,23 @@ def ground_entity_links(text: str, session: Any, run: Any) -> GroundingResult:
             return link_text
 
         result.text = _FULL_LINK_PATTERN.sub(expand, text)
-    result.text, result.auto = autolink_entities(result.text, lookup)
+    result.text, result.auto = autolink_entities(result.text, lookup, trusted=_changed_this_run(run))
     return result
+
+
+def _changed_this_run(run: Any) -> frozenset[tuple[str, str]]:
+    """Items this run's commits changed: a reply about the edit names them
+    mid-sentence ("Set Discovery & Website Strategy to start..."), so they
+    link wherever their title appears, not only as a whole mention."""
+    changed: set[tuple[str, str]] = set()
+    for commit in getattr(run, 'commits', None) or []:
+        if getattr(commit, 'status', None) != 'committed':
+            continue
+        for item in getattr(commit, 'impacted_items', None) or []:
+            node_id = normalize_uuid(getattr(item, 'node_id', None))
+            if node_id and getattr(item, 'impact', None) != 'deleted':
+                changed.add((str(getattr(item, 'node_type', '') or ''), node_id))
+    return frozenset(changed)
 
 
 def _autolink_candidates(lookup: dict[tuple[str, str], EntitySeen]) -> list[tuple[EntitySeen, re.Pattern[str]]]:
@@ -299,8 +314,14 @@ def _whole_mention(text: str, start: int, end: int) -> bool:
     )
 
 
-def autolink_entities(text: str, lookup: dict[tuple[str, str], EntitySeen]) -> tuple[str, int]:
-    """Link whole plain-text mentions of unambiguous observed titles.
+def autolink_entities(
+    text: str,
+    lookup: dict[tuple[str, str], EntitySeen],
+    *,
+    trusted: frozenset[tuple[str, str]] = frozenset(),
+) -> tuple[str, int]:
+    """Link whole plain-text mentions of unambiguous observed titles; a
+    ``trusted`` entity (one this run changed) links mid-sentence too.
 
     Returns the rewritten text and how many links were added. The label keeps
     the model's own spelling; the chip swaps in the canonical title when the
@@ -318,7 +339,7 @@ def autolink_entities(text: str, lookup: dict[tuple[str, str], EntitySeen]) -> t
             start, end = match.span()
             if any(s < end and start < e for s, e in protected):
                 continue
-            if not _whole_mention(text, start, end):
+            if (entry.kind, normalize_uuid(entry.id)) not in trusted and not _whole_mention(text, start, end):
                 continue
             replacements.append((start, end, entity_link(match.group(0), entry.kind, entry.id)))
             protected.append((start, end))

@@ -26,7 +26,7 @@ from app.core.tools.registry import (
     reset_active_handle_map,
     set_active_handle_map,
 )
-from app.core.uuid_utils import is_uuid_like, is_valid_temp_ref
+from app.core.uuid_utils import is_uuid_like, is_valid_temp_ref, normalize_uuid
 
 
 @dataclass
@@ -129,6 +129,9 @@ def interpret_stage_edits(
         patch_error = _validate_update_node_patch_fields(operations, handle_map)
         if patch_error is not None:
             return PlanToolError(message=patch_error)
+        parent_error = _validate_parent_types(operations, handle_map)
+        if parent_error is not None:
+            return PlanToolError(message=parent_error, code='INVALID_PARENT_TYPE')
         mismatch = validate_batch_roadmap(
             operations,
             roadmap_id,
@@ -237,6 +240,97 @@ def _validate_update_node_patch_fields(
                 f'{hint} Re-stage without that field.'
             ).replace('  ', ' ')
     return None
+
+
+# The node type each operation's parent must be: a task sits under a feature,
+# a feature under an epic. The backend rejects anything else, failing the
+# whole commit after the turn has already ended.
+_REQUIRED_PARENT_TYPE = {'add_task': 'feature', 'add_feature': 'epic'}
+_CREATED_NODE_TYPE = {'add_epic': 'epic', 'add_feature': 'feature', 'add_task': 'task', 'add_milestone': 'milestone'}
+
+
+def _validate_parent_types(
+    operations: list[RoadmapOperation],
+    handle_map: dict[str, dict[str, Any]] | None,
+) -> str | None:
+    """Reject an add (or a task move) whose parent is the wrong kind of node,
+    e.g. a task placed straight under an epic the user named.
+
+    Parents are typed from the outline or from a ``temp_id`` created in the
+    same batch; an id the outline doesn't carry is left to the backend. The
+    error lists the epic's features so the model re-stages under the one that
+    fits in the same turn instead of committing a batch that cannot apply.
+    """
+    types_by_id = {normalize_uuid(node_id) or node_id: kind for node_id, kind in node_types_by_id(handle_map).items()}
+    temp_types = {
+        operation.temp_id: _CREATED_NODE_TYPE.get(getattr(operation.op, 'value', str(operation.op or '')))
+        for operation in operations
+        if operation.temp_id
+    }
+    for index, operation in enumerate(operations):
+        op_name = getattr(operation.op, 'value', str(operation.op or ''))
+        if op_name in _REQUIRED_PARENT_TYPE:
+            required = _REQUIRED_PARENT_TYPE[op_name]
+            parent_id, parent_ref = operation.parent_id, operation.parent_ref
+        elif op_name == 'move_node' and getattr(operation.node_type, 'value', operation.node_type) == 'task':
+            required = 'feature'
+            parent_id, parent_ref = operation.new_parent_id, operation.new_parent_ref
+        else:
+            continue
+        actual = (
+            types_by_id.get(normalize_uuid(parent_id) or parent_id) if parent_id else temp_types.get(parent_ref)
+        )
+        if actual is None or actual == required:
+            continue
+        child = 'task' if required == 'feature' else 'feature'
+        message = (
+            f'Operation at index {index} (op={op_name}) is invalid: its parent is {_a(actual)}, '
+            f'and a {child} must sit under {_a(required)}.'
+        )
+        if required == 'feature' and actual == 'epic' and parent_id:
+            features = _child_features(handle_map, parent_id)
+            if features:
+                listed = ', '.join(f'"{title}" ({handle})' for handle, title in features)
+                message += (
+                    f' That epic\'s features: {listed}. Re-stage with the feature that best fits '
+                    'the task as its parent and name that feature in assistant_message. If none '
+                    'fits, ask the user which feature to use (offer a new feature as an option).'
+                )
+            else:
+                message += (
+                    ' That epic has no features yet: ask the user whether to add one '
+                    '(suggest a title) and put the task under it.'
+                )
+        else:
+            message += f' Re-stage with {_a(required)} as the parent.'
+        return message
+    return None
+
+
+def _a(node_type: str) -> str:
+    return f'an {node_type}' if node_type[:1] in 'aeiou' else f'a {node_type}'
+
+
+def _child_features(handle_map: dict[str, dict[str, Any]] | None, epic_id: str) -> list[tuple[str, str]]:
+    """``(handle, title)`` of the outline's features under one epic."""
+    wanted = normalize_uuid(epic_id) or epic_id
+    epic_handles = [
+        handle
+        for handle, entry in (handle_map or {}).items()
+        if isinstance(entry, dict)
+        and entry.get('type') == 'epic'
+        and (normalize_uuid(entry.get('id')) or entry.get('id')) == wanted
+    ]
+    features: list[tuple[str, str]] = []
+    for epic_handle in epic_handles:
+        for handle, entry in (handle_map or {}).items():
+            if (
+                isinstance(entry, dict)
+                and entry.get('type') == 'feature'
+                and handle.startswith(f'{epic_handle}.')
+            ):
+                features.append((handle, str(entry.get('title') or 'Untitled feature')))
+    return features
 
 
 def _format_validation_error(error: dict[str, Any]) -> str:
