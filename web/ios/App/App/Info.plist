@@ -68,6 +68,12 @@
 		<string>UIInterfaceOrientationLandscapeLeft</string>
 		<string>UIInterfaceOrientationLandscapeRight</string>
 	</array>
+	<key>NSCameraUsageDescription</key>
+	<string>Proyekto uses the camera so you can take a photo for your profile, or attach a photo or video to a chat message, comment or task.</string>
+	<key>NSMicrophoneUsageDescription</key>
+	<string>Proyekto uses the microphone to record sound when you take a video to attach to a chat message, comment or task.</string>
+	<key>NSPhotoLibraryUsageDescription</key>
+	<string>Proyekto opens your photo library so you can choose a profile photo, or attach a photo or video to a chat message, comment or task.</string>
 	<key>UIViewControllerBasedStatusBarAppearance</key>
 	<true/>
 </dict>
