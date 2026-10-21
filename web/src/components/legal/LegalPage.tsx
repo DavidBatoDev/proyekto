@@ -70,7 +70,8 @@ export function LegalPage({
 						Last updated {updated}
 					</p>
 					<p className="mt-1 text-sm text-muted-foreground">
-						Proyekto is operated by {COMPANY.legalName}, {COMPANY_ADDRESS}.
+						Proyekto is operated by {COMPANY.legalName} (ABN {COMPANY.abn}),{" "}
+						{COMPANY_ADDRESS}.
 					</p>
 				</section>
 

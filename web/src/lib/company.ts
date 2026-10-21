@@ -8,6 +8,8 @@
  */
 export const COMPANY = {
 	legalName: "Proyekto Business Services",
+	/** Australian Business Number. Required on every tax invoice and receipt issued to Australian clients. */
+	abn: "20 910 228 294",
 	addressLines: ["Level 4, 80 Ann Street", "Brisbane QLD 4000", "Australia"],
 	email: "support@proyekto.tech",
 } as const;

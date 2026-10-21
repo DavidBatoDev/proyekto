@@ -201,8 +201,8 @@ export function MarketplaceFooter() {
 						<BrandMark className="h-7 text-primary" />
 					</Link>
 					<p className="text-[12px] text-muted-foreground">
-						© {new Date().getFullYear()} {COMPANY.legalName}. Managed delivery
-						for digital projects.
+						© {new Date().getFullYear()} {COMPANY.legalName} (ABN {COMPANY.abn}
+						). Managed delivery for digital projects.
 					</p>
 				</div>
 			</div>

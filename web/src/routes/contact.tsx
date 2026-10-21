@@ -274,6 +274,7 @@ function ContactPage() {
 							<h2 className="text-sm font-semibold text-foreground">Company</h2>
 							<address className="mt-1.5 text-sm not-italic leading-relaxed text-muted-foreground">
 								{COMPANY.legalName}
+								<span className="block">ABN {COMPANY.abn}</span>
 								{COMPANY.addressLines.map((line) => (
 									<span key={line} className="block">
 										{line}

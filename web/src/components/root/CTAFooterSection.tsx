@@ -244,7 +244,9 @@ export function CTAFooterSection({ isActive = false }: { isActive?: boolean }) {
 							© {new Date().getFullYear()} {COMPANY.legalName}. All rights
 							reserved.
 						</p>
-						<p className="mt-1 text-xs text-slate-500">{COMPANY_ADDRESS}</p>
+						<p className="mt-1 text-xs text-slate-500">
+							ABN {COMPANY.abn} · {COMPANY_ADDRESS}
+						</p>
 					</motion.div>
 				</div>
 			</div>
