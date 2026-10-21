@@ -79,11 +79,35 @@ function startsPan(target: EventTarget | null): boolean {
 	return true;
 }
 
-function allowsWheel(target: EventTarget | null): boolean {
-	if (!(target instanceof Element)) return true;
-	// `.nowheel` marks scrollable regions inside nodes (the task list). Wheeling
-	// there must scroll the list, not zoom the canvas.
-	return !target.closest(".nowheel");
+/**
+ * Whether a `.nowheel` region (a scrollable list inside a node, e.g. the task
+ * list) should keep this wheel for itself.
+ *
+ * Only while it can actually scroll in the wheel's direction. A list with no
+ * overflow, or one already at its top or bottom, hands the wheel back to the
+ * canvas; claiming it unconditionally froze panning whenever the pointer sat
+ * over a task list. Zoom gestures always belong to the canvas, otherwise
+ * ctrl+wheel there fell through to the browser's page zoom.
+ */
+export function regionClaimsWheel(
+	region: {
+		scrollTop: number;
+		scrollHeight: number;
+		clientHeight: number;
+	} | null,
+	decision: WheelDecision,
+): boolean {
+	if (!region || decision.kind !== "pan") return false;
+	// The list only scrolls vertically; sideways wheels always pan the canvas.
+	if (decision.deltaY === 0) return false;
+	if (decision.deltaY < 0) return region.scrollTop > 0;
+	// 1px slack: scrollTop is fractional on zoomed or high-DPI displays.
+	return region.scrollTop + region.clientHeight < region.scrollHeight - 1;
+}
+
+function wheelRegion(target: EventTarget | null): HTMLElement | null {
+	if (!(target instanceof Element)) return null;
+	return target.closest<HTMLElement>(".nowheel");
 }
 
 export interface PanZoomOptions {
@@ -367,9 +391,9 @@ export function usePanZoom({
 		};
 
 		const handleWheel = (event: WheelEvent) => {
-			if (!allowsWheel(event.target)) return;
 			const decision = decideWheel(event);
 			if (decision.kind === "ignore") return;
+			if (regionClaimsWheel(wheelRegion(event.target), decision)) return;
 
 			// React's synthetic wheel handler may be passive in Chromium, which
 			// makes preventDefault a no-op and lets the browser page-zoom instead.
