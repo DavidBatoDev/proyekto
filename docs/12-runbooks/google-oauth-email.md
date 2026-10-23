@@ -1,6 +1,6 @@
 # Runbook: Google OAuth Email
 
-> **Last updated:** 2026-08-11 · **Status:** current
+> **Last updated:** 2026-10-23 · **Status:** current
 
 All outbound transactional email — signup verification, password reset, project
 invites, invoices — is sent by the **backend**
@@ -102,6 +102,12 @@ to Secret Manager and redeploy.
 4. Redeploy the backend so running instances pick up `latest`.
 5. Confirm `GET /api/health/mail` reports `token.ok = true`, then run one signup and one
    forgot-password end to end.
+
+## Incident history
+
+| Date | Failure | Fix |
+| --- | --- | --- |
+| 2026-10-23 | `invalid_grant` — refresh token v2 (minted 2026-09-29) revoked. Last good send 2026-10-15 04:40 UTC; found when a user's forgot-password showed "Failed to send reset code". All mail was down: OTPs failed loudly, invites/invoices silently. The notification outbox lost nothing. | Re-minted, `GMAIL_REFRESH_TOKEN` v3, new Cloud Run revision with no code change (`:latest` resolves at revision start). Verified all four senders. The token lived ~3.5 weeks, so check the consent screen is published. |
 
 ## Code locations
 
